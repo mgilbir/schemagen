@@ -131,6 +131,19 @@
   names a type the package does not have ("other.json $defs/Name becomes
   OtherName" in a run with no `OtherName`). A definition moved off a name
   generated code already spells is reported too.
+- A name inside a type that moved used to change the generated API without a
+  word: a field numbered off a generated method or another property's field
+  (`validate` → `Validate1`, `a-b`/`a_b` → `AB1`/`AB2`), a union getter numbered
+  off a field together with its wrapper type (`GetCat2`, `Root_Cat2` beside a
+  property `getCat`), an enum constant or package variable numbered off a type.
+  Each is now reported, one line saying what the name is, where the document
+  wrote it (`#/properties/validate`), what took the one it wanted, and how to
+  choose it; `Generator.NameMoves` lists them with the type they belong to and
+  their location (`NameMove.Type`, `NameMove.Location`, `NameMove.IsMember`).
+- The name collision warnings are shorter: each says what moved, from where,
+  why, and how to choose the names in a few lines, and the explanation of how
+  names are separated is written once per run instead of about a thousand
+  characters of it per contested name.
 - A qualified name that lands on a name another definition of the package
   already has, or on the name of a position, is numbered instead of refusing
   the run.

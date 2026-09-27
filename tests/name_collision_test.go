@@ -467,7 +467,7 @@ func TestNameCollisionsNeverShareOrBreakATypeName(t *testing.T) {
 	var imports []string
 	// How much the sweep exercised: a sweep in which nothing collided proves
 	// nothing about collisions, so the count is asserted below.
-	moves, documents, colliding := 0, 0, 0
+	moves, memberMoves, documents, colliding := 0, 0, 0, 0
 	for i, unit := range units {
 		pkg := fmt.Sprintf("c%d", i)
 		pkgDir := filepath.Join(dir, pkg)
@@ -529,25 +529,53 @@ func TestNameCollisionsNeverShareOrBreakATypeName(t *testing.T) {
 
 		// Every name a move report mentions is one the package declares.
 		declared := packageLevelNames(t, pkgDir)
+		members := typeMembers(t, pkgDir)
 		if len(gen.NameMoves()) > 0 {
 			colliding++
 		}
 		moves += len(gen.NameMoves())
 		for _, m := range gen.NameMoves() {
-			for _, name := range []string{m.Got, m.Wanted} {
-				if !declared[name] && !isGeneratedHelper(name) {
+			// A member's name is looked up among its type's members, a
+			// package-level name at package level. The name whose holder kept
+			// the claim off its spelling must be declared too: the one it is
+			// numbered together with, where there is one -- the getter is a
+			// member, the wrapper package-level -- else the one it wanted,
+			// unless what kept it off is only a reservation or several
+			// properties deriving it at once, which says nothing is declared.
+			has := func(member bool, name string) bool {
+				if member {
+					return members[m.Type+"."+name]
+				}
+				return declared[name] || isGeneratedHelper(name)
+			}
+			check := func(member bool, name string) {
+				if !has(member, name) {
 					t.Errorf("%s: NameMoves reports %+v, and the package declares no %s\nschemas: %s", unit.Name, m, name, strings.Join(raws, "\n"))
 				}
+			}
+			check(m.IsMember(), m.Got)
+			switch {
+			case m.Paired != "":
+				check(!m.IsMember(), m.Paired)
+			case strings.HasPrefix(m.Holder, "reserved for") || strings.HasPrefix(m.Holder, "also what "):
+			default:
+				check(m.IsMember(), m.Wanted)
+			}
+			if m.Role != "" && m.Role != "root" && m.Role != "definition" {
+				memberMoves++
 			}
 		}
 		imports = append(imports, fmt.Sprintf("\t%s \"cogen_test/%s\"", pkg, pkg))
 	}
 
-	t.Logf("%d packages (%d with a name moved off one something else held), %d documents, %d moves",
-		len(units), colliding, documents, moves)
+	t.Logf("%d packages (%d with a name moved off one something else held), %d documents, %d moves (%d of a type's own names)",
+		len(units), colliding, documents, moves, memberMoves)
 	if 2*colliding < len(units) {
 		t.Fatalf("only %d of %d packages had a name collide: the alphabet has stopped colliding, and the sweep with it",
 			colliding, len(units))
+	}
+	if memberMoves == 0 {
+		t.Fatal("no move of a field, getter, wrapper, constant or variable was reported, so the sweep checks none of them")
 	}
 
 	mainGo := fmt.Sprintf(`package main
@@ -651,6 +679,56 @@ func packageLevelNames(t *testing.T, dir string) map[string]bool {
 		}
 	}
 	return names
+}
+
+// typeMembers is every field and method the package in dir declares, keyed
+// "Type.Member".
+func typeMembers(t *testing.T, dir string) map[string]bool {
+	t.Helper()
+	members := map[string]bool{}
+	files, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(files)
+	for _, path := range files {
+		f, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.SkipObjectResolution)
+		if err != nil {
+			t.Fatalf("parsing %s: %v", path, err)
+		}
+		for _, d := range f.Decls {
+			switch d := d.(type) {
+			case *ast.GenDecl:
+				for _, spec := range d.Specs {
+					s, ok := spec.(*ast.TypeSpec)
+					if !ok {
+						continue
+					}
+					st, ok := s.Type.(*ast.StructType)
+					if !ok {
+						continue
+					}
+					for _, field := range st.Fields.List {
+						for _, n := range field.Names {
+							members[s.Name.Name+"."+n.Name] = true
+						}
+					}
+				}
+			case *ast.FuncDecl:
+				if d.Recv == nil || len(d.Recv.List) == 0 {
+					continue
+				}
+				recv := d.Recv.List[0].Type
+				if star, ok := recv.(*ast.StarExpr); ok {
+					recv = star.X
+				}
+				if id, ok := recv.(*ast.Ident); ok {
+					members[id.Name+"."+d.Name.Name] = true
+				}
+			}
+		}
+	}
+	return members
 }
 
 // isGeneratedHelper reports whether name is one generated code spells as fixed

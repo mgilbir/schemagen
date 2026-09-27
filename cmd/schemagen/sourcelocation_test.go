@@ -238,3 +238,38 @@ func walkRaw(v any, tokens []string) (any, error) {
 	}
 	return v, nil
 }
+
+// moveLine is a name-move warning's location: the definition's own location,
+// or the one written beside another claimant's description.
+var moveLine = regexp.MustCompile(`(?m)^warning: (\S+): (?:(#\S*)|.* \((#\S*)\)) is (\S+), not `)
+
+// TestNameMovesNameTheLocationTheDocumentWrote holds the name-move warnings to
+// the same oracle: a draft-07 definition keyed like a generated helper, and a
+// property whose field is numbered off a generated method, each located where
+// the document wrote it -- "definitions", not the "$defs" mirror.
+func TestNameMovesNameTheLocationTheDocumentWrote(t *testing.T) {
+	dir, paths := writeSchemas(t, "a.json", `{"$schema": "http://json-schema.org/draft-07/schema#",
+		"type": "object",
+		"properties": {"validate": {"type": "integer", "minimum": 4}, "m": {"$ref": "#/definitions/SchemagenValidationMode"}},
+		"definitions": {"SchemagenValidationMode": {"type": "string", "minLength": 2}}}`)
+	stderr, err := runGenerateCapturing(t, paths[0], "-o", filepath.Join(dir, "gen"), "-p", "gen")
+	if err != nil {
+		t.Fatalf("generate: %v\nstderr:\n%s", err, stderr)
+	}
+	want := map[string]string{
+		"SchemagenValidationMode2": `{"type": "string", "minLength": 2}`,
+		"Validate1":                `{"type": "integer", "minimum": 4}`,
+	}
+	located := 0
+	for _, m := range moveLine.FindAllStringSubmatch(stderr, -1) {
+		body, ok := want[m[4]]
+		if !ok {
+			continue
+		}
+		assertDefinitionAt(t, paths, m[1], m[2]+m[3], body, stderr)
+		located++
+	}
+	if located != len(want) {
+		t.Fatalf("%d move warnings were located, want %d:\n%s", located, len(want), stderr)
+	}
+}

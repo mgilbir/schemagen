@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -400,6 +401,14 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// are not in the file being written.
 	if !g.config.SharedTypes {
 		g.names = newNameRegistry(g.config.DefinitionTypeNames)
+	}
+	// A name move is located the way every other diagnostic of this call
+	// locates a node: a fragment in the document it was handed, a URI and a
+	// fragment in any other (see docLocator).
+	locator := docLocator{home: g.homeDoc}
+	g.names.locate = func(n *schema.Schema) string {
+		loc, _ := locator.name(n)
+		return loc
 	}
 	g.namingDefect = nil
 	g.typesInFlight = make(map[string]int)
@@ -4759,7 +4768,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				name, goName, propName, other)
 		}
 		finalNames[goName] = propName
-		scope.claim(goName, "the field for property "+strconv.Quote(propName))
+		scope.claim(goName, "the field for property "+strconv.Quote(propName), "field", s.Properties[propName])
 	}
 	for _, propName := range propNames {
 		if overridden[propName] {
@@ -4772,7 +4781,10 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			return fmt.Errorf("type %s: field name %q for property %q collides with property %q (check --field-map overrides)",
 				name, goFieldNames[propName], propName, other)
 		}
-		goName := scope.claim(goFieldNames[propName], "the field for property "+strconv.Quote(propName))
+		// The move is recorded from the name the property derives, not from
+		// the fold's numbered spelling: AB -> AB1 is what changed the field.
+		goName := scope.claimFrom(derived[propName], goFieldNames[propName], "the field for property "+strconv.Quote(propName), "field",
+			fieldFoldReason(derived[propName], propName, propNames, derived, overridden), s.Properties[propName])
 		goFieldNames[propName] = goName
 		finalNames[goName] = propName
 	}
@@ -8643,7 +8655,7 @@ func (g *Generator) generateOneOfForProperty(parentName, jsonName, goFieldName s
 			return nil, err
 		}
 
-		name, getter, wrapperName := g.claimVariantMemberNames(parentName, goFieldName, i, result.Name)
+		name, getter, wrapperName := g.claimVariantMemberNames(parentName, goFieldName, i, result.Name, variant)
 
 		checks := oneOfVariantChecks(variant, result.Type)
 		variants = append(variants, OneOfVariant{
@@ -8691,21 +8703,71 @@ func (g *Generator) generateOneOfForProperty(parentName, jsonName, goFieldName s
 //     derives the field GetCat, which a variant named Cat's getter redeclared:
 //     "field and method with the same name GetCat". The field is the schema's
 //     and keeps its name; the variant moves.
-func (g *Generator) claimVariantMemberNames(parentName, groupField string, index int, want string) (name, getter, wrapperName string) {
+func (g *Generator) claimVariantMemberNames(parentName, groupField string, index int, want string, variant *schema.Schema) (name, getter, wrapperName string) {
 	scope := g.names.memberScopeFor(parentName)
 	role := "oneof-variant/" + groupField + "/" + strconv.Itoa(index)
 	what := "the getter of variant " + strconv.Itoa(index) + " of " + parentName + "." + groupField
-	wrapper := memberHolder(parentName, role, "the wrapper type of variant "+strconv.Itoa(index)+" of "+parentName+"."+groupField)
+	wrapper := memberHolder(parentName, role, "the wrapper type of variant "+strconv.Itoa(index)+" of "+parentName+"."+groupField).locatedAt(variant)
+	at := g.names.location(variant)
+	getterWant, wrapperWant := variantGetterName(want), ToOneOfWrapperName(parentName, want)
+	getterHolder, getterTaken := scope.heldByOther(getterWant, what)
+	wrapperTaken := !g.names.availableTo(wrapperWant, wrapper)
 	name = want
 	for n := 2; ; n++ {
-		_, getterTaken := scope.heldByOther(variantGetterName(name), what)
-		if !getterTaken && g.names.availableTo(ToOneOfWrapperName(parentName, name), wrapper) {
+		_, taken := scope.heldByOther(variantGetterName(name), what)
+		if !taken && g.names.availableTo(ToOneOfWrapperName(parentName, name), wrapper) {
 			break
 		}
 		name = NumberedName(want, n)
 	}
-	getter = scope.claim(variantGetterName(name), what)
-	return name, getter, g.names.claim(ToOneOfWrapperName(parentName, name), wrapper)
+	getter = scope.claim(variantGetterName(name), what, "getter", variant)
+	wrapperName = g.names.claim(ToOneOfWrapperName(parentName, name), wrapper)
+	if name != want {
+		// Both names are part of the parent's API, so both moves are recorded
+		// -- each against what held it, or, for the one that was free, against
+		// what held the name it is numbered together with.
+		getterMove := NameMove{Role: "getter", Type: parentName, Wanted: getterWant, Got: getter, Claimant: what, Location: at, Holder: getterHolder}
+		wrapperMove := NameMove{Role: "wrapper", Type: parentName, Wanted: wrapperWant, Got: wrapperName, Claimant: wrapper.what, Location: at}
+		if wrapperTaken {
+			holder, _ := g.names.holderOf(wrapperWant)
+			wrapperMove.Holder = holder.what
+		}
+		if !getterTaken {
+			getterMove.Holder, getterMove.Paired = wrapperMove.Holder, wrapperWant
+		}
+		if !wrapperTaken {
+			wrapperMove.Holder, wrapperMove.Paired = getterHolder, getterWant
+		}
+		g.names.recordMoves(getterMove, wrapperMove)
+	}
+	return name, getter, wrapperName
+}
+
+// fieldFoldReason says why the field for propName was numbered before the
+// member scope was asked: the name it derives, want, is a generated member's, or
+// another property of the type derives it too. Empty when neither is so.
+func fieldFoldReason(want, propName string, propNames []string, derived map[string]string, overridden map[string]bool) string {
+	var others []string
+	for _, p := range propNames {
+		if p != propName && !overridden[p] && derived[p] == want {
+			others = append(others, strconv.Quote(p))
+		}
+	}
+	var parts []string
+	if slices.Contains(generatedMemberNames, want) {
+		parts = append(parts, reservedMemberHolder)
+	}
+	// Several others are counted rather than listed: each of them is reported
+	// with its own move, so listing them all in every one would say the same
+	// thing n times over.
+	switch len(others) {
+	case 0:
+	case 1:
+		parts = append(parts, "also what property "+others[0]+" derives")
+	default:
+		parts = append(parts, "also what "+strconv.Itoa(len(others))+" other properties derive")
+	}
+	return strings.Join(parts, ", and ")
 }
 
 // variantGetterName is the method a union variant is read through.

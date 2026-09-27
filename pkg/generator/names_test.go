@@ -222,6 +222,71 @@ func TestAPositionNeverDisplacesALaterDefinition(t *testing.T) {
 	}
 }
 
+// A field, a union getter and the wrapper type numbered with it are the
+// package's API, so their moves are reported like a type's -- with the type
+// they belong to -- and only as far as the outcome is declared.
+func TestMemberMovesAreReportedWithTheirType(t *testing.T) {
+	g, f := generateForNamesTest(t, `{"type":"object","properties":{
+		"getCat":{"type":"string"},"validate":{"type":"integer"},"a-b":{"type":"string"},"a_b":{"type":"string"},
+		"p":{"oneOf":[{"title":"Cat","type":"object","properties":{"m":{"type":"string"}},"required":["m"]},{"type":"integer"}]}}}`,
+		Config{RootTypeName: "Root"})
+	want := []NameMove{
+		{Role: "field", Type: "Root", Wanted: "AB", Got: "AB1", Claimant: `the field for property "a-b"`, Location: "#/properties/a-b", Holder: `also what property "a_b" derives`},
+		{Role: "field", Type: "Root", Wanted: "AB", Got: "AB2", Claimant: `the field for property "a_b"`, Location: "#/properties/a_b", Holder: `also what property "a-b" derives`},
+		{Role: "field", Type: "Root", Wanted: "Validate", Got: "Validate1", Claimant: `the field for property "validate"`, Location: "#/properties/validate", Holder: reservedMemberHolder},
+		{Role: "getter", Type: "Root", Wanted: "GetCat", Got: "GetCat2", Claimant: "the getter of variant 0 of Root.P", Location: "#/properties/p/oneOf/0", Holder: `the field for property "getCat"`},
+		{Role: "wrapper", Type: "Root", Wanted: "Root_Cat", Got: "Root_Cat2", Claimant: "the wrapper type of variant 0 of Root.P", Location: "#/properties/p/oneOf/0", Holder: `the field for property "getCat"`, Paired: "GetCat"},
+	}
+	got := g.NameMoves()
+	if len(got) != len(want) {
+		t.Fatalf("NameMoves =\n%+v\nwant\n%+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("move %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+	// Every name the moves give is one the IR declares.
+	members := map[string]bool{}
+	for _, td := range f.TypeDefs {
+		if sd, ok := td.(*StructDef); ok && sd.Name == "Root" {
+			for _, fd := range sd.Fields {
+				members[fd.Name] = true
+			}
+			for _, o := range sd.OneOfs {
+				for _, v := range o.Variants {
+					members[v.GetterName] = true
+					members[v.WrapperName] = true
+				}
+			}
+		}
+	}
+	for _, m := range got {
+		if !members[m.Got] {
+			t.Errorf("%s is reported as %s, which Root does not declare (declared: %v)", m.Claimant, m.Got, members)
+		}
+	}
+}
+
+// A member scope begun for a type that was then not declared is given back with
+// its name: its fields are not the members of whatever is declared under the
+// name next, and its moves are not reported.
+func TestADeclinedTypeLeavesNoMembers(t *testing.T) {
+	g := New(Config{PackageName: "p"})
+	node := &schema.Schema{}
+	g.names.claimExactly("Thing", g.holderFor(node, ""))
+	scope := g.names.memberScopeFor("Thing")
+	scope.claim("X", "the field for property \"x\"", "field", nil)
+	scope.claim("X", "the field for property \"X\"", "field", nil)
+	g.releaseTypeName("Thing", node)
+	if _, ok := g.names.members["Thing"]; ok {
+		t.Fatal("the member scope of a released name survived it")
+	}
+	if moves := g.NameMoves(); len(moves) != 0 {
+		t.Fatalf("NameMoves reports %+v for members of a type nothing declared", moves)
+	}
+}
+
 // A definition of another document is named from the key it is written under
 // in its own resource -- whichever reference reaches it, an anchor or a pointer
 // -- and claimed like any other name, so the root's definition of the same key

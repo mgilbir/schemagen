@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/mgilbir/schemagen/pkg/schema"
@@ -83,7 +84,9 @@ import (
 // A member name space works the same way, scoped to one type: the members the
 // generator adds (Validate, MarshalJSON, the overflow maps, ...) are held first,
 // then the fields the schema's properties become (a --field-map override ahead
-// of a derived name), then the union getters.
+// of a derived name), then the union getters. A member that moves is recorded
+// like a package-level name, against the type it belongs to (NameMove.Type):
+// a field or getter is the type's API as much as the type's own name is.
 //
 // This is a registry claimed in one pass that runs ahead of generation for the
 // names fixed before it (a, b and c above) and alongside it for the rest (d). A
@@ -131,29 +134,74 @@ type nameHolder struct {
 	key string
 	// what describes the holder in the terms a diagnostic uses.
 	what string
-	// role is what the claim is, for NameMove.Role: "root", "definition", or
-	// empty for everything else.
+	// role is what the claim is, for NameMove.Role; see there.
 	role string
+	// owner is the type a holderMember identifier belongs to, for NameMove.Type.
+	owner string
+	// at is the schema node whose location describes the claim, for
+	// NameMove.Location: the node a type is claimed for, the variant a union
+	// wrapper is claimed for. Nil where no node stands for the claim.
+	at *schema.Schema
+}
+
+// locatedAt is h with at set.
+func (h nameHolder) locatedAt(s *schema.Schema) nameHolder {
+	h.at = s
+	return h
 }
 
 // NameMove is one claim that did not get the spelling it asked for.
 type NameMove struct {
-	// Role is "root" for a document's root type, "definition" for a $defs or
-	// definitions entry, and empty for a name the generator minted -- for a
-	// position, a reference's target, an enum constant, a union member, an
-	// import alias. The first two are names the document chose, which is why a
-	// caller may want to say so when one moves.
+	// Role is what the name is:
+	//
+	//   - "root" for a document's root type and "definition" for a $defs or
+	//     definitions entry -- names the document chose;
+	//   - "field" and "getter" for a member of Type: a struct field a property
+	//     becomes, and the Get<Variant> method a union variant is read through
+	//     (IsMember reports these);
+	//   - "wrapper", "interface", "constant" and "variable" for a package-level
+	//     identifier that belongs to Type: a union variant's wrapper type, a
+	//     union's sealed interface, an enum constant, a package variable the
+	//     type's declaration carries;
+	//   - empty for a type the generator named after a position or a
+	//     reference's target, and for an import alias.
+	//
+	// Every non-empty role is a name the generated package exports or a caller
+	// spells, so a move of one changes the package's API.
 	Role string
+	// Type is the type a member or member-owned identifier belongs to; empty
+	// for a root, a definition and a position.
+	Type string
 	// Wanted is the name the claim asked for.
 	Wanted string
 	// Got is the name it was given.
 	Got string
 	// Claimant describes what asked: "the root type", "$defs/a_b", "a type for
-	// a position inside Root", "an enum constant of A", ...
+	// a position inside Root", "an enum constant of A", "the field for property
+	// \"validate\"", ...
 	Claimant string
-	// Holder describes what already held Wanted.
+	// Location is where the document wrote what asked -- the definition, the
+	// property, the union variant -- as schema.Schema.SourceLocation reports
+	// it: a URI fragment ("#/definitions/a_b") for a node of the document being
+	// generated, prefixed with its document's URI for a node of another. Empty
+	// where no document located the node (one built through the Go API, or
+	// synthesized by a merge) and for names no single node asked for.
+	Location string
+	// Holder describes why Wanted was not given: what already held it, or,
+	// where Paired is set, what held the name it is numbered together with.
 	Holder string
+	// Paired is set on a name that moved only because the name it is numbered
+	// together with was taken: a union variant's getter and its wrapper type
+	// share a number, so that each keeps naming the other, and when only one of
+	// them was taken both move. Paired is then the one that was taken -- the
+	// getter (a member of Type) for a wrapper, the wrapper (package-level) for a
+	// getter -- and Wanted is free.
+	Paired string
 }
+
+// IsMember reports whether the move is inside Type's member name space -- a
+// field or a method -- rather than at package level.
+func (m NameMove) IsMember() bool { return m.Role == "field" || m.Role == "getter" }
 
 // nameRegistry holds every package-level identifier of one generated package,
 // and the member names of each of its types.
@@ -181,6 +229,18 @@ type nameRegistry struct {
 	// byNode lists, per schema node, the type names claimed for it, in the
 	// order they were claimed; declaredNameOf reads it.
 	byNode map[*schema.Schema][]string
+	// locate names where a document wrote a node, for NameMove.Location; the
+	// generator sets it for each Generate, since a location is written relative
+	// to the document that call was handed (docLocator).
+	locate func(*schema.Schema) string
+}
+
+// location is where the document wrote s, or "" when nothing locates it.
+func (r *nameRegistry) location(s *schema.Schema) string {
+	if r.locate == nil || s == nil {
+		return ""
+	}
+	return r.locate(s)
 }
 
 func newNameRegistry(pinned map[*schema.Schema]string) *nameRegistry {
@@ -281,8 +341,12 @@ func (r *nameRegistry) firstAvailable(want string, h nameHolder) string {
 		got = NumberedName(want, n)
 	}
 	if got != want {
+		at := h.at
+		if at == nil {
+			at = h.node
+		}
 		r.pending[pendingKey{name: got, node: h.node, key: h.key}] = NameMove{
-			Role: h.role, Wanted: want, Got: got, Claimant: h.what, Holder: r.held[want].what,
+			Role: h.role, Type: h.owner, Wanted: want, Got: got, Claimant: h.what, Location: r.location(at), Holder: r.held[want].what,
 		}
 	}
 	return got
@@ -360,13 +424,16 @@ func (r *nameRegistry) declaredNameOf(node *schema.Schema) (string, bool) {
 }
 
 // release gives name back if h holds it and no declaration was committed under
-// it: a name asked for and not used is held by nobody.
+// it: a name asked for and not used is held by nobody. So is any member scope
+// begun under it -- the fields a declined attempt claimed are not the members
+// of whatever type is declared under the name next.
 func (r *nameRegistry) release(name string, h nameHolder) {
 	held, ok := r.held[name]
 	if !ok || r.declared[name] || !r.sameHolder(held, h) {
 		return
 	}
 	delete(r.held, name)
+	delete(r.members, name)
 }
 
 // withdraw gives back a declared type's name and everything it carried: the
@@ -392,25 +459,68 @@ func (r *nameRegistry) holderOf(name string) (nameHolder, bool) {
 	return h, ok
 }
 
+// recordMoves records moves a caller settled itself: names numbered together,
+// where only one of them was asked for by a claim that could see the other.
+// Like every move, each is reported only if moveStands.
+func (r *nameRegistry) recordMoves(moves ...NameMove) {
+	r.moves = append(r.moves, moves...)
+}
+
 // declaredMoves returns the recorded moves whose outcome is a name the package
 // declares, in the order they were made, each once.
 func (r *nameRegistry) declaredMoves(isDeclared func(string) bool) []NameMove {
 	seen := make(map[NameMove]bool, len(r.moves))
 	var out []NameMove
 	for _, m := range r.moves {
-		if seen[m] || !isDeclared(m.Got) {
-			continue
-		}
-		if held, ok := r.held[m.Wanted]; !ok || held.kind == holderUnresolved {
-			// What held the name let go of it, or never declared it: a
-			// diagnostic naming it would describe something the package does
-			// not have.
+		if seen[m] || !r.moveStands(m, isDeclared) {
 			continue
 		}
 		seen[m] = true
 		out = append(out, m)
 	}
 	return out
+}
+
+// moveStands reports whether every name a report of m would mention is one the
+// package declares: the name the claim got, and the name whose holder kept it
+// off the one it wanted.
+func (r *nameRegistry) moveStands(m NameMove, isDeclared func(string) bool) bool {
+	memberOf := func(typeName, name string) bool {
+		if !r.declared[typeName] {
+			return false
+		}
+		scope, ok := r.members[typeName]
+		if !ok {
+			return false
+		}
+		_, held := scope.held[name]
+		return held
+	}
+	if m.IsMember() {
+		// The type's member scope is given back whole or not at all (release,
+		// withdraw), so a member held in the scope of a declared type is a
+		// member it declares.
+		if !memberOf(m.Type, m.Got) {
+			return false
+		}
+		if m.Paired != "" {
+			return isDeclared(m.Paired)
+		}
+		return true
+	}
+	if !isDeclared(m.Got) {
+		return false
+	}
+	if m.Paired != "" {
+		return memberOf(m.Type, m.Paired)
+	}
+	if held, ok := r.held[m.Wanted]; !ok || held.kind == holderUnresolved {
+		// What held the name let go of it, or never declared it: a
+		// diagnostic naming it would describe something the package does
+		// not have.
+		return false
+	}
+	return isDeclared(m.Wanted)
 }
 
 // NumberedName is the n-th spelling (n >= 2) the collision policy gives a name
@@ -429,8 +539,14 @@ func NumberedName(want string, n int) string {
 // memberScope holds the member names of one type: its fields and its methods,
 // which Go keeps in one name space ("field and method with the same name").
 type memberScope struct {
-	held map[string]string // name -> what holds it
+	typeName string
+	reg      *nameRegistry
+	held     map[string]string // name -> what holds it
 }
+
+// reservedMemberHolder describes what holds a generated member's name in a
+// member scope.
+const reservedMemberHolder = "reserved for a member every generated type may declare"
 
 // memberScopeFor returns the member scope of typeName, creating it with the
 // members every generated type may carry already held.
@@ -438,25 +554,48 @@ func (r *nameRegistry) memberScopeFor(typeName string) *memberScope {
 	if m, ok := r.members[typeName]; ok {
 		return m
 	}
-	m := &memberScope{held: make(map[string]string)}
+	m := &memberScope{typeName: typeName, reg: r, held: make(map[string]string)}
 	for _, name := range generatedMemberNames {
-		m.held[name] = "the generated member " + name
+		// Held whether or not this type ends up declaring the member, so the
+		// description says reserved, not declared.
+		m.held[name] = reservedMemberHolder
 	}
 	r.members[typeName] = m
 	return m
 }
 
 // claim gives what the first spelling of want, in NumberedName's order, that
-// the scope does not hold.
-func (m *memberScope) claim(want, what string) string {
-	got := want
+// the scope does not hold, and records the move if that is not want. role is
+// the NameMove.Role of the member, and at the node it stands for (the
+// property's schema for a field), for NameMove.Location.
+func (m *memberScope) claim(want, what, role string, at *schema.Schema) string {
+	return m.claimFrom(want, want, what, role, "", at)
+}
+
+// claimFrom is claim for a member whose numbering began before the scope was
+// asked: want is the name it derives, and start the spelling it comes to the
+// scope with -- a field whose property derives the same name as another's, or
+// as a generated method, is numbered among them first (AB1, AB2; Validate1).
+// why says why start is not want, where it is not; the one move recorded runs
+// from want to the name given.
+func (m *memberScope) claimFrom(want, start, what, role, why string, at *schema.Schema) string {
+	holder := why
+	if start == want {
+		holder = m.held[want]
+	}
+	got := start
 	for n := 2; ; n++ {
-		if holder, ok := m.held[got]; !ok || holder == what {
+		if h, ok := m.held[got]; !ok || h == what {
 			break
 		}
-		got = NumberedName(want, n)
+		got = NumberedName(start, n)
 	}
 	m.held[got] = what
+	if got != want {
+		m.reg.moves = append(m.reg.moves, NameMove{
+			Role: role, Type: m.typeName, Wanted: want, Got: got, Claimant: what, Location: m.reg.location(at), Holder: holder,
+		})
+	}
 	return got
 }
 
@@ -506,7 +645,22 @@ func typeHolder(s *schema.Schema, what string) nameHolder {
 // memberHolder is the holder of a package-level identifier that belongs to the
 // type owner, in the given role.
 func memberHolder(owner, role, what string) nameHolder {
-	return nameHolder{kind: holderMember, key: owner + "\x00" + role, what: what}
+	return nameHolder{kind: holderMember, key: owner + "\x00" + role, what: what, owner: owner, role: memberMoveRole(role)}
+}
+
+// memberMoveRole is the NameMove.Role of a package-level identifier a type owns,
+// by the role memberHolder keys it under.
+func memberMoveRole(role string) string {
+	switch {
+	case strings.HasPrefix(role, "const/"):
+		return "constant"
+	case strings.HasPrefix(role, "oneof-variant/"):
+		return "wrapper"
+	case strings.HasPrefix(role, "oneof-interface/"):
+		return "interface"
+	default:
+		return "variable"
+	}
 }
 
 // NamingDefectError reports that generation reached a declaration of a name
@@ -538,10 +692,12 @@ func (g *Generator) DeclaredTypeName(s *schema.Schema) (string, bool) {
 // NameMoves lists the names that did not get the spelling they asked for
 // because something else held it, in the order they were claimed: a definition
 // numbered off a generated helper, a type for a position numbered off a
-// definition, an enum constant numbered off a type. Only moves whose outcome the
-// package declares are listed, and only where what held the wanted spelling
-// still holds it, so every name a report built from this mentions is one the
-// generated code has.
+// definition, an enum constant numbered off a type -- and, inside a type, a
+// field numbered off a generated method or another property's field, and a
+// union getter numbered off a field together with its wrapper type (Role and
+// Type say which). Only moves whose outcome the package declares are listed,
+// and only where what held the wanted spelling still holds it, so every name a
+// report built from this mentions is one the generated code has.
 func (g *Generator) NameMoves() []NameMove {
 	if g.names == nil {
 		return nil
@@ -556,11 +712,5 @@ func (g *Generator) NameMoves() []NameMove {
 		h, ok := g.names.holderOf(name)
 		return ok && h.kind != holderType && h.kind != holderUnresolved
 	}
-	var out []NameMove
-	for _, m := range g.names.declaredMoves(isDeclared) {
-		if isDeclared(m.Wanted) {
-			out = append(out, m)
-		}
-	}
-	return out
+	return g.names.declaredMoves(isDeclared)
 }

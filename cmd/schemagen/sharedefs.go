@@ -3,7 +3,6 @@ package schemagen
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"sort"
 	"strings"
 
@@ -247,7 +246,6 @@ func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Sche
 			// order the two questions are asked in.
 			if keywordSeparatesClaim(group, i) {
 				qualified = keywordPrefix(group[i].keyword) + qualified
-				split.keyword = true
 			}
 			// The qualified name is built from the contested name and not from
 			// the $defs key, so a document that spells the same definition twice
@@ -311,7 +309,7 @@ func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Sche
 
 // nameSplitReport is one contested name resolveSharedDefinitionNames separated,
 // kept until the generator has declared the types so that the warning can be
-// written from what was declared. See printNameSplits.
+// written from what was declared. See nameWarnings.printNameSplits.
 type nameSplitReport struct {
 	name      string
 	group     []nameClaim
@@ -324,13 +322,12 @@ type nameSplitReport struct {
 // rather than by the name this file chose for it.
 //
 // The two agree whenever generation honoured the pin, and a warning is only
-// worth anything where they could not: C2 in the audit (issue-level, an
-// external document's definition whose $ref was resolved elsewhere) printed
-// "other.json $defs/Name becomes OtherName" for a run whose package declared no
-// OtherName at all. A claim whose node was never declared says that instead of
-// naming a type.
-func printNameSplits(w io.Writer, reports []nameSplitReport, declared func(*schema.Schema) (string, bool)) {
-	if w == nil {
+// worth anything where they could not: an external document's definition whose
+// $ref was resolved elsewhere printed "other.json $defs/Name becomes OtherName"
+// for a run whose package declared no OtherName at all. A claim whose node was
+// never declared says that instead of naming a type.
+func (n *nameWarnings) printNameSplits(reports []nameSplitReport, declared func(*schema.Schema) (string, bool)) {
+	if n.w == nil {
 		return
 	}
 	for _, r := range reports {
@@ -343,7 +340,8 @@ func printNameSplits(w io.Writer, reports []nameSplitReport, declared func(*sche
 				group[i].final = ""
 			}
 		}
-		fmt.Fprint(w, describeNameSplit(r.name, group, r.documents, r.split))
+		fmt.Fprint(n.w, describeNameSplit(r.name, group, r.documents, r.split))
+		n.explain()
 	}
 }
 
@@ -904,15 +902,13 @@ func canonicalJSON(raw json.RawMessage) (string, error) {
 
 // splitMechanisms records which of the answers resolveSharedDefinitionNames
 // holds a contested name apart with were needed for one group. The diagnostic
-// reads it so that it describes what was done rather than what could have been:
-// a message naming the keyword as "the only thing in the document that tells
-// them apart" is false for two $defs keys under one keyword, and it is the
-// sentence a reader would act on.
+// reads it so that the remedy it names is one that applies: "rename a key to
+// one that differs by more than punctuation or case" is advice for keys the
+// derivation folded together, and noise for two keys that were already told
+// apart by their keyword.
 type splitMechanisms struct {
-	// keyword is set when a claim took the name of the container that declared
-	// it, and numbered when a claim took a numbered spelling because nothing in
+	// numbered is set when a claim took a numbered spelling because nothing in
 	// the document separated it at all.
-	keyword  bool
 	numbered bool
 }
 
@@ -956,54 +952,40 @@ func describeNameSplit(name string, group []nameClaim, documents int, split spli
 	}
 	sort.Strings(lines)
 
+	// What was done and why is one sentence here; how names are separated in
+	// general is nameWarnings.explain's, written once per run rather than once
+	// per contested name -- a run separating twenty names used to print the
+	// same thousand characters twenty times.
+	//
+	// The remedy depends on which claims were in contention, and naming one
+	// that does not apply is worse than naming none: --root-name moves a root
+	// type and every position named after it, and does nothing at all to a
+	// definition spelled twice.
 	if documents == 1 {
-		// The remedy depends on which of its own claims the document put in
-		// contention, and the two shapes have different ones. Naming a remedy
-		// that does not apply is worse than naming none: --root-name moves a root
-		// type and every position named after it, and does nothing at all to a
-		// definition spelled twice.
-		var tail strings.Builder
-		if split.keyword {
-			tail.WriteString("Each definition is qualified instead with the keyword that declared it, which is the only thing in the document that tells them apart. ")
-		}
-		if split.numbered {
-			tail.WriteString("These keys derive one Go name -- the derivation drops what separates them, as it does for \"my-type\" and \"my_type\", for the two spellings of a JSON Pointer escape, and for a key with no letters in it at all -- so the ones after the first are numbered. ")
-		}
+		var remedy string
 		switch {
 		case claimsBothDefinitionKeywords(group):
-			tail.WriteString("$defs and definitions name the same container in every draft that defines both, so if these were meant to be one definition make them identical or delete one; otherwise rename one of them in the schema to choose the Go names yourself.")
+			remedy = "make them identical or delete one if they are one definition; otherwise rename one"
 		case claimsDocumentRoot(group):
-			tail.WriteString("The document's root type keeps the name -- it is the one the caller asked for, by the document's title or by --root-name. " +
-				"Rename the definition in the schema, or give the document another root name with --root-name, to choose the Go names yourself.")
+			remedy = "rename the definition, or give the document another root name with --root-name"
+		case split.numbered:
+			remedy = "make them identical if they are one type, or rename a key to differ by more than punctuation or case"
 		default:
-			tail.WriteString("Make the definitions identical if they were meant to be one type, or rename one of the keys in the schema -- to something that differs by more than punctuation or case -- to choose the Go names yourself.")
+			remedy = "make them identical if they are one type, or rename one"
 		}
 		where := group[0].path
 		if claimsExternalDocument(group) {
 			where += " (reached by $ref, not listed as an input)"
 		}
-		return fmt.Sprintf("warning: %s declares the Go type name %s in %d places, and those declarations do not describe the same type, so they cannot be one:\n%s\n"+
-			"one Go package holds one type per name, so declaring them all as %s would have given every $ref whichever was generated first and discarded the rest -- a position typed by a schema the document never wrote there. %s\n",
-			where, name, len(lines), strings.Join(lines, "\n"), name, tail.String())
+		return fmt.Sprintf("warning: %s declares the Go type name %s in %d places that are not the same type, so each has its own name:\n%s\n  to choose: %s\n",
+			where, name, len(lines), strings.Join(lines, "\n"), remedy)
 	}
-	folded := ""
-	if split.numbered {
-		folded = "Where two claims derive one Go name even so -- nothing left in the documents separates them -- the ones after the first are numbered. "
-	}
-	referenced := ""
+	remedy := "make them identical if they are one type, or rename one; --root-name sets a document's qualifier"
 	if claimsExternalDocument(group) {
-		referenced = "A document marked \"reached by $ref\" was not listed as an input: it was resolved from the reference, and what this package declares of it is declared here all the same, which is why it is judged here. " +
-			"--root-name reaches such a document by an \"id:\" key, by a \"file:\" key, or by the bare base name of the file it was read from, and sets the name its definitions are qualified with. " +
-			"Its own root type has nothing but its title to be told apart by, so where two of those claim one name the later ones are numbered; give them distinct titles to choose. "
+		remedy += " (a document reached by $ref is named by an \"id:\" or \"file:\" key or its file's base name)"
 	}
-	return fmt.Sprintf("warning: %d documents claim the Go type name %s, and those claims do not describe the same type, so they cannot be one:\n%s\n"+
-		"one package holds one type per name, so sharing it would have given every document whichever schema was generated first and discarded the rest. "+
-		"Each definition is qualified with its own document's root type name -- all of them, not only the later ones, so the generated names do not depend on the order the inputs were listed. "+
-		"%s"+
-		"A listed document's own root type keeps the name it was given; --root-name sets both. "+
-		"%s"+
-		"Make the definitions identical if they were meant to be one type, or rename one of them in the schema to choose the Go names yourself.\n",
-		documents, name, strings.Join(lines, "\n"), folded, referenced)
+	return fmt.Sprintf("warning: %d documents claim the Go type name %s for types that are not the same, so each has its own name:\n%s\n  to choose: %s\n",
+		documents, name, strings.Join(lines, "\n"), remedy)
 }
 
 // claimsExternalDocument reports whether any claim on the name came from a

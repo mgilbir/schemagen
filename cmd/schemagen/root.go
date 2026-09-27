@@ -474,9 +474,7 @@ func newGenerateCmd() *cobra.Command {
 				})
 			}
 
-			// How many of the generator's name moves have been reported. A
-			// shared generator accumulates them across the documents it runs.
-			movesReported := 0
+			nameReport := newNameWarnings(cmd.ErrOrStderr())
 			for _, schemaPath := range args {
 				if verbose {
 					fmt.Fprintf(cmd.OutOrStdout(), "Processing %s\n", schemaPath)
@@ -581,11 +579,9 @@ func newGenerateCmd() *cobra.Command {
 				// are declared: what a name report says a definition became is
 				// what the package declares.
 				if !sharedTypes {
-					printNameSplits(cmd.ErrOrStderr(), unitSplits, gen.DeclaredTypeName)
-					// A generator of its own, so its moves start from none.
-					movesReported = 0
+					nameReport.printNameSplits(unitSplits, gen.DeclaredTypeName)
 				}
-				movesReported = warnNameMoves(cmd.ErrOrStderr(), schemaPath, gen.NameMoves(), movesReported)
+				nameReport.moves(schemaPath, gen)
 
 				// Record applied overrides for unused-entry reporting. Twice
 				// over: by file base name, which is all a --field-map key can
@@ -643,7 +639,7 @@ func newGenerateCmd() *cobra.Command {
 			// The shared package's contested names, reported once every document
 			// of it has been generated, from what the generator declared.
 			if sharedTypes {
-				printNameSplits(cmd.ErrOrStderr(), sharedSplits, sharedGen.DeclaredTypeName)
+				nameReport.printNameSplits(sharedSplits, sharedGen.DeclaredTypeName)
 			}
 
 			// 7. Write the shared helper file, if anything referenced one.
@@ -847,28 +843,106 @@ func warnUnsatisfiableRequired(w io.Writer, schemaPath string, props []generator
 	}
 }
 
-// warnNameMoves reports the names a document chose -- its root type and its
-// definitions -- that the generator declared under another spelling because
-// something already held the one they asked for, and returns how many of moves
-// have now been looked at. moves is read from the generator's name registry
-// (Generator.NameMoves), so every name it mentions is one the package declares.
+// nameWarnings writes the name warnings of one run: the names several claims
+// contested and were separated (printNameSplits), and the names that were
+// declared under another spelling than they asked for (moves). Every one is
+// read from the generator's name registry after generation, so each names what
+// the package declares.
 //
-// Names the generator mints itself -- a position's, an enum constant's, a union
-// getter's -- move without a word, as they always have: nobody chose them.
-func warnNameMoves(w io.Writer, schemaPath string, moves []generator.NameMove, from int) int {
-	if from > len(moves) {
-		from = 0
+// Each warning says what moved, from where, why, and how to choose the name, in
+// a line or a few; how the generator separates names in general is written once
+// per run (explain), after the first warning, rather than once per name.
+type nameWarnings struct {
+	w         io.Writer
+	explained bool
+	// reported holds the moves already written, per generator: one generator
+	// serves every document of a shared package, and NameMoves lists the moves
+	// of all of them.
+	reported map[reportedMove]bool
+}
+
+type reportedMove struct {
+	gen  *generator.Generator
+	move generator.NameMove
+}
+
+func newNameWarnings(w io.Writer) *nameWarnings {
+	return &nameWarnings{w: w, reported: make(map[reportedMove]bool)}
+}
+
+// explain writes, once per run, how the generator gives each claim on a
+// contested name one of its own.
+func (n *nameWarnings) explain() {
+	if n.explained || n.w == nil {
+		return
 	}
-	if w != nil {
-		for _, m := range moves[from:] {
-			if m.Role != "root" && m.Role != "definition" {
-				continue
-			}
-			fmt.Fprintf(w, "warning: %s: %s would be named %s, which is %s, so it is declared as %s; rename it in the schema to choose the Go name yourself\n",
-				schemaPath, m.Claimant, m.Wanted, m.Holder, m.Got)
+	n.explained = true
+	fmt.Fprint(n.w, nameSeparationNote)
+}
+
+// nameSeparationNote is what nameWarnings.explain writes.
+const nameSeparationNote = "note: a Go package holds one declaration per name, and a type one field or method per name. " +
+	"Claims on one name that are not the same thing each get their own: qualified with their document's root type name (--root-name) or the keyword that declared them, " +
+	"else numbered (Name2; Name_2 after a digit).\n"
+
+// moves reports the names gen declared under another spelling than they asked
+// for: a document's root type and definitions, and the names that belong to a
+// type -- its fields and union getters, its union wrapper and interface types,
+// its enum constants and package variables -- all of which are the generated
+// package's API. A type named after a position or a reference's target, and an
+// import alias, are not reported: the generator chose those names, and a
+// position's name moving is how positions are told apart.
+func (n *nameWarnings) moves(schemaPath string, gen *generator.Generator) {
+	if n.w == nil {
+		return
+	}
+	for _, m := range gen.NameMoves() {
+		key := reportedMove{gen: gen, move: m}
+		if m.Role == "" || n.reported[key] {
+			continue
 		}
+		n.reported[key] = true
+		fmt.Fprintf(n.w, "warning: %s: %s\n", schemaPath, describeNameMove(m))
+		n.explain()
 	}
-	return len(moves)
+}
+
+// describeNameMove phrases one move: what moved, why, and how to choose.
+func describeNameMove(m generator.NameMove) string {
+	// Where the document wrote what moved (NameMove.Location, read from
+	// schema.Schema.SourceLocation): a definition is named by it outright, as
+	// the collision lines name one, and anything else carries it beside the
+	// description.
+	claimant := m.Claimant
+	if m.Role == "field" {
+		claimant += " of " + m.Type
+	}
+	switch {
+	case m.Location == "" || m.Role == "root":
+	case m.Role == "definition":
+		claimant = m.Location
+	default:
+		claimant += " (" + m.Location + ")"
+	}
+	why := ""
+	switch {
+	case m.Paired != "":
+		why = fmt.Sprintf(": it is numbered together with %s, which is %s", m.Paired, m.Holder)
+	case m.Holder != "":
+		why = fmt.Sprintf(": %s is %s", m.Wanted, m.Holder)
+	}
+	var remedy string
+	switch m.Role {
+	case "root":
+		remedy = "retitle the document, or set --root-name"
+	case "definition":
+		remedy = "rename the key"
+	case "field":
+		remedy = "rename the property, or map it with --field-map"
+	default:
+		remedy = "rename whichever of the two should give way"
+	}
+	return fmt.Sprintf("%s is %s, not %s%s; to choose: %s", claimant, m.Got, m.Wanted, why, remedy)
 }
 
 // warnUnmatchedDocumentKeys reports --schema-package and --schema-output entries
@@ -1058,6 +1132,7 @@ func (p multiPackageParams) outputSource(id string) string {
 // of the run that was not generated there is an error rather than a silently
 // duplicated type.
 func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
+	nameReport := newNameWarnings(p.warnings)
 	type input struct {
 		path string
 		s    *schema.Schema
@@ -1304,7 +1379,6 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 		// set, so a name is materialized at most once per package and the
 		// collision the check exists for cannot arise. A guard nothing can make
 		// fail is worse than none.
-		movesReported := 0
 		for _, in := range pkgInputs[pkg] {
 			if p.verbose {
 				fmt.Fprintf(out, "Processing %s -> %s\n", in.path, pkg)
@@ -1334,7 +1408,7 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 			warnUnenforcedSchemas(p.warnings, in.path, gen.UnenforcedSchemas())
 			warnUnresolvedRefs(p.warnings, in.path, gen.UnresolvedRefs(), gen.UnresolvedRefKeywords(), gen.UndeclaredRefTypes())
 			warnUnsatisfiableRequired(p.warnings, in.path, gen.UnsatisfiableRequiredProperties())
-			movesReported = warnNameMoves(p.warnings, in.path, gen.NameMoves(), movesReported)
+			nameReport.moves(in.path, gen)
 
 			// Recorded twice over: by file base name, which is all a --field-map
 			// key can name, and by input path, which is what a config entry
@@ -1381,7 +1455,7 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 		}
 
 		// The package's contested names, from what its generator declared.
-		printNameSplits(p.warnings, pkgSplits[pkg], gen.DeclaredTypeName)
+		nameReport.printNameSplits(pkgSplits[pkg], gen.DeclaredTypeName)
 
 		// One helper file per generated package.
 		helperSrc, needed, err := em.EmitHelpers(generator.PackageNameForImportPath(pkg), helpers)
