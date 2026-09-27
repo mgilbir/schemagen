@@ -4,6 +4,9 @@
 
 ### Fixed
 
+- `{"propertyNames":{"pattern":""}}` no longer emits a loop that declares a
+  variable it never uses. The empty pattern matches every name and constrains
+  nothing.
 - A method's own locals no longer shadow its receiver. The receiver is named
   after the type's first letter, and the templates declared single-letter
   locals inside method bodies, so a type named `V…` with a property decoded by

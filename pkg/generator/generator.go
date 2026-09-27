@@ -19524,7 +19524,11 @@ func (g *Generator) extractPropertyNamesDef(pn *schema.Schema) *PropertyNamesDef
 		def.MinLength = &v
 		hasConstraint = true
 	}
-	if pn.Pattern != nil {
+	// The empty pattern matches every string, so it constrains nothing; and
+	// the template reads an empty Pattern as no pattern, so counting it as a
+	// constraint emitted a loop over the keys with nothing in it, which
+	// declares a variable it never uses and does not compile.
+	if pn.Pattern != nil && *pn.Pattern != "" {
 		def.Pattern = *pn.Pattern
 		hasConstraint = true
 	}
