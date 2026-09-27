@@ -187,7 +187,7 @@ func (u UntypedPositionsChoices) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(u))
 	if _canonErr != nil {
-		return jsonValueErrorf("invalid UntypedPositionsChoices value: %s", string(u))
+		return jsonValueErrorf("invalid UntypedPositionsChoices value: %s", _schemagenClipText(string(u)))
 	}
 	for _, allowed := range untypedPositionsChoicesAllowedJSON {
 		if _canon == allowed {
@@ -225,7 +225,7 @@ func (u UntypedPositionsConstant) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(u))
 	if _canonErr != nil {
-		return jsonValueErrorf("invalid UntypedPositionsConstant value: %s", string(u))
+		return jsonValueErrorf("invalid UntypedPositionsConstant value: %s", _schemagenClipText(string(u)))
 	}
 	for _, allowed := range untypedPositionsConstantAllowedJSON {
 		if _canon == allowed {

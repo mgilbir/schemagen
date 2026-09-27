@@ -47,11 +47,19 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		{
 			// The alternative is a reference; the value matches it when it
 			// decodes into the referenced type and that type accepts it.
+			// A pattern match with no answer on the way is no verdict on the
+			// branch, so it is returned rather than read as "no match".
 			var _bv {{$branch.TypeName}}
 			if _err := json.Unmarshal({{$recv}}._raw, &_bv); _err != nil {
+				if _schemagenUndecided(_err) {
+					return fmt.Errorf("type: %w", _err)
+				}
 				_branchMatches = false
 			} else if _bvv, _ok := any(&_bv).(interface{ Validate() error }); _ok {
 				if _err := _bvv.Validate(); _err != nil {
+					if _schemagenUndecided(_err) {
+						return fmt.Errorf("type: %w", _err)
+					}
 					_branchMatches = false
 				}
 			}

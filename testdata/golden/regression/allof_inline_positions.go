@@ -84,7 +84,7 @@ func (r RawEnum) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(r))
 	if _canonErr != nil {
-		return jsonValueErrorf("invalid RawEnum value: %s", string(r))
+		return jsonValueErrorf("invalid RawEnum value: %s", _schemagenClipText(string(r)))
 	}
 	for _, allowed := range rawEnumAllowedJSON {
 		if _canon == allowed {
@@ -294,7 +294,7 @@ func (a AllOfInlinePositionsRaw) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(a))
 	if _canonErr != nil {
-		return jsonValueErrorf("invalid AllOfInlinePositionsRaw value: %s", string(a))
+		return jsonValueErrorf("invalid AllOfInlinePositionsRaw value: %s", _schemagenClipText(string(a)))
 	}
 	for _, allowed := range allOfInlinePositionsRawAllowedJSON {
 		if _canon == allowed {
@@ -503,9 +503,13 @@ func (a *AllOfInlinePositions) UnmarshalJSON(data []byte) error {
 					if _vErr := candidate.Validate(); _vErr == nil {
 						oneofStrict++
 						oneofStrictSel = &AllOfInlinePositions_AllOfInlinePositionsUnionOption0{AllOfInlinePositionsUnionOption0: candidate}
+					} else if _schemagenUndecided(_vErr) {
+						return oneofErrf("variant AllOfInlinePositionsUnionOption0: %w", _vErr)
 					} else {
 						oneofStrictErr = fmt.Errorf("variant AllOfInlinePositionsUnionOption0: %w", _vErr)
 					}
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant AllOfInlinePositionsUnionOption0: %w", err)
 				} else {
 					oneofLastErr = err
 				}
@@ -530,6 +534,8 @@ func (a *AllOfInlinePositions) UnmarshalJSON(data []byte) error {
 					// carry, so matching it is satisfying it.
 					oneofStrict++
 					oneofStrictSel = &AllOfInlinePositions_Integer{Integer: candidate}
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant Integer: %w", err)
 				} else {
 					oneofLastErr = err
 				}
@@ -741,7 +747,7 @@ func (a AllOfInlinePositions) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "map[%q]", _k)
+					return jsonPathf(err, "map[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {

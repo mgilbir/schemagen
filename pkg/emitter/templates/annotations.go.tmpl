@@ -60,7 +60,12 @@ type _schemaNode struct {
 
 	MinLength *int
 	MaxLength *int
-	Pattern   *string
+{{- if .AnnotationsPattern}}
+
+	// Pattern is one of the package's compiled patterns, shared with every
+	// other check that states the same one.
+	Pattern *_schemagenRegexp
+{{- end}}
 {{- if .AnnotationsFormats}}
 
 	// Format is set only where the schema's own dialect asserts "format" and
@@ -119,7 +124,9 @@ type _schemaNode struct {
 	PrefixItems []_schemaNode // tuple positions (prefixItems, or draft-2019 tuple-form items)
 
 	Properties        []_schemaMember // by property name
-	PatternProperties []_schemaMember // by ECMA-262 pattern over the key
+{{- if .AnnotationsPattern}}
+	PatternProperties []_schemaPatternMember // by ECMA-262 pattern over the key
+{{- end}}
 	Required          []string
 	DependentRequired []_schemaDependency
 	DependentSchemas  []_schemaMember
@@ -205,6 +212,16 @@ type _schemaMember struct {
 	Key  string
 	Node _schemaNode
 }
+{{- if .AnnotationsPattern}}
+
+// _schemaPatternMember is one entry of patternProperties: the compiled pattern
+// a key is matched against, and the schema a matching member's value is held
+// to.
+type _schemaPatternMember struct {
+	Pattern *_schemagenRegexp
+	Node    _schemaNode
+}
+{{- end}}
 
 // _schemaDependency is one entry of dependentRequired: when Key is present,
 // every name in Keys must be too.
@@ -227,8 +244,14 @@ type _schemaDependency struct {
 type _evalResult struct {
 	evaluated      map[int]bool
 	evaluatedProps map[string]bool
-	reason         string
-	ok             bool
+	// undecided is set when the verdict could not be reached: a pattern the
+	// engine gave no answer for. Such a result is not a failure that an anyOf,
+	// a not or a contains count may absorb or invert -- each of those returns
+	// it as it stands -- and it reaches the caller as an error wrapping this
+	// one, never as "valid" and never as an ordinary refusal.
+	undecided error
+	reason    string
+	ok        bool
 	// reasonIsAStep says reason opens with a step into the value -- a property
 	// this node descended into, or the branch of a conditional that refused --
 	// rather than being a sentence about the value itself.
@@ -280,6 +303,15 @@ func (r *_evalResult) failAt(step, reason string) _evalResult {
 	return *r
 }
 
+// failAtChild is failAt for a child's result, which carries the child's
+// undecided error along with its reason: a pattern with no answer three
+// properties down is still no answer at the top.
+func (r *_evalResult) failAtChild(step string, child _evalResult) _evalResult {
+	r.failAt(step, child.reason)
+	r.undecided = child.undecided
+	return *r
+}
+
 // failAs re-raises a child's failure at this node unchanged. An in-place
 // applicator -- allOf, a $dynamicRef, items, unevaluatedItems -- judges the very
 // value this node was handed, so what the child said about it is what this node
@@ -288,8 +320,32 @@ func (r *_evalResult) failAs(child _evalResult) _evalResult {
 	r.ok = false
 	r.reason = child.reason
 	r.reasonIsAStep = child.reasonIsAStep
+	r.undecided = child.undecided
 	return *r
 }
+{{- if .AnnotationsPattern}}
+
+// undecide ends this node with no verdict: err is a match the engine gave no
+// answer for. See _evalResult.undecided.
+func (r *_evalResult) undecide(err error) _evalResult {
+	r.ok = false
+	r.reason = err.Error()
+	r.reasonIsAStep = false
+	r.undecided = err
+	return *r
+}
+{{- end}}
+
+// _evalUndecidedError is the error an undecided evaluation is answered with:
+// the path-qualified reason as its message, and the engine's error underneath,
+// so that errors.Is finds ecma262.ErrStepLimit through it.
+type _evalUndecidedError struct {
+	err    error
+	reason string
+}
+
+func (e *_evalUndecidedError) Error() string { return e.reason }
+func (e *_evalUndecidedError) Unwrap() error { return e.err }
 
 // _evalError turns a failed evaluation into the error a Validate answers with,
 // carrying what has to be written between the reason and the path of the value
@@ -301,6 +357,16 @@ func _evalError(r _evalResult) error {
 		// so that a future keyword which did would still say something rather
 		// than answer with an empty message.
 		return jsonValueErrorf("value does not satisfy the schema")
+	}
+	if r.undecided != nil {
+		// No verdict: the document is not known to be valid, and not known to
+		// be invalid either. Reported as an error, since Validate has no third
+		// answer, but one that wraps the engine's so a caller can tell.
+		cause := &_evalUndecidedError{err: r.undecided, reason: r.reason}
+		if r.reasonIsAStep {
+			return jsonStepErrorf("%w", cause)
+		}
+		return jsonValueErrorf("%w", cause)
 	}
 	if r.reasonIsAStep {
 		return jsonStepErrorf("%s", r.reason)
@@ -388,8 +454,14 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 		return res.fail("string is longer than the maximum length")
 	}
 {{- if .AnnotationsPattern}}
-	if n.Pattern != nil && !_dynStrOK(v, func(s string) bool { return _dynPatternOK(*n.Pattern, s) }) {
-		return res.fail("string does not match the required pattern")
+	if s, isString := v.(string); isString && n.Pattern != nil {
+		matched, err := n.Pattern.matches(s)
+		if err != nil {
+			return res.undecide(err)
+		}
+		if !matched {
+			return res.fail("string does not match the required pattern")
+		}
 	}
 {{- end}}
 {{- if .AnnotationsFormats}}
@@ -455,7 +527,12 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 	if isArray && n.Contains != nil {
 		count := 0
 		for i, elem := range arr {
-			if {{$ev}}(n.Contains, elem{{$sc}}).ok {
+			r := {{$ev}}(n.Contains, elem{{$sc}})
+			if r.undecided != nil {
+				// An element that may or may not match makes the count unknown.
+				return res.failAs(r)
+			}
+			if r.ok {
 				res.evaluated[i] = true
 				count++
 			}
@@ -488,7 +565,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 			for _, key := range _dynSortedKeys(obj) {
 				r := {{$ev}}(n.PropertyNames, key{{$sc}})
 				if !r.ok {
-					return res.failAt("property name "+key, r.reason)
+					return res.failAtChild("property name "+_schemagenClipText(key), r)
 				}
 			}
 		}
@@ -500,7 +577,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 			}
 			r := {{$ev}}(&member.Node, value{{$sc}})
 			if !r.ok {
-				return res.failAt("property "+member.Key, r.reason)
+				return res.failAtChild("property "+member.Key, r)
 			}
 			// The property is evaluated by this node, so unevaluatedProperties
 			// no longer speaks about it. The subschema's own annotations are
@@ -509,15 +586,22 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 			res.evaluatedProps[member.Key] = true
 		}
 {{- if .AnnotationsPattern}}
+		// Every member whose key a pattern matches is held to that pattern's
+		// schema, whether or not "properties" declares it too: the two
+		// keywords apply side by side.
 		for i := range n.PatternProperties {
 			member := n.PatternProperties[i]
 			for _, key := range _dynSortedKeys(obj) {
-				if !_dynPatternOK(member.Key, key) {
+				matched, err := member.Pattern.matches(key)
+				if err != nil {
+					return res.failAtChild("property "+_schemagenClipText(key), _evalResult{undecided: err, reason: err.Error()})
+				}
+				if !matched {
 					continue
 				}
 				r := {{$ev}}(&member.Node, obj[key]{{$sc}})
 				if !r.ok {
-					return res.failAt("property "+key, r.reason)
+					return res.failAtChild("property "+_schemagenClipText(key), r)
 				}
 				res.evaluatedProps[key] = true
 			}
@@ -529,13 +613,17 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 					continue
 				}
 {{- if .AnnotationsPattern}}
-				if _dynMemberMatches(n.PatternProperties, key) {
+				matched, err := _dynMemberMatches(n.PatternProperties, key)
+				if err != nil {
+					return res.failAtChild("property "+_schemagenClipText(key), _evalResult{undecided: err, reason: err.Error()})
+				}
+				if matched {
 					continue
 				}
 {{- end}}
 				r := {{$ev}}(n.AdditionalProperties, obj[key]{{$sc}})
 				if !r.ok {
-					return res.failAt("property "+key, r.reason)
+					return res.failAtChild("property "+_schemagenClipText(key), r)
 				}
 				res.evaluatedProps[key] = true
 			}
@@ -557,7 +645,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 			}
 			r := {{$ev}}(&member.Node, v{{$sc}})
 			if !r.ok {
-				return res.failAt("dependent schema for "+member.Key, r.reason)
+				return res.failAtChild("dependent schema for "+member.Key, r)
 			}
 			res.absorb(r)
 		}
@@ -591,6 +679,11 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 		for i := range n.AnyOf {
 			sub := n.AnyOf[i]
 			r := {{$ev}}(&sub, v{{$sc}})
+			if r.undecided != nil {
+				// A branch with no verdict is not a branch that failed: the
+				// others cannot be read without it.
+				return res.failAs(r)
+			}
 			if r.ok {
 				any = true
 				res.absorb(r)
@@ -606,6 +699,9 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 		for i := range n.OneOf {
 			sub := n.OneOf[i]
 			r := {{$ev}}(&sub, v{{$sc}})
+			if r.undecided != nil {
+				return res.failAs(r)
+			}
 			if r.ok {
 				matches++
 				matched = r
@@ -618,8 +714,15 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 	}
 	// "not" contributes no annotations: a subschema that must fail evaluates
 	// nothing, and one that succeeds is a failure of this node.
-	if n.Not != nil && {{$ev}}(n.Not, v{{$sc}}).ok {
-		return res.fail("value matches a forbidden schema")
+	if n.Not != nil {
+		r := {{$ev}}(n.Not, v{{$sc}})
+		if r.undecided != nil {
+			// Inverting no answer is still no answer.
+			return res.failAs(r)
+		}
+		if r.ok {
+			return res.fail("value matches a forbidden schema")
+		}
 	}
 	// The branch that refused names itself, the way a property this node
 	// descended into does. "if" cannot name it: a condition is not an assertion,
@@ -630,19 +733,24 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 	// "else" was the one that ran.
 	if n.If != nil {
 		r := {{$ev}}(n.If, v{{$sc}})
+		if r.undecided != nil {
+			// With no verdict on the condition there is no telling which
+			// consequence applies.
+			return res.failAs(r)
+		}
 		if r.ok {
 			res.absorb(r)
 			if n.Then != nil {
 				tr := {{$ev}}(n.Then, v{{$sc}})
 				if !tr.ok {
-					return res.failAt("then", tr.reason)
+					return res.failAtChild("then", tr)
 				}
 				res.absorb(tr)
 			}
 		} else if n.Else != nil {
 			er := {{$ev}}(n.Else, v{{$sc}})
 			if !er.ok {
-				return res.failAt("else", er.reason)
+				return res.failAtChild("else", er)
 			}
 			res.absorb(er)
 		}
@@ -681,7 +789,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 			}
 			r := {{$ev}}(n.UnevaluatedProperties, obj[key]{{$sc}})
 			if !r.ok {
-				return res.failAt("unevaluated property "+key, r.reason)
+				return res.failAtChild("unevaluated property "+_schemagenClipText(key), r)
 			}
 			res.evaluatedProps[key] = true
 		}
@@ -812,22 +920,20 @@ func _dynJoin(parts []string) string {
 func _dynItoa(i int) string { return strconv.Itoa(i) }
 {{- if .AnnotationsPattern}}
 
-// _dynPatternOK applies an ECMA-262 regular expression the way JSON Schema
-// does, as a search rather than a full-string match. A pattern the engine
-// cannot compile matches nothing, which is the same answer the static checks
-// give.
-func _dynPatternOK(pattern, s string) bool {
-	matched, err := ecma262.MatchString(pattern, ecmaflags.Unicode, s)
-	return err == nil && matched
-}
-
-func _dynMemberMatches(members []_schemaMember, key string) bool {
+// _dynMemberMatches reports whether any patternProperties member's pattern
+// matches key. The error is a match with no answer; see
+// _schemagenRegexp.matches.
+func _dynMemberMatches(members []_schemaPatternMember, key string) (bool, error) {
 	for i := range members {
-		if _dynPatternOK(members[i].Key, key) {
-			return true
+		matched, err := members[i].Pattern.matches(key)
+		if err != nil {
+			return false, err
+		}
+		if matched {
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
 }
 {{- end}}
 {{- if .AnnotationsFormats}}

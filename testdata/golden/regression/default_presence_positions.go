@@ -653,7 +653,7 @@ func (d DefaultPresencePositions) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "leafMap[%q]", _k)
+					return jsonPathf(err, "leafMap[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {

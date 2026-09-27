@@ -223,7 +223,7 @@ func (p PickOneValueOption0) Validate() error {
 						evaluated = true
 					}
 					if !evaluated {
-						return jsonValueErrorf("unevaluated property %q is not allowed", _key)
+						return jsonValueErrorf("unevaluated property %s is not allowed", _schemagenQuote(_key))
 					}
 					return nil
 				}(); _err != nil {
@@ -480,12 +480,18 @@ func (p *PickOne) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &PickOne_PickOneValueOption0{PickOneValueOption0: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant PickOneValueOption0: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant PickOneValueOption0: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant PickOneValueOption0: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -503,12 +509,18 @@ func (p *PickOne) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &PickOne_PickOneValueOption1{PickOneValueOption1: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant PickOneValueOption1: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant PickOneValueOption1: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant PickOneValueOption1: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -617,7 +629,7 @@ func (p PickOne) Validate() error {
 				if _err := func() error {
 					var _rbVal any
 					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-						return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+						return jsonValueErrorf("cannot decode property %s: %w", _schemagenQuote(_rbKey), _rbErr)
 					}
 					_rbInstance[_rbKey] = _rbVal
 					return nil
@@ -889,7 +901,7 @@ func (a AllOfNestedOneOfUnevaluated) Validate() error {
 				if _err := func() error {
 					var _rbVal any
 					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-						return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+						return jsonValueErrorf("cannot decode property %s: %w", _schemagenQuote(_rbKey), _rbErr)
 					}
 					_rbInstance[_rbKey] = _rbVal
 					return nil

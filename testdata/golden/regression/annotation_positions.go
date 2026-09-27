@@ -370,7 +370,7 @@ func (a AnnRawEnum) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(a))
 	if _canonErr != nil {
-		return jsonValueErrorf("invalid AnnRawEnum value: %s", string(a))
+		return jsonValueErrorf("invalid AnnRawEnum value: %s", _schemagenClipText(string(a)))
 	}
 	for _, allowed := range annRawEnumAllowedJSON {
 		if _canon == allowed {
@@ -939,7 +939,7 @@ func (d DepRawEnum) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(d))
 	if _canonErr != nil {
-		return jsonValueErrorf("invalid DepRawEnum value: %s", string(d))
+		return jsonValueErrorf("invalid DepRawEnum value: %s", _schemagenClipText(string(d)))
 	}
 	for _, allowed := range depRawEnumAllowedJSON {
 		if _canon == allowed {

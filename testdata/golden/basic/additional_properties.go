@@ -86,14 +86,14 @@ func (m *Metadata) UnmarshalJSON(data []byte) error {
 						return nil
 					}
 					if string(rawVal) == "null" {
-						return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%q]", rawKey)
+						return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%s]", _schemagenQuote(rawKey))
 					}
 					if m.AdditionalProperties == nil {
 						m.AdditionalProperties = make(map[string]string)
 					}
 					var val string
 					if err := json.Unmarshal(rawVal, &val); err != nil {
-						return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
+						return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 					}
 					m.AdditionalProperties[rawKey] = val
 					return nil
@@ -134,7 +134,7 @@ func (m Metadata) MarshalJSON() ([]byte, error) {
 			if _err := func() error {
 				raw, err := json.Marshal(_member)
 				if err != nil {
-					return fmt.Errorf("marshaling additional property %q: %w", _key, err)
+					return fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), err)
 				}
 				obj[_key] = raw
 				return nil

@@ -373,12 +373,18 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &Drawing_Circle{Circle: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant Circle: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant Circle: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant Circle: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -396,12 +402,18 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &Drawing_Rectangle{Rectangle: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant Rectangle: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant Rectangle: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant Rectangle: %w", err)
 					} else {
 						oneofLastErr = err
 					}

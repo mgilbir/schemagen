@@ -53,12 +53,12 @@ func schemagenAtoi(s string) int {
 func schemagenFormatDate(v string) error {
 	if len(v) != 10 || v[4] != '-' || v[7] != '-' ||
 		!schemagenASCIIDigits(v[0:4], 4) || !schemagenASCIIDigits(v[5:7], 2) || !schemagenASCIIDigits(v[8:10], 2) {
-		return fmt.Errorf("%q is not a valid date (YYYY-MM-DD)", v)
+		return fmt.Errorf("%s is not a valid date (YYYY-MM-DD)", _schemagenQuote(v))
 	}
 	// time.Parse settles the month and day ranges, including February in a leap
 	// year, which a regular expression cannot.
 	if _, err := time.Parse("2006-01-02", v); err != nil {
-		return fmt.Errorf("%q is not a valid date (YYYY-MM-DD): %w", v, err)
+		return fmt.Errorf("%s is not a valid date (YYYY-MM-DD): %w", _schemagenQuote(v), _schemagenClipErr(err))
 	}
 	return nil
 }
@@ -73,7 +73,7 @@ func schemagenFormatDate(v string) error {
 // of the day, less the offset, must be the last minute of the UTC day.
 func schemagenFormatTime(v string) error {
 	if err := schemagenCheckFullTime(v); err != nil {
-		return fmt.Errorf("%q is not a valid time (RFC 3339 full-time): %w", v, err)
+		return fmt.Errorf("%s is not a valid time (RFC 3339 full-time): %w", _schemagenQuote(v), _schemagenClipErr(err))
 	}
 	return nil
 }
@@ -87,7 +87,7 @@ func schemagenFormatTime(v string) error {
 // for both, because the loose version would accept a bare local time on the
 // drafts that forbid it.
 func schemagenFormatDraft3Time(v string) error {
-	bad := fmt.Errorf("%q is not a valid time (HH:MM:SS)", v)
+	bad := fmt.Errorf("%s is not a valid time (HH:MM:SS)", _schemagenQuote(v))
 	if len(v) != 8 || v[2] != ':' || v[5] != ':' {
 		return bad
 	}
@@ -162,13 +162,13 @@ func schemagenCheckFullTime(v string) error {
 // case-insensitive "T", and a full-time.
 func schemagenFormatDateTime(v string) error {
 	if len(v) < 11 || (v[10] != 'T' && v[10] != 't') {
-		return fmt.Errorf("%q is not a valid date-time (RFC 3339)", v)
+		return fmt.Errorf("%s is not a valid date-time (RFC 3339)", _schemagenQuote(v))
 	}
 	if err := schemagenFormatDate(v[:10]); err != nil {
-		return fmt.Errorf("%q is not a valid date-time (RFC 3339): %w", v, err)
+		return fmt.Errorf("%s is not a valid date-time (RFC 3339): %w", _schemagenQuote(v), _schemagenClipErr(err))
 	}
 	if err := schemagenCheckFullTime(v[11:]); err != nil {
-		return fmt.Errorf("%q is not a valid date-time (RFC 3339): %w", v, err)
+		return fmt.Errorf("%s is not a valid date-time (RFC 3339): %w", _schemagenQuote(v), _schemagenClipErr(err))
 	}
 	return nil
 }
@@ -180,7 +180,7 @@ func schemagenFormatDateTime(v string) error {
 // followed by at least one time component, and a week count may not be combined
 // with anything else.
 func schemagenFormatDuration(v string) error {
-	bad := func() error { return fmt.Errorf("%q is not a valid ISO 8601 duration", v) }
+	bad := func() error { return fmt.Errorf("%s is not a valid ISO 8601 duration", _schemagenQuote(v)) }
 	if len(v) < 2 || v[0] != 'P' {
 		return bad()
 	}
@@ -294,7 +294,7 @@ func schemagenURIChars(v string, allowNonASCII bool) bool {
 // grammar's character set. Non-ASCII belongs to `iri`, not here.
 func schemagenFormatURI(v string) error {
 	if err := schemagenCheckURI(v, true, false); err != nil {
-		return fmt.Errorf("%q is not a valid URI", v)
+		return fmt.Errorf("%s is not a valid URI", _schemagenQuote(v))
 	}
 	return nil
 }
@@ -302,7 +302,7 @@ func schemagenFormatURI(v string) error {
 // schemagenFormatIRI is schemagenFormatURI with non-ASCII admitted.
 func schemagenFormatIRI(v string) error {
 	if err := schemagenCheckURI(v, true, true); err != nil {
-		return fmt.Errorf("%q is not a valid IRI", v)
+		return fmt.Errorf("%s is not a valid IRI", _schemagenQuote(v))
 	}
 	return nil
 }
@@ -356,7 +356,7 @@ func schemagenValidScheme(s string) bool {
 // may be empty: "" is the reference that selects the current document.
 func schemagenFormatURIReference(v string) error {
 	if err := schemagenCheckURI(v, false, false); err != nil {
-		return fmt.Errorf("%q is not a valid URI reference", v)
+		return fmt.Errorf("%s is not a valid URI reference", _schemagenQuote(v))
 	}
 	return nil
 }
@@ -365,7 +365,7 @@ func schemagenFormatURIReference(v string) error {
 // admitted.
 func schemagenFormatIRIReference(v string) error {
 	if err := schemagenCheckURI(v, false, true); err != nil {
-		return fmt.Errorf("%q is not a valid IRI reference", v)
+		return fmt.Errorf("%s is not a valid IRI reference", _schemagenQuote(v))
 	}
 	return nil
 }
@@ -407,7 +407,7 @@ const schemagenURITemplateOperators = "+#./;?&=,!@|"
 // through Bowtie) enforces neither, and a template carrying an apostrophe or an
 // unencoded space is a document a stricter reading would refuse for no evidence.
 func schemagenFormatURITemplate(v string) error {
-	bad := func() error { return fmt.Errorf("%q is not a valid URI template", v) }
+	bad := func() error { return fmt.Errorf("%s is not a valid URI template", _schemagenQuote(v)) }
 	for i := 0; i < len(v); i++ {
 		switch v[i] {
 		case '}':
@@ -487,31 +487,73 @@ func schemagenURITemplateMaxLength(s string) bool {
 	return true
 }
 
-var schemagenUUIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+// The three checks below are the fixed grammars
+//
+//	uuid                   ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$
+//	json-pointer           ^(/([^~/]|~0|~1)*)*$
+//	relative-json-pointer  ^(0|[1-9][0-9]*)(#|(/([^~/]|~0|~1)*)*)$
+//
+// written out by hand, so that the package matches every regular expression it
+// matches with one engine -- the ECMA-262 one the schema's patterns need -- and
+// takes the standard library's regexp, a different language, for none of them.
 
 func schemagenFormatUUID(v string) error {
-	if !schemagenUUIDPattern.MatchString(v) {
-		return fmt.Errorf("%q is not a valid UUID", v)
+	if len(v) != 36 {
+		return fmt.Errorf("%s is not a valid UUID", _schemagenQuote(v))
+	}
+	for i := 0; i < len(v); i++ {
+		c := v[i]
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if c != '-' {
+				return fmt.Errorf("%s is not a valid UUID", _schemagenQuote(v))
+			}
+			continue
+		}
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+			return fmt.Errorf("%s is not a valid UUID", _schemagenQuote(v))
+		}
 	}
 	return nil
 }
 
-var schemagenJSONPointerPattern = regexp.MustCompile(`^(/([^~/]|~0|~1)*)*$`)
+// schemagenJSONPointerBody reports whether v is an RFC 6901 JSON Pointer: empty,
+// or a "/" followed by reference tokens in which every "~" is the start of the
+// escape "~0" or "~1".
+func schemagenJSONPointerBody(v string) bool {
+	if v == "" {
+		return true
+	}
+	if v[0] != '/' {
+		return false
+	}
+	for i := 0; i < len(v); i++ {
+		if v[i] == '~' && (i+1 >= len(v) || (v[i+1] != '0' && v[i+1] != '1')) {
+			return false
+		}
+	}
+	return true
+}
 
 // schemagenFormatJSONPointer checks an RFC 6901 JSON Pointer. "" is the pointer
-// that selects the whole document, and the pattern admits it.
+// that selects the whole document, and the grammar admits it.
 func schemagenFormatJSONPointer(v string) error {
-	if !schemagenJSONPointerPattern.MatchString(v) {
-		return fmt.Errorf("%q is not a valid JSON Pointer", v)
+	if !schemagenJSONPointerBody(v) {
+		return fmt.Errorf("%s is not a valid JSON Pointer", _schemagenQuote(v))
 	}
 	return nil
 }
 
-var schemagenRelJSONPointerPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)(#|(/([^~/]|~0|~1)*)*)$`)
-
 func schemagenFormatRelativeJSONPointer(v string) error {
-	if !schemagenRelJSONPointerPattern.MatchString(v) {
-		return fmt.Errorf("%q is not a valid relative JSON Pointer", v)
+	// The non-negative integer prefix, without leading zeros.
+	n := 0
+	for n < len(v) && v[n] >= '0' && v[n] <= '9' {
+		n++
+	}
+	if n == 0 || (n > 1 && v[0] == '0') {
+		return fmt.Errorf("%s is not a valid relative JSON Pointer", _schemagenQuote(v))
+	}
+	if rest := v[n:]; rest != "#" && !schemagenJSONPointerBody(rest) {
+		return fmt.Errorf("%s is not a valid relative JSON Pointer", _schemagenQuote(v))
 	}
 	return nil
 }
@@ -525,7 +567,7 @@ func schemagenFormatRelativeJSONPointer(v string) error {
 // what the schema permits.
 func schemagenFormatRegex(v string) error {
 	if _, err := ecma262.Compile(v, ecmaflags.Unicode); err != nil {
-		return fmt.Errorf("%q is not a valid regex: %w", v, err)
+		return fmt.Errorf("%s is not a valid regex: %w", _schemagenQuote(v), _schemagenClipErr(err))
 	}
 	return nil
 }
@@ -533,7 +575,7 @@ func schemagenFormatRegex(v string) error {
 func schemagenFormatIPv4(v string) error {
 	a, err := netip.ParseAddr(v)
 	if err != nil || !a.Is4() {
-		return fmt.Errorf("%q is not a valid IPv4 address", v)
+		return fmt.Errorf("%s is not a valid IPv4 address", _schemagenQuote(v))
 	}
 	return nil
 }
@@ -541,7 +583,7 @@ func schemagenFormatIPv4(v string) error {
 func schemagenFormatIPv6(v string) error {
 	a, err := netip.ParseAddr(v)
 	if err != nil || !a.Is6() || a.Zone() != "" {
-		return fmt.Errorf("%q is not a valid IPv6 address", v)
+		return fmt.Errorf("%s is not a valid IPv6 address", _schemagenQuote(v))
 	}
 	return nil
 }
@@ -611,7 +653,7 @@ var schemagenDraft3ColorKeywords = map[string]bool{
 // Keywords are matched case-insensitively, which is what CSS says of every
 // identifier in the language.
 func schemagenFormatDraft3Color(v string) error {
-	bad := fmt.Errorf("%q is not a valid CSS 2.1 color", v)
+	bad := fmt.Errorf("%s is not a valid CSS 2.1 color", _schemagenQuote(v))
 	if v == "" {
 		return bad
 	}

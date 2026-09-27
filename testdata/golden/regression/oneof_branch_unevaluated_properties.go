@@ -169,7 +169,7 @@ func (o OneOfBranchUnevaluatedPropertiesValueOption0) Validate() error {
 						evaluated = true
 					}
 					if !evaluated {
-						return jsonValueErrorf("unevaluated property %q is not allowed", _key)
+						return jsonValueErrorf("unevaluated property %s is not allowed", _schemagenQuote(_key))
 					}
 					return nil
 				}(); _err != nil {
@@ -431,12 +431,18 @@ func (o *OneOfBranchUnevaluatedProperties) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &OneOfBranchUnevaluatedProperties_OneOfBranchUnevaluatedPropertiesValueOption0{OneOfBranchUnevaluatedPropertiesValueOption0: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant OneOfBranchUnevaluatedPropertiesValueOption0: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant OneOfBranchUnevaluatedPropertiesValueOption0: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant OneOfBranchUnevaluatedPropertiesValueOption0: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -454,12 +460,18 @@ func (o *OneOfBranchUnevaluatedProperties) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &OneOfBranchUnevaluatedProperties_OneOfBranchUnevaluatedPropertiesValueOption1{OneOfBranchUnevaluatedPropertiesValueOption1: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant OneOfBranchUnevaluatedPropertiesValueOption1: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant OneOfBranchUnevaluatedPropertiesValueOption1: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant OneOfBranchUnevaluatedPropertiesValueOption1: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -568,7 +580,7 @@ func (o OneOfBranchUnevaluatedProperties) Validate() error {
 				if _err := func() error {
 					var _rbVal any
 					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-						return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+						return jsonValueErrorf("cannot decode property %s: %w", _schemagenQuote(_rbKey), _rbErr)
 					}
 					_rbInstance[_rbKey] = _rbVal
 					return nil

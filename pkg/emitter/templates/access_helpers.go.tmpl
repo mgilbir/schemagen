@@ -31,15 +31,22 @@ const (
 // Declared with the members that carry a pointer first and the plain integers
 // last, which is what keeps the garbage collector's scan of a rule's path short.
 type _accessStep struct {
+{{- if .AccessPattern}}
+	// Pattern is an _accessPattern step's key test, one of the package's
+	// compiled patterns.
+	Pattern *_schemagenRegexp
+{{- end}}
 	Name string
 	// Except and ExceptPatterns are what an _accessOther step steps past: the
 	// members the same schema object declares by name and by pattern, which are
 	// exactly the ones additionalProperties and unevaluatedProperties do not
 	// reach.
-	Except         []string
-	ExceptPatterns []string
-	Kind           int
-	Index          int
+	Except []string
+{{- if .AccessPattern}}
+	ExceptPatterns []*_schemagenRegexp
+{{- end}}
+	Kind  int
+	Index int
 }
 
 type _accessRule struct {
@@ -90,43 +97,41 @@ func _decodeIgnoringReadOnly(data []byte, dst any) error {
 }
 
 // _accessKeyMatches reports whether one object member is the one a step names.
-func _accessKeyMatches(step _accessStep, key string) bool {
+// The error is a pattern match with no answer, which the walker reports rather
+// than guessing either way: a guess of "no" lets a readOnly member in or a
+// writeOnly one out, and a guess of "yes" does the opposite to one the rule
+// does not name.
+func _accessKeyMatches(step _accessStep, key string) (bool, error) {
 	switch step.Kind {
 	case _accessProperty:
-		return key == step.Name
+		return key == step.Name, nil
 	case _accessPattern:
 {{- if .AccessPattern}}
-		return _accessPatternMatches(step.Name, key)
+		return step.Pattern.matches(key)
 {{- else}}
-		return false
+		return false, nil
 {{- end}}
 	case _accessOther:
 		for _, name := range step.Except {
 			if key == name {
-				return false
+				return false, nil
 			}
 		}
 {{- if .AccessPattern}}
 		for _, pat := range step.ExceptPatterns {
-			if _accessPatternMatches(pat, key) {
-				return false
+			matched, err := pat.matches(key)
+			if err != nil {
+				return false, err
+			}
+			if matched {
+				return false, nil
 			}
 		}
 {{- end}}
-		return true
+		return true, nil
 	}
-	return false
+	return false, nil
 }
-{{- if .AccessPattern}}
-
-// _accessPatternMatches is patternProperties' key test. A pattern that does not
-// compile matches nothing rather than everything: the alternative is a rule
-// silently applying to every member of the object.
-func _accessPatternMatches(pattern, key string) bool {
-	matched, err := ecma262.MatchString(pattern, ecmaflags.Unicode, key)
-	return err == nil && matched
-}
-{{- end}}
 
 // _accessApply walks one rule's path over raw.
 //
@@ -153,12 +158,18 @@ func _accessApply(raw json.RawMessage, path []_accessStep, prefix string, strip 
 		found := ""
 		changed := false
 		for _, key := range _accessSortedKeys(obj) {
-			if !_accessKeyMatches(step, key) {
+			matched, err := _accessKeyMatches(step, key)
+			if err != nil {
+				return raw, "", fmt.Errorf("%s: %w", _schemagenQuote(key), err)
+			}
+			if !matched {
 				continue
 			}
-			at := key
+			// The path is only ever a message, so a key taken from the document
+			// is cut short by the quoting rule when it is long.
+			at := _schemagenClipText(key)
 			if prefix != "" {
-				at = prefix + "." + key
+				at = prefix + "." + at
 			}
 			if len(path) == 1 {
 				if found == "" {

@@ -329,12 +329,18 @@ func (r *RefToFalseSchema) UnmarshalJSON(data []byte) error {
 						if _vErr := candidate.Validate(); _vErr == nil {
 							oneofStrict++
 							oneofStrictSel = &RefToFalseSchema_Never{Never: candidate}
+						} else if _schemagenUndecided(_vErr) {
+							// No verdict on this branch, so no telling
+							// which one the document selects.
+							return oneofErrf("variant Never: %w", _vErr)
 						} else {
 							oneofStrictErr = fmt.Errorf("variant Never: %w", _vErr)
 						}
 					} else {
 						oneofOpaque++
 					}
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant Never: %w", err)
 				} else {
 					oneofLastErr = err
 				}
@@ -538,7 +544,7 @@ func (r RefToFalseSchema) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "map[%q]", _k)
+					return jsonPathf(err, "map[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {

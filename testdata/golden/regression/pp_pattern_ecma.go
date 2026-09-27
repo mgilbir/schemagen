@@ -6,8 +6,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	ecma262 "github.com/mgilbir/goecma262"
-	ecmaflags "github.com/mgilbir/goecma262/flags"
 	"math"
 )
 
@@ -38,31 +36,44 @@ func (r *Root) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		knownFields := map[string]bool{}
-		patternRegexps := []*ecma262.Regexp{
-			ecma262.MustCompile("^v", ecmaflags.Unicode),
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			matchesPattern := false
-			for _, re := range patternRegexps {
-				if re.MatchString(rawKey) {
-					matchesPattern = true
-					break
+		{
+			var _least string
+			var _failed error
+			for rawKey, rawVal := range raw { // refused for the least failing key
+				if _failed != nil && rawKey >= _least {
+					continue
+				}
+				if _err := func() error {
+					if knownFields[rawKey] {
+						return nil
+					}
+					matchesPattern := false
+					if !matchesPattern {
+						_ppMatched, _ppErr := _schemagenPattern_3bcb94591421aa37.matches(rawKey)
+						if _ppErr != nil {
+							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
+						}
+						matchesPattern = _ppMatched
+					}
+					if matchesPattern {
+						if r.PatternProperties == nil {
+							r.PatternProperties = make(map[string]json.RawMessage)
+						}
+						r.PatternProperties[rawKey] = rawVal
+						return nil
+					}
+					if r.AdditionalProperties == nil {
+						r.AdditionalProperties = make(map[string]json.RawMessage)
+					}
+					r.AdditionalProperties[rawKey] = rawVal
+					return nil
+				}(); _err != nil {
+					_least, _failed = rawKey, _err
 				}
 			}
-			if matchesPattern {
-				if r.PatternProperties == nil {
-					r.PatternProperties = make(map[string]json.RawMessage)
-				}
-				r.PatternProperties[rawKey] = rawVal
-				continue
+			if _failed != nil {
+				return _failed
 			}
-			if r.AdditionalProperties == nil {
-				r.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			r.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
@@ -94,74 +105,83 @@ func (r Root) MarshalJSON() ([]byte, error) {
 
 // Validate checks Root against its JSON Schema constraints.
 func (r Root) Validate() error {
-	// patternProperties validation: check matched values against sub-schema constraints.
-	if len(r.PatternProperties) > 0 {
-		ppRegexps := []*ecma262.Regexp{
-			ecma262.MustCompile("^v", ecmaflags.Unicode),
-		}
-		{
-			var _least string
-			var _failed error
-			for _key, _member := range r.PatternProperties { // refused for the least failing key
-				if _failed != nil && _key >= _least {
-					continue
-				}
-				if _err := func() error {
-					_ = _member
-					if ppRegexps[0].MatchString(_key) {
-						{
-							_trim := bytes.TrimSpace(_member)
-							var jt string
-							if len(_trim) == 0 {
-								jt = "unknown"
-							} else {
-								switch _trim[0] {
-								case '"':
-									jt = "string"
-								case '{':
-									jt = "object"
-								case '[':
-									jt = "array"
-								case 't', 'f':
-									jt = "boolean"
-								case 'n':
-									jt = "null"
-								default:
-									jt = "number"
-									// Draft 6 onward reads the value: 1.0 is an integer, so
-									// the number is parsed rather than scanned. Every arm
-									// below that accepts "number" also accepts "integer", so
-									// widening this classification narrows nothing.
-									var _ppNum float64
-									if json.Unmarshal(_trim, &_ppNum) == nil &&
-										!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
-										jt = "integer"
-									}
-								}
-							}
-							if jt != "string" {
-								return fmt.Errorf("patternProperties %s: key %q value must be string", "^v", _key)
-							}
-						}
-						{
-							// Through a pointer, so that a null is not matched as the
-							// empty string. See the numeric block above.
-							var _s *string
-							if err := json.Unmarshal(_member, &_s); err == nil && _s != nil {
-								_str := *_s
-								if matched, _ := ecma262.MatchString("^(?=a)a+$", ecmaflags.Unicode, _str); !matched {
-									return fmt.Errorf("patternProperties %s: key %q value does not match pattern ^(?=a)a+$", "^v", _key)
-								}
+	// patternProperties: every member whose key a pattern matches is held to that
+	// pattern's sub-schema. That is the members the decoder filed in
+	// PatternProperties, and the declared ones a pattern also matches, which
+	// "properties" governs as well -- the two keywords apply side by side.
+	{
+		_ppMember := func(_key string, _member json.RawMessage) error {
+			_ = _member
+			if _ppMatched, _ppErr := _schemagenPattern_3bcb94591421aa37.matches(_key); _ppErr != nil {
+				return fmt.Errorf("patternProperties: key %s: %w", _schemagenQuote(_key), _ppErr)
+			} else if _ppMatched {
+				{
+					_trim := bytes.TrimSpace(_member)
+					var jt string
+					if len(_trim) == 0 {
+						jt = "unknown"
+					} else {
+						switch _trim[0] {
+						case '"':
+							jt = "string"
+						case '{':
+							jt = "object"
+						case '[':
+							jt = "array"
+						case 't', 'f':
+							jt = "boolean"
+						case 'n':
+							jt = "null"
+						default:
+							jt = "number"
+							// Draft 6 onward reads the value: 1.0 is an integer, so
+							// the number is parsed rather than scanned. Every arm
+							// below that accepts "number" also accepts "integer", so
+							// widening this classification narrows nothing.
+							var _ppNum float64
+							if json.Unmarshal(_trim, &_ppNum) == nil &&
+								!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
+								jt = "integer"
 							}
 						}
 					}
-					return nil
-				}(); _err != nil {
-					_least, _failed = _key, _err
+					if jt != "string" {
+						return fmt.Errorf("patternProperties %s: key %s value must be string", "^v", _schemagenQuote(_key))
+					}
+				}
+				{
+					// Through a pointer, so that a null is not matched as the
+					// empty string. See the numeric block above.
+					var _s *string
+					if err := json.Unmarshal(_member, &_s); err == nil && _s != nil {
+						_str := *_s
+						if _vMatched, _vErr := _schemagenPattern_b0b873b8871155ad.matches(_str); _vErr != nil {
+							return fmt.Errorf("patternProperties %s: key %s: %w", "^v", _schemagenQuote(_key), _vErr)
+						} else if !_vMatched {
+							return fmt.Errorf("patternProperties %s: key %s value does not match pattern ^(?=a)a+$", "^v", _schemagenQuote(_key))
+						}
+					}
 				}
 			}
-			if _failed != nil {
-				return _failed
+			return nil
+		}
+		if len(r.PatternProperties) > 0 {
+			{
+				var _least string
+				var _failed error
+				for _key, _member := range r.PatternProperties { // refused for the least failing key
+					if _failed != nil && _key >= _least {
+						continue
+					}
+					if _err := func() error {
+						return _ppMember(_key, _member)
+					}(); _err != nil {
+						_least, _failed = _key, _err
+					}
+				}
+				if _failed != nil {
+					return _failed
+				}
 			}
 		}
 	}

@@ -5,8 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	ecma262 "github.com/mgilbir/goecma262"
-	ecmaflags "github.com/mgilbir/goecma262/flags"
 	"unicode/utf8"
 )
 
@@ -789,8 +787,10 @@ func (a *AllOfPropertyConjunctionPatternFirstWins) UnmarshalJSON(data []byte) er
 
 // Validate checks AllOfPropertyConjunctionPatternFirstWins against its JSON Schema constraints.
 func (a AllOfPropertyConjunctionPatternFirstWins) Validate() error {
-	if matched, _ := ecma262.MatchString("^a", ecmaflags.Unicode, string(a)); !matched {
-		return jsonValueErrorf("%q does not match pattern %s", a, "^a")
+	if _matched, _mErr := _schemagenPattern_5cd67a1734052155.matches(string(a)); _mErr != nil {
+		return jsonValueErrorf("%w", _mErr)
+	} else if !_matched {
+		return jsonValueErrorf("%s does not match pattern %s", _schemagenQuote(string(a)), "^a")
 	}
 	return nil
 }

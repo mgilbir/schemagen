@@ -143,11 +143,18 @@ func TestForbiddenZeroIsOmittedWithoutOmitEmpty(t *testing.T) {
 			why:      "the pair to the row above, one metacharacter apart",
 		},
 		{
-			name:     "a pattern no Go regexp can compile decides nothing",
+			name:     "a pattern only ECMA-262 can compile is decided by it",
 			schema:   `{"title":"Root","type":"object","properties":{"p":{"type":"string","pattern":"^(?=x)a"}}}`,
 			jsonName: "p",
-			omit:     false,
-			why:      "an ECMA-262 lookahead RE2 refuses: the safe answer is the field as it was",
+			omit:     true,
+			why:      "a lookahead RE2 refuses, which the engine generated code matches with reads as refusing the empty string",
+		},
+		{
+			name:     "a class RE2 cannot parse is decided as ECMA-262 reads it",
+			schema:   `{"title":"Root","type":"object","properties":{"p":{"type":"string","pattern":"^[^]$"}}}`,
+			jsonName: "p",
+			omit:     true,
+			why:      "[^] is any one character in ECMA-262, so the empty string is refused; RE2 rejects the class and decided nothing",
 		},
 		{
 			name:     "a minimum above zero excludes it",

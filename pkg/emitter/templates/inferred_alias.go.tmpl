@@ -175,8 +175,10 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "pattern"}}
-	if _matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}}._value)); !_matched {
-		return jsonValueErrorf("%q does not match pattern %s", {{$recv}}._value, {{printf "%q" .Value}})
+	if _matched, _mErr := {{patternVar .Value}}.matches(string({{$recv}}._value)); _mErr != nil {
+		return jsonValueErrorf("%w", _mErr)
+	} else if !_matched {
+		return jsonValueErrorf("%s does not match pattern %s", _schemagenQuote(string({{$recv}}._value)), {{printf "%q" .Value}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "format"}}
@@ -287,7 +289,13 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			{{- end}}
 			{{- end}}
 			{{- if eq .RuleType "pattern"}}
-			if _matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}}._value)); !_matched { _variantValid = false }
+			if _matched, _mErr := {{patternVar .Value}}.matches(string({{$recv}}._value)); _mErr != nil {
+				// A variant with no verdict leaves the count of matching
+				// variants unknown.
+				return jsonValueErrorf("%w", _mErr)
+			} else if !_matched {
+				_variantValid = false
+			}
 			{{- end}}
 			{{- if eq .RuleType "minItems"}}
 			if len({{$recv}}._value) < {{countExpr .Value}} { _variantValid = false }
@@ -362,7 +370,13 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			{{- end}}
 			{{- end}}
 			{{- if eq .RuleType "pattern"}}
-			if _matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}}._value)); !_matched { _variantValid = false }
+			if _matched, _mErr := {{patternVar .Value}}.matches(string({{$recv}}._value)); _mErr != nil {
+				// A variant with no verdict leaves the count of matching
+				// variants unknown.
+				return jsonValueErrorf("%w", _mErr)
+			} else if !_matched {
+				_variantValid = false
+			}
 			{{- end}}
 			{{- if eq .RuleType "minItems"}}
 			if len({{$recv}}._value) < {{countExpr .Value}} { _variantValid = false }
@@ -803,8 +817,15 @@ func ({{$recv}} {{.Name}}) Validate() error {
 					_cBytes, _cErr := json.Marshal(_uiElem)
 					if _cErr == nil {
 						var _cTyped {{.Contains.TypeName}}
-						if {{if .Contains.StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_cBytes, &_cTyped) == nil && _cTyped.Validate() == nil {
+						_cDErr := {{if .Contains.StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_cBytes, &_cTyped)
+						if _cDErr == nil {
+							_cDErr = _cTyped.Validate()
+						}
+						if _cDErr == nil {
 							_evaluatedByContains = true
+						} else if _schemagenUndecided(_cDErr) {
+							// Whether contains evaluated this item has no answer.
+							return fmt.Errorf("contains[%d]: %w", _ui, _cDErr)
 						}
 					}
 				}
@@ -858,17 +879,33 @@ func ({{$recv}} {{.Name}}) Validate() error {
 					}
 					{{- end}}
 					{{- else if eq .CheckType "minimum"}}
+					{{- /* A numeric bound says nothing about a value that is not a
+					       number, which therefore satisfies it. */}}
 					if _cMatch {
-						_cf, _cfOk := _uiElem.(float64)
-						if !_cfOk || _cf < {{countExpr .Value}} {
+						if _cf, _cfOk := _uiElem.(float64); _cfOk && _cf < {{countExpr .Value}} {
 							_cMatch = false
 						}
 					}
 					{{- else if eq .CheckType "maximum"}}
 					if _cMatch {
-						_cf, _cfOk := _uiElem.(float64)
-						if !_cfOk || _cf > {{countExpr .Value}} {
+						if _cf, _cfOk := _uiElem.(float64); _cfOk && _cf > {{countExpr .Value}} {
 							_cMatch = false
+						}
+					}
+					{{- else if eq .CheckType "pattern"}}
+					{{- /* A string only: a pattern says nothing about any other
+					       value, which it therefore does not refuse. This arm
+					       was missing, so an item contains' pattern refused was
+					       still counted as evaluated by contains. */}}
+					if _cMatch {
+						if _cs, _csOk := _uiElem.(string); _csOk {
+							_cm, _cmErr := {{patternVar .Value}}.matches(_cs)
+							if _cmErr != nil {
+								return fmt.Errorf("contains[%d]: %w", _ui, _cmErr)
+							}
+							if !_cm {
+								_cMatch = false
+							}
 						}
 					}
 					{{- end}}

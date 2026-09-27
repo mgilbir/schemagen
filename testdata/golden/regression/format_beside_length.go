@@ -5,8 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	ecma262 "github.com/mgilbir/goecma262"
-	ecmaflags "github.com/mgilbir/goecma262/flags"
 	"unicode/utf8"
 )
 
@@ -289,8 +287,10 @@ func (f FormatBesideLength) Validate() error {
 	}
 	if f._jsonKeys["patternedV4"] {
 		if f.PatternedV4 != nil {
-			if matched, _ := ecma262.MatchString("^192\\.", ecmaflags.Unicode, *f.PatternedV4); !matched {
-				return fmt.Errorf("patternedV4: value %q does not match pattern %s", *f.PatternedV4, "^192\\.")
+			if _matched, _err := _schemagenPattern_4877190f37d11b9f.matches(*f.PatternedV4); _err != nil {
+				return fmt.Errorf("patternedV4: %w", _err)
+			} else if !_matched {
+				return fmt.Errorf("patternedV4: value %s does not match pattern %s", _schemagenQuote(*f.PatternedV4), "^192\\.")
 			}
 		}
 	}

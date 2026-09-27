@@ -132,7 +132,7 @@ func (c Circle) Validate() error {
 			return fmt.Errorf("type: failed to marshal for const check: %w", _constErr)
 		}
 		if string(_constGot) != "\"circle\"" {
-			return fmt.Errorf("type: value must be %s, got %s", "\"circle\"", string(_constGot))
+			return fmt.Errorf("type: value must be %s, got %s", "\"circle\"", _schemagenClipText(string(_constGot)))
 		}
 	}
 	return nil
@@ -263,7 +263,7 @@ func (s Square) Validate() error {
 			return fmt.Errorf("type: failed to marshal for const check: %w", _constErr)
 		}
 		if string(_constGot) != "\"square\"" {
-			return fmt.Errorf("type: value must be %s, got %s", "\"square\"", string(_constGot))
+			return fmt.Errorf("type: value must be %s, got %s", "\"square\"", _schemagenClipText(string(_constGot)))
 		}
 	}
 	return nil
@@ -399,7 +399,7 @@ func (t Triangle) Validate() error {
 			return fmt.Errorf("type: failed to marshal for const check: %w", _constErr)
 		}
 		if string(_constGot) != "\"triangle\"" {
-			return fmt.Errorf("type: value must be %s, got %s", "\"triangle\"", string(_constGot))
+			return fmt.Errorf("type: value must be %s, got %s", "\"triangle\"", _schemagenClipText(string(_constGot)))
 		}
 	}
 	return nil
@@ -552,7 +552,7 @@ func (s *Shape) UnmarshalJSON(data []byte) error {
 				}
 				s.Geometry = &Shape_Triangle{Triangle: candidate}
 			default:
-				return oneofErrf("unknown discriminator value %q for property %q", discVal, "type")
+				return oneofErrf("unknown discriminator value %s for property %q", _schemagenQuote(discVal), "type")
 			}
 		}
 	}

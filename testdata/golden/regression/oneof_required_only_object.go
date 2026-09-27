@@ -310,12 +310,18 @@ func (o *OneOfRequiredOnlyObject) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption0{OneOfRequiredOnlyObjectValueOption0: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant OneOfRequiredOnlyObjectValueOption0: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant OneOfRequiredOnlyObjectValueOption0: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant OneOfRequiredOnlyObjectValueOption0: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -333,12 +339,18 @@ func (o *OneOfRequiredOnlyObject) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption1{OneOfRequiredOnlyObjectValueOption1: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant OneOfRequiredOnlyObjectValueOption1: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant OneOfRequiredOnlyObjectValueOption1: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant OneOfRequiredOnlyObjectValueOption1: %w", err)
 					} else {
 						oneofLastErr = err
 					}

@@ -367,6 +367,8 @@ func (c *ContentPosture2020) UnmarshalJSON(data []byte) error {
 				if err := json.Unmarshal(oneofData, &candidate); err == nil {
 					c.Branch = &ContentPosture2020_String{String: candidate}
 					oneofMatched++
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant String: %w", err)
 				} else {
 					oneofLastErr = err
 				}
@@ -378,6 +380,8 @@ func (c *ContentPosture2020) UnmarshalJSON(data []byte) error {
 				if err := json.Unmarshal(oneofData, &candidate); err == nil {
 					c.Branch = &ContentPosture2020_Boolean{Boolean: candidate}
 					oneofMatched++
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant Boolean: %w", err)
 				} else {
 					oneofLastErr = err
 				}

@@ -57,7 +57,7 @@ func (i *Inner) UnmarshalJSON(data []byte) error {
 					}
 					var val *Inner
 					if err := json.Unmarshal(rawVal, &val); err != nil {
-						return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
+						return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 					}
 					i.AdditionalProperties[rawKey] = val
 					return nil
@@ -105,7 +105,7 @@ func (i Inner) MarshalJSON() ([]byte, error) {
 			if _err := func() error {
 				raw, err := json.Marshal(_member)
 				if err != nil {
-					return fmt.Errorf("marshaling additional property %q: %w", _key, err)
+					return fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), err)
 				}
 				obj[_key] = raw
 				return nil
@@ -216,7 +216,7 @@ func init() {
 		}),
 		If: _node(_schemaNode{
 			PropertyNames: _node(_schemaNode{
-				Pattern: _strPtr("^[a-m]"),
+				Pattern: _schemagenPattern_9c75d503a00c6c66,
 			}),
 		}),
 		Then: _node(_schemaNode{

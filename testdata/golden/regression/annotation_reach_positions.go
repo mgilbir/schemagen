@@ -1031,12 +1031,18 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &AnnotationReachPositions_ByName{ByName: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant ByName: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant ByName: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant ByName: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -1054,12 +1060,18 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &AnnotationReachPositions_ByID{ByID: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant ByID: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant ByID: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant ByID: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -1137,12 +1149,18 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &AnnotationReachPositions_ByName2{ByName2: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant ByName2: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant ByName2: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant ByName2: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -1160,12 +1178,18 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &AnnotationReachPositions_ByID2{ByID2: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant ByID2: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant ByID2: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant ByID2: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -1909,7 +1933,7 @@ func (a AnnotationReachPositions) Validate() error {
 				if _err := func() error {
 					var _rbVal any
 					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-						return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+						return jsonValueErrorf("cannot decode property %s: %w", _schemagenQuote(_rbKey), _rbErr)
 					}
 					_rbInstance[_rbKey] = _rbVal
 					return nil

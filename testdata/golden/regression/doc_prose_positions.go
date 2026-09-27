@@ -1621,12 +1621,18 @@ func (d *DocProsePositions) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &DocProsePositions_ByLabel{ByLabel: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant ByLabel: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant ByLabel: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant ByLabel: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -1644,12 +1650,18 @@ func (d *DocProsePositions) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &DocProsePositions_ByOrdinal{ByOrdinal: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant ByOrdinal: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant ByOrdinal: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant ByOrdinal: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -2020,7 +2032,7 @@ func (d DocProsePositions) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "titledValue[%q]", _k)
+					return jsonPathf(err, "titledValue[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {

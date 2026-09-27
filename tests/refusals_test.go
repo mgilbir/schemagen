@@ -49,6 +49,8 @@ var pinnedRefusals = map[string][]string{
 		"testdata/schemas/adversarial/draft/draft3-extends-junk.json",                         // #/extends: must be a schema object, got: "a string"
 		"testdata/schemas/adversarial/draft/draft3-required-in-2020.json",                     // #/properties/a/required: "required" is written as a boolean on the property's own s...
 		"testdata/schemas/adversarial/draft/items-array-2020.json",                            // #/items: "items" is written as an array of schemas, one per position, which is drafts 3...
+		"testdata/schemas/adversarial/malformed/bad-pattern-props-regex.json",                 // #/patternProperties/([: "([" is not an ECMA-262 regular expression (u flag)
+		"testdata/schemas/adversarial/malformed/bad-pattern-regex.json",                       // #/pattern: "([" is not an ECMA-262 regular expression (u flag)
 		"testdata/schemas/adversarial/malformed/dynamicref-nonexistent.json",                  // cannot resolve $dynamicRef "#nope"
 		"testdata/schemas/adversarial/malformed/id-control-chars.json",                        // #/$id: not a URI-reference: parse "http://x/\x00a": net/url: invalid control character...
 		"testdata/schemas/adversarial/malformed/id-invalid-url.json",                          // #/$id: not a URI-reference: parse "://bad": missing protocol scheme
@@ -134,6 +136,8 @@ var pinnedRefusals = map[string][]string{
 		"testdata/schemas/adversarial/draft/draft3-extends-junk.json",
 		"testdata/schemas/adversarial/draft/draft3-required-in-2020.json",
 		"testdata/schemas/adversarial/draft/items-array-2020.json",
+		"testdata/schemas/adversarial/malformed/bad-pattern-props-regex.json",
+		"testdata/schemas/adversarial/malformed/bad-pattern-regex.json",
 		"testdata/schemas/adversarial/malformed/dynamicref-nonexistent.json",
 		"testdata/schemas/adversarial/malformed/id-control-chars.json",
 		"testdata/schemas/adversarial/malformed/id-invalid-url.json",

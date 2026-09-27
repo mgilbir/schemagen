@@ -489,7 +489,7 @@ func (n NumberPositions) Validate() error {
 	}
 	if n._jsonKeys["constant"] {
 		if n.Constant != nil && jsonNumberCmp(json.Number(*n.Constant), "2.5") != 0 {
-			return fmt.Errorf("constant: value must be %s, got %v", "2.5", *n.Constant)
+			return fmt.Errorf("constant: value must be %s, got %s", "2.5", _schemagenClipText(fmt.Sprint(*n.Constant)))
 		}
 	}
 	if n._jsonKeys["integerBeside"] {
@@ -550,9 +550,11 @@ func (n NumberPositions) Validate() error {
 				_cMatch := true
 				if _cMatch {
 					_cBytes, _ := json.Marshal(_cElem)
-					var _cn jsonNumber
-					if json.Unmarshal(_cBytes, &_cn) != nil || jsonNumberCmp(json.Number(_cn), "7.5") < 0 {
-						_cMatch = false
+					if len(_cBytes) > 0 && (_cBytes[0] == '-' || _cBytes[0] >= '0' && _cBytes[0] <= '9') {
+						var _cn jsonNumber
+						if json.Unmarshal(_cBytes, &_cn) != nil || jsonNumberCmp(json.Number(_cn), "7.5") < 0 {
+							_cMatch = false
+						}
 					}
 				}
 				if _cMatch {

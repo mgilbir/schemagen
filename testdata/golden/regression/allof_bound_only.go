@@ -755,9 +755,13 @@ func (a *AllOfBoundOnly) UnmarshalJSON(data []byte) error {
 					if _vErr := candidate.Validate(); _vErr == nil {
 						oneofStrict++
 						oneofStrictSel = &AllOfBoundOnly_AllOfBoundOnlyUnionOption0{AllOfBoundOnlyUnionOption0: candidate}
+					} else if _schemagenUndecided(_vErr) {
+						return oneofErrf("variant AllOfBoundOnlyUnionOption0: %w", _vErr)
 					} else {
 						oneofStrictErr = fmt.Errorf("variant AllOfBoundOnlyUnionOption0: %w", _vErr)
 					}
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant AllOfBoundOnlyUnionOption0: %w", err)
 				} else {
 					oneofLastErr = err
 				}
@@ -773,6 +777,8 @@ func (a *AllOfBoundOnly) UnmarshalJSON(data []byte) error {
 					// carry, so matching it is satisfying it.
 					oneofStrict++
 					oneofStrictSel = &AllOfBoundOnly_Boolean{Boolean: candidate}
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant Boolean: %w", err)
 				} else {
 					oneofLastErr = err
 				}
@@ -960,7 +966,7 @@ func (a AllOfBoundOnly) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "map[%q]", _k)
+					return jsonPathf(err, "map[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {

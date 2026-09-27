@@ -157,7 +157,7 @@ func (f ForbiddingSubschemaSpellingsAnyOfNames) Validate() error {
 				continue
 			}
 			if _err := func() error {
-				return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+				return fmt.Errorf("propertyNames: property %s is not allowed (schema is false)", _schemagenQuote(_pnKey))
 			}(); _err != nil {
 				_least, _failed = _pnKey, _err
 			}
@@ -299,11 +299,19 @@ func (f ForbiddingSubschemaSpellingsAnyOfOneFalse) Validate() error {
 		{
 			// The alternative is a reference; the value matches it when it
 			// decodes into the referenced type and that type accepts it.
+			// A pattern match with no answer on the way is no verdict on the
+			// branch, so it is returned rather than read as "no match".
 			var _bv ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative0
 			if _err := json.Unmarshal(f._raw, &_bv); _err != nil {
+				if _schemagenUndecided(_err) {
+					return fmt.Errorf("type: %w", _err)
+				}
 				_branchMatches = false
 			} else if _bvv, _ok := any(&_bv).(interface{ Validate() error }); _ok {
 				if _err := _bvv.Validate(); _err != nil {
+					if _schemagenUndecided(_err) {
+						return fmt.Errorf("type: %w", _err)
+					}
 					_branchMatches = false
 				}
 			}
@@ -317,11 +325,19 @@ func (f ForbiddingSubschemaSpellingsAnyOfOneFalse) Validate() error {
 		{
 			// The alternative is a reference; the value matches it when it
 			// decodes into the referenced type and that type accepts it.
+			// A pattern match with no answer on the way is no verdict on the
+			// branch, so it is returned rather than read as "no match".
 			var _bv ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative1
 			if _err := json.Unmarshal(f._raw, &_bv); _err != nil {
+				if _schemagenUndecided(_err) {
+					return fmt.Errorf("type: %w", _err)
+				}
 				_branchMatches = false
 			} else if _bvv, _ok := any(&_bv).(interface{ Validate() error }); _ok {
 				if _err := _bvv.Validate(); _err != nil {
+					if _schemagenUndecided(_err) {
+						return fmt.Errorf("type: %w", _err)
+					}
 					_branchMatches = false
 				}
 			}
@@ -966,7 +982,7 @@ func (f ForbiddingSubschemaSpellingsInlineFalseNames) Validate() error {
 				continue
 			}
 			if _err := func() error {
-				return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+				return fmt.Errorf("propertyNames: property %s is not allowed (schema is false)", _schemagenQuote(_pnKey))
 			}(); _err != nil {
 				_least, _failed = _pnKey, _err
 			}
@@ -1289,7 +1305,7 @@ func (f ForbiddingSubschemaSpellingsInlineNotNames) Validate() error {
 				continue
 			}
 			if _err := func() error {
-				return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+				return fmt.Errorf("propertyNames: property %s is not allowed (schema is false)", _schemagenQuote(_pnKey))
 			}(); _err != nil {
 				_least, _failed = _pnKey, _err
 			}
@@ -1640,7 +1656,7 @@ func (f ForbiddingSubschemaSpellingsNotNames) Validate() error {
 				continue
 			}
 			if _err := func() error {
-				return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+				return fmt.Errorf("propertyNames: property %s is not allowed (schema is false)", _schemagenQuote(_pnKey))
 			}(); _err != nil {
 				_least, _failed = _pnKey, _err
 			}
@@ -1911,7 +1927,7 @@ func (f ForbiddingSubschemaSpellingsNotUnevalProps) Validate() error {
 						evaluated = true
 					}
 					if !evaluated {
-						return jsonValueErrorf("unevaluated property %q is not allowed", _key)
+						return jsonValueErrorf("unevaluated property %s is not allowed", _schemagenQuote(_key))
 					}
 					return nil
 				}(); _err != nil {
@@ -2066,7 +2082,7 @@ func (f ForbiddingSubschemaSpellingsNullableInlineNames) Validate() error {
 				continue
 			}
 			if _err := func() error {
-				return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+				return fmt.Errorf("propertyNames: property %s is not allowed (schema is false)", _schemagenQuote(_pnKey))
 			}(); _err != nil {
 				_least, _failed = _pnKey, _err
 			}
@@ -2155,7 +2171,7 @@ func (f ForbiddingSubschemaSpellingsOkNames) Validate() error {
 			}
 			if _err := func() error {
 				if utf8.RuneCountInString(_pnKey) > 3 {
-					return fmt.Errorf("propertyNames: property name %q exceeds maxLength 3", _pnKey)
+					return fmt.Errorf("propertyNames: property name %s exceeds maxLength 3", _schemagenQuote(_pnKey))
 				}
 				return nil
 			}(); _err != nil {
@@ -2319,7 +2335,7 @@ func (f ForbiddingSubschemaSpellingsOneOfNames) Validate() error {
 				continue
 			}
 			if _err := func() error {
-				return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+				return fmt.Errorf("propertyNames: property %s is not allowed (schema is false)", _schemagenQuote(_pnKey))
 			}(); _err != nil {
 				_least, _failed = _pnKey, _err
 			}
@@ -2536,7 +2552,7 @@ func (f ForbiddingSubschemaSpellingsOneOfUnevalProps) Validate() error {
 						evaluated = true
 					}
 					if !evaluated {
-						return jsonValueErrorf("unevaluated property %q is not allowed", _key)
+						return jsonValueErrorf("unevaluated property %s is not allowed", _schemagenQuote(_key))
 					}
 					return nil
 				}(); _err != nil {
@@ -2627,7 +2643,7 @@ func (f ForbiddingSubschemaSpellingsRefNotNames) Validate() error {
 				continue
 			}
 			if _err := func() error {
-				return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+				return fmt.Errorf("propertyNames: property %s is not allowed (schema is false)", _schemagenQuote(_pnKey))
 			}(); _err != nil {
 				_least, _failed = _pnKey, _err
 			}
@@ -2934,6 +2950,8 @@ func (f *ForbiddingSubschemaSpellings) UnmarshalJSON(data []byte) error {
 				if err := json.Unmarshal(oneofData, &candidate); err == nil {
 					f.StrBranchRequired = &ForbiddingSubschemaSpellings_String{String: candidate}
 					oneofMatched++
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant String: %w", err)
 				} else {
 					oneofLastErr = err
 				}
@@ -2954,6 +2972,8 @@ func (f *ForbiddingSubschemaSpellings) UnmarshalJSON(data []byte) error {
 				if err := _ivErr; err == nil {
 					f.StrBranchRequired = &ForbiddingSubschemaSpellings_Integer{Integer: candidate}
 					oneofMatched++
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant Integer: %w", err)
 				} else {
 					oneofLastErr = err
 				}

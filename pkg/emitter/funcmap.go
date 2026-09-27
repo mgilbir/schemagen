@@ -47,7 +47,9 @@ func FuncMap() template.FuncMap {
 		"isRawMessage":           isRawMessageFunc,
 		"goStringLiteral":        goStringLiteralFunc,
 		"goStringQuote":          goStringQuoteFunc,
-		"ecmaPattern":            ecmaPatternLiteralFunc,
+		"patternVar":             patternVarFunc,
+		"patternEngineSource":    patternEngineSourceFunc,
+		"dynChecksMatchPattern":  dynChecksMatchPatternFunc,
 		"dynNum":                 dynNumFunc,
 		"numOperand":             numOperandFunc,
 		"numBound":               numBoundFunc,
@@ -574,9 +576,9 @@ func stringListFunc(features []generator.ValidationFeature) string {
 // The order is the generator's, which sorted it: the rules refuse and delete the
 // same things whichever way round they are read, but a generated file that
 // changed between runs of one input would be unusable.
-func accessRulesFunc(rules []generator.AccessRule) string {
+func accessRulesFunc(rules []generator.AccessRule) (string, error) {
 	if len(rules) == 0 {
-		return "nil"
+		return "nil", nil
 	}
 	var b strings.Builder
 	b.WriteString("[]_accessRule{\n")
@@ -587,7 +589,15 @@ func accessRulesFunc(rules []generator.AccessRule) string {
 				b.WriteString(", ")
 			}
 			b.WriteString("{Kind: " + accessStepKindName(step.Kind))
-			if step.Name != "" {
+			// A pattern step is matched through the package's compiled
+			// pattern, never by compiling its text in the walker.
+			if step.Kind == generator.AccessPattern {
+				name, err := generator.PatternVarName(step.Name)
+				if err != nil {
+					return "", err
+				}
+				b.WriteString(", Pattern: " + name)
+			} else if step.Name != "" {
 				fmt.Fprintf(&b, ", Name: %q", step.Name)
 			}
 			if step.Index != 0 {
@@ -597,7 +607,15 @@ func accessRulesFunc(rules []generator.AccessRule) string {
 				b.WriteString(", Except: " + goStringSlice(step.Except))
 			}
 			if len(step.ExceptPatterns) > 0 {
-				b.WriteString(", ExceptPatterns: " + goStringSlice(step.ExceptPatterns))
+				names := make([]string, len(step.ExceptPatterns))
+				for j, pattern := range step.ExceptPatterns {
+					name, err := generator.PatternVarName(pattern)
+					if err != nil {
+						return "", err
+					}
+					names[j] = name
+				}
+				b.WriteString(", ExceptPatterns: []*_schemagenRegexp{" + strings.Join(names, ", ") + "}")
 			}
 			b.WriteString("}")
 		}
@@ -611,7 +629,7 @@ func accessRulesFunc(rules []generator.AccessRule) string {
 		b.WriteString("},\n")
 	}
 	b.WriteString("}")
-	return b.String()
+	return b.String(), nil
 }
 
 func accessStepKindName(k generator.AccessStepKind) string {
@@ -806,57 +824,43 @@ func goStringQuoteFunc(s string) string {
 	return fmt.Sprintf("%q", s)
 }
 
-func ecmaPatternLiteralFunc(v any) string {
-	return fmt.Sprintf("%q", normalizeECMA262Pattern(fmt.Sprintf("%v", v)))
+// patternVarFunc names the package-level variable a schema pattern is compiled
+// into (see generator.PatternVarName). Every pattern generated code matches
+// with is reached through one: the helper file compiles each distinct pattern
+// once, when the package is initialised, and nothing compiles a pattern where
+// it is used. A pattern that is not an ECMA-262 regular expression has no
+// variable and fails the emit -- generation refuses such a schema before it
+// gets here, so reaching this is IR built by other means, and it is refused
+// rather than emitted as a check that could only panic or match nothing.
+func patternVarFunc(v any) (string, error) {
+	pattern, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("patternVar: a pattern is a string, not %T", v)
+	}
+	return generator.PatternVarName(pattern)
 }
 
-func normalizeECMA262Pattern(pattern string) string {
-	var out strings.Builder
-	out.Grow(len(pattern))
-	inClass := false
-
-	for i := 0; i < len(pattern); i++ {
-		ch := pattern[i]
-		if ch == '\\' {
-			if i+1 >= len(pattern) {
-				out.WriteByte(ch)
-				continue
-			}
-			next := pattern[i+1]
-			if inClass && shouldHexEscapeClassIdentity(next) {
-				out.WriteString(fmt.Sprintf("\\x%02x", next))
-				i++
-				continue
-			}
-			out.WriteByte(ch)
-			out.WriteByte(next)
-			i++
-			continue
+// dynChecksMatchPatternFunc reports whether a dyn_branch expression over these
+// checks matches a pattern, and so needs the _undecided local that expression
+// records an undecided match in.
+func dynChecksMatchPatternFunc(checks []generator.DynamicCheck) bool {
+	for _, c := range checks {
+		if c.Kind == "pattern" {
+			return true
 		}
-
-		if ch == '[' && !inClass {
-			inClass = true
-		} else if ch == ']' && inClass && !isLiteralClassClosingBracket(pattern, i) {
-			inClass = false
-		}
-		out.WriteByte(ch)
 	}
-
-	return out.String()
+	return false
 }
 
-func isLiteralClassClosingBracket(pattern string, idx int) bool {
-	return idx > 0 && idx+1 < len(pattern) && pattern[idx-1] == '['
-}
-
-func shouldHexEscapeClassIdentity(ch byte) bool {
-	if ch < 0x21 || ch > 0x7e {
-		return false
+// patternEngineSourceFunc is the strconv-quoted text the engine compiles for a
+// schema pattern (see generator.PatternEngineSource): the pattern itself
+// whenever it is valid as written.
+func patternEngineSourceFunc(pattern string) (string, error) {
+	src, err := generator.PatternEngineSource(pattern)
+	if err != nil {
+		return "", fmt.Errorf("pattern %q is not an ECMA-262 regular expression: %w", pattern, err)
 	}
-	if strings.ContainsRune(`bBdDsSwWpPxuc0123456789fnrtv^$\.*+?()[]{}|/`, rune(ch)) {
-		return false
-	}
-	return true
+	return strconv.Quote(src), nil
 }
 
 // hasManualFieldsFunc returns true if any FieldDef in the slice has ManualJSON set.

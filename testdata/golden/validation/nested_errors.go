@@ -5,8 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	ecma262 "github.com/mgilbir/goecma262"
-	ecmaflags "github.com/mgilbir/goecma262/flags"
 	"unicode/utf8"
 )
 
@@ -142,8 +140,10 @@ func (c CompanyAddress) Validate() error {
 	}
 	if c._jsonKeys["zip"] {
 		if c.Zip != nil {
-			if matched, _ := ecma262.MatchString("^[0-9]{5}$", ecmaflags.Unicode, *c.Zip); !matched {
-				return fmt.Errorf("zip: value %q does not match pattern %s", *c.Zip, "^[0-9]{5}$")
+			if _matched, _err := _schemagenPattern_a94dc58b9acb2fdd.matches(*c.Zip); _err != nil {
+				return fmt.Errorf("zip: %w", _err)
+			} else if !_matched {
+				return fmt.Errorf("zip: value %s does not match pattern %s", _schemagenQuote(*c.Zip), "^[0-9]{5}$")
 			}
 		}
 	}

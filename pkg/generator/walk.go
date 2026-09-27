@@ -101,7 +101,8 @@ func walkSchemaNode(s *schema.Schema, visit func(*schema.Schema), seen map[*sche
 // checkNullSubschemas reports the first JSON null sitting in a position that
 // must hold a schema, or the first keyword whose value is malformed (see
 // schema.Schema.MalformedKeywords), identified by a JSON Pointer into the
-// document.
+// document -- and, on the same walk, the first pattern that is not an ECMA-262
+// regular expression (see checkSchemaPatterns).
 //
 // A null the document wrote is recorded by the decode, at the entry, as a
 // malformed value of the keyword that holds it (schema.KeywordError.Path), so
@@ -218,6 +219,19 @@ func (w nullWalk) check(s *schema.Schema, ptr string) error {
 	// the value is, so a null entry is reported at the entry.
 	if bad := s.MalformedKeywords(); len(bad) > 0 {
 		return fmt.Errorf("%s: %w", below(w.at(s, ptr), append([]string{bad[0].Keyword}, bad[0].Path...)...), bad[0].Err)
+	}
+
+	// The same walk refuses a pattern that is not a regular expression. It is
+	// the one traversal that reaches every schema node of every document the
+	// generator reads -- the root, a document a $ref fetched, a vendor keyword
+	// a $ref landed in. Checked here rather than where each pattern is used,
+	// because the uses are many and a pattern a later step drops, or routes to
+	// the runtime evaluator, would otherwise be compiled for the first time in
+	// generated code. Reported where the document wrote it, like a malformed
+	// value above, and at the path the walk took only for a node no document
+	// wrote.
+	if err := checkSchemaPatterns(s, w.at(s, ptr)); err != nil {
+		return err
 	}
 
 	// A nil entry of a container is what a null becomes in a tree built

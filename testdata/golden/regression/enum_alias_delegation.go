@@ -97,7 +97,7 @@ func (r RawEnum) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(r))
 	if _canonErr != nil {
-		return jsonValueErrorf("invalid RawEnum value: %s", string(r))
+		return jsonValueErrorf("invalid RawEnum value: %s", _schemagenClipText(string(r)))
 	}
 	for _, allowed := range rawEnumAllowedJSON {
 		if _canon == allowed {

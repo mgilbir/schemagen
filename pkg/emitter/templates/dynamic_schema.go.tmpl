@@ -41,12 +41,24 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	if _err := json.Unmarshal({{$recv}}._raw, &_v); _err != nil {
 		return fmt.Errorf("cannot decode value: %w", _err)
 	}
+	{{- $undecided := .NeedsPattern}}
+	{{- if $undecided}}
+	// A pattern the engine could not decide is recorded here by the branch
+	// that met it, and returned before that branch's answer is used: it is
+	// neither a match nor a failure. See dyn_branch.
+	var _undecided error
+	{{- end}}
 	{{- if .OneOf}}
 	{
 		_matches := 0
 		{{- range $bi, $branch := .OneOf}}
 		if {{template "dyn_branch" $branch}} {
 			_matches++
+		}
+		{{- end}}
+		{{- if $undecided}}
+		if _undecided != nil {
+			return fmt.Errorf("oneOf: %w", _undecided)
 		}
 		{{- end}}
 		if _matches != 1 {
@@ -62,12 +74,43 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			_matches++
 		}
 		{{- end}}
+		{{- if $undecided}}
+		if _undecided != nil {
+			return fmt.Errorf("anyOf: %w", _undecided)
+		}
+		{{- end}}
 		if _matches == 0 {
 			return fmt.Errorf("anyOf: value matches no variant")
 		}
 	}
 	{{- end}}
-	{{- if .HasIfThenElse}}
+	{{- if and .HasIfThenElse $undecided}}
+	_ifHolds := {{template "dyn_branch" .If}}
+	if _undecided != nil {
+		return fmt.Errorf("if: %w", _undecided)
+	}
+	if _ifHolds {
+		{{- if .HasThen}}
+		_thenHolds := {{template "dyn_branch" .Then}}
+		if _undecided != nil {
+			return fmt.Errorf("then: %w", _undecided)
+		}
+		if !_thenHolds {
+			return fmt.Errorf("then: value does not satisfy the then schema")
+		}
+		{{- end}}
+	} else {
+		{{- if .HasElse}}
+		_elseHolds := {{template "dyn_branch" .Else}}
+		if _undecided != nil {
+			return fmt.Errorf("else: %w", _undecided)
+		}
+		if !_elseHolds {
+			return fmt.Errorf("else: value does not satisfy the else schema")
+		}
+		{{- end}}
+	}
+	{{- else if .HasIfThenElse}}
 	if {{template "dyn_branch" .If}} {
 		{{- if .HasThen}}
 		if !({{template "dyn_branch" .Then}}) {
@@ -89,6 +132,12 @@ func ({{$recv}} {{.Name}}) Validate() error {
 {{/*
 dyn_branch renders a boolean expression that is true when the decoded value _v
 satisfies every check in the branch. An empty branch matches everything.
+
+A "pattern" check records a match the engine could not decide in the local
+error _undecided and answers true, so a caller rendering a branch with one
+(dynChecksMatchPattern) declares _undecided beforehand and returns it, when
+set, before it acts on the expression's value: an undecided match is neither a
+match nor a failure.
 
 Every keyword except "type" is vacuously satisfied by a value of an
 inapplicable type, per JSON Schema: {"minimum":2} accepts "abc". That is why
@@ -117,7 +166,7 @@ holds".
 {{- else if eq $c.Kind "multipleOf"}}_dynNumOK(_v, func(_n float64) bool { return math.Mod(_n, {{dynNum $c.Value}}) == 0 })
 {{- else if eq $c.Kind "minLength"}}_dynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) >= {{countExpr $c.Value}} })
 {{- else if eq $c.Kind "maxLength"}}_dynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) <= {{countExpr $c.Value}} })
-{{- else if eq $c.Kind "pattern"}}_dynStrOK(_v, func(_str string) bool { _m, _ := ecma262.MatchString({{ecmaPattern $c.Value}}, ecmaflags.Unicode, _str); return _m })
+{{- else if eq $c.Kind "pattern"}}{{patternVar $c.Value}}.matchesValue(_v, &_undecided)
 {{- else}}true
 {{- end}}
 {{- end}}

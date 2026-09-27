@@ -84,7 +84,7 @@ func (r Raw) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(r))
 	if _canonErr != nil {
-		return jsonValueErrorf("invalid Raw value: %s", string(r))
+		return jsonValueErrorf("invalid Raw value: %s", _schemagenClipText(string(r)))
 	}
 	for _, allowed := range rawAllowedJSON {
 		if _canon == allowed {
@@ -217,7 +217,7 @@ func (w WrappedRaw) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(w))
 	if _canonErr != nil {
-		return jsonValueErrorf("invalid WrappedRaw value: %s", string(w))
+		return jsonValueErrorf("invalid WrappedRaw value: %s", _schemagenClipText(string(w)))
 	}
 	for _, allowed := range wrappedRawAllowedJSON {
 		if _canon == allowed {

@@ -118,7 +118,7 @@ module alignlint
 go 1.23.0
 
 require (
-	github.com/mgilbir/goecma262 v0.0.0-20260219184840-8bfa4bb752b0
+	github.com/mgilbir/goecma262 v0.1.1-0.20260926235716-c30bf4ed5344
 	github.com/mgilbir/schemagen v0.0.0
 	golang.org/x/net v0.38.0
 )

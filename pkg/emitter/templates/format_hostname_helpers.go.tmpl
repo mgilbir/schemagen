@@ -260,7 +260,7 @@ func schemagenCheckIDNA(v string) error {
 // invalid. Rejecting a conforming name is the one failure this generator treats
 // as worse than a missing check, and this was one.
 func schemagenFormatHostname(v string) error {
-	bad := func() error { return fmt.Errorf("%q is not a valid hostname", v) }
+	bad := func() error { return fmt.Errorf("%s is not a valid hostname", _schemagenQuote(v)) }
 	if v == "" || len(v) > 253 {
 		return bad()
 	}
@@ -292,7 +292,7 @@ func schemagenFormatHostname(v string) error {
 		return nil
 	}
 	if err := schemagenCheckIDNA(v); err != nil {
-		return fmt.Errorf("%q is not a valid hostname: %w", v, err)
+		return fmt.Errorf("%s is not a valid hostname: %w", _schemagenQuote(v), _schemagenClipErr(err))
 	}
 	return nil
 }
@@ -300,10 +300,10 @@ func schemagenFormatHostname(v string) error {
 // schemagenFormatIDNHostname checks an internationalized hostname.
 func schemagenFormatIDNHostname(v string) error {
 	if v == "" || utf8.RuneCountInString(v) > 253 {
-		return fmt.Errorf("%q is not a valid internationalized hostname", v)
+		return fmt.Errorf("%s is not a valid internationalized hostname", _schemagenQuote(v))
 	}
 	if err := schemagenCheckIDNA(v); err != nil {
-		return fmt.Errorf("%q is not a valid internationalized hostname: %w", v, err)
+		return fmt.Errorf("%s is not a valid internationalized hostname: %w", _schemagenQuote(v), _schemagenClipErr(err))
 	}
 	return nil
 }
@@ -311,7 +311,7 @@ func schemagenFormatIDNHostname(v string) error {
 // schemagenFormatEmail checks an addr-spec whose domain is a hostname.
 func schemagenFormatEmail(v string) error {
 	if err := schemagenCheckEmail(v, schemagenFormatHostname); err != nil {
-		return fmt.Errorf("%q is not a valid email address", v)
+		return fmt.Errorf("%s is not a valid email address", _schemagenQuote(v))
 	}
 	return nil
 }
@@ -320,7 +320,7 @@ func schemagenFormatEmail(v string) error {
 // domain.
 func schemagenFormatIDNEmail(v string) error {
 	if err := schemagenCheckEmail(v, schemagenFormatIDNHostname); err != nil {
-		return fmt.Errorf("%q is not a valid email address", v)
+		return fmt.Errorf("%s is not a valid email address", _schemagenQuote(v))
 	}
 	return nil
 }

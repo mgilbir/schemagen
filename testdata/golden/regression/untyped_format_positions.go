@@ -5,8 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	ecma262 "github.com/mgilbir/goecma262"
-	ecmaflags "github.com/mgilbir/goecma262/flags"
 	"math"
 )
 
@@ -322,31 +320,44 @@ func (u *UntypedFormatPositionsBuckets) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		knownFields := map[string]bool{}
-		patternRegexps := []*ecma262.Regexp{
-			ecma262.MustCompile("^p", ecmaflags.Unicode),
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			matchesPattern := false
-			for _, re := range patternRegexps {
-				if re.MatchString(rawKey) {
-					matchesPattern = true
-					break
+		{
+			var _least string
+			var _failed error
+			for rawKey, rawVal := range raw { // refused for the least failing key
+				if _failed != nil && rawKey >= _least {
+					continue
+				}
+				if _err := func() error {
+					if knownFields[rawKey] {
+						return nil
+					}
+					matchesPattern := false
+					if !matchesPattern {
+						_ppMatched, _ppErr := _schemagenPattern_9a393f59667e0a49.matches(rawKey)
+						if _ppErr != nil {
+							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
+						}
+						matchesPattern = _ppMatched
+					}
+					if matchesPattern {
+						if u.PatternProperties == nil {
+							u.PatternProperties = make(map[string]json.RawMessage)
+						}
+						u.PatternProperties[rawKey] = rawVal
+						return nil
+					}
+					if u.AdditionalProperties == nil {
+						u.AdditionalProperties = make(map[string]json.RawMessage)
+					}
+					u.AdditionalProperties[rawKey] = rawVal
+					return nil
+				}(); _err != nil {
+					_least, _failed = rawKey, _err
 				}
 			}
-			if matchesPattern {
-				if u.PatternProperties == nil {
-					u.PatternProperties = make(map[string]json.RawMessage)
-				}
-				u.PatternProperties[rawKey] = rawVal
-				continue
+			if _failed != nil {
+				return _failed
 			}
-			if u.AdditionalProperties == nil {
-				u.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			u.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
@@ -378,41 +389,48 @@ func (u UntypedFormatPositionsBuckets) MarshalJSON() ([]byte, error) {
 
 // Validate checks UntypedFormatPositionsBuckets against its JSON Schema constraints.
 func (u UntypedFormatPositionsBuckets) Validate() error {
-	// patternProperties validation: check matched values against sub-schema constraints.
-	if len(u.PatternProperties) > 0 {
-		ppRegexps := []*ecma262.Regexp{
-			ecma262.MustCompile("^p", ecmaflags.Unicode),
-		}
-		{
-			var _least string
-			var _failed error
-			for _key, _member := range u.PatternProperties { // refused for the least failing key
-				if _failed != nil && _key >= _least {
-					continue
-				}
-				if _err := func() error {
-					_ = _member
-					if ppRegexps[0].MatchString(_key) {
-						{
-							// The sub-schema's own type answers for it: the value is
-							// decoded into it, so the decode enforces shape and the
-							// Validate enforces everything beyond it.
-							var _pv UntypedFormatPositionsBucketsPattern0
-							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", _key, _uErr)
-							}
-							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", _key, _vErr)
-							}
-						}
+	// patternProperties: every member whose key a pattern matches is held to that
+	// pattern's sub-schema. That is the members the decoder filed in
+	// PatternProperties, and the declared ones a pattern also matches, which
+	// "properties" governs as well -- the two keywords apply side by side.
+	{
+		_ppMember := func(_key string, _member json.RawMessage) error {
+			_ = _member
+			if _ppMatched, _ppErr := _schemagenPattern_9a393f59667e0a49.matches(_key); _ppErr != nil {
+				return fmt.Errorf("patternProperties: key %s: %w", _schemagenQuote(_key), _ppErr)
+			} else if _ppMatched {
+				{
+					// The sub-schema's own type answers for it: the value is
+					// decoded into it, so the decode enforces shape and the
+					// Validate enforces everything beyond it.
+					var _pv UntypedFormatPositionsBucketsPattern0
+					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+						return fmt.Errorf("patternProperties %s: key %s: %w", "^p", _schemagenQuote(_key), _uErr)
 					}
-					return nil
-				}(); _err != nil {
-					_least, _failed = _key, _err
+					if _vErr := _pv.Validate(); _vErr != nil {
+						return fmt.Errorf("patternProperties %s: key %s: %w", "^p", _schemagenQuote(_key), _vErr)
+					}
 				}
 			}
-			if _failed != nil {
-				return _failed
+			return nil
+		}
+		if len(u.PatternProperties) > 0 {
+			{
+				var _least string
+				var _failed error
+				for _key, _member := range u.PatternProperties { // refused for the least failing key
+					if _failed != nil && _key >= _least {
+						continue
+					}
+					if _err := func() error {
+						return _ppMember(_key, _member)
+					}(); _err != nil {
+						_least, _failed = _key, _err
+					}
+				}
+				if _failed != nil {
+					return _failed
+				}
 			}
 		}
 	}
@@ -972,9 +990,13 @@ func (u *UntypedFormatPositions) UnmarshalJSON(data []byte) error {
 					if _vErr := candidate.Validate(); _vErr == nil {
 						oneofStrict++
 						oneofStrictSel = &UntypedFormatPositions_UntypedFormatPositionsBranchOption0{UntypedFormatPositionsBranchOption0: candidate}
+					} else if _schemagenUndecided(_vErr) {
+						return oneofErrf("variant UntypedFormatPositionsBranchOption0: %w", _vErr)
 					} else {
 						oneofStrictErr = fmt.Errorf("variant UntypedFormatPositionsBranchOption0: %w", _vErr)
 					}
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant UntypedFormatPositionsBranchOption0: %w", err)
 				} else {
 					oneofLastErr = err
 				}
@@ -990,6 +1012,8 @@ func (u *UntypedFormatPositions) UnmarshalJSON(data []byte) error {
 					// carry, so matching it is satisfying it.
 					oneofStrict++
 					oneofStrictSel = &UntypedFormatPositions_Boolean{Boolean: candidate}
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant Boolean: %w", err)
 				} else {
 					oneofLastErr = err
 				}
@@ -1196,7 +1220,7 @@ func (u UntypedFormatPositions) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "map[%q]", _k)
+					return jsonPathf(err, "map[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {

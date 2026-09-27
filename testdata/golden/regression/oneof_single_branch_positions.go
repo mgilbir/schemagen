@@ -626,6 +626,8 @@ func (o *OneOfSingleBranchPositions) UnmarshalJSON(data []byte) error {
 					} else {
 						oneofCheckErr = fmt.Errorf("variant Integer: value does not satisfy the variant's constraints")
 					}
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant Integer: %w", err)
 				} else {
 					oneofLastErr = err
 				}
@@ -688,12 +690,18 @@ func (o *OneOfSingleBranchPositions) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &OneOfSingleBranchPositions_OneOfSingleBranchPositionsObjBranchOption0{OneOfSingleBranchPositionsObjBranchOption0: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant OneOfSingleBranchPositionsObjBranchOption0: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant OneOfSingleBranchPositionsObjBranchOption0: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant OneOfSingleBranchPositionsObjBranchOption0: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -757,6 +765,8 @@ func (o *OneOfSingleBranchPositions) UnmarshalJSON(data []byte) error {
 				if err := json.Unmarshal(oneofData, &candidate); err == nil {
 					o.TypedBranch = &OneOfSingleBranchPositions_String{String: candidate}
 					oneofMatched++
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant String: %w", err)
 				} else {
 					oneofLastErr = err
 				}
@@ -939,7 +949,7 @@ func (o OneOfSingleBranchPositions) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "map[%q]", _k)
+					return jsonPathf(err, "map[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {

@@ -256,7 +256,7 @@ func (a AnyOfBooleanAndScalarBranchesFalseBranch) Validate() error {
 				if _err := func() error {
 					var _rbVal any
 					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-						return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+						return jsonValueErrorf("cannot decode property %s: %w", _schemagenQuote(_rbKey), _rbErr)
 					}
 					_rbInstance[_rbKey] = _rbVal
 					return nil

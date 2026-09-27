@@ -12,6 +12,15 @@ import (
 {{- if .Helpers.PathJoin}}
 {{template "pathjoin_helpers"}}
 {{- end}}
+{{- if .Helpers.Quote}}
+{{template "quote_helper"}}
+{{- end}}
+{{- if .Helpers.Patterns}}
+{{template "pattern_helpers" .Helpers}}
+{{- end}}
+{{- if .Helpers.Undecided}}
+{{template "undecided_helper"}}
+{{- end}}
 {{- if .Helpers.DecodePath}}
 {{template "decodepath_helpers"}}
 {{- end}}

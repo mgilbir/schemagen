@@ -516,7 +516,7 @@ func (o *OverflowMapUntypedValue) UnmarshalJSON(data []byte) error {
 					}
 					var val OverflowMapUntypedValueValue
 					if err := json.Unmarshal(rawVal, &val); err != nil {
-						return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
+						return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 					}
 					o.AdditionalProperties[rawKey] = val
 					return nil
@@ -557,7 +557,7 @@ func (o OverflowMapUntypedValue) MarshalJSON() ([]byte, error) {
 			if _err := func() error {
 				raw, err := json.Marshal(_member)
 				if err != nil {
-					return fmt.Errorf("marshaling additional property %q: %w", _key, err)
+					return fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), err)
 				}
 				obj[_key] = raw
 				return nil
@@ -583,7 +583,7 @@ func (o OverflowMapUntypedValue) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "arrLen[%q]", _k)
+					return jsonPathf(err, "arrLen[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {
@@ -603,7 +603,7 @@ func (o OverflowMapUntypedValue) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "bare[%q]", _k)
+					return jsonPathf(err, "bare[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {
@@ -623,7 +623,7 @@ func (o OverflowMapUntypedValue) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "objReq[%q]", _k)
+					return jsonPathf(err, "objReq[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {
@@ -643,7 +643,7 @@ func (o OverflowMapUntypedValue) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "strLen[%q]", _k)
+					return jsonPathf(err, "strLen[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {
@@ -663,7 +663,7 @@ func (o OverflowMapUntypedValue) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "viaRef[%q]", _k)
+					return jsonPathf(err, "viaRef[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {

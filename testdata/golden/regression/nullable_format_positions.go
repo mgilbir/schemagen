@@ -5,8 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	ecma262 "github.com/mgilbir/goecma262"
-	ecmaflags "github.com/mgilbir/goecma262/flags"
 	"math"
 )
 
@@ -68,11 +66,19 @@ func (n NullableV4) Validate() error {
 		{
 			// The alternative is a reference; the value matches it when it
 			// decodes into the referenced type and that type accepts it.
+			// A pattern match with no answer on the way is no verdict on the
+			// branch, so it is returned rather than read as "no match".
 			var _bv NullableV4String
 			if _err := json.Unmarshal(n._raw, &_bv); _err != nil {
+				if _schemagenUndecided(_err) {
+					return fmt.Errorf("type: %w", _err)
+				}
 				_branchMatches = false
 			} else if _bvv, _ok := any(&_bv).(interface{ Validate() error }); _ok {
 				if _err := _bvv.Validate(); _err != nil {
+					if _schemagenUndecided(_err) {
+						return fmt.Errorf("type: %w", _err)
+					}
 					_branchMatches = false
 				}
 			}
@@ -166,11 +172,19 @@ func (c ChainInner) Validate() error {
 		{
 			// The alternative is a reference; the value matches it when it
 			// decodes into the referenced type and that type accepts it.
+			// A pattern match with no answer on the way is no verdict on the
+			// branch, so it is returned rather than read as "no match".
 			var _bv ChainInnerString
 			if _err := json.Unmarshal(c._raw, &_bv); _err != nil {
+				if _schemagenUndecided(_err) {
+					return fmt.Errorf("type: %w", _err)
+				}
 				_branchMatches = false
 			} else if _bvv, _ok := any(&_bv).(interface{ Validate() error }); _ok {
 				if _err := _bvv.Validate(); _err != nil {
+					if _schemagenUndecided(_err) {
+						return fmt.Errorf("type: %w", _err)
+					}
 					_branchMatches = false
 				}
 			}
@@ -264,11 +278,19 @@ func (c ChainOuter) Validate() error {
 		{
 			// The alternative is a reference; the value matches it when it
 			// decodes into the referenced type and that type accepts it.
+			// A pattern match with no answer on the way is no verdict on the
+			// branch, so it is returned rather than read as "no match".
 			var _bv ChainOuterString
 			if _err := json.Unmarshal(c._raw, &_bv); _err != nil {
+				if _schemagenUndecided(_err) {
+					return fmt.Errorf("type: %w", _err)
+				}
 				_branchMatches = false
 			} else if _bvv, _ok := any(&_bv).(interface{ Validate() error }); _ok {
 				if _err := _bvv.Validate(); _err != nil {
+					if _schemagenUndecided(_err) {
+						return fmt.Errorf("type: %w", _err)
+					}
 					_branchMatches = false
 				}
 			}
@@ -362,11 +384,19 @@ func (n NullableFormatPositionsBranchOption0) Validate() error {
 		{
 			// The alternative is a reference; the value matches it when it
 			// decodes into the referenced type and that type accepts it.
+			// A pattern match with no answer on the way is no verdict on the
+			// branch, so it is returned rather than read as "no match".
 			var _bv NullableFormatPositionsBranchOption0String
 			if _err := json.Unmarshal(n._raw, &_bv); _err != nil {
+				if _schemagenUndecided(_err) {
+					return fmt.Errorf("type: %w", _err)
+				}
 				_branchMatches = false
 			} else if _bvv, _ok := any(&_bv).(interface{ Validate() error }); _ok {
 				if _err := _bvv.Validate(); _err != nil {
+					if _schemagenUndecided(_err) {
+						return fmt.Errorf("type: %w", _err)
+					}
 					_branchMatches = false
 				}
 			}
@@ -460,11 +490,19 @@ func (n NullableFormatPositionsBucketsPattern0) Validate() error {
 		{
 			// The alternative is a reference; the value matches it when it
 			// decodes into the referenced type and that type accepts it.
+			// A pattern match with no answer on the way is no verdict on the
+			// branch, so it is returned rather than read as "no match".
 			var _bv NullableFormatPositionsBucketsPattern0String
 			if _err := json.Unmarshal(n._raw, &_bv); _err != nil {
+				if _schemagenUndecided(_err) {
+					return fmt.Errorf("type: %w", _err)
+				}
 				_branchMatches = false
 			} else if _bvv, _ok := any(&_bv).(interface{ Validate() error }); _ok {
 				if _err := _bvv.Validate(); _err != nil {
+					if _schemagenUndecided(_err) {
+						return fmt.Errorf("type: %w", _err)
+					}
 					_branchMatches = false
 				}
 			}
@@ -527,31 +565,44 @@ func (n *NullableFormatPositionsBuckets) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		knownFields := map[string]bool{}
-		patternRegexps := []*ecma262.Regexp{
-			ecma262.MustCompile("^p", ecmaflags.Unicode),
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			matchesPattern := false
-			for _, re := range patternRegexps {
-				if re.MatchString(rawKey) {
-					matchesPattern = true
-					break
+		{
+			var _least string
+			var _failed error
+			for rawKey, rawVal := range raw { // refused for the least failing key
+				if _failed != nil && rawKey >= _least {
+					continue
+				}
+				if _err := func() error {
+					if knownFields[rawKey] {
+						return nil
+					}
+					matchesPattern := false
+					if !matchesPattern {
+						_ppMatched, _ppErr := _schemagenPattern_9a393f59667e0a49.matches(rawKey)
+						if _ppErr != nil {
+							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
+						}
+						matchesPattern = _ppMatched
+					}
+					if matchesPattern {
+						if n.PatternProperties == nil {
+							n.PatternProperties = make(map[string]json.RawMessage)
+						}
+						n.PatternProperties[rawKey] = rawVal
+						return nil
+					}
+					if n.AdditionalProperties == nil {
+						n.AdditionalProperties = make(map[string]json.RawMessage)
+					}
+					n.AdditionalProperties[rawKey] = rawVal
+					return nil
+				}(); _err != nil {
+					_least, _failed = rawKey, _err
 				}
 			}
-			if matchesPattern {
-				if n.PatternProperties == nil {
-					n.PatternProperties = make(map[string]json.RawMessage)
-				}
-				n.PatternProperties[rawKey] = rawVal
-				continue
+			if _failed != nil {
+				return _failed
 			}
-			if n.AdditionalProperties == nil {
-				n.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			n.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
@@ -583,41 +634,48 @@ func (n NullableFormatPositionsBuckets) MarshalJSON() ([]byte, error) {
 
 // Validate checks NullableFormatPositionsBuckets against its JSON Schema constraints.
 func (n NullableFormatPositionsBuckets) Validate() error {
-	// patternProperties validation: check matched values against sub-schema constraints.
-	if len(n.PatternProperties) > 0 {
-		ppRegexps := []*ecma262.Regexp{
-			ecma262.MustCompile("^p", ecmaflags.Unicode),
-		}
-		{
-			var _least string
-			var _failed error
-			for _key, _member := range n.PatternProperties { // refused for the least failing key
-				if _failed != nil && _key >= _least {
-					continue
-				}
-				if _err := func() error {
-					_ = _member
-					if ppRegexps[0].MatchString(_key) {
-						{
-							// The sub-schema's own type answers for it: the value is
-							// decoded into it, so the decode enforces shape and the
-							// Validate enforces everything beyond it.
-							var _pv NullableFormatPositionsBucketsPattern0
-							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", _key, _uErr)
-							}
-							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", _key, _vErr)
-							}
-						}
+	// patternProperties: every member whose key a pattern matches is held to that
+	// pattern's sub-schema. That is the members the decoder filed in
+	// PatternProperties, and the declared ones a pattern also matches, which
+	// "properties" governs as well -- the two keywords apply side by side.
+	{
+		_ppMember := func(_key string, _member json.RawMessage) error {
+			_ = _member
+			if _ppMatched, _ppErr := _schemagenPattern_9a393f59667e0a49.matches(_key); _ppErr != nil {
+				return fmt.Errorf("patternProperties: key %s: %w", _schemagenQuote(_key), _ppErr)
+			} else if _ppMatched {
+				{
+					// The sub-schema's own type answers for it: the value is
+					// decoded into it, so the decode enforces shape and the
+					// Validate enforces everything beyond it.
+					var _pv NullableFormatPositionsBucketsPattern0
+					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+						return fmt.Errorf("patternProperties %s: key %s: %w", "^p", _schemagenQuote(_key), _uErr)
 					}
-					return nil
-				}(); _err != nil {
-					_least, _failed = _key, _err
+					if _vErr := _pv.Validate(); _vErr != nil {
+						return fmt.Errorf("patternProperties %s: key %s: %w", "^p", _schemagenQuote(_key), _vErr)
+					}
 				}
 			}
-			if _failed != nil {
-				return _failed
+			return nil
+		}
+		if len(n.PatternProperties) > 0 {
+			{
+				var _least string
+				var _failed error
+				for _key, _member := range n.PatternProperties { // refused for the least failing key
+					if _failed != nil && _key >= _least {
+						continue
+					}
+					if _err := func() error {
+						return _ppMember(_key, _member)
+					}(); _err != nil {
+						_least, _failed = _key, _err
+					}
+				}
+				if _failed != nil {
+					return _failed
+				}
 			}
 		}
 	}
@@ -682,11 +740,19 @@ func (n NullableFormatPositionsInline) Validate() error {
 		{
 			// The alternative is a reference; the value matches it when it
 			// decodes into the referenced type and that type accepts it.
+			// A pattern match with no answer on the way is no verdict on the
+			// branch, so it is returned rather than read as "no match".
 			var _bv NullableFormatPositionsInlineString
 			if _err := json.Unmarshal(n._raw, &_bv); _err != nil {
+				if _schemagenUndecided(_err) {
+					return fmt.Errorf("type: %w", _err)
+				}
 				_branchMatches = false
 			} else if _bvv, _ok := any(&_bv).(interface{ Validate() error }); _ok {
 				if _err := _bvv.Validate(); _err != nil {
+					if _schemagenUndecided(_err) {
+						return fmt.Errorf("type: %w", _err)
+					}
 					_branchMatches = false
 				}
 			}
@@ -780,11 +846,19 @@ func (n NullableFormatPositionsListItem) Validate() error {
 		{
 			// The alternative is a reference; the value matches it when it
 			// decodes into the referenced type and that type accepts it.
+			// A pattern match with no answer on the way is no verdict on the
+			// branch, so it is returned rather than read as "no match".
 			var _bv NullableFormatPositionsListItemString
 			if _err := json.Unmarshal(n._raw, &_bv); _err != nil {
+				if _schemagenUndecided(_err) {
+					return fmt.Errorf("type: %w", _err)
+				}
 				_branchMatches = false
 			} else if _bvv, _ok := any(&_bv).(interface{ Validate() error }); _ok {
 				if _err := _bvv.Validate(); _err != nil {
+					if _schemagenUndecided(_err) {
+						return fmt.Errorf("type: %w", _err)
+					}
 					_branchMatches = false
 				}
 			}
@@ -878,11 +952,19 @@ func (n NullableFormatPositionsMail) Validate() error {
 		{
 			// The alternative is a reference; the value matches it when it
 			// decodes into the referenced type and that type accepts it.
+			// A pattern match with no answer on the way is no verdict on the
+			// branch, so it is returned rather than read as "no match".
 			var _bv NullableFormatPositionsMailString
 			if _err := json.Unmarshal(n._raw, &_bv); _err != nil {
+				if _schemagenUndecided(_err) {
+					return fmt.Errorf("type: %w", _err)
+				}
 				_branchMatches = false
 			} else if _bvv, _ok := any(&_bv).(interface{ Validate() error }); _ok {
 				if _err := _bvv.Validate(); _err != nil {
+					if _schemagenUndecided(_err) {
+						return fmt.Errorf("type: %w", _err)
+					}
 					_branchMatches = false
 				}
 			}
@@ -976,11 +1058,19 @@ func (n NullableFormatPositionsMapValue) Validate() error {
 		{
 			// The alternative is a reference; the value matches it when it
 			// decodes into the referenced type and that type accepts it.
+			// A pattern match with no answer on the way is no verdict on the
+			// branch, so it is returned rather than read as "no match".
 			var _bv NullableFormatPositionsMapValueString
 			if _err := json.Unmarshal(n._raw, &_bv); _err != nil {
+				if _schemagenUndecided(_err) {
+					return fmt.Errorf("type: %w", _err)
+				}
 				_branchMatches = false
 			} else if _bvv, _ok := any(&_bv).(interface{ Validate() error }); _ok {
 				if _err := _bvv.Validate(); _err != nil {
+					if _schemagenUndecided(_err) {
+						return fmt.Errorf("type: %w", _err)
+					}
 					_branchMatches = false
 				}
 			}
@@ -1074,11 +1164,19 @@ func (n NullableFormatPositionsStamp) Validate() error {
 		{
 			// The alternative is a reference; the value matches it when it
 			// decodes into the referenced type and that type accepts it.
+			// A pattern match with no answer on the way is no verdict on the
+			// branch, so it is returned rather than read as "no match".
 			var _bv NullableFormatPositionsStampString
 			if _err := json.Unmarshal(n._raw, &_bv); _err != nil {
+				if _schemagenUndecided(_err) {
+					return fmt.Errorf("type: %w", _err)
+				}
 				_branchMatches = false
 			} else if _bvv, _ok := any(&_bv).(interface{ Validate() error }); _ok {
 				if _err := _bvv.Validate(); _err != nil {
+					if _schemagenUndecided(_err) {
+						return fmt.Errorf("type: %w", _err)
+					}
 					_branchMatches = false
 				}
 			}
@@ -1172,11 +1270,19 @@ func (n NullableFormatPositionsWrapped) Validate() error {
 		{
 			// The alternative is a reference; the value matches it when it
 			// decodes into the referenced type and that type accepts it.
+			// A pattern match with no answer on the way is no verdict on the
+			// branch, so it is returned rather than read as "no match".
 			var _bv NullableFormatPositionsWrappedString
 			if _err := json.Unmarshal(n._raw, &_bv); _err != nil {
+				if _schemagenUndecided(_err) {
+					return fmt.Errorf("type: %w", _err)
+				}
 				_branchMatches = false
 			} else if _bvv, _ok := any(&_bv).(interface{ Validate() error }); _ok {
 				if _err := _bvv.Validate(); _err != nil {
+					if _schemagenUndecided(_err) {
+						return fmt.Errorf("type: %w", _err)
+					}
 					_branchMatches = false
 				}
 			}
@@ -1270,11 +1376,19 @@ func (n NullableFormatPositionsTupleItem0) Validate() error {
 		{
 			// The alternative is a reference; the value matches it when it
 			// decodes into the referenced type and that type accepts it.
+			// A pattern match with no answer on the way is no verdict on the
+			// branch, so it is returned rather than read as "no match".
 			var _bv NullableFormatPositionsTupleItem0String
 			if _err := json.Unmarshal(n._raw, &_bv); _err != nil {
+				if _schemagenUndecided(_err) {
+					return fmt.Errorf("type: %w", _err)
+				}
 				_branchMatches = false
 			} else if _bvv, _ok := any(&_bv).(interface{ Validate() error }); _ok {
 				if _err := _bvv.Validate(); _err != nil {
+					if _schemagenUndecided(_err) {
+						return fmt.Errorf("type: %w", _err)
+					}
 					_branchMatches = false
 				}
 			}
@@ -1466,9 +1580,13 @@ func (n *NullableFormatPositions) UnmarshalJSON(data []byte) error {
 					if _vErr := candidate.Validate(); _vErr == nil {
 						oneofStrict++
 						oneofStrictSel = &NullableFormatPositions_NullableFormatPositionsBranchOption0{NullableFormatPositionsBranchOption0: candidate}
+					} else if _schemagenUndecided(_vErr) {
+						return oneofErrf("variant NullableFormatPositionsBranchOption0: %w", _vErr)
 					} else {
 						oneofStrictErr = fmt.Errorf("variant NullableFormatPositionsBranchOption0: %w", _vErr)
 					}
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant NullableFormatPositionsBranchOption0: %w", err)
 				} else {
 					oneofLastErr = err
 				}
@@ -1493,6 +1611,8 @@ func (n *NullableFormatPositions) UnmarshalJSON(data []byte) error {
 					// carry, so matching it is satisfying it.
 					oneofStrict++
 					oneofStrictSel = &NullableFormatPositions_Integer{Integer: candidate}
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant Integer: %w", err)
 				} else {
 					oneofLastErr = err
 				}
@@ -1709,7 +1829,7 @@ func (n NullableFormatPositions) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "map[%q]", _k)
+					return jsonPathf(err, "map[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {

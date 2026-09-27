@@ -382,12 +382,18 @@ func (o *OneOfObjectVariantConstraints) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption0{OneOfObjectVariantConstraintsAOption0: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant OneOfObjectVariantConstraintsAOption0: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant OneOfObjectVariantConstraintsAOption0: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant OneOfObjectVariantConstraintsAOption0: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -405,12 +411,18 @@ func (o *OneOfObjectVariantConstraints) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption1{OneOfObjectVariantConstraintsAOption1: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant OneOfObjectVariantConstraintsAOption1: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant OneOfObjectVariantConstraintsAOption1: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant OneOfObjectVariantConstraintsAOption1: %w", err)
 					} else {
 						oneofLastErr = err
 					}

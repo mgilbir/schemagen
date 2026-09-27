@@ -152,7 +152,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte({{$recv}}))
 	if _canonErr != nil {
-		return jsonValueErrorf("invalid {{.Name}} value: %s", string({{$recv}}))
+		return jsonValueErrorf("invalid {{.Name}} value: %s", _schemagenClipText(string({{$recv}})))
 	}
 	for _, allowed := range {{$allowedVar}} {
 		if _canon == allowed {
