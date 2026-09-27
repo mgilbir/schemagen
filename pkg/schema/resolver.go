@@ -193,7 +193,40 @@ func hasAnchorName(s *Schema, anchor string) bool {
 // a plain-name fragment id names a node inside the *current* scope, so the
 // subtree must still be searched.
 func changesScope(s *Schema) bool {
-	return s.ID != "" && plainNameFragment(s.ID) == ""
+	_, ok := scopeID(s)
+	return ok
+}
+
+// scopeID returns the identifier with which s starts a resource of its own,
+// parsed, and reports whether it does.
+//
+// It is the one answer to that question: ComputeBaseURIs, which the resource
+// graph is built from, and the resolver's anchor search both ask it, because
+// two walks that decide it separately give two answers for one document. They
+// did, twice: the resolver read only "$id" where ComputeBaseURIs also read a
+// draft-4 "id", and ComputeBaseURIs skipped an id url.Parse refused where the
+// resolver counted it -- so an anchor under such a node was in one index and
+// not the other.
+//
+// "$id" is read before draft 3/4's "id", as Normalize copies one to the other.
+// A plain-name fragment ({"id": "#foo"}) names a node rather than starting a
+// scope. An id that does not parse as a URI-reference starts nothing, because
+// no base URI can be computed from it; the decode also records it as malformed
+// (see MalformedKeywords), so a document that states one is refused wherever
+// its dialect defines the keyword.
+func scopeID(s *Schema) (*url.URL, bool) {
+	id := s.ID
+	if id == "" {
+		id = s.LegacyID
+	}
+	if id == "" || plainNameFragment(id) != "" {
+		return nil, false
+	}
+	u, err := url.Parse(id)
+	if err != nil {
+		return nil, false
+	}
+	return u, true
 }
 
 // findAnchor searches the schema tree for a node answering to the given
@@ -338,6 +371,15 @@ func (r *LocalResolver) walkPath(current *Schema, parts []string, originalRef st
 
 	key := parts[0]
 	rest := parts[1:]
+
+	// A keyword the node's dialect does not define is an unknown keyword there,
+	// whichever keyword it is, and a pointer reaches its value the way it
+	// reaches any unknown keyword's. The dialect pass cleared the field, so the
+	// arm below that names the keyword would find nothing; the value it had is
+	// kept for exactly this (Schema.droppedKeywords).
+	if raw, ok := current.droppedKeywords[key]; ok {
+		return r.walkUnknownKeyword(current, key, rest, raw, originalRef)
+	}
 
 	switch key {
 	case "$defs":
@@ -534,35 +576,46 @@ func (r *LocalResolver) walkPath(current *Schema, parts []string, originalRef st
 		return r.walkPath(current.ContentSchema, rest, originalRef)
 
 	default:
+		// A subschema inside a keyword Normalize rewrote, at the location the
+		// document wrote it at. The longer path first: "#/extends/0" names an
+		// entry, "#/extends" the whole value when it is one schema.
+		if target, remaining, ok := current.legacyTarget(key, rest); ok {
+			return r.walkPath(target, remaining, originalRef)
+		}
 		// Check Extensions for unknown keywords (e.g., vendor extensions,
 		// arbitrary keywords referenced via JSON Pointer $ref).
-		if current.Extensions != nil {
-			if raw, ok := current.Extensions[key]; ok {
-				// Try the whole value as a schema first, then walk any remaining
-				// pointer inside it. That is the right order for a keyword whose
-				// value *is* a schema (a vendor keyword holding "properties",
-				// say), where the remaining tokens name schema fields.
-				if sub, err := current.extensionSchema(key, nil, raw); err == nil {
-					if len(rest) == 0 {
-						return sub, nil
-					}
-					if target, err := r.walkPath(sub, rest, originalRef); err == nil {
-						return target, nil
-					}
-				}
-				// Otherwise the keyword holds a collection and the *element* is
-				// the schema: "examples" is an array, so "#/examples/0" must
-				// index it before parsing. This also covers a keyword whose
-				// value is a plain object of schemas.
-				sub, err := current.extensionSchema(key, rest, raw)
-				if err != nil {
-					return nil, fmt.Errorf("cannot parse extension %q as schema in: %s: %w", key, originalRef, err)
-				}
-				return sub, nil
-			}
+		if raw, ok := current.Extensions[key]; ok {
+			return r.walkUnknownKeyword(current, key, rest, raw, originalRef)
 		}
 		return nil, fmt.Errorf("unsupported ref path segment %q in: %s", key, originalRef)
 	}
+}
+
+// walkUnknownKeyword follows a pointer into the value of a keyword the node's
+// dialect does not know -- one it has no field for (Extensions) or one its
+// dialect does not define (droppedKeywords).
+func (r *LocalResolver) walkUnknownKeyword(current *Schema, key string, rest []string, raw json.RawMessage, originalRef string) (*Schema, error) {
+	// Try the whole value as a schema first, then walk any remaining
+	// pointer inside it. That is the right order for a keyword whose
+	// value *is* a schema (a vendor keyword holding "properties",
+	// say), where the remaining tokens name schema fields.
+	if sub, err := current.extensionSchema(key, nil, raw); err == nil {
+		if len(rest) == 0 {
+			return sub, nil
+		}
+		if target, err := r.walkPath(sub, rest, originalRef); err == nil {
+			return target, nil
+		}
+	}
+	// Otherwise the keyword holds a collection and the *element* is
+	// the schema: "examples" is an array, so "#/examples/0" must
+	// index it before parsing. This also covers a keyword whose
+	// value is a plain object of schemas.
+	sub, err := current.extensionSchema(key, rest, raw)
+	if err != nil {
+		return nil, fmt.Errorf("cannot parse extension %q as schema in: %s: %w", key, originalRef, err)
+	}
+	return sub, nil
 }
 
 // parseIndex parses a string as a non-negative integer index.
@@ -1184,3 +1237,49 @@ func (e *ResolveError) Error() string {
 }
 
 func (e *ResolveError) Unwrap() []error { return e.Errs }
+
+// rewrittenKeywords are the keywords whose subschemas Normalize moves to the
+// keywords that replaced them, so that a pointer written against the document
+// has to be answered from where the decode found them (Schema.srcChildren)
+// rather than from the rewritten tree.
+var rewrittenKeywords = map[string]bool{
+	"extends":      true,
+	"disallow":     true,
+	"dependencies": true,
+	"type":         true,
+}
+
+// legacyTarget answers a pointer into a keyword Normalize rewrote, from the
+// locations recorded when the document was read (Schema.srcChildren), and
+// returns the tokens still to walk inside it.
+//
+// A target the dialect pass dropped with its keyword -- "extends" under a
+// dialect that does not define it -- was never normalized with the tree. It is
+// then a subschema of an unknown keyword, which a pointer still reaches (an
+// unknown keyword's value is reached the same way, through Extensions), and it
+// is normalized on demand, under this node's dialect, as such a value is.
+func (s *Schema) legacyTarget(key string, rest []string) (*Schema, []string, bool) {
+	if !rewrittenKeywords[key] {
+		return nil, nil, false
+	}
+	lookup := func(tokens ...string) *Schema {
+		target := s.childAt(tokens...)
+		if target != nil && !target.normalized {
+			d := s.DetectedDraft
+			if own := DetectDraft(target); own != DraftUnknown {
+				d = own
+			}
+			target.NormalizeForDraft(d)
+		}
+		return target
+	}
+	if len(rest) > 0 {
+		if target := lookup(key, rest[0]); target != nil {
+			return target, rest[1:], true
+		}
+	}
+	if target := lookup(key); target != nil {
+		return target, rest, true
+	}
+	return nil, nil, false
+}

@@ -602,10 +602,10 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 	}
 
 	if s.MinLength != nil {
-		add(fmt.Sprintf("MinLength: _intPtr(%d),", s.MinLength.Int()))
+		add(fmt.Sprintf("MinLength: _intPtr(%s),", countBound(*s.MinLength).GoExpr()))
 	}
 	if s.MaxLength != nil {
-		add(fmt.Sprintf("MaxLength: _intPtr(%d),", s.MaxLength.Int()))
+		add(fmt.Sprintf("MaxLength: _intPtr(%s),", countBound(*s.MaxLength).GoExpr()))
 	}
 	if s.Pattern != nil {
 		add(fmt.Sprintf("Pattern: _strPtr(%q),", *s.Pattern))
@@ -638,10 +638,10 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 	}
 
 	if s.MinItems != nil {
-		add(fmt.Sprintf("MinItems: _intPtr(%d),", s.MinItems.Int()))
+		add(fmt.Sprintf("MinItems: _intPtr(%s),", countBound(*s.MinItems).GoExpr()))
 	}
 	if s.MaxItems != nil {
-		add(fmt.Sprintf("MaxItems: _intPtr(%d),", s.MaxItems.Int()))
+		add(fmt.Sprintf("MaxItems: _intPtr(%s),", countBound(*s.MaxItems).GoExpr()))
 	}
 	if s.UniqueItems != nil && *s.UniqueItems {
 		add("UniqueItems: true,")
@@ -702,10 +702,10 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		}
 		add(fmt.Sprintf("Contains: _node(%s),", lit))
 		if s.MinContains != nil {
-			add(fmt.Sprintf("MinContains: _intPtr(%d),", s.MinContains.Int()))
+			add(fmt.Sprintf("MinContains: _intPtr(%s),", countBound(*s.MinContains).GoExpr()))
 		}
 		if s.MaxContains != nil {
-			add(fmt.Sprintf("MaxContains: _intPtr(%d),", s.MaxContains.Int()))
+			add(fmt.Sprintf("MaxContains: _intPtr(%s),", countBound(*s.MaxContains).GoExpr()))
 		}
 	}
 
@@ -713,10 +713,10 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		add(fmt.Sprintf("Required: %s,", goStringSliceLiteral([]string(s.Required))))
 	}
 	if s.MinProperties != nil {
-		add(fmt.Sprintf("MinProperties: _intPtr(%d),", s.MinProperties.Int()))
+		add(fmt.Sprintf("MinProperties: _intPtr(%s),", countBound(*s.MinProperties).GoExpr()))
 	}
 	if s.MaxProperties != nil {
-		add(fmt.Sprintf("MaxProperties: _intPtr(%d),", s.MaxProperties.Int()))
+		add(fmt.Sprintf("MaxProperties: _intPtr(%s),", countBound(*s.MaxProperties).GoExpr()))
 	}
 	// --strict-properties. The flag reads "absent additionalProperties is
 	// treated as false", and until issue #221 it was read on the static path

@@ -118,6 +118,8 @@ func schemaStating(t *testing.T, keyword string) *Schema {
 		"exclusiveMinimum": `{"exclusiveMinimum": 5}`,
 		"exclusiveMaximum": `{"exclusiveMaximum": 5}`,
 		"required":         `{"required": ["a"]}`,
+		"type":             `{"type": ["string", {"minimum": 1}]}`,
+		"items":            `{"items": [{"type": "string"}]}`,
 	}
 	body, ok := bodies[keyword]
 	if !ok {
@@ -210,9 +212,12 @@ func sortedKeywords() []string {
 //
 // Drafts 3 and 4 define exclusiveMinimum as a boolean that modifies the sibling
 // minimum; draft 6 redefined it as the bound itself. Each dialect knows one
-// spelling and has to ignore the other, and the document the issue reports --
-// {"minimum":3,"exclusiveMinimum":5} declared as draft 4 -- is the case where
-// ignoring it changes the verdict: only minimum binds, so 4 is valid.
+// spelling, and the document the issue reports -- {"minimum":3,
+// "exclusiveMinimum":5} declared as draft 4 -- was refused for the wrong reason
+// (the number was enforced as a draft-6 bound). The other spelling is a value
+// the dialect's meta-schema rejects, so it is refused as malformed, naming
+// whose spelling it is; the sibling minimum, which the dialect does define,
+// is untouched either way.
 func TestExclusiveBoundSpellingFollowsTheDialect(t *testing.T) {
 	const d4 = `"http://json-schema.org/draft-04/schema#"`
 	const d6 = `"http://json-schema.org/draft-06/schema#"`
@@ -223,10 +228,12 @@ func TestExclusiveBoundSpellingFollowsTheDialect(t *testing.T) {
 		wantBound bool // the exclusive keyword survives normalization
 		wantMin   bool // the sibling minimum survives with it
 	}{
+		// wantBound false is exactly the refused case: the value is another
+		// dialect's spelling.
 		{"draft 4 keeps its boolean", `{"$schema":` + d4 + `,"minimum":5,"exclusiveMinimum":true}`, true, true},
-		{"draft 4 drops a number", `{"$schema":` + d4 + `,"minimum":3,"exclusiveMinimum":5}`, false, true},
+		{"draft 4 refuses a number", `{"$schema":` + d4 + `,"minimum":3,"exclusiveMinimum":5}`, false, true},
 		{"draft 6 keeps its number", `{"$schema":` + d6 + `,"minimum":3,"exclusiveMinimum":5}`, true, true},
-		{"draft 6 drops a boolean", `{"$schema":` + d6 + `,"minimum":5,"exclusiveMinimum":true}`, false, true},
+		{"draft 6 refuses a boolean", `{"$schema":` + d6 + `,"minimum":5,"exclusiveMinimum":true}`, false, true},
 		{"2020-12 keeps its number", `{"$schema":"https://json-schema.org/draft/2020-12/schema","minimum":3,"exclusiveMinimum":5}`, true, true},
 		{"draft 3 keeps its boolean", `{"$schema":"http://json-schema.org/draft-03/schema#","minimum":5,"exclusiveMinimum":true}`, true, true},
 		{"no dialect keeps whatever is written", `{"minimum":5,"exclusiveMinimum":true}`, true, true},
@@ -239,6 +246,10 @@ func TestExclusiveBoundSpellingFollowsTheDialect(t *testing.T) {
 			s.Normalize()
 			if got := s.ExclusiveMinimum != nil; got != tt.wantBound {
 				t.Errorf("exclusiveMinimum survived = %v, want %v: %s", got, tt.wantBound, tt.doc)
+			}
+			refused := len(s.MalformedKeywords()) == 1 && s.MalformedKeywords()[0].Keyword == "exclusiveMinimum"
+			if refused != !tt.wantBound {
+				t.Errorf("refused = %v (%v), want %v: %s", refused, s.MalformedKeywords(), !tt.wantBound, tt.doc)
 			}
 			// The sibling is the half that made this a false reject *and* a
 			// silent discard: dropping the unknown spelling must not take the
@@ -303,6 +314,15 @@ func TestDialectGateRunsBeforeTheLegacyRewrites(t *testing.T) {
 		}
 		if len(s.Required) != 0 {
 			t.Errorf("required = %v, want none: the per-property boolean is draft 3's spelling", s.Required)
+		}
+		// The three draft-3 keywords are unknown to draft 6 and ignored; the
+		// boolean "required" is draft 3's spelling of a keyword draft 6 does
+		// define, so it is refused rather than ignored.
+		if len(s.MalformedKeywords()) != 0 {
+			t.Errorf("the root refused %v; draft 6 does not define those keywords at all", s.MalformedKeywords())
+		}
+		if bad := s.Properties["a"].MalformedKeywords(); len(bad) != 1 || bad[0].Keyword != "required" {
+			t.Errorf("the property's boolean required: malformed %v, want it refused", bad)
 		}
 		if prop := s.Properties["a"]; prop == nil || len(prop.Required) != 0 {
 			t.Errorf("the property kept %v in its required; the sentinel that was not promoted must be cleared too",
@@ -673,7 +693,7 @@ func TestDependentSchemasIsHonouredBeforeItArrived(t *testing.T) {
 				"discards a stated constraint in silence", uri)
 			continue
 		}
-		if branch.MinLength == nil || *branch.MinLength != 3 {
+		if branch.MinLength == nil || branch.MinLength.Int() != 3 {
 			t.Errorf("dependentSchemas[bar].minLength = %v under %s, want 3; the branch survived but "+
 				"its own keywords did not", branch.MinLength, uri)
 		}

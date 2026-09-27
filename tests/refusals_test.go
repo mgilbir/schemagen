@@ -32,14 +32,26 @@ var pinnedRefusals = map[string][]string{
 	// generateForCompile: the CLI default, with the file resolver. Shared by
 	// TestGeneratedCorpusCompiles and TestGeneratedCorpusIsFieldAligned.
 	"corpus/default": {
+		"testdata/schemas/adversarial/degen/null-contains.json",                               // #/contains: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/degen/null-dependentschemas-val.json",                   // #/dependentSchemas/a: schema is null (a schema must be an object or boolean)
+		"testdata/schemas/adversarial/degen/null-if-then.json",                                // #/else: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/degen/null-in-allof.json",                               // #/allOf/0: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/degen/null-in-defs.json",                                // #/$defs/a: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/degen/null-in-oneof.json",                               // #/oneOf/0: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/degen/null-in-prefixitems.json",                         // #/prefixItems/0: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/degen/null-in-properties.json",                          // #/properties/a: schema is null (a schema must be an object or boolean)
+		"testdata/schemas/adversarial/degen/null-items.json",                                  // #/items: schema is null (a schema must be an object or boolean)
+		"testdata/schemas/adversarial/degen/null-not.json",                                    // #/not: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/degen/null-patternprops-val.json",                       // #/patternProperties/^a: schema is null (a schema must be an object or boolean)
+		"testdata/schemas/adversarial/degen/null-propertynames.json",                          // #/propertyNames: schema is null (a schema must be an object or boolean)
+		"testdata/schemas/adversarial/draft/deps-array-of-numbers.json",                       // #/dependencies/a: must be an array of property names, got: [1,2,3]
+		"testdata/schemas/adversarial/draft/draft3-disallow-junk.json",                        // #/disallow/not: a schema must be an object or a boolean, got: "a type"
+		"testdata/schemas/adversarial/draft/draft3-extends-junk.json",                         // #/extends: must be a schema object, got: "a string"
+		"testdata/schemas/adversarial/draft/draft3-required-in-2020.json",                     // #/properties/a/required: "required" is written as a boolean on the property's own s...
+		"testdata/schemas/adversarial/draft/items-array-2020.json",                            // #/items: "items" is written as an array of schemas, one per position, which is drafts 3...
 		"testdata/schemas/adversarial/malformed/dynamicref-nonexistent.json",                  // cannot resolve $dynamicRef "#nope"
+		"testdata/schemas/adversarial/malformed/id-control-chars.json",                        // #/$id: not a URI-reference: parse "http://x/\x00a": net/url: invalid control character...
+		"testdata/schemas/adversarial/malformed/id-invalid-url.json",                          // #/$id: not a URI-reference: parse "://bad": missing protocol scheme
 		"testdata/schemas/adversarial/malformed/recursiveref-nonexistent.json",                // cannot resolve $recursiveRef "#nope"
 		"testdata/schemas/adversarial/malformed/ref-allof-oob.json",                           // cannot resolve $ref "#/allOf/17"
 		"testdata/schemas/adversarial/malformed/ref-bad-escape.json",                          // cannot resolve $ref "#/%zz/foo"
@@ -71,10 +83,13 @@ var pinnedRefusals = map[string][]string{
 		"testdata/schemas/adversarial/malformed/ref-with-space.json",                          // cannot resolve $ref "#/$defs/a b"
 		"testdata/schemas/adversarial/nil2/allof-null-and-obj.json",                           // #/allOf/0: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/nil2/anyof-null.json",                                   // #/anyOf/0: schema is null (a schema must be an object or boolean)
-		"testdata/schemas/adversarial/nil2/definitions-null.json",                             // #/$defs/a: schema is null (a schema must be an object or boolean)
+		"testdata/schemas/adversarial/nil2/definitions-null.json",                             // #/definitions/a: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/nil2/defs-null-noref.json",                              // #/$defs/a: schema is null (a schema must be an object or boolean)
+		"testdata/schemas/adversarial/nil2/dependencies-null-val.json",                        // #/dependencies/a: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/nil2/dependentschemas-null-min.json",                    // #/dependentSchemas/a: schema is null (a schema must be an object or boolean)
-		"testdata/schemas/adversarial/nil2/extends-array-null.json",                           // #/allOf/0: schema is null (a schema must be an object or boolean)
+		"testdata/schemas/adversarial/nil2/disallow-array-null.json",                          // #/disallow/0: schema is null (a schema must be an object or boolean)
+		"testdata/schemas/adversarial/nil2/extends-array-null.json",                           // #/extends/0: schema is null (a schema must be an object or boolean)
+		"testdata/schemas/adversarial/nil2/extends-null.json",                                 // #/extends: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/nil2/if-allof-null.json",                                // #/if/allOf/0: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/nil2/items-allof-null.json",                             // #/items/allOf/0: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/nil2/items-array-null.json",                             // #/items/0: schema is null (a schema must be an object or boolean)
@@ -87,6 +102,11 @@ var pinnedRefusals = map[string][]string{
 		"testdata/schemas/adversarial/nil2/oneof-null-min.json",                               // #/oneOf/0: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/nil2/patternprops-null-min.json",                        // #/patternProperties/^a: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/adversarial/nil2/prefixitems-null-min.json",                         // #/prefixItems/0: schema is null (a schema must be an object or boolean)
+		"testdata/schemas/adversarial/nil2/typeschemas-null.json",                             // #/type/1: must be a type name or a schema, got: null
+		"testdata/schemas/adversarial/num/mincontains-maxcontains.json",                       // #/maxContains: -5: must be a non-negative integer
+		"testdata/schemas/adversarial/num/negative-maxitems.json",                             // #/maxItems: -1: must be a non-negative integer
+		"testdata/schemas/adversarial/num/negative-minlength.json",                            // #/minLength: -5: must be a non-negative integer
+		"testdata/schemas/regression/disallow_draft3_null_entry.json",                         // #/disallow/1: schema is null (a schema must be an object or boolean)
 		"testdata/schemas/regression/two_callers_2019/a.json",                                 // generating root type: type Root: a $recursiveRef under this schema is answered by the $...
 		"testdata/schemas/regression/two_callers_2019/b.json",                                 // generating root type: type Root: a $recursiveRef under this schema is answered by the $...
 		"testdata/schemas/regression/two_callers_2019/main.json",                              // generating root type: type Root: a $recursiveRef under this schema is answered by the $...
@@ -97,14 +117,26 @@ var pinnedRefusals = map[string][]string{
 	// generateExact: the CLI default plus --exact-numbers. The same set as the
 	// default today; the flag refuses nothing on its own.
 	"corpus/exact-numbers": {
+		"testdata/schemas/adversarial/degen/null-contains.json",
 		"testdata/schemas/adversarial/degen/null-dependentschemas-val.json",
+		"testdata/schemas/adversarial/degen/null-if-then.json",
 		"testdata/schemas/adversarial/degen/null-in-allof.json",
 		"testdata/schemas/adversarial/degen/null-in-defs.json",
 		"testdata/schemas/adversarial/degen/null-in-oneof.json",
 		"testdata/schemas/adversarial/degen/null-in-prefixitems.json",
 		"testdata/schemas/adversarial/degen/null-in-properties.json",
+		"testdata/schemas/adversarial/degen/null-items.json",
+		"testdata/schemas/adversarial/degen/null-not.json",
 		"testdata/schemas/adversarial/degen/null-patternprops-val.json",
+		"testdata/schemas/adversarial/degen/null-propertynames.json",
+		"testdata/schemas/adversarial/draft/deps-array-of-numbers.json",
+		"testdata/schemas/adversarial/draft/draft3-disallow-junk.json",
+		"testdata/schemas/adversarial/draft/draft3-extends-junk.json",
+		"testdata/schemas/adversarial/draft/draft3-required-in-2020.json",
+		"testdata/schemas/adversarial/draft/items-array-2020.json",
 		"testdata/schemas/adversarial/malformed/dynamicref-nonexistent.json",
+		"testdata/schemas/adversarial/malformed/id-control-chars.json",
+		"testdata/schemas/adversarial/malformed/id-invalid-url.json",
 		"testdata/schemas/adversarial/malformed/recursiveref-nonexistent.json",
 		"testdata/schemas/adversarial/malformed/ref-allof-oob.json",
 		"testdata/schemas/adversarial/malformed/ref-bad-escape.json",
@@ -138,8 +170,11 @@ var pinnedRefusals = map[string][]string{
 		"testdata/schemas/adversarial/nil2/anyof-null.json",
 		"testdata/schemas/adversarial/nil2/definitions-null.json",
 		"testdata/schemas/adversarial/nil2/defs-null-noref.json",
+		"testdata/schemas/adversarial/nil2/dependencies-null-val.json",
 		"testdata/schemas/adversarial/nil2/dependentschemas-null-min.json",
+		"testdata/schemas/adversarial/nil2/disallow-array-null.json",
 		"testdata/schemas/adversarial/nil2/extends-array-null.json",
+		"testdata/schemas/adversarial/nil2/extends-null.json",
 		"testdata/schemas/adversarial/nil2/if-allof-null.json",
 		"testdata/schemas/adversarial/nil2/items-allof-null.json",
 		"testdata/schemas/adversarial/nil2/items-array-null.json",
@@ -152,6 +187,11 @@ var pinnedRefusals = map[string][]string{
 		"testdata/schemas/adversarial/nil2/oneof-null-min.json",
 		"testdata/schemas/adversarial/nil2/patternprops-null-min.json",
 		"testdata/schemas/adversarial/nil2/prefixitems-null-min.json",
+		"testdata/schemas/adversarial/nil2/typeschemas-null.json",
+		"testdata/schemas/adversarial/num/mincontains-maxcontains.json",
+		"testdata/schemas/adversarial/num/negative-maxitems.json",
+		"testdata/schemas/adversarial/num/negative-minlength.json",
+		"testdata/schemas/regression/disallow_draft3_null_entry.json",
 		"testdata/schemas/regression/two_callers_2019/a.json",
 		"testdata/schemas/regression/two_callers_2019/b.json",
 		"testdata/schemas/regression/two_callers_2019/main.json",
@@ -161,8 +201,11 @@ var pinnedRefusals = map[string][]string{
 	},
 	// TestHelperFileDeclaresEveryHelperCalled over testdata/schemas without the
 	// adversarial corpus, format as the dialect says. Both two_callers pairs are
-	// refused on purpose: see tests/two_callers_test.go.
+	// refused on purpose: see tests/two_callers_test.go. So is draft 3's
+	// {"disallow":[..., null, ...]}: a null where a schema belongs is a malformed
+	// value of a keyword the document's dialect defines.
 	"helper-file/dialect": {
+		"testdata/schemas/regression/disallow_draft3_null_entry.json",
 		"testdata/schemas/regression/two_callers_2019/a.json",
 		"testdata/schemas/regression/two_callers_2019/b.json",
 		"testdata/schemas/regression/two_callers_2019/main.json",
@@ -172,6 +215,7 @@ var pinnedRefusals = map[string][]string{
 	},
 	// The same, with --format-assertion.
 	"helper-file/format-assertion": {
+		"testdata/schemas/regression/disallow_draft3_null_entry.json",
 		"testdata/schemas/regression/two_callers_2019/a.json",
 		"testdata/schemas/regression/two_callers_2019/b.json",
 		"testdata/schemas/regression/two_callers_2019/main.json",

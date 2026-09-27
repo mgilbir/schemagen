@@ -1,0 +1,8 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {"a": {"type": "integer"}},
+  "minLength": 1e19,
+  "maxLength": 1e20,
+  "minItems": 1e21,
+  "maxItems": 1e22
+}

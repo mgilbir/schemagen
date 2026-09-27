@@ -10,7 +10,7 @@ import "testing"
 // matches no field exactly is matched a second time case-insensitively -- so
 // every keyword on schema.Schema was accepted in every casing and enforced as
 // the keyword it resembles. The fix is in Schema.UnmarshalJSON; see
-// exactKeywordObject. pkg/schema holds the parse-level guards, and this is what
+// pkg/schema/parse.go. pkg/schema holds the parse-level guards, and this is what
 // says the verdict a caller actually gets changed with them.
 //
 // Each property of the first fixture carries one facet, and each is a wrong

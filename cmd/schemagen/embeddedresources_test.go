@@ -53,8 +53,10 @@ func TestEmbeddedResourcesClaimingOneDefinitionNameKeepTheirOwnSchema(t *testing
 	// nothing about which of the resources in it declared the name.
 	for _, want := range []string{
 		"2 documents claim the Go type name X",
-		"https://ex.test/a.json (reached by $ref) $defs/X becomes AX",
-		"https://ex.test/b.json (reached by $ref) $defs/X becomes BX",
+		// The location is the resource's own: its fragment is relative to the
+		// resource the $id names, not to the file that embeds it.
+		"https://ex.test/a.json (reached by $ref) #/$defs/X becomes AX",
+		"https://ex.test/b.json (reached by $ref) #/$defs/X becomes BX",
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("missing %q in:\n%s", want, stderr)
@@ -107,8 +109,8 @@ func TestEmbeddedResourcesClaimingOneAnchorNameKeepTheirOwnSchema(t *testing.T) 
 		"2 documents claim the Go type name Tee",
 		// The claim is named Tee, the way generation names it, and *described*
 		// by the key its author wrote it under.
-		"https://ex.test/a.json (reached by $ref) $defs/P becomes ATee",
-		"https://ex.test/b.json (reached by $ref) $defs/Q becomes BTee",
+		"https://ex.test/a.json (reached by $ref) #/$defs/P becomes ATee",
+		"https://ex.test/b.json (reached by $ref) #/$defs/Q becomes BTee",
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("missing %q in:\n%s", want, stderr)
@@ -149,8 +151,8 @@ func TestReferencedDocumentsClaimingOneAnchorNameKeepTheirOwnSchema(t *testing.T
 	}
 	for _, want := range []string{
 		"2 documents claim the Go type name Tee",
-		"a.json (reached by $ref) $defs/P becomes ATee",
-		"b.json (reached by $ref) $defs/Q becomes BTee",
+		"a.json (reached by $ref) #/$defs/P becomes ATee",
+		"b.json (reached by $ref) #/$defs/Q becomes BTee",
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("missing %q in:\n%s", want, stderr)
@@ -242,8 +244,8 @@ func TestEmbeddedResourcesOfAReferencedDocumentAreNamedByTheirOwnID(t *testing.T
 				t.Fatalf("generate: %v\nstderr:\n%s", err, stderr)
 			}
 			for _, want := range []string{
-				"https://ex.test/c-a.json (reached by $ref) $defs/X becomes CAX",
-				"https://ex.test/c-b.json (reached by $ref) $defs/X becomes CBX",
+				"https://ex.test/c-a.json (reached by $ref) #/$defs/X becomes CAX",
+				"https://ex.test/c-b.json (reached by $ref) #/$defs/X becomes CBX",
 			} {
 				if !strings.Contains(stderr, want) {
 					t.Errorf("missing %q in:\n%s", want, stderr)

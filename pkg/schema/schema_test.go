@@ -1801,6 +1801,8 @@ func TestSchemaFieldsAreClassifiedForPresence(t *testing.T) {
 		"Enum":        "enum",  // omitempty: `"enum": []` admits nothing and marshals to nothing
 		"ConstIsNull": "const", // json:"-": the only record that `"const": null` was written
 		"TypeSchemas": "type",  // json:"-": draft 3 schema-valued entries of a "type" array
+		// json:"-": draft 3's per-property boolean; Normalize consumes it
+		"Draft3Required": "required",
 	}
 	// notKeywords are the fields the marshaled form also erases and which state
 	// nothing a keyword reader needs. The value is the reason.
@@ -1808,10 +1810,22 @@ func TestSchemaFieldsAreClassifiedForPresence(t *testing.T) {
 		"BooleanSchema":    "a bare true/false; every reader asks IsBooleanSchema first, and it has no keyword name to report",
 		"Extensions":       "unknown keywords, unioned in by name at each reader that wants them",
 		"extensionSchemas": "a parse cache for Extensions",
-		"DetectedDraft":    "which draft the document was read under, not something it asserts",
-		"BaseURI":          "where a relative $ref resolves from",
-		"DocumentRoot":     "where a JSON Pointer fragment resolves from",
-		"RetrievalURI":     "which URL answered a fetch, which is where a relative $ref resolves from when the document declares no $id",
+		"malformed":        "which keywords' values were malformed; MalformedKeywords reports them, and a malformed keyword's field is left unset",
+		"normalized":       "whether Normalize has rewritten the node, not something the document states",
+		"srcChildren":      "where the document wrote each subschema, relative to this node; locates nodes and answers $ref into rewritten keywords, not a keyword",
+		"src":              "where the document wrote this node (SourceLocation); for diagnostics, not a keyword",
+		"droppedKeywords":  "the values of keywords the dialect does not define, kept for $ref only, as Extensions keeps unknown ones",
+		// The parsed forms of three raw keywords. The raw field beside each is
+		// set whenever the parsed one is, and it marshals, so the keyword is
+		// already in the marshaled set.
+		"ExtendsSchemas":     "the parsed form of Extends, which marshals",
+		"DisallowSchemas":    "the parsed form of Disallow, which marshals",
+		"DependencySchemas":  "the parsed form of Dependencies, which marshals",
+		"DependencyRequired": "the parsed form of Dependencies, which marshals",
+		"DetectedDraft":      "which draft the document was read under, not something it asserts",
+		"BaseURI":            "where a relative $ref resolves from",
+		"DocumentRoot":       "where a JSON Pointer fragment resolves from",
+		"RetrievalURI":       "which URL answered a fetch, which is where a relative $ref resolves from when the document declares no $id",
 	}
 	// emptyIsAbsent are the slice and map fields whose omitempty tag drops an
 	// empty value and for which that is the right reading: written empty they
@@ -1931,7 +1945,7 @@ func TestSchemaFieldsAreClassifiedForPresence(t *testing.T) {
 }
 
 func flexIntPtr(v int) *FlexInt {
-	f := FlexInt(v)
+	f := NewFlexInt(v)
 	return &f
 }
 

@@ -81,6 +81,10 @@ type nameClaim struct {
 	// document's root type.
 	defKey string
 	node   *schema.Schema
+	// root is the document or resource path names -- the listed document's
+	// root, or the resource a $ref reached -- which the claim's location is
+	// written relative to. See definitionLocation.
+	root *schema.Schema
 	// final is the name the claim ends up with: the name it asked for, or the
 	// qualified one when the claims on that name could not be merged.
 	final string
@@ -97,16 +101,32 @@ type nameClaim struct {
 	external bool
 }
 
-// what describes the claim in the schema author's own terms.
+// what describes the claim in the schema author's own terms: its root type, or
+// where the document wrote the definition. See definitionLocation.
 func (c nameClaim) what() string {
-	switch {
-	case c.defKey == "":
+	if c.defKey == "" {
 		return "root type"
-	case c.keyword == "":
-		return c.defKey
-	default:
-		return c.keyword + "/" + c.defKey
 	}
+	return definitionLocation(c.node, c.root, c.keyword, c.defKey)
+}
+
+// definitionLocation names where a document wrote a definition: the location
+// its node was read at (schema.Schema.SourceLocation), relative to root -- the
+// document or embedded resource the message names it in -- as a URI fragment
+// (schema.PointerFragment). The claims are collected from the
+// normalized document, where a draft-07 document's "definitions" is mirrored
+// as "$defs" and "$defs" is read first -- so naming the keyword the collection
+// found it under told the author about a "$defs" their document does not
+// contain. keyword/key, the collection's own path, is the fallback for a node
+// no document located.
+func definitionLocation(node, root *schema.Schema, keyword, key string) string {
+	if tokens, ok := node.SourceLocationWithin(root); ok {
+		return schema.PointerFragment(tokens...)
+	}
+	if keyword == "" {
+		return key
+	}
+	return keyword + "/" + key
 }
 
 // ownRoot reports whether the claim is the root type of a document the caller
@@ -463,7 +483,7 @@ func collectNameClaims(paths []string, byPath map[string]*schema.Schema, externa
 					return // the same node reached twice ($defs mirrored into definitions)
 				}
 			}
-			claims[name] = append(claims[name], nameClaim{path: path, keyword: keyword, defKey: defKey, node: node, final: name})
+			claims[name] = append(claims[name], nameClaim{path: path, keyword: keyword, defKey: defKey, node: node, root: s, final: name})
 		}
 
 		add(rootNameOf(path, s), "", "", s)
@@ -911,7 +931,7 @@ func explainPinnedNameCollision(schemaPath string, collision *generator.PinnedNa
 			for _, key := range sortedSchemaKeys(container.m) {
 				if name, ok := pinned[container.m[key]]; ok {
 					if _, seen := owner[name]; !seen {
-						owner[name] = fmt.Sprintf("%s/%s in %s", container.keyword, key, path)
+						owner[name] = fmt.Sprintf("%s in %s", definitionLocation(container.m[key], s, container.keyword, key), path)
 					}
 				}
 			}

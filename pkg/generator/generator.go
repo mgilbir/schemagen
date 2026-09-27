@@ -274,6 +274,11 @@ type Generator struct {
 	// each node is walked once however many refs reach it.
 	nullChecked map[*schema.Schema]bool
 
+	// homeDoc is the root of the document the schema handed to Generate was
+	// read from (schema.Schema.SourceLocation), whose locations a diagnostic
+	// writes as a bare fragment. Nil for a schema no document wrote.
+	homeDoc *schema.Schema
+
 	// priorTypeDefs holds the type definitions emitted by earlier Generate
 	// calls on this generator, which in shared-types mode are declarations of
 	// the same Go package written to other files.
@@ -384,7 +389,8 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// something to skip over.
 	g.nullChecked = make(map[*schema.Schema]bool)
 	g.nullSubschemaErr = nil
-	if err := checkNullSubschemas(s, "#", g.nullChecked); err != nil {
+	g.homeDoc, _, _ = s.SourceLocation()
+	if err := checkNullSubschemas(s, "#", g.homeDoc, g.nullChecked); err != nil {
 		return nil, err
 	}
 
@@ -4113,12 +4119,12 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 	var validations []ValidationRule
 	if g.validationKeywordsEnabled() && s.MaxProperties != nil {
 		validations = append(validations, ValidationRule{
-			RuleType: "maxProperties", Value: s.MaxProperties.Int(),
+			RuleType: "maxProperties", Value: countBound(*s.MaxProperties),
 		})
 	}
 	if g.validationKeywordsEnabled() && s.MinProperties != nil {
 		validations = append(validations, ValidationRule{
-			RuleType: "minProperties", Value: s.MinProperties.Int(),
+			RuleType: "minProperties", Value: countBound(*s.MinProperties),
 		})
 	}
 	// Required fields on property-less object schemas (e.g., {"type":"object","required":["foo"]}).
@@ -5324,13 +5330,13 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	// (tracked in _jsonKeys), so they require the custom unmarshaler.
 	if g.validationKeywordsEnabled() && s.MaxProperties != nil {
 		validations = append(validations, ValidationRule{
-			RuleType: "maxProperties", Value: s.MaxProperties.Int(),
+			RuleType: "maxProperties", Value: countBound(*s.MaxProperties),
 		})
 		needsUnmarshal = true
 	}
 	if g.validationKeywordsEnabled() && s.MinProperties != nil {
 		validations = append(validations, ValidationRule{
-			RuleType: "minProperties", Value: s.MinProperties.Int(),
+			RuleType: "minProperties", Value: countBound(*s.MinProperties),
 		})
 		needsUnmarshal = true
 	}
@@ -6119,7 +6125,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			var tupleItems []TupleItemDef
 			var tupleTail *TupleItemDef
 			var containsDef *ContainsDef
-			var minContains, maxContains *int
+			var minContains, maxContains *CountBound
 			var unevalItems *UnevaluatedItemsDef
 			var itemValidations []ItemValidationDef
 			if g.validationKeywordsEnabled() {
@@ -10686,7 +10692,7 @@ func (g *Generator) resolveRefInContextAs(keyword, ref string, ctx *schema.Schem
 	// would reach the generator unexamined and panic. Refuse the node instead;
 	// the recorded error is what Generate reports.
 	if resolved != nil {
-		if err := checkNullSubschemas(resolved, ref, g.nullChecked); err != nil {
+		if err := checkNullSubschemas(resolved, ref, g.homeDoc, g.nullChecked); err != nil {
 			if g.nullSubschemaErr == nil {
 				g.nullSubschemaErr = err
 			}
@@ -14573,10 +14579,10 @@ func extractUnevalItemChecks(ui *schema.Schema) []ContainsCheck {
 		checks = append(checks, ContainsCheck{CheckType: "exclusiveMaximum", Value: *ui.ExclusiveMaximum.Number})
 	}
 	if ui.MinLength != nil {
-		checks = append(checks, ContainsCheck{CheckType: "minLength", Value: ui.MinLength.Int()})
+		checks = append(checks, ContainsCheck{CheckType: "minLength", Value: countBound(*ui.MinLength)})
 	}
 	if ui.MaxLength != nil {
-		checks = append(checks, ContainsCheck{CheckType: "maxLength", Value: ui.MaxLength.Int()})
+		checks = append(checks, ContainsCheck{CheckType: "maxLength", Value: countBound(*ui.MaxLength)})
 	}
 	if ui.Pattern != nil {
 		checks = append(checks, ContainsCheck{CheckType: "pattern", Value: *ui.Pattern})
@@ -16183,7 +16189,7 @@ func itemLevelVar(isMap bool, level int) string {
 // materialized under, exactly as it does for a field. The caller passes the
 // prefix its own element type was resolved under, so the name agrees with every
 // other type minted for this container.
-func (g *Generator) elemContainsDef(s *schema.Schema, parentName string, elemType GoType) (*ContainsDef, *int, *int) {
+func (g *Generator) elemContainsDef(s *schema.Schema, parentName string, elemType GoType) (*ContainsDef, *CountBound, *CountBound) {
 	if s == nil || s.Contains == nil || !g.validationKeywordsEnabled() {
 		return nil, nil, nil
 	}
@@ -17683,13 +17689,13 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 	if s.MinLength != nil {
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
-			RuleType: "minLength", Value: s.MinLength.Int(),
+			RuleType: "minLength", Value: countBound(*s.MinLength),
 		})
 	}
 	if s.MaxLength != nil {
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
-			RuleType: "maxLength", Value: s.MaxLength.Int(),
+			RuleType: "maxLength", Value: countBound(*s.MaxLength),
 		})
 	}
 	if s.Minimum != nil {
@@ -17715,13 +17721,13 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 	if s.MinItems != nil {
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
-			RuleType: "minItems", Value: s.MinItems.Int(),
+			RuleType: "minItems", Value: countBound(*s.MinItems),
 		})
 	}
 	if s.MaxItems != nil {
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
-			RuleType: "maxItems", Value: s.MaxItems.Int(),
+			RuleType: "maxItems", Value: countBound(*s.MaxItems),
 		})
 	}
 	// A tuple whose tail is closed fixes the array's length, in either spelling.
@@ -19524,13 +19530,11 @@ func (g *Generator) extractPropertyNamesDef(pn *schema.Schema) *PropertyNamesDef
 	hasConstraint := false
 
 	if pn.MaxLength != nil {
-		v := int(*pn.MaxLength)
-		def.MaxLength = &v
+		def.MaxLength = countBoundPtr(pn.MaxLength)
 		hasConstraint = true
 	}
 	if pn.MinLength != nil {
-		v := int(*pn.MinLength)
-		def.MinLength = &v
+		def.MinLength = countBoundPtr(pn.MinLength)
 		hasConstraint = true
 	}
 	// The empty pattern matches every string, so it constrains nothing; and
@@ -19835,13 +19839,11 @@ func (g *Generator) extractDependentSchemaConstraints(s *schema.Schema, taken su
 
 		// minProperties / maxProperties from the sub-schema.
 		if depSchema.MinProperties != nil {
-			v := depSchema.MinProperties.Int()
-			constraint.MinProperties = &v
+			constraint.MinProperties = countBoundPtr(depSchema.MinProperties)
 			hasConstraint = true
 		}
 		if depSchema.MaxProperties != nil {
-			v := depSchema.MaxProperties.Int()
-			constraint.MaxProperties = &v
+			constraint.MaxProperties = countBoundPtr(depSchema.MaxProperties)
 			hasConstraint = true
 		}
 
@@ -19859,7 +19861,7 @@ func (g *Generator) extractDependentSchemaConstraints(s *schema.Schema, taken su
 // its name because TestContainsGateNamesEveryKeywordTheChecksRead reads that
 // function's source to hold containsCheckKeywords against what it actually
 // consults, and a wrapper is not what that gate is about.
-func (g *Generator) containsDefFor(s *schema.Schema, parentName string, holder GoType) (*ContainsDef, *int, *int) {
+func (g *Generator) containsDefFor(s *schema.Schema, parentName string, holder GoType) (*ContainsDef, *CountBound, *CountBound) {
 	def, minC, maxC := g.extractContainsDef(s, parentName)
 	if def != nil {
 		// What the flag decides is how a candidate element is decoded for the
@@ -19927,7 +19929,7 @@ func (g *Generator) markRawElementContains(def *ContainsDef, contains *schema.Sc
 // extractContainsDef resolves a `contains` sub-schema into the check it carries.
 // parentName names the type a sub-schema too rich for Checks is materialized
 // under; see ContainsDef.TypeName.
-func (g *Generator) extractContainsDef(s *schema.Schema, parentName string) (*ContainsDef, *int, *int) {
+func (g *Generator) extractContainsDef(s *schema.Schema, parentName string) (*ContainsDef, *CountBound, *CountBound) {
 	if s.Contains == nil {
 		return nil, nil, nil
 	}
@@ -19935,16 +19937,8 @@ func (g *Generator) extractContainsDef(s *schema.Schema, parentName string) (*Co
 	containsSch := s.Contains
 
 	// Compute minContains and maxContains.
-	var minC *int
-	var maxC *int
-	if s.MinContains != nil {
-		v := int(*s.MinContains)
-		minC = &v
-	}
-	if s.MaxContains != nil {
-		v := int(*s.MaxContains)
-		maxC = &v
-	}
+	minC := countBoundPtr(s.MinContains)
+	maxC := countBoundPtr(s.MaxContains)
 
 	// A sub-schema admitting nothing: no element can ever match. `{"enum":[]}`
 	// says that as much as `false` does, and reached neither this arm nor the
@@ -20051,10 +20045,10 @@ func (g *Generator) extractContainsDef(s *schema.Schema, parentName string) (*Co
 	}
 	// String constraints
 	if containsSch.MinLength != nil {
-		checks = append(checks, ContainsCheck{CheckType: "minLength", Value: *containsSch.MinLength})
+		checks = append(checks, ContainsCheck{CheckType: "minLength", Value: countBound(*containsSch.MinLength)})
 	}
 	if containsSch.MaxLength != nil {
-		checks = append(checks, ContainsCheck{CheckType: "maxLength", Value: *containsSch.MaxLength})
+		checks = append(checks, ContainsCheck{CheckType: "maxLength", Value: countBound(*containsSch.MaxLength)})
 	}
 	if containsSch.Pattern != nil && *containsSch.Pattern != "" {
 		checks = append(checks, ContainsCheck{CheckType: "pattern", Value: *containsSch.Pattern})
@@ -20698,20 +20692,20 @@ func extractPatternPropertyValidationRules(s *schema.Schema) []ValidationRule {
 	}
 	// String constraints.
 	if s.MinLength != nil {
-		rules = append(rules, ValidationRule{RuleType: "ppMinLength", Value: s.MinLength.Int()})
+		rules = append(rules, ValidationRule{RuleType: "ppMinLength", Value: countBound(*s.MinLength)})
 	}
 	if s.MaxLength != nil {
-		rules = append(rules, ValidationRule{RuleType: "ppMaxLength", Value: s.MaxLength.Int()})
+		rules = append(rules, ValidationRule{RuleType: "ppMaxLength", Value: countBound(*s.MaxLength)})
 	}
 	if s.Pattern != nil {
 		rules = append(rules, ValidationRule{RuleType: "ppPattern", Value: *s.Pattern})
 	}
 	// Array constraints.
 	if s.MinItems != nil {
-		rules = append(rules, ValidationRule{RuleType: "ppMinItems", Value: s.MinItems.Int()})
+		rules = append(rules, ValidationRule{RuleType: "ppMinItems", Value: countBound(*s.MinItems)})
 	}
 	if s.MaxItems != nil {
-		rules = append(rules, ValidationRule{RuleType: "ppMaxItems", Value: s.MaxItems.Int()})
+		rules = append(rules, ValidationRule{RuleType: "ppMaxItems", Value: countBound(*s.MaxItems)})
 	}
 	return rules
 }

@@ -107,12 +107,12 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- end}}
 	{{- range .Validations}}
 	{{- if eq .RuleType "minLength"}}
-	if utf8.RuneCountInString(string({{$recv}}._value)) < {{numLit .Value}} {
+	if utf8.RuneCountInString(string({{$recv}}._value)) < {{countExpr .Value}} {
 		return jsonValueErrorf("length %d is less than minimum {{fmtText .Value}}", utf8.RuneCountInString(string({{$recv}}._value)))
 	}
 	{{- end}}
 	{{- if eq .RuleType "maxLength"}}
-	if utf8.RuneCountInString(string({{$recv}}._value)) > {{numLit .Value}} {
+	if utf8.RuneCountInString(string({{$recv}}._value)) > {{countExpr .Value}} {
 		return jsonValueErrorf("length %d exceeds maximum {{fmtText .Value}}", utf8.RuneCountInString(string({{$recv}}._value)))
 	}
 	{{- end}}
@@ -122,7 +122,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		return jsonValueErrorf("%v is less than minimum {{numBoundMsg .}}", {{$recv}}._value)
 	}
 	{{- else}}
-	if float64({{$recv}}._value) < {{numLit .Value}} {
+	if float64({{$recv}}._value) < {{countExpr .Value}} {
 		return jsonValueErrorf("%v is less than minimum {{fmtText .Value}}", {{$recv}}._value)
 	}
 	{{- end}}
@@ -133,7 +133,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		return jsonValueErrorf("%v exceeds maximum {{numBoundMsg .}}", {{$recv}}._value)
 	}
 	{{- else}}
-	if float64({{$recv}}._value) > {{numLit .Value}} {
+	if float64({{$recv}}._value) > {{countExpr .Value}} {
 		return jsonValueErrorf("%v exceeds maximum {{fmtText .Value}}", {{$recv}}._value)
 	}
 	{{- end}}
@@ -144,7 +144,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		return jsonValueErrorf("%v must be greater than {{numBoundMsg .}}", {{$recv}}._value)
 	}
 	{{- else}}
-	if float64({{$recv}}._value) <= {{numLit .Value}} {
+	if float64({{$recv}}._value) <= {{countExpr .Value}} {
 		return jsonValueErrorf("%v must be greater than {{fmtText .Value}}", {{$recv}}._value)
 	}
 	{{- end}}
@@ -155,7 +155,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		return jsonValueErrorf("%v must be less than {{numBoundMsg .}}", {{$recv}}._value)
 	}
 	{{- else}}
-	if float64({{$recv}}._value) >= {{numLit .Value}} {
+	if float64({{$recv}}._value) >= {{countExpr .Value}} {
 		return jsonValueErrorf("%v must be less than {{fmtText .Value}}", {{$recv}}._value)
 	}
 	{{- end}}
@@ -203,12 +203,12 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- template "string_content_check" (mkStringContentCtx (printf "string(%s._value)" $recv) "" .)}}
 	{{- end}}
 	{{- if eq .RuleType "minItems"}}
-	if len({{$recv}}._value) < {{numLit .Value}} {
+	if len({{$recv}}._value) < {{countExpr .Value}} {
 		return jsonValueErrorf("has %d items, minimum is {{fmtText .Value}}", len({{$recv}}._value))
 	}
 	{{- end}}
 	{{- if eq .RuleType "maxItems"}}
-	if len({{$recv}}._value) > {{numLit .Value}} {
+	if len({{$recv}}._value) > {{countExpr .Value}} {
 		return jsonValueErrorf("has %d items, maximum is {{fmtText .Value}}", len({{$recv}}._value))
 	}
 	{{- end}}
@@ -243,37 +243,37 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			_variantValid = false
 			{{- end}}
 			{{- if eq .RuleType "minLength"}}
-			if utf8.RuneCountInString(string({{$recv}}._value)) < {{numLit .Value}} { _variantValid = false }
+			if utf8.RuneCountInString(string({{$recv}}._value)) < {{countExpr .Value}} { _variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "maxLength"}}
-			if utf8.RuneCountInString(string({{$recv}}._value)) > {{numLit .Value}} { _variantValid = false }
+			if utf8.RuneCountInString(string({{$recv}}._value)) > {{countExpr .Value}} { _variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "minimum"}}
 			{{- if .ExactCompare}}
 			if {{numOperand . (printf "%s._value" $recv)}} < {{numBound .}} { _variantValid = false }
 			{{- else}}
-			if float64({{$recv}}._value) < {{numLit .Value}} { _variantValid = false }
+			if float64({{$recv}}._value) < {{countExpr .Value}} { _variantValid = false }
 			{{- end}}
 			{{- end}}
 			{{- if eq .RuleType "maximum"}}
 			{{- if .ExactCompare}}
 			if {{numOperand . (printf "%s._value" $recv)}} > {{numBound .}} { _variantValid = false }
 			{{- else}}
-			if float64({{$recv}}._value) > {{numLit .Value}} { _variantValid = false }
+			if float64({{$recv}}._value) > {{countExpr .Value}} { _variantValid = false }
 			{{- end}}
 			{{- end}}
 			{{- if eq .RuleType "exclusiveMinimum"}}
 			{{- if .ExactCompare}}
 			if {{numOperand . (printf "%s._value" $recv)}} <= {{numBound .}} { _variantValid = false }
 			{{- else}}
-			if float64({{$recv}}._value) <= {{numLit .Value}} { _variantValid = false }
+			if float64({{$recv}}._value) <= {{countExpr .Value}} { _variantValid = false }
 			{{- end}}
 			{{- end}}
 			{{- if eq .RuleType "exclusiveMaximum"}}
 			{{- if .ExactCompare}}
 			if {{numOperand . (printf "%s._value" $recv)}} >= {{numBound .}} { _variantValid = false }
 			{{- else}}
-			if float64({{$recv}}._value) >= {{numLit .Value}} { _variantValid = false }
+			if float64({{$recv}}._value) >= {{countExpr .Value}} { _variantValid = false }
 			{{- end}}
 			{{- end}}
 			{{- if eq .RuleType "multipleOf"}}
@@ -290,10 +290,10 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			if _matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}}._value)); !_matched { _variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "minItems"}}
-			if len({{$recv}}._value) < {{numLit .Value}} { _variantValid = false }
+			if len({{$recv}}._value) < {{countExpr .Value}} { _variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "maxItems"}}
-			if len({{$recv}}._value) > {{numLit .Value}} { _variantValid = false }
+			if len({{$recv}}._value) > {{countExpr .Value}} { _variantValid = false }
 			{{- end}}
 			{{- end}}
 			if _variantValid { _anyOfValid = true }
@@ -318,37 +318,37 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			_variantValid = false
 			{{- end}}
 			{{- if eq .RuleType "minLength"}}
-			if utf8.RuneCountInString(string({{$recv}}._value)) < {{numLit .Value}} { _variantValid = false }
+			if utf8.RuneCountInString(string({{$recv}}._value)) < {{countExpr .Value}} { _variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "maxLength"}}
-			if utf8.RuneCountInString(string({{$recv}}._value)) > {{numLit .Value}} { _variantValid = false }
+			if utf8.RuneCountInString(string({{$recv}}._value)) > {{countExpr .Value}} { _variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "minimum"}}
 			{{- if .ExactCompare}}
 			if {{numOperand . (printf "%s._value" $recv)}} < {{numBound .}} { _variantValid = false }
 			{{- else}}
-			if float64({{$recv}}._value) < {{numLit .Value}} { _variantValid = false }
+			if float64({{$recv}}._value) < {{countExpr .Value}} { _variantValid = false }
 			{{- end}}
 			{{- end}}
 			{{- if eq .RuleType "maximum"}}
 			{{- if .ExactCompare}}
 			if {{numOperand . (printf "%s._value" $recv)}} > {{numBound .}} { _variantValid = false }
 			{{- else}}
-			if float64({{$recv}}._value) > {{numLit .Value}} { _variantValid = false }
+			if float64({{$recv}}._value) > {{countExpr .Value}} { _variantValid = false }
 			{{- end}}
 			{{- end}}
 			{{- if eq .RuleType "exclusiveMinimum"}}
 			{{- if .ExactCompare}}
 			if {{numOperand . (printf "%s._value" $recv)}} <= {{numBound .}} { _variantValid = false }
 			{{- else}}
-			if float64({{$recv}}._value) <= {{numLit .Value}} { _variantValid = false }
+			if float64({{$recv}}._value) <= {{countExpr .Value}} { _variantValid = false }
 			{{- end}}
 			{{- end}}
 			{{- if eq .RuleType "exclusiveMaximum"}}
 			{{- if .ExactCompare}}
 			if {{numOperand . (printf "%s._value" $recv)}} >= {{numBound .}} { _variantValid = false }
 			{{- else}}
-			if float64({{$recv}}._value) >= {{numLit .Value}} { _variantValid = false }
+			if float64({{$recv}}._value) >= {{countExpr .Value}} { _variantValid = false }
 			{{- end}}
 			{{- end}}
 			{{- if eq .RuleType "multipleOf"}}
@@ -365,10 +365,10 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			if _matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}}._value)); !_matched { _variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "minItems"}}
-			if len({{$recv}}._value) < {{numLit .Value}} { _variantValid = false }
+			if len({{$recv}}._value) < {{countExpr .Value}} { _variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "maxItems"}}
-			if len({{$recv}}._value) > {{numLit .Value}} { _variantValid = false }
+			if len({{$recv}}._value) > {{countExpr .Value}} { _variantValid = false }
 			{{- end}}
 			{{- end}}
 			if _variantValid { _oneOfCount++ }
@@ -472,19 +472,19 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		}
 		{{- end}}
 		{{- else if eq .CheckType "minimum"}}
-		if _f, _fOk := _elem.(float64); _fOk && _f < {{numLit .Value}} {
+		if _f, _fOk := _elem.(float64); _fOk && _f < {{countExpr .Value}} {
 			return fmt.Errorf("items[%d]: %v is less than minimum {{fmtText .Value}}", _i, _elem)
 		}
 		{{- else if eq .CheckType "maximum"}}
-		if _f, _fOk := _elem.(float64); _fOk && _f > {{numLit .Value}} {
+		if _f, _fOk := _elem.(float64); _fOk && _f > {{countExpr .Value}} {
 			return fmt.Errorf("items[%d]: %v exceeds maximum {{fmtText .Value}}", _i, _elem)
 		}
 		{{- else if eq .CheckType "exclusiveMinimum"}}
-		if _f, _fOk := _elem.(float64); _fOk && _f <= {{numLit .Value}} {
+		if _f, _fOk := _elem.(float64); _fOk && _f <= {{countExpr .Value}} {
 			return fmt.Errorf("items[%d]: %v must be greater than {{fmtText .Value}}", _i, _elem)
 		}
 		{{- else if eq .CheckType "exclusiveMaximum"}}
-		if _f, _fOk := _elem.(float64); _fOk && _f >= {{numLit .Value}} {
+		if _f, _fOk := _elem.(float64); _fOk && _f >= {{countExpr .Value}} {
 			return fmt.Errorf("items[%d]: %v must be less than {{fmtText .Value}}", _i, _elem)
 		}
 		{{- else if eq .CheckType "multipleOf"}}
@@ -860,14 +860,14 @@ func ({{$recv}} {{.Name}}) Validate() error {
 					{{- else if eq .CheckType "minimum"}}
 					if _cMatch {
 						_cf, _cfOk := _uiElem.(float64)
-						if !_cfOk || _cf < {{numLit .Value}} {
+						if !_cfOk || _cf < {{countExpr .Value}} {
 							_cMatch = false
 						}
 					}
 					{{- else if eq .CheckType "maximum"}}
 					if _cMatch {
 						_cf, _cfOk := _uiElem.(float64)
-						if !_cfOk || _cf > {{numLit .Value}} {
+						if !_cfOk || _cf > {{countExpr .Value}} {
 							_cMatch = false
 						}
 					}

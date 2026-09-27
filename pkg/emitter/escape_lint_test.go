@@ -63,7 +63,6 @@ var inertFields = map[string]string{
 // inertFuncs are template functions whose result is inert whatever they are
 // given.
 var inertFuncs = map[string]string{
-	"deref":        "an int",
 	"len":          "an int",
 	"add":          "an int",
 	"receiverName": "one lower-case letter of a Go identifier",
@@ -72,7 +71,7 @@ var inertFuncs = map[string]string{
 // escapersFor are the functions whose result is escaped for a context.
 var escapersFor = map[goContext]map[string]bool{
 	goString:       {"goStringLiteral": true},
-	goFormatString: {"jsonErrorName": true, "fmtText": true, "fmtCat": true, "itemPath": true, "numBoundMsg": true, "ppTypeValuesMsg": true},
+	goFormatString: {"jsonErrorName": true, "fmtText": true, "fmtCat": true, "itemPath": true, "numBoundMsg": true, "ppTypeValuesMsg": true, "countText": true},
 	goRawString:    {"jsonTagName": true},
 }
 
@@ -92,6 +91,7 @@ var codeFuncs = map[string]string{
 	"accessRules":         "a composite literal of strconv-quoted names and patterns",
 	"numBound":            "a Go number literal from generator.GoNumberLiteral",
 	"numLit":              "a Go number literal; refuses anything else",
+	"countExpr":           "a count bound's int as a decimal or a fixed min/max expression over it (CountBound.GoExpr); anything else goes through numLit",
 	"dynNum":              "a Go float literal",
 	"numOperand":          "a comparison built from a code expression and a quoted literal",
 	"exactMultipleOf":     "a call built from a code expression and a quoted literal",

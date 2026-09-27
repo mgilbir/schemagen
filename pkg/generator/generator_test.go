@@ -3210,9 +3210,15 @@ func generateJSON(t *testing.T, cfg Config, input string) (*File, error) {
 // container, which used to reach IsFalseSchema and friends and segfault the
 // CLI. Every one must instead come back as an error that points at the null.
 //
-// {"extends":[null]} is in the list because Normalize *manufactures* the nil:
-// it appends the parsed "extends" array straight onto AllOf, so a draft-3
-// document produces the defect that draft-3 documents cannot express directly.
+// {"extends":[null]} is in the list because Normalize used to *manufacture* the
+// nil: it appended the parsed "extends" array straight onto AllOf, so a draft-3
+// document produced the defect that draft-3 documents cannot express directly.
+// The null is now refused where the document wrote it, under "extends", along
+// with the legacy keywords' other null spellings, which used to be read as the
+// empty schema instead: {"extends":null} as allOf:[{}], {"dependencies":
+// {"a":null}} as a dependency every object satisfies, and a null "type" or
+// "disallow" entry as no entry at all. A null under a keyword that takes a
+// single schema was indistinguishable from the keyword's absence.
 func TestNullSubschemaInContainerReturnsError(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -3223,12 +3229,21 @@ func TestNullSubschemaInContainerReturnsError(t *testing.T) {
 		{"anyOf", `{"anyOf":[null]}`, "#/anyOf/0"},
 		{"oneOf", `{"oneOf":[null]}`, "#/oneOf/0"},
 		{"defs", `{"$defs":{"a":null}}`, "#/$defs/a"},
-		{"definitions", `{"definitions":{"a":null}}`, "#/$defs/a"},
-		{"patternProperties", `{"patternProperties":{"^a":null}}`, "#/patternProperties/^a"},
+		// Where the document wrote it, not its "$defs" mirror.
+		{"definitions", `{"definitions":{"a":null}}`, "#/definitions/a: schema is null"},
+		{"patternProperties", `{"patternProperties":{"^a":null}}`, "#/patternProperties/^a: schema is null"},
 		{"dependentSchemas", `{"dependentSchemas":{"a":null}}`, "#/dependentSchemas/a"},
 		{"prefixItems", `{"prefixItems":[null]}`, "#/prefixItems/0"},
 		{"itemsArray", `{"items":[null]}`, "#/items/0"},
-		{"extends", `{"extends":[null]}`, "#/allOf/0"},
+		{"extends", `{"extends":[null]}`, "#/extends/0: schema is null"},
+		{"extendsBare", `{"extends":null}`, "#/extends: schema is null"},
+		{"dependencies", `{"dependencies":{"a":null}}`, "#/dependencies/a: schema is null"},
+		{"disallow", `{"disallow":["string",null]}`, "#/disallow/1: schema is null"},
+		{"typeEntry", `{"type":["string",null]}`, "#/type/1: must be a type name or a schema"},
+		{"not", `{"not":null}`, "#/not: schema is null"},
+		{"additionalProperties", `{"additionalProperties":null}`, "#/additionalProperties: schema is null"},
+		{"itemsBare", `{"items":null}`, "#/items: schema is null"},
+		{"nestedInDependencies", `{"dependencies":{"a":{"allOf":[null]}}}`, "#/dependencies/a/allOf/0"},
 		{"nestedInProperty", `{"type":"object","properties":{"a":{"allOf":[null]}}}`, "#/properties/a/allOf/0"},
 		{"nestedInItems", `{"type":"array","items":{"oneOf":[null]}}`, "#/items/oneOf/0"},
 		// A vendor keyword's value is only parsed as a schema when a $ref
@@ -4923,7 +4938,7 @@ func TestScalarAllOfKeepsTheTighterBound(t *testing.T) {
 	if len(bounds) != 2 {
 		t.Fatalf("minLength rules for a = %v, want the property's own bound and the merged branch bound", bounds)
 	}
-	if bounds[0] != 2 || bounds[1] != 5 {
+	if bounds[0] != (CountBound{N: 2}) || bounds[1] != (CountBound{N: 5}) {
 		t.Fatalf("minLength bounds = %v, want [2 5] (own bound, then the tightest branch)", bounds)
 	}
 }
@@ -5671,12 +5686,12 @@ func TestAllOfKeepsParentObjectKeywords(t *testing.T) {
 		switch v.RuleType {
 		case "minProperties":
 			minProps = true
-			if v.Value != 1 {
+			if v.Value != (CountBound{N: 1}) {
 				t.Fatalf("minProperties value = %v, want 1", v.Value)
 			}
 		case "maxProperties":
 			maxProps = true
-			if v.Value != 2 {
+			if v.Value != (CountBound{N: 2}) {
 				t.Fatalf("maxProperties value = %v, want 2", v.Value)
 			}
 		}
@@ -5721,10 +5736,10 @@ func TestAllOfCombinesPropertyBoundsWithBranches(t *testing.T) {
 					got[v.RuleType] = v.Value
 				}
 			}
-			if got["minProperties"] != 3 {
+			if got["minProperties"] != (CountBound{N: 3}) {
 				t.Fatalf("minProperties = %v, want 3 (the tighter lower bound of the two)", got["minProperties"])
 			}
-			if got["maxProperties"] != 3 {
+			if got["maxProperties"] != (CountBound{N: 3}) {
 				t.Fatalf("maxProperties = %v, want 3 (the tighter upper bound of the two)", got["maxProperties"])
 			}
 		})
@@ -7242,10 +7257,10 @@ func TestArrayPropertyContainsIsChecked(t *testing.T) {
 	}
 
 	b := fieldContainsFor(t, doc, "b")
-	if b.MinContains == nil || *b.MinContains != 2 {
+	if b.MinContains == nil || b.MinContains.N != 2 {
 		t.Fatalf("b: minContains = %v, want 2", b.MinContains)
 	}
-	if b.MaxContains == nil || *b.MaxContains != 3 {
+	if b.MaxContains == nil || b.MaxContains.N != 3 {
 		t.Fatalf("b: maxContains = %v, want 3", b.MaxContains)
 	}
 }
@@ -7392,10 +7407,10 @@ func TestAllOfPropertyNamesMergesBothSides(t *testing.T) {
 	if doc.PropertyNames.Pattern != "^[a-z]+$" {
 		t.Fatalf("pattern = %q, want the parent's %q kept", doc.PropertyNames.Pattern, "^[a-z]+$")
 	}
-	if doc.PropertyNames.MinLength == nil || *doc.PropertyNames.MinLength != 4 {
+	if doc.PropertyNames.MinLength == nil || doc.PropertyNames.MinLength.N != 4 {
 		t.Fatalf("minLength = %v, want the tighter bound 4", doc.PropertyNames.MinLength)
 	}
-	if doc.PropertyNames.MaxLength == nil || *doc.PropertyNames.MaxLength != 6 {
+	if doc.PropertyNames.MaxLength == nil || doc.PropertyNames.MaxLength.N != 6 {
 		t.Fatalf("maxLength = %v, want the tighter bound 6", doc.PropertyNames.MaxLength)
 	}
 }
@@ -9879,7 +9894,7 @@ func TestPropertyNamesEmptyPatternConstrainsNothing(t *testing.T) {
 		t.Fatalf("an empty pattern built a propertyNames check: %+v", alone.PropertyNames)
 	}
 	beside := structNamed(t, generateForItemTest(t, `{"title":"Doc","type":"object","propertyNames":{"pattern":"","maxLength":3}}`), "Doc")
-	if beside.PropertyNames == nil || beside.PropertyNames.MaxLength == nil || *beside.PropertyNames.MaxLength != 3 {
+	if beside.PropertyNames == nil || beside.PropertyNames.MaxLength == nil || *beside.PropertyNames.MaxLength != (CountBound{N: 3}) {
 		t.Fatalf("maxLength beside an empty pattern was lost: %+v", beside.PropertyNames)
 	}
 	if beside.PropertyNames.Pattern != "" {

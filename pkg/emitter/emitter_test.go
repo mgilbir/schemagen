@@ -1028,7 +1028,7 @@ func TestEmitOneOfSelectionDoesNotNarrowPastAnUnjudgeableBranch(t *testing.T) {
 func TestEmitFieldContainsPointerSlice(t *testing.T) {
 	e := mustNew(t)
 
-	minContains, maxContains := 2, 3
+	minContains, maxContains := generator.CountBound{N: 2}, generator.CountBound{N: 3}
 	f := &generator.File{
 		PackageName: "model",
 		Imports: []generator.Import{

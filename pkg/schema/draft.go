@@ -1,7 +1,8 @@
 package schema
 
 import (
-	"encoding/json"
+	"slices"
+	"sort"
 	"strings"
 )
 
@@ -55,31 +56,52 @@ func (d Draft) String() string {
 }
 
 // DetectDraft inspects the $schema URI to determine which draft version is used.
+// See DraftForURI.
 func DetectDraft(s *Schema) Draft {
-	uri := s.Schema
+	return DraftForURI(s.Schema)
+}
 
-	switch {
-	case strings.Contains(uri, "draft-03"):
-		return Draft03
-	case strings.Contains(uri, "draft-04"):
-		return Draft04
-	case strings.Contains(uri, "draft-06"):
-		return Draft06
-	case strings.Contains(uri, "draft-07"):
-		return Draft07
-	case strings.Contains(uri, "draft/2019-09"):
-		return Draft201909
-	case strings.Contains(uri, "draft/2020-12"):
-		return Draft202012
-	// v1 names no draft at all -- "https://json-schema.org/v1" -- so it is
-	// matched on the host-and-path pair rather than on "v1" alone, which would
-	// also fire on a "draft/v1" that means something else and on any unrelated
-	// dialect whose URI happens to contain those two characters.
-	case strings.Contains(uri, "json-schema.org/v1"):
-		return DraftV1
-	default:
-		return DraftUnknown
+// dialectURIs maps each meta-schema URI this package recognises to its draft,
+// written without the scheme and without the trailing empty fragment. Each
+// draft's hyper-schema is included: it is that draft's validation vocabulary
+// plus hyper-schema keywords, which land in Extensions like any other keyword
+// this package does not model.
+var dialectURIs = map[string]Draft{
+	"json-schema.org/draft-03/schema":            Draft03,
+	"json-schema.org/draft-03/hyper-schema":      Draft03,
+	"json-schema.org/draft-04/schema":            Draft04,
+	"json-schema.org/draft-04/hyper-schema":      Draft04,
+	"json-schema.org/draft-06/schema":            Draft06,
+	"json-schema.org/draft-06/hyper-schema":      Draft06,
+	"json-schema.org/draft-07/schema":            Draft07,
+	"json-schema.org/draft-07/hyper-schema":      Draft07,
+	"json-schema.org/draft/2019-09/schema":       Draft201909,
+	"json-schema.org/draft/2019-09/hyper-schema": Draft201909,
+	"json-schema.org/draft/2020-12/schema":       Draft202012,
+	"json-schema.org/draft/2020-12/hyper-schema": Draft202012,
+	"json-schema.org/v1":                         DraftV1,
+}
+
+// DraftForURI answers which draft a "$schema" URI names, or DraftUnknown for a
+// URI that names none of them.
+//
+// The match is on the whole URI. A dialect is identified by its meta-schema's
+// URI and nothing else, and a URI that merely contains a draft's name --
+// https://example.com/my-draft-07-extension/schema, a custom meta-schema whose
+// vocabulary this package cannot see -- is not that draft; reading it as one
+// gated the document's keywords by a dialect it never declared. What is allowed
+// to vary is what does not change the resource the URI names: the scheme
+// (http or https; the drafts' own meta-schemas are published under both, and
+// documents in the wild write both), and a trailing empty fragment ("#"), which
+// the draft-03 to draft-07 URIs carry by convention and later drafts dropped.
+func DraftForURI(uri string) Draft {
+	rest, ok := strings.CutPrefix(uri, "https://")
+	if !ok {
+		if rest, ok = strings.CutPrefix(uri, "http://"); !ok {
+			return DraftUnknown
+		}
 	}
+	return dialectURIs[strings.TrimSuffix(rest, "#")]
 }
 
 // Normalize ensures the schema is consistent regardless of which draft it was
@@ -106,8 +128,31 @@ func (s *Schema) Normalize() {
 // is an embedded resource and keeps it, for the subtree below it too. Passing
 // DraftUnknown is the same as calling Normalize -- it means "read the dialect
 // from the document" and not "this document has no dialect".
+//
+// Normalizing is done once per node, and a second call is a no-op for every
+// node the first one reached: Normalize(Normalize(x)) is Normalize(x). That is
+// not an optimisation. The rewrites turn a keyword one dialect defines into the
+// keyword a later dialect replaced it with -- draft 3's per-property boolean
+// "required" into the parent's array of names, "extends" into "allOf" -- and
+// the result is this package's internal spelling, not something the document
+// said. Read again as if it were the document, the dialect pass finds a draft-3
+// node stating an array-form "required", which draft 3 does not define, and
+// deletes the requirement the first pass had just carried over. So a node
+// records that it has been normalized, and under which dialect, and is not read
+// as a document again; its children are still visited, so a subtree attached
+// to an already-normalized node is normalized under the dialect it inherits.
 func (s *Schema) NormalizeForDraft(d Draft) {
-	if s == nil || s.IsBooleanSchema() {
+	if s == nil {
+		return
+	}
+	// Every node is located before anything moves: this is the last point at
+	// which the tree has the document's shape, and where a node was written is
+	// what every diagnostic after this reports it by. A node already located --
+	// a subtree of a document normalized before, or this document a second
+	// time -- keeps the location it has. See source.go. A document that is a
+	// bare boolean is located too, though there is nothing in it to rewrite.
+	s.locate()
+	if s.IsBooleanSchema() {
 		return
 	}
 	if d == DraftUnknown {
@@ -133,24 +178,40 @@ func (s *Schema) NormalizeForDraft(d Draft) {
 	// synthesized node on the way down and clear the branch list it had just
 	// built. The gate answers what the *document* states; the rewrites' output is
 	// this package's internal spelling of what it states, and is not re-read.
-	s.gateDialectKeywords(d)
+	//
+	// The subschemas *inside* the rewritten keywords are the document's, though,
+	// and the pass reaches every one of them: they are parsed when the document
+	// is (see ExtendsSchemas) and are children like any other.
+	declared := DetectDraft(s)
+	if declared == DraftUnknown {
+		declared = d
+	}
+	s.gateDialectKeywords(d, declared)
 	s.normalizeNode(d)
 }
 
 // gateDialectKeywords clears, over the whole tree, every keyword a node's own
 // dialect does not define. A node declaring its own $schema takes that dialect,
-// for itself and everything below it.
-func (s *Schema) gateDialectKeywords(d Draft) {
+// for itself and everything below it. A node already normalized is not read
+// again; see NormalizeForDraft. declared is the dialect the document itself
+// states for the node, which differs from d only under a dialect chosen from
+// outside it.
+func (s *Schema) gateDialectKeywords(d, declared Draft) {
 	if s == nil || s.IsBooleanSchema() {
 		return
 	}
-	s.dropKeywordsOutsideDialect(d)
+	if s.normalized {
+		d, declared = s.DetectedDraft, s.DetectedDraft
+	} else {
+		s.dropKeywordsOutsideDialect(d, declared)
+		s.settleMalformedKeywords(d)
+	}
 	s.eachChild(func(sub *Schema) {
-		child := d
+		child, childDeclared := d, declared
 		if own := DetectDraft(sub); own != DraftUnknown {
-			child = own
+			child, childDeclared = own, own
 		}
-		sub.gateDialectKeywords(child)
+		sub.gateDialectKeywords(child, childDeclared)
 	})
 }
 
@@ -167,6 +228,27 @@ func (s *Schema) normalizeInherited(d Draft) {
 }
 
 func (s *Schema) normalizeNode(d Draft) {
+	if s.normalized {
+		d = s.DetectedDraft
+	} else {
+		s.rewriteLegacyKeywords(d)
+		s.DetectedDraft = d
+		s.normalized = true
+	}
+	s.normalizeChildren(d)
+}
+
+// rewriteLegacyKeywords rewrites every keyword this node states in a spelling
+// a later draft replaced into the spelling that replaced it.
+//
+// Only one of the rewrites asks which dialect the node is in, and the others
+// need not: the dialect pass has already cleared every keyword the node's
+// dialect does not define, so a source keyword still standing here is one the
+// dialect defines. Under DraftUnknown -- no recognised $schema, read as the union of
+// every dialect -- the source and its replacement can both stand, and then
+// both bind: each rewrite combines with what is already there rather than
+// assuming it is alone.
+func (s *Schema) rewriteLegacyKeywords(d Draft) {
 	// Copy Draft 3/4 "id" to "$id" if $id is empty.
 	if s.ID == "" && s.LegacyID != "" {
 		s.ID = s.LegacyID
@@ -190,47 +272,133 @@ func (s *Schema) normalizeNode(d Draft) {
 		}
 	}
 
-	// Draft 3: convert "extends" to allOf.
-	if len(s.Extends) > 0 {
-		s.normalizeExtends()
+	// Draft 3: "extends" is allOf.
+	if s.Extends != nil || s.ExtendsSchemas != nil {
+		s.AllOf = append(s.AllOf, s.ExtendsSchemas...)
+		s.Extends, s.ExtendsSchemas = nil, nil
 	}
 
-	// Draft 3: convert per-property "required": true to parent Required array.
+	// Draft 3: a property's own "required": true is the parent's array entry.
 	//
-	// The gate is consulted here rather than left to the property's own pass
-	// because the promotion happens on the parent: by the time the property is
-	// normalized its boolean would already have become an entry in this schema's
-	// required array, which no later dialect would recognise as draft 3's
-	// spelling any more. The property's own pass still clears the leftover
-	// sentinel where the promotion did not fire.
+	// This is the one rewrite that asks the dialect, and it asks this node's
+	// rather than the property's. The boolean is stated on the property, and
+	// the property's dialect has already decided whether that spelling is
+	// legal there; but what it means -- "the parent must have this member" --
+	// is a constraint on the parent, and only a parent whose dialect defines
+	// the spelling reads it. A draft-3 resource embedded as a property of a
+	// draft-6 object says "required": true legitimately, and the draft-6 object
+	// applies that schema only to a member that is present, so nothing makes
+	// the member required. The promotion happens here, before the property's
+	// own pass clears the field.
 	if BooleanRequiredDefinedIn(d) {
-		s.normalizeDraft3Required()
+		s.promoteDraft3Required()
+	}
+	// On this node the boolean has now done whatever it could: it was promoted
+	// by the parent's pass above this one, or it sits where draft 3 gives it no
+	// meaning -- the root of a document, an additionalProperties schema, an
+	// items schema -- because "required" there asks whether a value is present
+	// and there is always one. Either way nothing downstream reads it.
+	s.Draft3Required = nil
+
+	// Draft 3: "divisibleBy" is multipleOf.
+	if s.DivisibleBy != nil {
+		switch {
+		case s.MultipleOf == nil:
+			s.MultipleOf = s.DivisibleBy
+		case *s.MultipleOf != *s.DivisibleBy:
+			s.AllOf = append(s.AllOf, s.placeAt(&Schema{MultipleOf: s.DivisibleBy}, "divisibleBy"))
+		}
 	}
 
-	// Draft 3: convert "divisibleBy" to "multipleOf".
-	if s.DivisibleBy != nil && s.MultipleOf == nil {
-		s.MultipleOf = s.DivisibleBy
+	// Draft 3: "disallow" is "not" of the union of its entries.
+	if s.Disallow != nil || s.DisallowSchemas != nil {
+		var forbidden *Schema
+		switch len(s.DisallowSchemas) {
+		case 0:
+			// {"disallow":[]} forbids nothing.
+		case 1:
+			forbidden = s.DisallowSchemas[0]
+		default:
+			forbidden = s.placeAt(&Schema{AnyOf: s.DisallowSchemas}, "disallow")
+		}
+		if forbidden != nil {
+			if s.Not == nil {
+				s.Not = forbidden
+			} else {
+				s.AllOf = append(s.AllOf, s.placeAt(&Schema{Not: forbidden}, "disallow"))
+			}
+		}
+		s.Disallow, s.DisallowSchemas = nil, nil
 	}
 
-	// Draft 3: convert "disallow" to "not".
-	// "disallow" is the draft 3 equivalent of "not" with type constraints.
-	// It can be a single type string or an array of type strings.
-	if len(s.Disallow) > 0 && s.Not == nil {
-		s.normalizeDisallow()
-	}
-
-	// Draft 4-7: convert "dependencies" to dependentSchemas/dependentRequired.
-	if len(s.Dependencies) > 0 {
-		s.normalizeDependencies()
+	// Drafts 3-7: "dependencies" is 2019-09's dependentSchemas and
+	// dependentRequired, split by the shape of each member.
+	if s.Dependencies != nil || s.DependencySchemas != nil || s.DependencyRequired != nil {
+		s.mergeDependencies()
 	}
 
 	// Every draft: drop the enum members a member before them already admits.
 	if len(s.Enum) > 1 {
 		s.dedupeEnum()
 	}
+}
 
-	// Recursively normalize nested schemas.
-	s.normalizeChildren(d)
+// promoteDraft3Required adds to this node's Required every property whose own
+// schema says "required": true, in name order so the result does not depend on
+// map iteration.
+func (s *Schema) promoteDraft3Required() {
+	for _, name := range sortedKeys(s.Properties) {
+		prop := s.Properties[name]
+		if prop != nil && prop.Draft3Required != nil && *prop.Draft3Required && !slices.Contains(s.Required, name) {
+			s.Required = append(s.Required, name)
+		}
+	}
+}
+
+// mergeDependencies folds "dependencies" into dependentSchemas and
+// dependentRequired.
+//
+// A property can already have an entry there -- a document with no recognised
+// dialect may state both spellings -- and then both constraints hold: the
+// schemas are joined under allOf and the name lists are unioned. Writing over
+// the existing entry, as this used to, dropped whichever the document stated
+// first.
+func (s *Schema) mergeDependencies() {
+	for _, key := range sortedKeys(s.DependencySchemas) {
+		dep := s.DependencySchemas[key]
+		if s.DependentSchemas == nil {
+			s.DependentSchemas = make(map[string]*Schema)
+		}
+		if have, ok := s.DependentSchemas[key]; ok && have != nil {
+			// Both spellings name this property. The node that joins them is
+			// located at the one this rewrite brought in; each half keeps its
+			// own location.
+			s.DependentSchemas[key] = s.placeAt(&Schema{AllOf: []*Schema{have, dep}}, "dependencies", key)
+			continue
+		}
+		s.DependentSchemas[key] = dep
+	}
+	reqKeys := make([]string, 0, len(s.DependencyRequired))
+	for key := range s.DependencyRequired {
+		reqKeys = append(reqKeys, key)
+	}
+	sort.Strings(reqKeys)
+	for _, key := range reqKeys {
+		if s.DependentRequired == nil {
+			s.DependentRequired = make(map[string][]string)
+		}
+		names := s.DependentRequired[key]
+		for _, name := range s.DependencyRequired[key] {
+			if !slices.Contains(names, name) {
+				names = append(names, name)
+			}
+		}
+		if names == nil {
+			names = []string{}
+		}
+		s.DependentRequired[key] = names
+	}
+	s.Dependencies, s.DependencySchemas, s.DependencyRequired = nil, nil, nil
 }
 
 // dedupeEnum drops every enum member some earlier member is already equal to.
@@ -272,173 +440,6 @@ func (s *Schema) dedupeEnum() {
 		out = append(out, v)
 	}
 	s.Enum = out
-}
-
-// normalizeDisallow converts Draft 3's "disallow" to an equivalent "not" schema.
-// A single type becomes not:{type:T}. An array becomes not:{anyOf:[...]},
-// preserving inline schema objects instead of dropping them.
-func (s *Schema) normalizeDisallow() {
-	trimmed := trimJSONWhitespace(s.Disallow)
-	if len(trimmed) == 0 {
-		return
-	}
-
-	if trimmed[0] == '"' {
-		// Single type string: "disallow": "integer"
-		var t string
-		if json.Unmarshal(s.Disallow, &t) == nil {
-			s.Not = &Schema{Type: TypeList{t}}
-		}
-		return
-	} else if trimmed[0] == '[' {
-		// Array of strings or schemas: "disallow": ["integer", "boolean"]
-		var raw []json.RawMessage
-		if json.Unmarshal(s.Disallow, &raw) == nil {
-			var branches []*Schema
-			for _, elem := range raw {
-				elemTrimmed := trimJSONWhitespace(elem)
-				if len(elemTrimmed) > 0 && elemTrimmed[0] == '"' {
-					var t string
-					if json.Unmarshal(elem, &t) == nil {
-						branches = append(branches, &Schema{Type: TypeList{t}})
-					}
-					continue
-				}
-				// Draft 3 defines each entry as "either a string or a schema",
-				// and draft 3 has no boolean schemas -- so an entry that is not
-				// a quoted string or an object names nothing to forbid and
-				// contributes no branch.
-				//
-				// Reading one as a schema anyway is how {"disallow":[null]}
-				// came to refuse every document there is. A JSON null decodes
-				// into a Schema without error and leaves it at its zero value,
-				// which is the empty schema; the empty schema matches
-				// everything, and "not: everything" admits nothing at all --
-				// {}, "x", 5, [] and null were all rejected by a keyword that
-				// should have said nothing. See issue #272.
-				//
-				// An entry skipped here leaves the branch list shorter, and a
-				// list left empty leaves "not" unset, so a disallow naming
-				// nothing legible constrains nothing. That is also the answer
-				// every dialect but draft 3 gives the keyword, which is to
-				// ignore it.
-				if len(elemTrimmed) == 0 || elemTrimmed[0] != '{' {
-					continue
-				}
-				var branch Schema
-				if json.Unmarshal(elem, &branch) == nil {
-					branches = append(branches, &branch)
-				}
-			}
-			if len(branches) == 1 {
-				s.Not = branches[0]
-			} else if len(branches) > 1 {
-				s.Not = &Schema{AnyOf: branches}
-			}
-		}
-	}
-}
-
-// normalizeDraft3Required converts Draft 3's per-property "required": true
-// to the parent schema's Required array (Draft 4+ format).
-//
-// The names are appended in property-name order. Required is a list and is read
-// as one -- the runtime evaluator's node literal spells it out as it stands, and
-// checks it in that order -- so it must not be the order a map happened to
-// yield, which changed the generated file from run to run.
-func (s *Schema) normalizeDraft3Required() {
-	for _, name := range sortedKeys(s.Properties) {
-		prop := s.Properties[name]
-		if prop != nil && prop.Required.IsDraft3Required() {
-			s.Required = append(s.Required, name)
-			prop.Required = nil // clear the sentinel
-		}
-	}
-}
-
-// normalizeExtends converts Draft 3's "extends" to allOf.
-func (s *Schema) normalizeExtends() {
-	// "extends" can be a single schema or array of schemas.
-	trimmed := trimJSONWhitespace(s.Extends)
-	if len(trimmed) == 0 {
-		return
-	}
-
-	if trimmed[0] == '[' {
-		var schemas []*Schema
-		if json.Unmarshal(s.Extends, &schemas) == nil {
-			s.AllOf = append(s.AllOf, schemas...)
-		}
-	} else {
-		var sc Schema
-		if json.Unmarshal(s.Extends, &sc) == nil {
-			s.AllOf = append(s.AllOf, &sc)
-		}
-	}
-	s.Extends = nil
-}
-
-// normalizeDependencies converts Draft 3-7's "dependencies" to
-// dependentSchemas and dependentRequired (Draft 2019-09+ split).
-func (s *Schema) normalizeDependencies() {
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(s.Dependencies, &raw); err != nil {
-		return
-	}
-
-	// maporder: each dependency is written under its own key into dependentRequired or dependentSchemas, and the keys are distinct.
-	for key, val := range raw {
-		trimmed := trimJSONWhitespace(val)
-		if len(trimmed) == 0 {
-			continue
-		}
-
-		// Draft 3 spells a single dependency as a bare property name --
-		// {"dependencies":{"bar":"foo"}} -- where every later draft would write
-		// the one-element array below. It is the same keyword and the same
-		// meaning, so it normalizes to the same place.
-		//
-		// Without this arm the value fell through to the schema attempt, where
-		// unmarshalling a JSON string into a Schema fails and the entry was
-		// dropped in silence: the keyword was left enforcing nothing at all and
-		// a schema stating only this one inferred no type either, so it came out
-		// `type Root any` with no Validate. Recognising the shape here rather
-		// than at inference is what keeps the three spellings of one keyword on
-		// one path -- the array and object forms already worked, and only the
-		// string form did not.
-		if trimmed[0] == '"' {
-			var dep string
-			if json.Unmarshal(val, &dep) == nil {
-				if s.DependentRequired == nil {
-					s.DependentRequired = make(map[string][]string)
-				}
-				s.DependentRequired[key] = []string{dep}
-				continue
-			}
-		}
-
-		// Try as array of strings (dependentRequired).
-		if trimmed[0] == '[' {
-			var arr []string
-			if json.Unmarshal(val, &arr) == nil {
-				if s.DependentRequired == nil {
-					s.DependentRequired = make(map[string][]string)
-				}
-				s.DependentRequired[key] = arr
-				continue
-			}
-		}
-
-		// Try as schema (dependentSchemas).
-		var sc Schema
-		if json.Unmarshal(val, &sc) == nil {
-			if s.DependentSchemas == nil {
-				s.DependentSchemas = make(map[string]*Schema)
-			}
-			s.DependentSchemas[key] = &sc
-		}
-	}
-	s.Dependencies = nil
 }
 
 // normalizeChildren recursively normalizes all nested sub-schemas under the
@@ -514,5 +515,18 @@ func (s *Schema) eachChild(fn func(*Schema)) {
 	// maporder: each member heads its own subtree, and the visit writes only into the subtree it is handed.
 	for _, sub := range s.DependentSchemas {
 		visit(sub)
+	}
+	// The subschemas of draft 3's and drafts 3-7's keywords, parsed but not yet
+	// rewritten. They are here so the dialect pass reaches them under their own
+	// dialect before the rewrite moves them into allOf, not and
+	// dependentSchemas; see ExtendsSchemas.
+	for _, sub := range s.ExtendsSchemas {
+		visit(sub)
+	}
+	for _, sub := range s.DisallowSchemas {
+		visit(sub)
+	}
+	for _, key := range sortedKeys(s.DependencySchemas) {
+		visit(s.DependencySchemas[key])
 	}
 }

@@ -77,6 +77,11 @@ func TestNumberInt64IsExact(t *testing.T) {
 // TestNumberRefusesWhatFloat64DidToo keeps the type's contract the same as the
 // *float64 field it replaced: it holds any number float64's range covers,
 // exactly, and refuses everything that field refused.
+//
+// The refusal is reported through MalformedKeywords rather than as a decode
+// error, because whether it *is* a refusal depends on the node's dialect, which
+// the decode does not know (see parse.go). minimum is defined in every dialect,
+// so the record has to survive Normalize under each of them.
 func TestNumberRefusesWhatFloat64DidToo(t *testing.T) {
 	tests := []struct {
 		name string
@@ -89,9 +94,17 @@ func TestNumberRefusesWhatFloat64DidToo(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			var s Schema
-			if err := json.Unmarshal([]byte(tc.doc), &s); err == nil {
-				t.Errorf("%s was accepted as a minimum of %v; the float64 field it replaced refused it", tc.name, s.Minimum)
+			for _, d := range []Draft{DraftUnknown, Draft03, Draft04, Draft06, Draft07, Draft201909, Draft202012, DraftV1} {
+				var s Schema
+				if err := json.Unmarshal([]byte(tc.doc), &s); err != nil {
+					t.Fatalf("%s: a schema object with a malformed keyword is still a schema object: %v", tc.name, err)
+				}
+				s.NormalizeForDraft(d)
+				bad := s.MalformedKeywords()
+				if len(bad) != 1 || bad[0].Keyword != "minimum" || s.Minimum != nil {
+					t.Errorf("%v: %s was accepted as a minimum of %v (malformed: %v); the float64 field it replaced refused it",
+						d, tc.name, s.Minimum, bad)
+				}
 			}
 		})
 	}

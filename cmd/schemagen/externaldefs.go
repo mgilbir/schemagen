@@ -538,6 +538,7 @@ func (w *externalWalker) record(into nameClaim, doc, node *schema.Schema, ref, f
 	into.keyword = keyword
 	into.defKey = defKey
 	into.node = node
+	into.root = doc
 	into.final = name
 	w.claims = append(w.claims, into)
 }

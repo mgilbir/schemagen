@@ -382,6 +382,41 @@ nothing and leaves the position unconstrained. An unrecognised keyword is still
 preserved and still reachable by JSON Pointer, so `#/MinLength` resolves; what it
 no longer does is constrain anything.
 
+### Malformed keyword values, duplicate keys and pointers
+
+A keyword whose value no dialect admits for it -- `{"type":[1,2]}`,
+`{"minLength":"3"}`, `{"not":null}`, `{"dependencies":{"a":null}}`,
+`{"required":["a",null]}` -- makes the document something other than a schema,
+and generation refuses it with a JSON Pointer to the value, exactly as it
+refuses `{"allOf":[null]}`. The refusal applies only where the node's dialect
+defines the keyword: under a dialect that does not, the keyword is unknown and
+ignored whatever its value, so `{"divisibleBy":"x"}` is a legal 2020-12
+document. The same holds for a keyword written in the form another dialect
+gives it: under draft 4, `{"minimum":3,"exclusiveMinimum":5}` is refused as
+draft 6's spelling rather than read as if `exclusiveMinimum` were absent. With
+no recognised `$schema` every draft's form binds.
+
+The location a refusal names is where the document wrote the value, as a JSON
+Pointer fragment (`#/extends/1/minLength`, `#/definitions/a`) -- never the path
+into schemagen's rewritten form of the document, where draft 3's `extends` is
+an `allOf` and a draft-07 `definitions` is mirrored as `$defs`. A value in
+another document is named by that document's URI and a fragment into it. The
+name-collision warnings locate each definition the same way.
+
+Counts past `int64` are not malformed: `{"maxLength":1e30}` admits every string
+and `{"minLength":1e30}` none, which is what those numbers say, and an error
+message states the bound as the schema wrote it (`1e30`). The generated
+comparison compiles on 32-bit targets too.
+
+A key written twice in one object means its last value, for every keyword and
+every object in the document, which is what `encoding/json` does for a map.
+
+A pointer into a draft 3-7 keyword that is read as its modern replacement --
+`#/dependencies/a`, `#/extends/0`, `#/disallow/1`, draft 3's `#/type/1` --
+names the subschema where the document wrote it. A pointer into a keyword the
+node's dialect does not define (draft 3's `#/not`) reaches its value, as one
+into any unknown keyword does.
+
 ### Field order: laid out, not listed
 
 Fields are declared in the order that costs the least memory, not in the order
@@ -944,7 +979,7 @@ This enables the HTTP resolver, which fetches and caches remote schemas at gener
 
 ### Draft Override
 
-`schemagen` auto-detects the JSON Schema draft version from the `$schema` URI in your schema file. If your schema lacks a `$schema` field or you need to force a specific draft version, use `--draft`:
+`schemagen` auto-detects the JSON Schema draft version from the `$schema` URI in your schema file. The URI is matched whole -- `http` or `https`, with or without the trailing `#` -- so a custom meta-schema whose URI merely contains a draft's name is not read as that draft. If your schema lacks a `$schema` field or you need to force a specific draft version, use `--draft`:
 
 ```bash
 schemagen generate legacy.json --draft 4
@@ -956,7 +991,7 @@ This affects keyword interpretation (e.g., whether `$ref` overrides siblings, tu
 
 `v1` is the undated stable release that succeeds the dated drafts, dialect URI `https://json-schema.org/v1`. Its keyword set is 2020-12's without the vocabulary machinery, and it is not an alias for 2020-12: `format` asserts under v1 and annotates under 2020-12.
 
-`--draft` forces the draft: it takes precedence over the `$schema` URI declared by the input document, so `--draft 2020-12` on a document that declares draft-07 interprets every keyword under 2020-12 rules. The one exception is an embedded or remote resource that establishes its own `$id` scope *and* declares its own `$schema` -- that resource keeps its declared dialect, so cross-draft `$ref` semantics are preserved.
+`--draft` forces the draft: it takes precedence over the `$schema` URI declared by the input document, so `--draft 2020-12` on a document that declares draft-07 interprets every keyword under 2020-12 rules. A keyword the forced draft does not define at all is ignored, as that draft ignores any unknown keyword. A keyword it defines but written in a form it does not -- array-form `items` under 2020-12 (a tuple only up to 2019-09), a boolean `exclusiveMinimum` under draft 6 or later, a number under draft 4, draft 3's per-property boolean `required` under draft 4 or later, draft 4's `required` array under draft 3, draft 3's schema-valued `type` entries anywhere else -- is refused, because the forced draft's meta-schema rejects the value: the error names whose spelling it is, what that draft writes instead, and the dialect the document itself declares. Ignoring it instead would drop a constraint the author wrote. The one exception is an embedded or remote resource that establishes its own `$id` scope *and* declares its own `$schema` -- that resource keeps its declared dialect, so cross-draft `$ref` semantics are preserved.
 
 A document that is pulled in by a `$ref` rather than listed on the command line follows the same rule, whether it is read off disk or fetched with `--allow-remote-refs`: it takes the forced draft when it declares no `$schema` of its own, and keeps its own dialect when it declares one. Until #314 the forced draft did not reach it at all, so a keyword the stated dialect does not define went on binding there while it was dropped from every document the caller listed -- one command line, one schema set, two verdicts on the same JSON.
 

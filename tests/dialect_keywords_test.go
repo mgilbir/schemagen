@@ -71,55 +71,12 @@ const (
 func dialectKeywordFixtures() []dialectFixture {
 	return []dialectFixture{
 		{
-			// The case the issue reports, and its mirror, and both controls, in
-			// one body. exclusiveMinimum/exclusiveMaximum kept their name and
-			// changed their type: a boolean modifying the sibling bound in drafts
-			// 3 and 4, the bound itself from draft 6. Each dialect knows one
-			// spelling and has to read the other as an unknown value.
-			//
-			// The pairing is what makes this the sharpest instance. `num` and
-			// `numMax` state the modern spelling and `bool` and `boolMax` the
-			// legacy one, so each arm has two properties it must enforce and two
-			// it must ignore -- and a generator that simply stopped emitting the
-			// keyword would fail the two it must enforce.
-			Name: "exclusive bounds change spelling at draft 6",
-			Body: `{
-				"type": "object",
-				"properties": {
-					"num":     {"type": "number", "minimum": 3, "exclusiveMinimum": 5},
-					"bool":    {"type": "number", "minimum": 5, "exclusiveMinimum": true},
-					"numMax":  {"type": "number", "maximum": 7, "exclusiveMaximum": 5},
-					"boolMax": {"type": "number", "maximum": 5, "exclusiveMaximum": true}
-				}
-			}`,
-			Without: dialectArm{"draft 4", uriDraft04},
-			With:    dialectArm{"draft 6", uriDraft06},
-			Instances: []dialectInstance{
-				{Doc: `{"num":4}`, Without: true, With: false,
-					Why: "the reported document: draft 4 defines exclusiveMinimum as a boolean, so the number is an " +
-						"unknown value and only minimum:3 binds. Refusing 4 applies draft-6 semantics to a draft-4 document"},
-				{Doc: `{"num":2}`, Without: false, With: false,
-					Why: "the sibling minimum:3 must survive the dropped keyword; discarding it too would accept 2"},
-				{Doc: `{"num":6}`, Without: true, With: true,
-					Why: "above both readings, so it says nothing about which one is in force"},
-				{Doc: `{"bool":5}`, Without: false, With: true,
-					Why: "the mirror: draft 4's boolean makes minimum:5 exclusive, and draft 6 has no reading of a " +
-						"boolean there, so minimum:5 binds inclusively and 5 is valid"},
-				{Doc: `{"bool":4}`, Without: false, With: false, Why: "below minimum:5 under either reading"},
-				{Doc: `{"bool":6}`, Without: true, With: true, Why: "above minimum:5 under either reading"},
-				{Doc: `{"numMax":6}`, Without: true, With: false,
-					Why: "exclusiveMaximum, the same way round: draft 4 ignores the number and only maximum:7 binds"},
-				{Doc: `{"numMax":8}`, Without: false, With: false, Why: "the sibling maximum:7 survives in both"},
-				{Doc: `{"boolMax":5}`, Without: false, With: true,
-					Why: "draft 4's boolean makes maximum:5 exclusive; draft 6 reads maximum:5 inclusively"},
-				{Doc: `{"boolMax":6}`, Without: false, With: false, Why: "above maximum:5 under either reading"},
-			},
-		},
-		{
 			// Draft 3 has none of the four composition keywords, no multipleOf
-			// (it spells that divisibleBy), no min/maxProperties, and spells
-			// `required` on the property as a boolean rather than on the parent
-			// as an array.
+			// (it spells that divisibleBy) and no min/maxProperties. (It also
+			// spells `required` on the property rather than as the parent's
+			// array; that one is a keyword draft 3 does define, in another form,
+			// and is refused rather than ignored -- see
+			// TestAnotherDialectsSpellingIsRefused.)
 			Name: "draft 4's keyword set written in draft 3",
 			Body: `{
 				"type": "object",
@@ -130,8 +87,7 @@ func dialectKeywordFixtures() []dialectFixture {
 					"one":   {"type": "integer", "oneOf": [{"minimum": 5}]},
 					"neg":   {"type": "integer", "not": {"minimum": 5}},
 					"sized": {"type": "object", "minProperties": 1, "maxProperties": 1,
-					          "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}},
-					"req":   {"type": "object", "properties": {"x": {"type": "integer"}}, "required": ["x"]}
+					          "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}}}
 				}
 			}`,
 			Without: dialectArm{"draft 3", uriDraft03},
@@ -147,8 +103,7 @@ func dialectKeywordFixtures() []dialectFixture {
 				{Doc: `{"neg":7}`, Without: true, With: false, Why: "draft 3 has no not; it spells the complement `disallow`"},
 				{Doc: `{"sized":{}}`, Without: true, With: false, Why: "minProperties arrived in draft 4"},
 				{Doc: `{"sized":{"x":1,"y":2}}`, Without: true, With: false, Why: "maxProperties arrived in draft 4"},
-				{Doc: `{"req":{}}`, Without: true, With: false, Why: "the required array is draft 4's spelling"},
-				{Doc: `{"mult":4,"comp":9,"any":"s","one":9,"neg":1,"sized":{"x":1},"req":{"x":1}}`,
+				{Doc: `{"mult":4,"comp":9,"any":"s","one":9,"neg":1,"sized":{"x":1}}`,
 					Without: true, With: true,
 					Why: "the control: every keyword satisfied, so both dialects accept and a fix that " +
 						"disabled the keywords outright cannot hide here"},
@@ -253,8 +208,7 @@ func dialectKeywordFixtures() []dialectFixture {
 				"properties": {
 					"div": {"type": "integer", "divisibleBy": 2},
 					"ext": {"type": "integer", "extends": {"minimum": 5}},
-					"dis": {"disallow": "string"},
-					"req": {"type": "object", "properties": {"x": {"type": "integer", "required": true}}}
+					"dis": {"disallow": "string"}
 				}
 			}`,
 			Without: dialectArm{"draft 6", uriDraft06},
@@ -263,13 +217,67 @@ func dialectKeywordFixtures() []dialectFixture {
 				{Doc: `{"div":3}`, Without: true, With: false, Why: "divisibleBy is draft 3's; draft 6 spells it multipleOf"},
 				{Doc: `{"ext":1}`, Without: true, With: false, Why: "extends is draft 3's; draft 6 spells it allOf"},
 				{Doc: `{"dis":"a"}`, Without: true, With: false, Why: "disallow is draft 3's; draft 6 spells it not"},
-				{Doc: `{"req":{}}`, Without: true, With: false,
-					Why: "the per-property boolean required is draft 3's; draft 6 takes an array on the parent"},
-				{Doc: `{"div":4,"ext":9,"dis":1,"req":{"x":1}}`, Without: true, With: true,
+				{Doc: `{"div":4,"ext":9,"dis":1}`, Without: true, With: true,
 					Why: "the control: every draft-3 keyword satisfied, so draft 3 accepts too"},
 			},
 		},
 	}
+}
+
+// TestAnotherDialectsSpellingIsRefused covers the keywords whose value changed
+// shape between drafts, as against those that came or went: exclusiveMinimum
+// and exclusiveMaximum (a boolean modifying the sibling bound in drafts 3 and
+// 4, the bound itself from draft 6), required (draft 3's boolean on the
+// property, draft 4's array on the parent), items (a tuple array up to
+// 2019-09, one schema from 2020-12) and type (draft 3 alone takes schemas in
+// its array).
+//
+// Written in the other dialect's spelling, the keyword is one the dialect
+// defines with a value its meta-schema rejects, and it is refused, naming
+// whose spelling it is and what to write instead. It used to be ignored, which
+// silently dropped a bound the author wrote: {"minimum":3,
+// "exclusiveMinimum":5} under draft 4 accepted 4, and a draft-07 tuple forced
+// to 2020-12 checked no element at all.
+func TestAnotherDialectsSpellingIsRefused(t *testing.T) {
+	for _, tc := range []struct {
+		uri, body, want string
+	}{
+		{uriDraft04, `{"type":"number","minimum":3,"exclusiveMinimum":5}`, "draft 6 and later's spelling"},
+		{uriDraft04, `{"type":"number","maximum":7,"exclusiveMaximum":5}`, "draft 6 and later's spelling"},
+		{uriDraft06, `{"type":"number","minimum":5,"exclusiveMinimum":true}`, "drafts 3 and 4's spelling"},
+		{uriDraft06, `{"type":"number","maximum":5,"exclusiveMaximum":true}`, "drafts 3 and 4's spelling"},
+		{uriDraft06, `{"type":"object","properties":{"x":{"type":"integer","required":true}}}`, "draft 3's spelling"},
+		{uriDraft03, `{"type":"object","properties":{"x":{"type":"integer"}},"required":["x"]}`, "draft 4 and later's spelling"},
+		{"https://json-schema.org/draft/2020-12/schema", `{"type":"array","items":[{"type":"string"}]}`, "prefixItems"},
+		{uriDraft04, `{"type":["string",{"minimum":1}]}`, "anyOf"},
+	} {
+		src := withSchemaKeyword(t, tc.body, tc.uri)
+		var s schema.Schema
+		if err := json.Unmarshal([]byte(src), &s); err != nil {
+			t.Fatal(err)
+		}
+		s.Normalize()
+		_, err := generator.New(generator.Config{PackageName: "testpkg"}).Generate(&s)
+		if err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: err = %v, want a refusal saying %q", src, err, tc.want)
+		}
+	}
+
+	// And each spelling binds where its dialect defines it.
+	runDialectArm(t, `{"type":"object","properties":{
+		"num":    {"type":"number","minimum":3,"exclusiveMinimum":5},
+		"numMax": {"type":"number","maximum":7,"exclusiveMaximum":5}}}`, uriDraft06, []notInstance{
+		{Name: "above the exclusive bound", Doc: `{"num":6,"numMax":4}`, Valid: true, Why: "control"},
+		{Name: "at the exclusive minimum", Doc: `{"num":5}`, Valid: false, Why: "draft 6's number is the bound itself"},
+		{Name: "at the exclusive maximum", Doc: `{"numMax":5}`, Valid: false, Why: "the same way round"},
+	})
+	runDialectArm(t, `{"type":"object","properties":{
+		"bool":    {"type":"number","minimum":5,"exclusiveMinimum":true},
+		"boolMax": {"type":"number","maximum":5,"exclusiveMaximum":true}}}`, uriDraft04, []notInstance{
+		{Name: "inside both bounds", Doc: `{"bool":6,"boolMax":4}`, Valid: true, Why: "control"},
+		{Name: "at the minimum", Doc: `{"bool":5}`, Valid: false, Why: "draft 4's boolean makes minimum:5 exclusive"},
+		{Name: "at the maximum", Doc: `{"boolMax":5}`, Valid: false, Why: "the same way round"},
+	})
 }
 
 // TestKeywordAvailabilityFollowsTheDialect compiles each body under both

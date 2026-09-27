@@ -60,8 +60,8 @@ func TestReferencedDocumentsClaimingOneDefinitionNameKeepTheirOwnSchema(t *testi
 	}
 	for _, want := range []string{
 		"2 documents claim the Go type name Inner",
-		"a.json (reached by $ref) $defs/Inner becomes AInner",
-		"b.json (reached by $ref) $defs/Inner becomes BInner",
+		"a.json (reached by $ref) #/$defs/Inner becomes AInner",
+		"b.json (reached by $ref) #/$defs/Inner becomes BInner",
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("missing %q in:\n%s", want, stderr)
@@ -260,8 +260,8 @@ func TestReferencedDocumentInteriorNodesClaimingOneNameKeepTheirOwnSchema(t *tes
 	}
 	for _, want := range []string{
 		"2 documents claim the Go type name X",
-		"a.json (reached by $ref) properties/x becomes AX",
-		"b.json (reached by $ref) properties/x becomes BX",
+		"a.json (reached by $ref) #/properties/x becomes AX",
+		"b.json (reached by $ref) #/properties/x becomes BX",
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("missing %q in:\n%s", want, stderr)

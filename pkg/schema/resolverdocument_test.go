@@ -205,10 +205,10 @@ func TestARelativeRefInsideARedirectedDocumentReadsTheAnsweringDirectory(t *test
 	if sub.MinLength == nil {
 		t.Fatal("the relative $ref resolved to a document with no minLength; neither fixture looks like this")
 	}
-	if *sub.MinLength != 3 {
+	if sub.MinLength.Int() != 3 {
 		t.Errorf("minLength = %d, want 3: the $ref was read against %q, which is the directory the request started "+
 			"in rather than the one that answered it, so a different document was fetched and enforced (issue #315)",
-			*sub.MinLength, doc.Properties["s"].BaseURI)
+			sub.MinLength.Int(), doc.Properties["s"].BaseURI)
 	}
 }
 

@@ -3,8 +3,8 @@
 package schema
 
 import (
-	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -15,38 +15,212 @@ import (
 	"strings"
 )
 
-// FlexInt is an integer type that tolerates float-encoded integers in JSON (e.g. 2.0).
-// JSON has no distinction between integers and floats, so test suites often use 2.0 where
-// an integer is expected.
-type FlexInt int
+// FlexInt is the value of a keyword the specification defines as an integer
+// count: minLength and maxLength, minItems and maxItems, minProperties and
+// maxProperties, minContains and maxContains.
+//
+// It tolerates an integer written in a float's spelling -- 2.0, 1e3 -- because
+// JSON has one number type and from draft 6 on 2.0 *is* the integer 2; the
+// official suite writes counts that way on purpose.
+//
+// The literal is read exactly, as a decimal, and never through float64. The
+// float64 reading it replaces was wrong twice over: a count past 2^53 lost its
+// low digits, and a count past int64 went through a float-to-int conversion Go
+// leaves implementation-defined, which on amd64 is MinInt64. So
+// {"maxLength":9223372036854775808} became a maximum of -2^63 and refused "",
+// and {"minLength":1e19} became a minimum of -2^63 and accepted "x".
+//
+// A count too large for an int is held as MaxInt, and that saturation
+// preserves every verdict exactly rather than approximately. What the keyword
+// is compared against is the length of a value that exists -- a string's
+// characters, an array's elements, an object's members, a contains match count
+// -- and none of those can reach MaxInt: a Go value that large does not fit in
+// any address space the language runs in. So a maximum at or past MaxInt
+// admits every value there is, exactly as the unbounded maximum the schema
+// wrote does, and a minimum at or past it admits none, exactly as the
+// unsatisfiable minimum the schema wrote does. Every reader of these fields
+// then reaches the right answer by the comparison it already makes, with no
+// special case to forget, and none of them does arithmetic on the bound that
+// the saturated value could overflow (TestSaturatedCountsKeepTheirVerdict holds
+// the generated code to that).
+//
+// The saturated value is how the bound is *compared*, and nothing else. It is
+// not the number the schema wrote, so a saturated count also keeps the literal
+// it was read from (Literal, String), and anything that states the bound to a
+// person -- an error message -- states that: {"minLength":1e19} refuses "x" as
+// shorter than 1e19, not as shorter than 9223372036854775807, a bound nobody
+// wrote. Where the generated code runs is a second place the saturated value is
+// not the whole answer: a 32-bit target's int is narrower than the generator's,
+// and pkg/generator's CountBound emits the bound per target for that reason.
+//
+// A negative value is kept, saturating at MinInt the same way, and reported
+// through Schema.MalformedKeywords: every dialect's metaschema defines these
+// keywords as non-negative, except draft 3's maxLength, which is a plain
+// integer there -- and a negative maximum is then a legal schema that admits
+// no string at all. Which of the two a node is depends on its dialect, which
+// is not known until Normalize, so the value is held and the verdict deferred.
+type FlexInt struct {
+	n int
+	// literal is the number as the schema wrote it, kept only where n is not
+	// that number: where it was saturated.
+	literal string
+}
+
+// NewFlexInt returns the count n, for a Schema assembled in Go.
+func NewFlexInt(n int) FlexInt { return FlexInt{n: n} }
+
+// errNegativeCount marks a count the document wrote as a negative integer. It
+// is a malformed value in every dialect but one; see FlexInt and
+// negativeCountDefinedIn.
+var errNegativeCount = errors.New("must be a non-negative integer")
 
 func (f *FlexInt) UnmarshalJSON(data []byte) error {
-	// Try int first.
-	var i int
-	if err := json.Unmarshal(data, &i); err == nil {
-		*f = FlexInt(i)
-		return nil
+	lit := trimJSONWhitespace(data)
+	n, saturated, negative, err := parseIntegerLiteral(lit)
+	if err != nil {
+		return err
 	}
-
-	// Try float and check if it's a whole number.
-	var n float64
-	if err := json.Unmarshal(data, &n); err != nil {
-		return fmt.Errorf("expected integer, got: %s", string(data))
+	*f = FlexInt{n: n}
+	if saturated {
+		f.literal = lit
 	}
-	if n != math.Trunc(n) {
-		return fmt.Errorf("expected integer, got float: %s", string(data))
+	if negative {
+		return fmt.Errorf("%s: %w", lit, errNegativeCount)
 	}
-	*f = FlexInt(int(n))
 	return nil
 }
 
-func (f FlexInt) MarshalJSON() ([]byte, error) {
-	return json.Marshal(int(f))
+// parseIntegerLiteral reads a JSON number literal as an integer, exactly.
+//
+// It accepts every spelling JSON has for an integer -- 12, 12.0, 1.2e1,
+// 120e-1 -- and refuses a literal that names a number with a fractional part,
+// or a JSON value that is not a number at all. The value is saturated at the
+// bounds of an int, and saturated says so; negative reports whether it was
+// below zero.
+//
+// The literal is taken apart by hand rather than through big.Rat because the
+// exponent is written by the document, and big.Rat would build 1e1000000000
+// out in full. Here the question "how many digits does this integer have" is
+// answered from the exponent without materializing any of them.
+func parseIntegerLiteral(lit string) (n int, saturated, negative bool, err error) {
+	bad := func() (int, bool, bool, error) {
+		return 0, false, false, fmt.Errorf("expected an integer, got: %s", lit)
+	}
+	i := 0
+	if i < len(lit) && lit[i] == '-' {
+		negative = true
+		i++
+	}
+	intStart := i
+	for i < len(lit) && lit[i] >= '0' && lit[i] <= '9' {
+		i++
+	}
+	intDigits := lit[intStart:i]
+	if intDigits == "" || (len(intDigits) > 1 && intDigits[0] == '0') {
+		return bad()
+	}
+	fracDigits := ""
+	if i < len(lit) && lit[i] == '.' {
+		i++
+		fracStart := i
+		for i < len(lit) && lit[i] >= '0' && lit[i] <= '9' {
+			i++
+		}
+		fracDigits = lit[fracStart:i]
+		if fracDigits == "" {
+			return bad()
+		}
+	}
+	// The exponent, clamped: past ±2^62 no literal the size of a document can
+	// bring the value back into range, so the clamp changes no answer below.
+	var exp int64
+	if i < len(lit) && (lit[i] == 'e' || lit[i] == 'E') {
+		i++
+		expNegative := false
+		if i < len(lit) && (lit[i] == '+' || lit[i] == '-') {
+			expNegative = lit[i] == '-'
+			i++
+		}
+		expStart := i
+		for i < len(lit) && lit[i] >= '0' && lit[i] <= '9' {
+			if exp < 1<<62 {
+				exp = exp*10 + int64(lit[i]-'0')
+			}
+			i++
+		}
+		if i == expStart {
+			return bad()
+		}
+		if expNegative {
+			exp = -exp
+		}
+	}
+	if i != len(lit) {
+		return bad()
+	}
+
+	// value = digits × 10^scale, with digits free of leading and trailing zeros.
+	digits := strings.TrimLeft(intDigits+fracDigits, "0")
+	scale := exp - int64(len(fracDigits))
+	trimmed := strings.TrimRight(digits, "0")
+	scale += int64(len(digits) - len(trimmed))
+	digits = trimmed
+	if digits == "" {
+		return 0, false, false, nil // zero, however it was spelled, including -0
+	}
+	if scale < 0 {
+		return 0, false, false, fmt.Errorf("expected an integer, got a fraction: %s", lit)
+	}
+	saturate := func() (int, bool, bool, error) {
+		if negative {
+			return math.MinInt, true, true, nil
+		}
+		return math.MaxInt, true, false, nil
+	}
+	// An int holds at most 19 decimal digits; anything longer saturates.
+	if int64(len(digits))+scale > 19 {
+		return saturate()
+	}
+	u, perr := strconv.ParseUint(digits+strings.Repeat("0", int(scale)), 10, 64)
+	if perr != nil {
+		return bad()
+	}
+	if negative {
+		if u > uint64(math.MaxInt)+1 {
+			return saturate()
+		}
+		return int(-int64(u-1) - 1), false, true, nil
+	}
+	if u > uint64(math.MaxInt) {
+		return saturate()
+	}
+	return int(u), false, false, nil
 }
 
-// Int returns the FlexInt as a plain int.
-func (f FlexInt) Int() int {
-	return int(f)
+// MarshalJSON writes the count as the schema wrote it when it was saturated,
+// and as an integer otherwise.
+func (f FlexInt) MarshalJSON() ([]byte, error) {
+	if f.literal != "" {
+		return []byte(f.literal), nil
+	}
+	return json.Marshal(f.n)
+}
+
+// Int returns the count as compared: the number itself, or MaxInt (MinInt) for
+// one too large (too far below zero) for an int. See FlexInt.
+func (f FlexInt) Int() int { return f.n }
+
+// Saturated reports whether the schema wrote a number an int cannot hold, so
+// that Int is its saturated stand-in rather than the number itself.
+func (f FlexInt) Saturated() bool { return f.literal != "" }
+
+// String returns the number the schema wrote: the literal for a saturated
+// count, the decimal otherwise. It is what an error message states.
+func (f FlexInt) String() string {
+	if f.literal != "" {
+		return f.literal
+	}
+	return strconv.Itoa(f.n)
 }
 
 // Number is the value of a numeric keyword -- minimum, maximum, multipleOf and
@@ -189,34 +363,45 @@ func NumberFromFloat(f float64) Number {
 type TypeList []string
 
 func (t *TypeList) UnmarshalJSON(data []byte) error {
-	// Try single string first.
-	var single string
-	if err := json.Unmarshal(data, &single); err == nil {
+	// A single type name. Checked by its first byte because encoding/json
+	// decodes a JSON null into a string without complaint, as the empty string.
+	if trimmed := trimJSONWhitespace(data); len(trimmed) > 0 && trimmed[0] == '"' {
+		var single string
+		if err := json.Unmarshal(data, &single); err != nil {
+			return err
+		}
 		*t = TypeList{single}
 		return nil
 	}
 
-	// Try array of strings.
-	var arr []string
-	if err := json.Unmarshal(data, &arr); err == nil {
-		*t = TypeList(arr)
-		return nil
-	}
-
-	// Draft 3: try array that may contain schemas or strings.
-	// Schema-valued alternatives are captured by Schema.UnmarshalJSON.
+	// Draft 3: an array whose entries are type names or schemas. The
+	// schema-valued entries are captured by Schema.UnmarshalJSON, into
+	// TypeSchemas; this keeps the names.
+	//
+	// An entry that is neither is refused rather than skipped. No dialect gives
+	// one a meaning -- draft 3's entries are "a string or a schema", and draft 3
+	// has no boolean schemas; every later draft takes names only -- and skipping
+	// it is not neutral: {"type":[1,2]} came out as a schema with no type at all,
+	// which admits every value, from a document that plainly meant to restrict
+	// it. A malformed value is refused wherever it stands, as a null subschema
+	// is; see Schema.MalformedKeywords.
 	var raw []json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return fmt.Errorf("type must be a string or array of strings: %s", string(data))
 	}
 
-	var types []string
-	for _, elem := range raw {
-		// Try as string.
+	types := make([]string, 0, len(raw))
+	for i, elem := range raw {
+		trimmed := trimJSONWhitespace(elem)
 		var s string
-		if json.Unmarshal(elem, &s) == nil {
+		switch {
+		case json.Unmarshal(elem, &s) == nil && len(trimmed) > 0 && trimmed[0] == '"':
 			types = append(types, s)
-			continue
+		case len(trimmed) > 0 && trimmed[0] == '{':
+			// A draft 3 schema-valued entry; see Schema.TypeSchemas.
+		default:
+			// Placed at the entry, so a refusal names where it is.
+			return atPath(fmt.Errorf("must be a type name or a schema, got: %s", abbreviateJSON(trimmed)), strconv.Itoa(i))
 		}
 	}
 	*t = TypeList(types)
@@ -239,6 +424,10 @@ type SchemaOrBool struct {
 	// boolSchema memoizes the *Schema materialized by AsSchema for the boolean
 	// form, so repeated resolutions return the same node.
 	boolSchema *Schema
+
+	// src is where the document wrote the boolean form, which the node
+	// AsSchema materializes is located at. See Schema.SourceLocation.
+	src *source
 }
 
 // AsSchema returns the value as a *Schema, materializing the boolean form.
@@ -259,6 +448,9 @@ func (s *SchemaOrBool) AsSchema() *Schema {
 	if s.boolSchema == nil {
 		b := *s.Bool
 		s.boolSchema = &Schema{BooleanSchema: &b}
+		if s.src != nil {
+			s.boolSchema.src = *s.src
+		}
 	}
 	return s.boolSchema
 }
@@ -374,45 +566,28 @@ func (s SchemaOrSchemaArray) MarshalJSON() ([]byte, error) {
 	return json.Marshal(s.Schema)
 }
 
-// RequiredList represents the "required" keyword, which is an array of strings
-// in Draft 4+ but a boolean in Draft 3 (on individual properties).
-// When parsed as a boolean (Draft 3), it is stored as an empty list — the
-// Normalize() function on the parent schema handles the conversion.
-// draft3RequiredSentinel is a sentinel value stored in RequiredList when
-// Draft 3's "required": true is encountered on a property sub-schema.
-// Normalize() converts these to the parent's Required array.
-const draft3RequiredSentinel = "\x00__draft3_required_true__"
-
+// RequiredList is the draft 4+ "required" keyword: the names of the properties
+// an object must have.
+//
+// Draft 3's spelling of the same idea -- a boolean on the property itself -- is
+// a different value of the same keyword and is held on Schema.Draft3Required,
+// not here. It used to be folded into this list as a magic member,
+// "\x00__draft3_required_true__", and a list of property names cannot carry an
+// in-band marker safely, because every string is a legal property name: where
+// the marker was not promoted away (at the root of a draft-3 document, or under
+// additionalProperties with no $schema) it reached the generator as a required
+// property of that name, and the type refused every object; and a 2020-12
+// document that really names a property "\x00__draft3_required_true__" had its
+// requirement read as draft 3's boolean and silently gated away.
 type RequiredList []string
 
-// IsDraft3Required returns true if this list contains the draft3 sentinel,
-// meaning the property had "required": true in Draft 3 format.
-func (r RequiredList) IsDraft3Required() bool {
-	return len(r) == 1 && r[0] == draft3RequiredSentinel
-}
-
 func (r *RequiredList) UnmarshalJSON(data []byte) error {
-	// Try array of strings first (Draft 4+).
 	var arr []string
-	if err := json.Unmarshal(data, &arr); err == nil {
-		*r = RequiredList(arr)
-		return nil
+	if err := json.Unmarshal(data, &arr); err != nil || arr == nil {
+		return fmt.Errorf("required must be an array of strings: %s", string(data))
 	}
-
-	// Try boolean (Draft 3: "required": true on individual properties).
-	// Store a sentinel value so Normalize() can detect and convert to
-	// the parent schema's Required array.
-	var b bool
-	if err := json.Unmarshal(data, &b); err == nil {
-		if b {
-			*r = RequiredList{draft3RequiredSentinel}
-		} else {
-			*r = RequiredList{}
-		}
-		return nil
-	}
-
-	return fmt.Errorf("required must be an array of strings or boolean: %s", string(data))
+	*r = RequiredList(arr)
+	return nil
 }
 
 func (r RequiredList) MarshalJSON() ([]byte, error) {
@@ -427,33 +602,6 @@ type Discriminator struct {
 	// Mapping is an optional map from discriminator values to schema references.
 	// If empty, the discriminator value is matched against variant const/enum values.
 	Mapping map[string]string `json:"mapping,omitempty"`
-}
-
-// UnmarshalJSON reads the two fixed fields by their exact names.
-//
-// It exists for the reason Schema.UnmarshalJSON cuts its own decode down: fields
-// encoding/json cannot match exactly it matches again case-insensitively, so
-// {"discriminator":{"PropertyName":"kind"}} named a property the document never
-// named, and the generated oneOf dispatched on it. The discriminator is a vendor
-// keyword rather than a JSON Schema one, but a key it does not define is as much
-// nothing to it as an unrecognised keyword is to a schema. See exactKeywordObject
-// and issue #350.
-func (d *Discriminator) UnmarshalJSON(data []byte) error {
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		raw = nil
-	}
-	body := data
-	if exact := exactKeywordObject(raw, knownDiscriminatorKeys, knownDiscriminatorKeyOrder); exact != nil {
-		body = exact
-	}
-	type discriminatorAlias Discriminator
-	var alias discriminatorAlias
-	if err := json.Unmarshal(body, &alias); err != nil {
-		return err
-	}
-	*d = Discriminator(alias)
-	return nil
 }
 
 // Schema represents a JSON Schema document. It is a superset struct that supports
@@ -483,8 +631,16 @@ type Schema struct {
 	Discriminator *Discriminator `json:"discriminator,omitempty"`
 
 	// Object keywords
-	Properties           map[string]*Schema `json:"properties,omitempty"`
-	Required             RequiredList       `json:"required,omitempty"`
+	Properties map[string]*Schema `json:"properties,omitempty"`
+	Required   RequiredList       `json:"required,omitempty"`
+
+	// Draft3Required is draft 3's spelling of "required": a boolean on the
+	// property's own schema, where draft 4 and later write an array of names on
+	// the parent. Normalize moves a true one onto the parent's Required and
+	// clears every one, so nothing past Normalize sees it. It is a field of its
+	// own, not a member of Required: see RequiredList for what the in-band
+	// marker it replaces did.
+	Draft3Required       *bool              `json:"-"`
 	AdditionalProperties *SchemaOrBool      `json:"additionalProperties,omitempty"`
 	PatternProperties    map[string]*Schema `json:"patternProperties,omitempty"`
 	MinProperties        *FlexInt           `json:"minProperties,omitempty"`
@@ -555,6 +711,30 @@ type Schema struct {
 	// Draft 4/6/7: dependencies (object where values are schemas or string arrays)
 	Dependencies json.RawMessage `json:"dependencies,omitempty"`
 
+	// The parsed forms of the three keywords above that hold subschemas. The raw
+	// fields are the document's bytes, kept so that the schema marshals back to
+	// what it said; these are the same values read as schemas, and they are read
+	// when the document is -- not later, when Normalize rewrites them into the
+	// keywords that replaced them.
+	//
+	// The timing is the point. The dialect pass clears, on every node, the
+	// keywords that node's dialect does not define, and it can only reach a node
+	// that exists. While these keywords stayed raw until the rewrite, the
+	// subschemas inside them did not exist when the pass ran, so they were never
+	// gated at all: a draft-4 document's {"dependencies":{"a":{"properties":
+	// {"b":{"const":1}}}}} enforced a const draft 4 does not have. Parsed here,
+	// they are ordinary children (see eachChild) and are gated under their own
+	// dialect like any other.
+	//
+	// DisallowSchemas holds one schema per entry of "disallow", a type name
+	// becoming {"type": name}. DependencySchemas and DependencyRequired split
+	// "dependencies" by entry shape, as Normalize will: a schema, or the names
+	// that must be present (draft 3's single bare name included).
+	ExtendsSchemas     []*Schema           `json:"-"`
+	DisallowSchemas    []*Schema           `json:"-"`
+	DependencySchemas  map[string]*Schema  `json:"-"`
+	DependencyRequired map[string][]string `json:"-"`
+
 	// Draft 2019-09+
 	DependentSchemas  map[string]*Schema  `json:"dependentSchemas,omitempty"`
 	DependentRequired map[string][]string `json:"dependentRequired,omitempty"`
@@ -589,6 +769,34 @@ type Schema struct {
 	// extensionSchema, keyed by keyword.
 	extensionSchemas map[string]*Schema
 
+	// malformed records, by keyword, a value this node's document wrote that
+	// is not a legal value of the keyword. See MalformedKeywords.
+	malformed map[string]error
+
+	// normalized is set once Normalize has rewritten this node. See
+	// NormalizeForDraft for why a rewritten node is not read again.
+	normalized bool
+
+	// srcChildren is every subschema this node's object holds, at the JSON
+	// Pointer reference tokens that lead to it from this node, as the decode
+	// found them -- before Normalize moves any of them. It is what locates each
+	// node (src; see source.go), and what the resolver answers a pointer into
+	// a rewritten keyword from: after Normalize the document's own location of
+	// such a subschema ("#/dependencies/a") no longer exists in the tree -- it
+	// is under "dependentSchemas", "allOf" or "not" now -- but a $ref written
+	// against the document names it there. See LocalResolver.walkPath.
+	srcChildren []srcChild
+
+	// src is where the document wrote this node. See SourceLocation.
+	src source
+
+	// droppedKeywords holds, as JSON, the value of each keyword the dialect
+	// pass cleared because the node's dialect does not define it. Such a
+	// keyword is unknown to that dialect, and a pointer reaches an unknown
+	// keyword's value (through Extensions, for a keyword this package has no
+	// field for); this keeps the same true of one it does -- draft 3's "#/not".
+	droppedKeywords map[string]json.RawMessage
+
 	// DetectedDraft is set during parsing to record which draft was detected/used.
 	DetectedDraft Draft `json:"-"`
 
@@ -621,20 +829,9 @@ type Schema struct {
 // via reflection so it stays in sync with the struct definition automatically.
 var knownSchemaKeys map[string]bool
 
-// knownSchemaKeyOrder is knownSchemaKeys as a sorted list, which is what
-// exactKeywordObject folds against and rebuilds in. Sorted so that the object it
-// writes is a function of the document alone -- a map range would put the same
-// keywords in a different order on every run, and the bytes handed to the decoder
-// would differ between two decodes of one document.
+// knownSchemaKeyOrder is knownSchemaKeys as a sorted list, for anything that
+// has to visit every keyword in an order that does not change between runs.
 var knownSchemaKeyOrder []string
-
-// knownDiscriminatorKeys and knownDiscriminatorKeyOrder are the same two things
-// for Discriminator, whose fields encoding/json matches by the same rule. See
-// Discriminator.UnmarshalJSON.
-var (
-	knownDiscriminatorKeys     map[string]bool
-	knownDiscriminatorKeyOrder []string
-)
 
 // marshaledKeywordField describes one Schema field in the terms MarshaledKeywords
 // needs: the JSON key the encoder writes for it, where to find it, and the
@@ -671,6 +868,7 @@ func init() {
 		}
 		knownSchemaKeys[name] = true
 		knownSchemaKeyOrder = append(knownSchemaKeyOrder, name)
+		schemaKeywordFields = append(schemaKeywordFields, schemaKeywordField{index: i, key: name, typ: t.Field(i).Type})
 		marshaledKeywordFields = append(marshaledKeywordFields, marshaledKeywordField{
 			index:     i,
 			key:       name,
@@ -679,105 +877,6 @@ func init() {
 		})
 	}
 	slices.Sort(knownSchemaKeyOrder)
-
-	knownDiscriminatorKeys = make(map[string]bool)
-	dt := reflect.TypeOf(Discriminator{})
-	for i := 0; i < dt.NumField(); i++ {
-		name, _, _ := strings.Cut(dt.Field(i).Tag.Get("json"), ",")
-		if name == "" || name == "-" {
-			continue
-		}
-		knownDiscriminatorKeys[name] = true
-		knownDiscriminatorKeyOrder = append(knownDiscriminatorKeyOrder, name)
-	}
-	slices.Sort(knownDiscriminatorKeyOrder)
-}
-
-// exactKeywordObject re-encodes raw with only the keys that name one of known
-// exactly, and returns nil when raw holds no key that a struct decode would fill
-// a field from without naming it.
-//
-// JSON Schema keywords are case-sensitive, and a keyword the implementation does
-// not recognise constrains nothing: 2020-12 core §6.5 says it is to be treated as
-// an annotation, and every draft before it says the same in plainer words --
-// draft 7 §4.3.1 "Unknown keywords SHOULD be ignored", draft 4 §5.6 the same.
-// "MinLength" is not "minLength": it is an unrecognised keyword, and a schema
-// carrying it says nothing about length. encoding/json reads keys the
-// other way round -- a key matching no field exactly is matched a second time
-// case-insensitively -- so every keyword on Schema was accepted in every casing
-// and enforced as the keyword it resembles. {"type":"string","MinLength":5}
-// refused "ab", {"$rEf":"#/$defs/S"} took its type from a reference nobody wrote,
-// and {"MinLength":"x"} was refused as a malformed document rather than parsed as
-// the legal one it is. All three are wrong verdicts on documents the spec settles;
-// see issue #350.
-//
-// strings.EqualFold is the predicate rather than an approximation of it, because
-// it is the one encoding/json matches on: the decoder's folded-name lookup is
-// documented as identical to EqualFold. That is also why this is not an ASCII
-// rule -- U+017F LATIN SMALL LETTER LONG S folds to "s", so "$ſchema" reached the
-// $schema field and chose the document's dialect.
-//
-// An exact key settles itself whatever else folds onto it, which is what
-// {"minLength":1,"MinLength":9} needs: the keyword is stated once, and its value
-// is 1. Before this, which of the two won was decided by their order in the
-// document, because both filled the same field and the later one overwrote the
-// earlier.
-//
-// Only the exactly-named keys are written back out. Dropping the rest changes
-// nothing -- the struct decode ignores a key no field answers to -- and every key
-// of the document is still read from raw by the caller, which is how an
-// unrecognised keyword still reaches Extensions and stays reachable by JSON
-// Pointer.
-//
-// Returning nil for the ordinary document is what keeps this off the hot path:
-// the rebuild costs a copy of the node's subtree, and it is paid only by a
-// document that actually carries a folded key.
-func exactKeywordObject(raw map[string]json.RawMessage, known map[string]bool, order []string) []byte {
-	folded := false
-	// maporder: a predicate; it returns the same answer whichever member it stops at.
-	for key := range raw {
-		if known[key] {
-			continue
-		}
-		for _, name := range order {
-			if strings.EqualFold(key, name) {
-				folded = true
-				break
-			}
-		}
-		if folded {
-			break
-		}
-	}
-	if !folded {
-		return nil
-	}
-	size := 2
-	for _, name := range order {
-		if val, ok := raw[name]; ok {
-			size += len(name) + len(val) + 4
-		}
-	}
-	out := make([]byte, 0, size)
-	out = append(out, '{')
-	for _, name := range order {
-		val, ok := raw[name]
-		if !ok {
-			continue
-		}
-		if len(out) > 1 {
-			out = append(out, ',')
-		}
-		// A Go string has no JSON encoding that can fail, and the values are the
-		// document's own bytes, kept verbatim so that a number keeps whatever it
-		// was written as.
-		quoted, _ := json.Marshal(name)
-		out = append(out, quoted...)
-		out = append(out, ':')
-		out = append(out, val...)
-	}
-	out = append(out, '}')
-	return out
 }
 
 // isEmptyForJSON is encoding/json's isEmptyValue, which is what decides whether
@@ -849,128 +948,6 @@ func (s *Schema) MarshaledKeywords() (map[string]bool, bool) {
 		present[f.key] = true
 	}
 	return present, true
-}
-
-// UnmarshalJSON implements custom unmarshaling for Schema to handle boolean schemas.
-// In JSON Schema Draft 6+, a bare `true` or `false` is a valid schema.
-// Unknown keywords are preserved in Extensions for JSON Pointer resolution.
-func (s *Schema) UnmarshalJSON(data []byte) error {
-	// Check for boolean schema.
-	trimmed := trimJSONWhitespace(data)
-	if trimmed == "true" {
-		b := true
-		s.BooleanSchema = &b
-		return nil
-	}
-	if trimmed == "false" {
-		b := false
-		s.BooleanSchema = &b
-		return nil
-	}
-
-	// The document read as keys, which two things then need: the keywords it
-	// states, and which of those the struct decode below is allowed to see.
-	//
-	// A failure here is not reported. It means the data is not a JSON object at
-	// all, which the struct decode is about to say in the words it has always
-	// said it in; raw is left nil and every reading of it below is a reading of
-	// an absent keyword.
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(data, &raw); err != nil {
-		raw = nil
-	}
-
-	// Use an alias to avoid infinite recursion.
-	//
-	// The decode goes through a json.Decoder with UseNumber rather than
-	// json.Unmarshal so that the keywords typed `any` -- const, enum, default,
-	// and anything nested inside them -- hold the number the schema wrote
-	// instead of the float64 it rounds to. An enum member of 9223372036854775807
-	// is an int64 exactly and a float64 not at all, and the generator has to emit
-	// it as a Go constant; float64 is a reading of the number, not the number.
-	// Numeric keywords with a type of their own (Number, FlexInt) decode from the
-	// raw bytes either way, so UseNumber neither helps nor hinders them.
-	//
-	// What it decodes is the document itself, unless the document carries a key
-	// that encoding/json would fold onto a keyword it is not -- in which case it
-	// is the document cut down to the keys that name a keyword exactly. See
-	// exactKeywordObject and issue #350.
-	type schemaAlias Schema
-	var alias schemaAlias
-	body := data
-	if exact := exactKeywordObject(raw, knownSchemaKeys, knownSchemaKeyOrder); exact != nil {
-		body = exact
-	}
-	dec := json.NewDecoder(bytes.NewReader(body))
-	dec.UseNumber()
-	if err := dec.Decode(&alias); err != nil {
-		return err
-	}
-	*s = Schema(alias)
-
-	// Capture unknown keywords in Extensions for JSON Pointer $ref resolution.
-	// A case variant of a keyword is one of those: it is an unrecognised keyword,
-	// so it asserts nothing and stays reachable by pointer, exactly like any
-	// other key the struct has no field for.
-	// maporder: copies members under their own keys, which are distinct, so no order writes a different map.
-	for key, val := range raw {
-		if !knownSchemaKeys[key] {
-			if s.Extensions == nil {
-				s.Extensions = make(map[string]json.RawMessage)
-			}
-			s.Extensions[key] = val
-		}
-	}
-
-	// Detect {"const": null} which Go's json.Unmarshal loses (sets *any to nil,
-	// indistinguishable from "const not present").
-	if constRaw, ok := raw["const"]; ok && string(constRaw) == "null" {
-		s.ConstIsNull = true
-	}
-
-	// {"$ref": ""} is a reference, and an empty Ref field is how this package
-	// spells "this schema has no $ref" -- so the keyword disappeared and the
-	// position it stood in became `any`. {"properties":{"a":{"$ref":""}}}
-	// accepted {"a":"x"}, and it was wrong twice over: a legal reference was
-	// not resolved, and it was not refused either, while a $ref naming a
-	// definition that does not exist fails generation outright. See issue #272.
-	//
-	// The empty string is a URI-reference like any other and RFC 3986 §5.2
-	// resolves it against the base URI, which is the same target "#" names: a
-	// same-document reference to the resource in scope. So the two spellings
-	// are made one here, at the only point in the pipeline that can still tell
-	// {"$ref": ""} from a schema with no $ref at all -- and everything
-	// downstream resolves, and cycle-checks, the reference it already knew.
-	//
-	// Rewriting to the fixed string "#" rather than to whatever URI the
-	// enclosing $id established is what makes this correct under a nested
-	// resource too: "#" is itself resolved against the base URI in scope, so a
-	// node inside {"$id": "http://x/sub"} reaches that subschema and not the
-	// document root.
-	if refRaw, ok := raw["$ref"]; ok && string(trimJSONWhitespace(refRaw)) == `""` {
-		s.Ref = "#"
-	}
-
-	// Draft 3 allows schema-valued entries in the type array. Preserve them so
-	// validation can treat the type keyword as an anyOf over primitive names and
-	// schema branches.
-	if typeRaw, ok := raw["type"]; ok {
-		var elems []json.RawMessage
-		if json.Unmarshal(typeRaw, &elems) == nil {
-			for _, elem := range elems {
-				var typeName string
-				if json.Unmarshal(elem, &typeName) == nil {
-					continue
-				}
-				var typeSchema Schema
-				if json.Unmarshal(elem, &typeSchema) == nil && !typeSchema.IsBooleanSchema() {
-					s.TypeSchemas = append(s.TypeSchemas, &typeSchema)
-				}
-			}
-		}
-	}
-
-	return nil
 }
 
 // Examples returns the "examples" annotation as the raw JSON of each element,
@@ -1050,23 +1027,18 @@ func (s *Schema) ComputeBaseURIs(parentBaseURI *url.URL, documentRoot *Schema) {
 	// changesScope, descended into it and found the anchor. Two walks, two
 	// answers, for the identical document; see AnchorNames on why that shape is
 	// not allowed to stand (issue #307).
-	schemaID := s.ID
-	if schemaID == "" {
-		schemaID = s.LegacyID
-	}
-	if plainNameFragment(schemaID) != "" {
-		schemaID = ""
-	}
-	if schemaID != "" {
-		if idURL, err := url.Parse(schemaID); err == nil {
-			if currentBase != nil {
-				currentBase = currentBase.ResolveReference(idURL)
-			} else {
-				currentBase = idURL
-			}
-			// A schema with $id becomes the document root for its scope.
-			currentDocRoot = s
+	//
+	// Which ids those are is scopeID's answer, and the resolver's anchor walk
+	// asks the same function: an id this walk could not parse used to be no
+	// scope change here and one there, which is the same two-walks shape again.
+	if idURL, ok := scopeID(s); ok {
+		if currentBase != nil {
+			currentBase = currentBase.ResolveReference(idURL)
+		} else {
+			currentBase = idURL
 		}
+		// A schema with $id becomes the document root for its scope.
+		currentDocRoot = s
 	}
 
 	s.BaseURI = currentBase
@@ -1195,7 +1167,26 @@ func (s *Schema) extensionSchema(key string, tokens []string, raw json.RawMessag
 	if err := json.Unmarshal(target, &sub); err != nil {
 		return nil, err
 	}
-	sub.Normalize()
+	// The extension's subschema is read under the dialect of the node it sits
+	// in, unless it declares its own -- the rule every other subschema follows.
+	// Normalizing it as a document of its own read it under no dialect at all,
+	// so a draft-4 document's "#/x-vendor" target enforced a const draft 4 does
+	// not have.
+	d := s.DetectedDraft
+	if own := DetectDraft(&sub); own != DraftUnknown {
+		d = own
+	}
+	// It is located inside the keyword's value, in this node's document, before
+	// Normalize would take it for the root of a document of its own. Under a
+	// node that has no location, it has none either (see unlocated): it is not
+	// the root of a document, and naming it as one would be a wrong location.
+	if s.src.set {
+		s.placeAt(&sub, append([]string{key}, tokens...)...)
+	} else {
+		sub.src = unlocated
+	}
+	sub.locateChildren()
+	sub.NormalizeForDraft(d)
 	if s.extensionSchemas == nil {
 		s.extensionSchemas = make(map[string]*Schema)
 	}
@@ -1261,7 +1252,7 @@ func (s *Schema) IsFalseSchema() bool {
 // silently, which is the failure the marshaled form was chosen to avoid.
 //
 // What the marshaled form cannot do is carry a field whose *presence* its
-// encoding erases, and there are exactly three:
+// encoding erases, and there are exactly four:
 //
 //   - Enum is tagged omitempty, so `"enum": []` -- the schema that admits no
 //     value at all -- marshals to nothing and reads as a schema that states
@@ -1271,9 +1262,11 @@ func (s *Schema) IsFalseSchema() bool {
 //   - TypeSchemas is tagged "-", and holds the draft 3 schema-valued entries of a
 //     "type" array. A schema whose whole type list is schema-valued marshals with
 //     no "type" at all.
+//   - Draft3Required is tagged "-", and holds draft 3's boolean "required".
+//     Normalize consumes it, so only a schema read without normalizing has one.
 //
 // So the two are read together: the marshaled set for everything it can show,
-// this for the three it cannot. Reading the marshaled set alone is what let
+// this for the four it cannot. Reading the marshaled set alone is what let
 // acceptsEveryValue answer "accepts every value" for {"enum":[]}, which admits
 // none, and for {"const":null}, which admits one; a position holding either then
 // got a Go type with no check on it at all -- issues #142 and #154.
@@ -1294,6 +1287,9 @@ func (s *Schema) KeywordsMarshaledFormOmits() []string {
 	}
 	if len(s.TypeSchemas) > 0 {
 		hidden = append(hidden, "type")
+	}
+	if s.Draft3Required != nil {
+		hidden = append(hidden, "required")
 	}
 	return hidden
 }

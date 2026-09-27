@@ -2,6 +2,7 @@ package schemagen
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -131,8 +132,10 @@ func TestDraftOverrideDropsConstInTheSpellingsThatAlwaysWorked(t *testing.T) {
 
 // The same gap going forward instead of back. Draft 3's per-property
 // `"required": true` is a spelling no later dialect defines, so under
-// --draft 2020-12 the reached document states nothing by it and the property is
-// optional -- as it already was in the document the caller listed.
+// --draft 2020-12 the reached document states a value of "required" 2020-12
+// has no reading of -- and it is refused, naming the flag, exactly as it is in
+// a document the caller listed. Before #314 the reached document was read
+// under no dialect and the property silently became required.
 func TestDraftOverrideReachesADocumentReachedByRefGoingForward(t *testing.T) {
 	src := t.TempDir()
 	writeFile(t, filepath.Join(src, "root.json"), `{
@@ -148,18 +151,30 @@ func TestDraftOverrideReachesADocumentReachedByRefGoingForward(t *testing.T) {
 		"properties": {"a": {"type": "string", "required": true}}
 	}`)
 
+	err := runGenerateArgs(t, filepath.Join(src, "root.json"), "-o", filepath.Join(t.TempDir(), "gen"),
+		"-p", "gen", "--draft", "2020-12", "--root-name", "Root")
+	if err == nil {
+		t.Fatal("a draft-3 spelling reached under --draft 2020-12 generated; 2020-12 has no reading of it")
+	}
+	// The location is the reached document's own URI and a pointer into it.
+	for _, want := range []string{"https://ex.test/t.json#/properties/a/required", "draft 3's spelling", "Draft 2020-12"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not say %q:\n%v", want, err)
+		}
+	}
+
+	// Without the flag the document states no dialect, which is read as the
+	// union of them, and draft 3's spelling binds.
 	generateCompileRun(t,
 		func(modRoot string) []string {
 			return []string{
 				filepath.Join(src, "root.json"),
-				"-o", filepath.Join(modRoot, "gen"), "-p", "gen",
-				"--draft", "2020-12", "--root-name", "Root",
+				"-o", filepath.Join(modRoot, "gen"), "-p", "gen", "--root-name", "Root",
 			}
 		},
 		"example.com/m/gen", "Root",
 		[]docInstance{
-			// 2020-12 has no per-property boolean "required", so "a" is optional.
-			{`{"t":{}}`, true, ""},
+			{`{"t":{}}`, false, ""},
 			{`{"t":{"a":"s"}}`, true, ""},
 		})
 }
