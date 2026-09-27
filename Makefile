@@ -30,8 +30,13 @@ METASCHEMA_DIR := testdata/external/metaschemas
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null)
 GO_LDFLAGS := $(if $(VERSION),-X $(MODULE)/cmd/schemagen.version=$(VERSION))
 
+# Where `make build` writes the binary. A test that builds through the Makefile
+# points this at a directory of its own, so it neither races another run for
+# one fixed path in the checkout nor leaves anything there.
+BINDIR ?= bin
+
 build:
-	go build -ldflags "$(GO_LDFLAGS)" -o bin/$(BINARY) .
+	go build -ldflags "$(GO_LDFLAGS)" -o $(BINDIR)/$(BINARY) .
 
 install:
 	go install -ldflags "$(GO_LDFLAGS)" .

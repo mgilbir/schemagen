@@ -1,13 +1,14 @@
 package emitter
 
 import (
+	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/mgilbir/schemagen/internal/testgo"
 	"github.com/mgilbir/schemagen/pkg/generator"
 )
 
@@ -665,8 +666,7 @@ func main() {
 		t.Fatalf("write go.sum: %v", err)
 	}
 
-	cmd := exec.Command("go", "run", ".")
-	cmd.Dir = tmp
+	cmd := testgo.Command(context.Background(), tmp, "run", ".")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("generated code failed: %v\n%s", err, string(output))
@@ -1407,8 +1407,7 @@ func assertCompiles(t *testing.T, src string) {
 	if err := os.WriteFile(filepath.Join(tmp, "types.go"), []byte(src), 0o644); err != nil {
 		t.Fatalf("write types.go: %v", err)
 	}
-	cmd := exec.Command("go", "build", "./...")
-	cmd.Dir = tmp
+	cmd := testgo.Command(context.Background(), tmp, "build", "./...")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("emitted source does not compile: %v\n%s\n%s", err, out, src)
 	}

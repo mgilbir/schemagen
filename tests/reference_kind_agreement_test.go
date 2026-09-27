@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/mgilbir/schemagen/internal/testgo"
 	"github.com/mgilbir/schemagen/pkg/emitter"
 	"github.com/mgilbir/schemagen/pkg/generator"
 	"github.com/mgilbir/schemagen/pkg/schema"
@@ -456,8 +456,7 @@ func runRefKindCase(t *testing.T, c refCase) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
-	cmd.Dir = dir
+	cmd := testgo.Command(ctx, dir, "run", ".")
 	out, err := cmd.CombinedOutput()
 	if err != nil || programOutput(out) != "PASS" {
 		t.Fatalf("%s does not enforce what the same position enforces through the other spellings.\n"+

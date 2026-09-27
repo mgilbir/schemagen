@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mgilbir/schemagen/internal/testgo"
 	"github.com/mgilbir/schemagen/pkg/generator"
 )
 
@@ -214,8 +215,7 @@ func runGeneratedMainProgramOutput(t *testing.T, schemaPath, moduleName, mainGo 
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	build := exec.CommandContext(ctx, "go", "build", "-o", filepath.Join(tmpDir, "prog"), ".")
-	build.Dir = tmpDir
+	build := testgo.Command(ctx, tmpDir, "build", "-o", filepath.Join(tmpDir, "prog"), ".")
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("%s did not build:\n%s\nerror: %v", moduleName, string(out), err)
 	}

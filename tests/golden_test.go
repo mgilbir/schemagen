@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/mgilbir/schemagen/internal/testgo"
 	"github.com/mgilbir/schemagen/pkg/emitter"
 	"github.com/mgilbir/schemagen/pkg/generator"
 	"github.com/mgilbir/schemagen/pkg/schema"
@@ -833,8 +833,7 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
-	cmd.Dir = tmpDir
+	cmd := testgo.Command(ctx, tmpDir, "run", ".")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("BigInt round-trip test failed:\n%s\nerror: %v", string(output), err)
@@ -957,8 +956,7 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
-	cmd.Dir = tmpDir
+	cmd := testgo.Command(ctx, tmpDir, "run", ".")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("validation error path test failed:\n%s\nerror: %v", string(output), err)
@@ -1086,8 +1084,7 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
-	cmd.Dir = tmpDir
+	cmd := testgo.Command(ctx, tmpDir, "run", ".")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("nested remote items test failed:\n%s\nerror: %v", string(output), err)

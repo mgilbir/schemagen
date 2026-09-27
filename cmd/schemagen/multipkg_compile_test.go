@@ -1,12 +1,14 @@
 package schemagen
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mgilbir/schemagen/internal/testgo"
 )
 
 // buildGenerated writes a go.mod for the generated tree and compiles it. The
@@ -20,9 +22,7 @@ func buildGenerated(t *testing.T, dir, modulePath string) (string, error) {
 	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(gomod), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command("go", "build", "./...")
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=mod", "GOWORK=off")
+	cmd := testgo.Command(context.Background(), dir, "build", "-mod=mod", "./...")
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }

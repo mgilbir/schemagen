@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/mgilbir/schemagen/internal/testgo"
 	"github.com/mgilbir/schemagen/pkg/emitter"
 	"github.com/mgilbir/schemagen/pkg/generator"
 	"github.com/mgilbir/schemagen/pkg/schema"
@@ -97,8 +97,7 @@ func TestGeneratedCorpusCompiles(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "build", "./...")
-	cmd.Dir = dir
+	cmd := testgo.Command(ctx, dir, "build", "./...")
 	output, err := cmd.CombinedOutput()
 	if err == nil {
 		return

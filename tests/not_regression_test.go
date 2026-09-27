@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/mgilbir/schemagen/internal/testgo"
 	"github.com/mgilbir/schemagen/pkg/generator"
 )
 
@@ -423,8 +423,7 @@ func runInstanceFixturesWithConfig(t *testing.T, module string, fixtures []notFi
 
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
-			cmd := exec.CommandContext(ctx, "go", "run", ".")
-			cmd.Dir = tmpDir
+			cmd := testgo.Command(ctx, tmpDir, "run", ".")
 			out, runErr := cmd.CombinedOutput()
 			text := programOutput(out)
 			if runErr != nil || text != "PASS" {

@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mgilbir/schemagen/internal/testgo"
 	"github.com/mgilbir/schemagen/pkg/emitter"
 	"github.com/mgilbir/schemagen/pkg/generator"
 	"github.com/mgilbir/schemagen/pkg/schema"
@@ -968,12 +969,10 @@ func coRunCase(cc *coConfig, doc *coDoc, muts []coMutation) (coResult, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), coRunTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", goRunArgs...)
-	cmd.Dir = dir
-	// The separate GOCACHE is not optional here: a few hundred iterations, each
-	// compiling a package that will never be seen again, would otherwise add
-	// gigabytes to the user's persistent build cache.
-	cmd.Env = sharedCacheEnv()
+	// testgo.Command's shared GOCACHE is not optional here: a few hundred
+	// iterations, each compiling a package that will never be seen again, would
+	// otherwise add gigabytes to the user's persistent build cache.
+	cmd := testgo.Command(ctx, dir, "run", ".")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return res, fmt.Errorf("compile/run: %w\n%s", err, string(out))

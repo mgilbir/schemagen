@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/mgilbir/schemagen/internal/testgo"
 	"github.com/mgilbir/schemagen/pkg/emitter"
 	"github.com/mgilbir/schemagen/pkg/generator"
 	"github.com/mgilbir/schemagen/pkg/schema"
@@ -97,8 +97,7 @@ func TestEmittedCanonicaliserAgreesWithTheGenerator(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
-	cmd.Dir = dir
+	cmd := testgo.Command(ctx, dir, "run", ".")
 	out, runErr := cmd.CombinedOutput()
 	if runErr != nil {
 		t.Fatalf("running the emitted canonicaliser: %v\n%s", runErr, out)

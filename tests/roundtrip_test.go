@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -12,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mgilbir/schemagen/internal/testgo"
 	"github.com/mgilbir/schemagen/pkg/generator"
 )
 
@@ -383,8 +383,7 @@ func TestRoundTrip(t *testing.T) {
 			// 5. Build and run the test program
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
-			cmd := exec.CommandContext(ctx, "go", "run", ".")
-			cmd.Dir = tmpDir
+			cmd := testgo.Command(ctx, tmpDir, "run", ".")
 			output, err := cmd.CombinedOutput()
 			if err != nil {
 				t.Fatalf("round-trip test failed:\n%s\nerror: %v", string(output), err)
@@ -452,8 +451,7 @@ func TestCompile(t *testing.T) {
 
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
-				cmd := exec.CommandContext(ctx, "go", "build", ".")
-				cmd.Dir = singleTmpDir
+				cmd := testgo.Command(ctx, singleTmpDir, "build", ".")
 				output, err := cmd.CombinedOutput()
 				if err != nil {
 					t.Fatalf("compilation failed:\n%s\nerror: %v", string(output), err)
@@ -628,8 +626,7 @@ func TestDefaults(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
-	cmd.Dir = tmpDir
+	cmd := testgo.Command(ctx, tmpDir, "run", ".")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("defaults test failed:\n%s\nerror: %v", string(output), err)
@@ -766,8 +763,7 @@ func TestUnevaluatedItemsValidation(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
-	cmd.Dir = tmpDir
+	cmd := testgo.Command(ctx, tmpDir, "run", ".")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("unevaluatedItems validation test failed:\n%s\nerror: %v", string(output), err)
@@ -800,8 +796,7 @@ func TestAllOfOneOfCrossedTypesValidation(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
-	cmd.Dir = tmpDir
+	cmd := testgo.Command(ctx, tmpDir, "run", ".")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("crossed-types validation test failed:\n%s\nerror: %v", string(output), err)
@@ -1166,8 +1161,7 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
-	cmd.Dir = tmpDir
+	cmd := testgo.Command(ctx, tmpDir, "run", ".")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("validation cases failed:\n%s\nerror: %v", string(output), err)
@@ -1254,8 +1248,7 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
-	cmd.Dir = tmpDir
+	cmd := testgo.Command(ctx, tmpDir, "run", ".")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("round-trip cases failed:\n%s\nerror: %v", string(output), err)
@@ -1415,8 +1408,7 @@ func TestFieldNameCollisions(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
-	cmd.Dir = tmpDir
+	cmd := testgo.Command(ctx, tmpDir, "run", ".")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("field-name-collision test failed:\n%s\nerror: %v", string(output), err)
@@ -1677,8 +1669,7 @@ func main() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
-	cmd.Dir = tmpDir
+	cmd := testgo.Command(ctx, tmpDir, "run", ".")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("oneof optional-const test failed:\n%s\nerror: %v", string(output), err)
@@ -3205,8 +3196,7 @@ func runGeneratedMainProgramWithConfig(t *testing.T, schemaPath, moduleName, mai
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
-	cmd.Dir = tmpDir
+	cmd := testgo.Command(ctx, tmpDir, "run", ".")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("%s failed:\n%s\nerror: %v", moduleName, string(output), err)

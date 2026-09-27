@@ -1,11 +1,12 @@
 package schemagen
 
 import (
-	"os"
-	"os/exec"
+	"context"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mgilbir/schemagen/internal/testgo"
 )
 
 // TestMultiPackageErrorPathJoinsAcrossPackages runs generated code from two
@@ -76,9 +77,7 @@ func main() {
 		t.Fatalf("generated multi-package output does not compile: %v\n%s", err, buildOut)
 	}
 
-	cmd := exec.Command("go", "run", ".")
-	cmd.Dir = out
-	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=mod", "GOWORK=off")
+	cmd := testgo.Command(context.Background(), out, "run", "-mod=mod", ".")
 	runOut, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("running generated program: %v\n%s", err, string(runOut))

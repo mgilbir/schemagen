@@ -7,13 +7,13 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/mgilbir/schemagen/internal/testgo"
 	"github.com/mgilbir/schemagen/pkg/emitter"
 )
 
@@ -116,8 +116,7 @@ func TestGeneratedCorpusIsFieldAligned(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", "./aligncheck")
-	cmd.Dir = dir
+	cmd := testgo.Command(ctx, dir, "run", "./aligncheck")
 	output, err := cmd.CombinedOutput()
 	report := string(output)
 	for name, path := range pkgSchema {

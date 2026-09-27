@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mgilbir/schemagen/internal/testgo"
 )
 
 // The tests in this file are about two documents of one Go package that each
@@ -124,9 +125,7 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=mod", "GOWORK=off")
+	cmd := testgo.Command(ctx, dir, "run", "-mod=mod", ".")
 	out, err := cmd.CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "PASS") {
 		t.Fatalf("generated package did not carry each document's own definition: %v\n%s", err, out)
