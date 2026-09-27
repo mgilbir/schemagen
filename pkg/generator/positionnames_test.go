@@ -135,7 +135,7 @@ func TestAPositionThatDeclaresNothingDoesNotHoldTheName(t *testing.T) {
 
 // Two documents generated through one generator that does not share a package
 // are two packages, each written to its own file. The second starts from an empty
-// name space -- g.generated is emptied for it -- so a name the first document
+// name space -- the name registry is renewed for it -- so a name the first document
 // declared is free again, and a position deriving it takes it rather than
 // stepping around a type that is not in the file being written.
 func TestASecondUnsharedDocumentStartsFromAnEmptyNameSpace(t *testing.T) {

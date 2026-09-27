@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/mgilbir/schemagen/pkg/generator"
@@ -182,10 +181,17 @@ func keywordPrefix(keyword string) string {
 // is decided; reading it back off the pinned names would be a second derivation
 // of the same rule, which is how the four spellings in externaldefs.go's header
 // came apart.
-func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Schema, external []nameClaim, rootNameOf func(path string, s *schema.Schema) string, warnings io.Writer, noteQualified func(path string)) map[*schema.Schema]string {
+//
+// Nothing is printed here. What a report says each claim became is read from
+// the generator's name registry once the types are declared (see
+// printNameSplits): a report written from the decision made here described
+// types by the names this function chose, and where generation then named the
+// node otherwise -- or did not declare it at all -- the warning named a type the
+// package does not have.
+func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Schema, external []nameClaim, rootNameOf func(path string, s *schema.Schema) string, noteQualified func(path string)) (map[*schema.Schema]string, []nameSplitReport) {
 	claims := collectNameClaims(paths, byPath, external, rootNameOf)
 	if len(claims) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	shareable := shareableNames(claims)
@@ -193,8 +199,9 @@ func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Sche
 	// Every Go type name this run already knows about, so a name minted below to
 	// separate two claims is not minted onto a third. It cannot hold the names
 	// the generator itself creates for positions inside a document -- those are
-	// not claims and are not visible from here -- and a qualified name that lands
-	// on one of those is what PinnedNameCollisionError refuses.
+	// not claims and are not visible from here -- and the generator's name
+	// registry holds every pin made here ahead of those, so a position deriving
+	// a pinned name is the one numbered off it.
 	taken := make(map[string]bool, len(claims))
 	// maporder: fills a set; the same members end up in it in any order.
 	for name := range claims {
@@ -202,10 +209,21 @@ func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Sche
 	}
 
 	pinned := make(map[*schema.Schema]string)
-	var reports []string
+	var reports []nameSplitReport
 	for _, name := range sortedClaimNames(claims) {
 		group := claims[name]
-		if len(group) < 2 || shareable[name] {
+		if len(group) < 2 {
+			continue
+		}
+		if shareable[name] {
+			// One type for all of them, which is the mode's purpose -- and said
+			// to the generator in so many words. Its registry gives a name to
+			// one node, so identical definitions of several documents are one
+			// type only when they are pinned to one name; left alone, the second
+			// would be numbered off the first as a different node.
+			for _, c := range group {
+				pinned[c.node] = name
+			}
 			continue
 		}
 		documents := distinctClaimPaths(group)
@@ -248,11 +266,21 @@ func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Sche
 			if qualified == name {
 				// Nothing here tells this claim from the others -- it is a
 				// document's only claim on the name, under the only keyword that
-				// declares it. Pinning it to the name it already has would give
-				// two nodes one pin, which the generator refuses as a collision;
-				// leaving it alone keeps the behaviour it had. See the note on
-				// the claims no qualifier reaches, below.
+				// declares it. Pinning it to the name it already has would pin two
+				// different nodes to one name, which the generator reads as the
+				// caller saying they are one type; leaving it alone keeps it a
+				// claim of its own. See the note on the claims no qualifier
+				// reaches, below.
 				continue
+			}
+			// A qualified name another claim already asks for is numbered, the
+			// way the generator numbers any name something else holds: the claim
+			// asking for it spelled it in its own key, and the qualifier is only
+			// schemagen's. This used to be pinned regardless and then refused by
+			// the generator ("renamed to ADocThing, which another schema in this
+			// package already declares") for a document that is well formed.
+			if taken[qualified] {
+				qualified = numberedTypeName(qualified, taken)
 			}
 			group[i].final = qualified
 			pinned[group[i].node] = qualified
@@ -276,15 +304,47 @@ func resolveSharedDefinitionNames(paths []string, byPath map[string]*schema.Sche
 			// collision and packageDecls' refusal, not a name to rewrite.
 			continue
 		}
-		reports = append(reports, describeNameSplit(name, group, len(documents), split))
+		reports = append(reports, nameSplitReport{name: name, group: group, documents: len(documents), split: split})
 	}
+	return pinned, reports
+}
 
-	if warnings != nil {
-		for _, r := range reports {
-			fmt.Fprint(warnings, r)
-		}
+// nameSplitReport is one contested name resolveSharedDefinitionNames separated,
+// kept until the generator has declared the types so that the warning can be
+// written from what was declared. See printNameSplits.
+type nameSplitReport struct {
+	name      string
+	group     []nameClaim
+	documents int
+	split     splitMechanisms
+}
+
+// printNameSplits writes the warning for each contested name, naming every
+// claim by the type the generator declared for its node -- declared(node) --
+// rather than by the name this file chose for it.
+//
+// The two agree whenever generation honoured the pin, and a warning is only
+// worth anything where they could not: C2 in the audit (issue-level, an
+// external document's definition whose $ref was resolved elsewhere) printed
+// "other.json $defs/Name becomes OtherName" for a run whose package declared no
+// OtherName at all. A claim whose node was never declared says that instead of
+// naming a type.
+func printNameSplits(w io.Writer, reports []nameSplitReport, declared func(*schema.Schema) (string, bool)) {
+	if w == nil {
+		return
 	}
-	return pinned
+	for _, r := range reports {
+		group := make([]nameClaim, len(r.group))
+		copy(group, r.group)
+		for i := range group {
+			if name, ok := declared(group[i].node); ok {
+				group[i].final = name
+			} else {
+				group[i].final = ""
+			}
+		}
+		fmt.Fprint(w, describeNameSplit(r.name, group, r.documents, r.split))
+	}
 }
 
 // claimQualifier is the Go name part that says which document a claim came
@@ -376,6 +436,9 @@ func splitFoldedClaims(group []nameClaim, taken map[string]bool, pinned map[*sch
 			name       string
 		}
 		var seen []placed
+		// The claims each target was given to, so that a target shared by
+		// agreeing claims can be pinned on every one of them.
+		members := make(map[string][]int, len(idx))
 		for _, i := range idx {
 			form, _, ok := definitionCanonicalForm(group[i].node)
 			target := ""
@@ -399,6 +462,7 @@ func splitFoldedClaims(group []nameClaim, taken map[string]bool, pinned map[*sch
 				target = numberedTypeName(name, taken)
 			}
 			seen = append(seen, placed{form: form, comparable: ok, name: target})
+			members[target] = append(members[target], i)
 			if target == group[i].final {
 				continue
 			}
@@ -406,8 +470,30 @@ func splitFoldedClaims(group []nameClaim, taken map[string]bool, pinned map[*sch
 			pinned[group[i].node] = target
 			moved = true
 		}
+		// Agreeing claims are one type only when the generator is told so: its
+		// name registry gives a name to one node, and two nodes pinned to one
+		// name are what it reads as one type. The claim that kept the name needs
+		// the pin too, or the one that joined it is a node the name is held
+		// against.
+		for _, target := range sortedIntMapKeys(members) {
+			if len(members[target]) < 2 {
+				continue
+			}
+			for _, i := range members[target] {
+				pinned[group[i].node] = target
+			}
+		}
 	}
 	return moved
+}
+
+func sortedIntMapKeys(m map[string][]int) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // claimSplitOrderLess orders the claims contesting one name for the split above:
@@ -444,10 +530,12 @@ func claimSplitRank(c nameClaim) int {
 }
 
 // numberedTypeName returns the first numbered spelling of base that no name in
-// this run has been given, and records it as given.
+// this run has been given, and records it as given. The spelling is the
+// generator's (generator.NumberedName), so a name this file separates is
+// numbered exactly as the generator numbers one it separates itself.
 func numberedTypeName(base string, taken map[string]bool) string {
 	for i := 2; ; i++ {
-		candidate := base + strconv.Itoa(i)
+		candidate := generator.NumberedName(base, i)
 		if taken[candidate] {
 			continue
 		}
@@ -487,14 +575,20 @@ func collectNameClaims(paths []string, byPath map[string]*schema.Schema, externa
 		}
 
 		add(rootNameOf(path, s), "", "", s)
-		// $defs first, so the mirror Schema.normalizeNode writes when a document
-		// declares only one of the two keywords is described by the keyword the
-		// dedup above kept rather than by the copy -- and so a document that
-		// declares both is read in the order the generator reads them.
+		// $defs first, so that a document that declares both is read in the
+		// order the generator reads them. The container Schema.normalizeNode
+		// filled as a mirror of the other is skipped: it holds the same nodes,
+		// and a claim read from it would be described -- and qualified, as
+		// DefsX -- by a keyword the document never wrote. A draft-07 document
+		// declaring only "definitions" was read as "$defs" that way, because the
+		// mirror came first.
 		for _, container := range []struct {
 			keyword string
 			m       map[string]*schema.Schema
 		}{{"$defs", s.Defs}, {"definitions", s.Definitions}} {
+			if container.keyword == s.MirroredDefinitions {
+				continue
+			}
 			for _, key := range sortedSchemaKeys(container.m) {
 				if def := container.m[key]; def != nil {
 					add(generator.SchemaNameToGoName(key), container.keyword, key, def)
@@ -846,8 +940,13 @@ func describeNameSplit(name string, group []nameClaim, documents int, split spli
 			where += " (reached by $ref)"
 		}
 		line := fmt.Sprintf("  %s %s becomes %s", where, c.what(), c.final)
-		if c.final == name {
+		switch c.final {
+		case name:
 			line = fmt.Sprintf("  %s %s keeps %s", where, c.what(), name)
+		case "":
+			// Read from the generator's registry (printNameSplits): nothing was
+			// declared for this node, so there is no type to name.
+			line = fmt.Sprintf("  %s %s is not declared in this package: generation produced no type for it", where, c.what())
 		}
 		if seen[line] {
 			continue
@@ -916,45 +1015,6 @@ func claimsExternalDocument(group []nameClaim) bool {
 		}
 	}
 	return false
-}
-
-// explainPinnedNameCollision turns the generator's refusal of a qualified name
-// into the caller's terms: which definition schemagen was moving, where the name
-// it chose went instead, and the three ways out.
-func explainPinnedNameCollision(schemaPath string, collision *generator.PinnedNameCollisionError, pinned map[*schema.Schema]string, byPath map[string]*schema.Schema, paths []string) error {
-	owner := make(map[string]string, len(pinned))
-	for _, path := range paths {
-		s := byPath[path]
-		if s == nil {
-			continue
-		}
-		for _, container := range []struct {
-			keyword string
-			m       map[string]*schema.Schema
-		}{{"$defs", s.Defs}, {"definitions", s.Definitions}} {
-			for _, key := range sortedSchemaKeys(container.m) {
-				if name, ok := pinned[container.m[key]]; ok {
-					if _, seen := owner[name]; !seen {
-						owner[name] = fmt.Sprintf("%s in %s", definitionLocation(container.m[key], s, container.keyword, key), path)
-					}
-				}
-			}
-		}
-	}
-
-	lines := make([]string, 0, len(collision.Names))
-	for _, name := range collision.Names {
-		if from, ok := owner[name]; ok {
-			lines = append(lines, fmt.Sprintf("  %s was renamed to %s, which another schema in this package already declares", from, name))
-			continue
-		}
-		lines = append(lines, fmt.Sprintf("  %s is already declared by another schema in this package", name))
-	}
-	sort.Strings(lines)
-	return fmt.Errorf("generating IR for %s: definitions of the same name in different documents could not be told apart:\n%s\n"+
-		"schemagen renames such definitions after their own document's root type, and here that name is taken -- by another definition, or by a type generated for a position inside the document, which is named the same way (a property \"thing\" under a root named Alpha is also AlphaThing, and --root-name moves both of them together). Generation stopped at this document, so no file was written for it. "+
-		"Rename the definition, or whatever else holds that name, in the schema; give the document a root name with --root-name that separates them; or generate these documents into separate packages with --schema-package",
-		schemaPath, strings.Join(lines, "\n"))
 }
 
 func sortedClaimNames(claims map[string][]nameClaim) []string {

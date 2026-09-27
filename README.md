@@ -706,7 +706,9 @@ property, a `$defs` entry, an `allOf` member, a tuple slot and `contains` all
 take it, and the package builds. An array element, a map value and a `oneOf` or
 `anyOf` variant each need a *name*, so the file spells the name the reference
 would have produced — `{"xs":{"type":"array","items":{"$ref":"gone.json"}}}`
-emits `[]GoneJSON` — and nothing declares it.
+emits `[]GoneJSON` — and nothing declares it. Where the package already declares
+a type of that name the reference gets a numbered one (`GoneJSON2`) rather than
+binding a type its schema never described.
 
 The two cases are told apart rather than lumped together. A ref that degraded
 into a name says so, names the identifier, and says the package does not
@@ -840,7 +842,12 @@ names both documents. Every claim on the name is qualified, not only the later
 one, so the generated names do not depend on the order the inputs were listed;
 `--root-name` sets the prefix. A document's own root type keeps its name, and a
 definition that collides with another document's root name is the one that
-moves.
+moves. A qualified name can itself be taken — a definition keyed `AlphaThing`,
+or the type of a property `thing` under the root `Alpha` — and is then numbered
+(`AlphaThing2`) rather than refused: the definition spelled in its own key keeps
+the name, and a type named for a position steps around a qualified one. The
+warning is written after generation from the names the package actually
+declares.
 
 `--schema-package` shares a name space per package and answers the same
 collision the same way, between the documents assigned to one package.

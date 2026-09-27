@@ -58,6 +58,10 @@ var inertFields = map[string]string{
 	"AllEvaluated":            "a bool",
 	"Recv":                    "a receiver name, from receiverName",
 	"ParentName":              "a Go type identifier",
+	"AccessRulesVar":          "a Go package-variable identifier the generator's name registry mints",
+	"SchemaVar":               "a Go package-variable identifier the generator's name registry mints",
+	"AllowedVar":              "a Go package-variable identifier the generator's name registry mints",
+	"GetterName":              "a Go method identifier the generator's name registry mints in the parent's member scope",
 }
 
 // inertFuncs are template functions whose result is inert whatever they are
@@ -109,7 +113,6 @@ var codeFuncs = map[string]string{
 	"formatHelperName":    "a helper function name from a fixed table",
 	"formatElemExpr":      "a conversion built from a code expression",
 	"formatValueExpr":     "a conversion built from a code expression",
-	"lowerFirst":          "an identifier with its first letter lowered",
 }
 
 // codeFields hold Go code or literals the generator built, each from minted

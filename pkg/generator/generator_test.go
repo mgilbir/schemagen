@@ -3362,8 +3362,8 @@ func TestRefCycleTerminates(t *testing.T) {
 		// implicit-allOf arm, whose array branch asks whether the synthesized
 		// $ref branch is an array alias and generates it on demand to find out.
 		// That branch resolves back to the definition in flight, and the only
-		// guard on the on-demand generation was g.generated, which is not set
-		// until a definition completes.
+		// guard on the on-demand generation was the declared set, which is not
+		// set until a definition commits.
 		{"refSiblingItemsAtRoot", `{"$ref":"#","items":{}}`},
 		{"refSiblingItemsTrueAtRoot", `{"$ref":"#","items":true}`},
 		{"refSiblingPrefixItemsAtRoot", `{"$ref":"#","prefixItems":[{}]}`},

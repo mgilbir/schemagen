@@ -232,7 +232,7 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		return _accessStripWriteOnly(_out, {{$struct.Name}}AccessRules)
+		return _accessStripWriteOnly(_out, {{$struct.AccessRulesVar}})
 	}
 	{{- else}}
 	return json.Marshal(obj)

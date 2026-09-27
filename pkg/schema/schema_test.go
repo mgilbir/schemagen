@@ -1837,14 +1837,15 @@ func TestSchemaFieldsAreClassifiedForPresence(t *testing.T) {
 		// The parsed forms of three raw keywords. The raw field beside each is
 		// set whenever the parsed one is, and it marshals, so the keyword is
 		// already in the marshaled set.
-		"ExtendsSchemas":     "the parsed form of Extends, which marshals",
-		"DisallowSchemas":    "the parsed form of Disallow, which marshals",
-		"DependencySchemas":  "the parsed form of Dependencies, which marshals",
-		"DependencyRequired": "the parsed form of Dependencies, which marshals",
-		"DetectedDraft":      "which draft the document was read under, not something it asserts",
-		"BaseURI":            "where a relative $ref resolves from",
-		"DocumentRoot":       "where a JSON Pointer fragment resolves from",
-		"RetrievalURI":       "which URL answered a fetch, which is where a relative $ref resolves from when the document declares no $id",
+		"ExtendsSchemas":      "the parsed form of Extends, which marshals",
+		"DisallowSchemas":     "the parsed form of Disallow, which marshals",
+		"DependencySchemas":   "the parsed form of Dependencies, which marshals",
+		"DependencyRequired":  "the parsed form of Dependencies, which marshals",
+		"DetectedDraft":       "which draft the document was read under, not something it asserts",
+		"BaseURI":             "where a relative $ref resolves from",
+		"DocumentRoot":        "where a JSON Pointer fragment resolves from",
+		"RetrievalURI":        "which URL answered a fetch, which is where a relative $ref resolves from when the document declares no $id",
+		"MirroredDefinitions": "which of $defs and definitions Normalize copied from the other; the nodes are stated by the keyword the document wrote",
 	}
 	// emptyIsAbsent are the slice and map fields whose omitempty tag drops an
 	// empty value and for which that is the right reading: written empty they

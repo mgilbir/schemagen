@@ -16,7 +16,8 @@ import (
 // declare a type, where does the *name* come from -- and therefore which of them
 // need the node-keyed guard.
 //
-// generateTypeDef's own re-entrancy guard is g.generated[name]. That is enough
+// generateTypeDef's own re-entrancy guard is the registry's declared set, keyed
+// on the name (isDeclared). That is enough
 // for a name drawn from a set the document fixes: a $defs key, the root type
 // name, a name derived from a reference string. Those repeat, so the second
 // arrival at a cycle finds the name already generated and stops. It is enough
@@ -50,11 +51,11 @@ type nameKind string
 const (
 	// kindDocument: a name the document fixes -- a $defs or definitions key
 	// through definitionGoName, or the root type name. One per definition, so
-	// the name space is finite and g.generated terminates any cycle through it.
+	// the name space is finite and the declared set terminates any cycle through it.
 	kindDocument nameKind = "document"
 	// kindReference: a name derived from the reference string, through
 	// refToGoName or goNameForResolvedRef. A cycle revisits the same reference,
-	// so the name repeats and g.generated terminates it.
+	// so the name repeats and the declared set terminates it.
 	kindReference nameKind = "reference"
 	// kindPosition: a name minted for the position, through unclaimedTypeName.
 	// It grows a segment per level; the node-keyed guard is what terminates it.
@@ -77,13 +78,14 @@ var documentNameFuncs = map[string]bool{"definitionGoName": true}
 
 // positionNameFuncs mint a name for a position inside the document.
 var positionNameFuncs = map[string]bool{
-	"unclaimedTypeName": true,
-	"numberedTypeName":  true,
+	"unclaimedTypeName":    true,
+	"claimVariantTypeName": true,
 }
 
 // passThroughNameFuncs answer with the name they were given, disambiguated;
-// the kind is their first argument's.
-var passThroughNameFuncs = map[string]bool{"uniqueTypeName": true}
+// the kind is their first argument's. None is left: every disambiguation goes
+// through the name registry, whose entry points are classified above.
+var passThroughNameFuncs = map[string]bool{}
 
 // typeDefSite is one generateTypeDef call site, keyed by the enclosing function
 // and the argument expressions as written.
@@ -139,8 +141,8 @@ var typeDefSites = map[typeDefSite]expectation{
 		Why: "a $ref variant, named from the reference through refToGoName and goNameForResolvedRef",
 	},
 	{"resolveOneOfVariant", "variantName", "variant"}: {
-		Count: 3, Kind: kindParameter, Guard: "cyclicNodeName",
-		Why: "the inline object, allOf and format variants, named parentName+fieldName+Option+index -- which grows with parentName. The guard above them answers a variant that is the node in flight with the name it already holds",
+		Count: 3, Kind: kindPosition, Guard: "cyclicNodeName",
+		Why: "the inline object, allOf and format variants, named parentName+fieldName+Option+index (or the title) through claimVariantTypeName -- which grows with parentName. The guard above them answers a variant that is the node in flight with the name it already holds",
 	},
 	{"resolvePropertyType", "posName", "s"}: {
 		Count: 9, Kind: kindPosition, Guard: "cyclicNodeName",
@@ -154,17 +156,17 @@ var typeDefSites = map[typeDefSite]expectation{
 		Count: 2, Kind: kindReference,
 		Why: "the $ref and $dynamicRef arms of the element, map-value and branch positions",
 	},
-	{"resolveType", "contextName", "s"}: {
-		Count: 1, Kind: kindParameter, Guard: "nodeTypeNames",
-		Why: "the composition arm; the statement above it answers a node already named with nodeTypeNames[s], and g.generating guards the name",
+	{"resolveType", "name", "s"}: {
+		Count: 1, Kind: kindPosition, Guard: "nodeTypeNames",
+		Why: "the composition arm, named for the position through unclaimedTypeName; the statement above it answers a node already named with nodeTypeNames[s], and g.generating guards the name",
 	},
-	{"materializeNamed", "contextName", "s"}: {
-		Count: 1, Kind: kindParameter, Guard: "nodeTypeNames",
-		Why: "the object path's funnel: it answers a node already materialized with its first name before generating anything",
+	{"materializeNamed", "name", "s"}: {
+		Count: 1, Kind: kindPosition, Guard: "nodeTypeNames",
+		Why: "the object path's funnel, naming the position through unclaimedTypeName: it answers a node already materialized with its first name before generating anything",
 	},
-	{"materializeAtPosition", "posName", "s"}: {
-		Count: 1, Kind: kindParameter, Guard: "cyclicNodeName",
-		Why: "the funnel every position-derived mint goes through; the guard is the statement above",
+	{"materializeAtPosition", "name", "s"}: {
+		Count: 1, Kind: kindPosition, Guard: "cyclicNodeName",
+		Why: "the funnel every position-derived mint goes through, naming the position through unclaimedTypeName; the guard is the statement above",
 	},
 	{"firstAllOfArrayAliasName", "name", "resolved"}: {
 		Count: 2, Kind: kindReference,
@@ -198,19 +200,23 @@ func TestEveryTypeNameMintingSiteIsAccountedFor(t *testing.T) {
 	for _, f := range files {
 		for _, decl := range f.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Body == nil {
+			if !ok || fn.Body == nil || isTypeDefEntryPoint(fn) {
 				continue
 			}
 			recordGuards(fset, fn, guards)
 			ast.Inspect(fn.Body, func(n ast.Node) bool {
 				call, ok := n.(*ast.CallExpr)
-				if !ok || calleeName(call) != "generateTypeDef" || len(call.Args) != 2 {
+				if !ok {
+					return true
+				}
+				nameArg, schemaArg, ok := typeDefCallArgs(call)
+				if !ok {
 					return true
 				}
 				seen[typeDefSite{
 					Func:   fn.Name.Name,
-					Name:   exprText(fset, call.Args[0]),
-					Schema: exprText(fset, call.Args[1]),
+					Name:   exprText(fset, nameArg),
+					Schema: exprText(fset, schemaArg),
 				}]++
 				return true
 			})
@@ -256,20 +262,24 @@ func TestEveryTypeNameMintingSiteIsAccountedFor(t *testing.T) {
 	for _, f := range files {
 		for _, decl := range f.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Body == nil {
+			if !ok || fn.Body == nil || isTypeDefEntryPoint(fn) {
 				continue
 			}
 			ast.Inspect(fn.Body, func(n ast.Node) bool {
 				call, ok := n.(*ast.CallExpr)
-				if !ok || calleeName(call) != "generateTypeDef" || len(call.Args) != 2 {
+				if !ok {
 					return true
 				}
-				site := typeDefSite{fn.Name.Name, exprText(fset, call.Args[0]), exprText(fset, call.Args[1])}
+				nameArg, schemaArg, ok := typeDefCallArgs(call)
+				if !ok {
+					return true
+				}
+				site := typeDefSite{fn.Name.Name, exprText(fset, nameArg), exprText(fset, schemaArg)}
 				want, ok := typeDefSites[site]
 				if !ok {
 					return true
 				}
-				got := nameKindOf(fset, fn, call.Args[0])
+				got := nameKindOf(fset, fn, nameArg)
 				if got != want.Kind {
 					t.Errorf("%s: the name is %s-derived in the source, the table records %s",
 						site, got, want.Kind)
@@ -437,6 +447,30 @@ func assignmentsTo(fn *ast.FuncDecl, name string) []ast.Expr {
 		return true
 	})
 	return out
+}
+
+// typeDefCallArgs recognises a call that declares a type -- generateTypeDef(name,
+// s), or generateTypeDefFor(name, owner, s), which declares name for owner from
+// s's schema -- and returns the name and the schema it is generated from.
+func typeDefCallArgs(call *ast.CallExpr) (name, schemaArg ast.Expr, ok bool) {
+	switch calleeName(call) {
+	case "generateTypeDef":
+		if len(call.Args) == 2 {
+			return call.Args[0], call.Args[1], true
+		}
+	case "generateTypeDefFor":
+		if len(call.Args) == 3 {
+			return call.Args[0], call.Args[2], true
+		}
+	}
+	return nil, nil, false
+}
+
+// isTypeDefEntryPoint reports whether fn is generateTypeDef itself, whose body
+// forwards its parameters to generateTypeDefFor. It is the entry point every
+// site in the table goes through, not a site.
+func isTypeDefEntryPoint(fn *ast.FuncDecl) bool {
+	return fn.Name.Name == "generateTypeDef"
 }
 
 func calleeName(call *ast.CallExpr) string {

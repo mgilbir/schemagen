@@ -33,9 +33,6 @@ import (
 // "  <document> [(reached by $ref)] <location> becomes|keeps <Name>".
 var claimLine = regexp.MustCompile(`(?m)^  (\S+)(?: \(reached by \$ref\))? (#\S*) (?:becomes|keeps) (\S+)$`)
 
-// renamedLine is the pinned-name refusal's: "  <location> in <document> was renamed to <Name>".
-var renamedLine = regexp.MustCompile(`(?m)^  (#\S*) in (\S+) was renamed to (\S+),`)
-
 func TestCollisionDiagnosticsNameTheLocationTheDocumentWrote(t *testing.T) {
 	const draft07 = `"$schema": "http://json-schema.org/draft-07/schema#"`
 	for _, tc := range []struct {
@@ -109,10 +106,12 @@ func TestCollisionDiagnosticsNameTheLocationTheDocumentWrote(t *testing.T) {
 	}
 }
 
-// TestPinnedNameRefusalNamesTheLocationTheDocumentWrote is the same oracle for
-// the refusal that names the definition schemagen was moving when the name it
-// chose was taken.
-func TestPinnedNameRefusalNamesTheLocationTheDocumentWrote(t *testing.T) {
+// TestNumberedQualifiedNameNamesTheLocationTheDocumentWrote is the same oracle
+// for a definition whose qualified name was itself taken. That used to refuse
+// the run, naming the definition schemagen was moving; the name registry
+// numbers it instead (ADocThing2, ADocThing being the definition keyed so), and
+// the line reporting it has to locate the definition the same way.
+func TestNumberedQualifiedNameNamesTheLocationTheDocumentWrote(t *testing.T) {
 	dir, paths := writeSchemas(t,
 		"a.json", `{"$schema": "http://json-schema.org/draft-07/schema#",
 			"title": "ADoc",
@@ -124,16 +123,21 @@ func TestPinnedNameRefusalNamesTheLocationTheDocumentWrote(t *testing.T) {
 		"b.json", `{"$schema": "http://json-schema.org/draft-07/schema#",
 			"title": "BDoc", "properties": {"t": {"$ref": "#/definitions/Thing"}},
 			"definitions": {"Thing": {"type": "integer"}}}`)
-	_, err := runGenerateCapturing(t, append(append([]string{}, paths...),
+	stderr, err := runGenerateCapturing(t, append(append([]string{}, paths...),
 		"-o", filepath.Join(dir, "gen"), "-p", "gen", "--shared-types")...)
-	if err == nil {
-		t.Fatal("expected the run to be refused")
+	if err != nil {
+		t.Fatalf("generate: %v\nstderr:\n%s", err, stderr)
 	}
-	m := renamedLine.FindStringSubmatch(err.Error())
-	if m == nil {
-		t.Fatalf("the refusal locates no definition:\n%v", err)
+	located := 0
+	for _, m := range claimLine.FindAllStringSubmatch(stderr, -1) {
+		if m[3] == "ADocThing2" {
+			assertDefinitionAt(t, paths, m[1], m[2], `{"type": "object", "properties": {"k": {"type": "string"}}}`, stderr)
+			located++
+		}
 	}
-	assertDefinitionAt(t, paths, m[2], m[1], `{"type": "object", "properties": {"k": {"type": "string"}}}`, err.Error())
+	if located != 1 {
+		t.Fatalf("%d lines locate the definition numbered ADocThing2, want 1:\n%s", located, stderr)
+	}
 }
 
 // assertDefinitionAt resolves loc -- a fragment -- in the document or embedded

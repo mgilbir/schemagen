@@ -28,17 +28,18 @@ type UndeclaredRefType struct {
 // name it left behind, for those refs that left one. refs must be the sorted
 // list from neverResolvedRefs; the result keeps that order.
 //
-// The name is derived the way every emitting path derives it: with no resolved
-// schema to take a name from, each of them falls back to refToGoName, and the
-// disambiguating steps that follow (goNameForResolvedRef, uniqueTypeName) all
-// need the resolved schema this ref does not have.
+// The name is the one the name registry gave the reference when a position
+// spelled it (unresolvedRefTypeName), read back from the registry rather than
+// derived a second time: it is held for the reference, so no declaration of
+// this package stands under it, and the two cannot disagree.
 //
-// A ref is reported only when that name is both referenced by the IR and not
-// declared by it. Referenced, because a ref whose position became `any` leaves
-// no name at all and reporting it would be crying wolf -- the distinction is
-// the entire point. Not declared, because a name some other definition already
-// claims compiles; it is then the wrong type, which is what the unresolved-ref
-// warning itself says, but it is not a build failure.
+// A ref is reported only when that name is referenced by the IR. A ref whose
+// position became `any` leaves no name at all and reporting it would be crying
+// wolf -- the distinction is the entire point. It used to be reported only when
+// no declaration stood under the derived name either, because "a name some
+// other definition already claims compiles" -- the position then silently bound
+// that other definition. The name is held apart from every declaration now, so
+// that case is the build failure this reports, rather than a wrong type.
 func (g *Generator) undeclaredRefTypes(refs []string) []UndeclaredRefType {
 	if g.output == nil || len(refs) == 0 {
 		return nil
@@ -56,8 +57,8 @@ func (g *Generator) undeclaredRefTypes(refs []string) []UndeclaredRefType {
 
 	var out []UndeclaredRefType
 	for _, ref := range refs {
-		name := refToGoName(ref)
-		if name == "" || declared[name] || !referenced[name] {
+		name, ok := g.names.unresolved[ref]
+		if !ok || name == "" || declared[name] || !referenced[name] {
 			continue
 		}
 		out = append(out, UndeclaredRefType{Ref: ref, TypeName: name})

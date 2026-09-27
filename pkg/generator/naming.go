@@ -210,6 +210,18 @@ func exportedGoName(name string) string {
 	return "X" + name
 }
 
+// lowerFirstIdent is name with its first letter lowercased, for the unexported
+// package variable a declaration carries. The emitter's lowerFirst did this in
+// the template, out of the name registry's sight; it is done here now so that
+// the result is claimed like every other package-level identifier.
+func lowerFirstIdent(name string) string {
+	if name == "" {
+		return name
+	}
+	r, size := utf8.DecodeRuneInString(name)
+	return string(unicode.ToLower(r)) + name[size:]
+}
+
 // SchemaNameToGoName converts a JSON Schema definition name to a Go type name.
 //
 // Examples:

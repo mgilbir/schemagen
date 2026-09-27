@@ -13,8 +13,8 @@ import "testing"
 // object, so the arm that materializes it has to be re-entrancy guarded on the
 // node rather than on the name. Every position that names its type after the
 // position it was reached from -- a property, an element, a tuple slot -- mints
-// a name one segment longer at each level of a cycle, so g.generated[name]
-// never fires and the arm re-enters itself forever. The property positions were
+// a name one segment longer at each level of a cycle, so a guard keyed on the
+// name never fires and the arm re-enters itself forever. The property positions were
 // guarded (cyclicNodeName, and the seeds beside these named ref-sibling-*); the
 // element and tuple-slot positions were not, and {"items":{"$ref":"#",
 // "minItems":1}} -- thirty-five bytes of legal schema -- recursed until the

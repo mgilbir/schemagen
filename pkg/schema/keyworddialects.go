@@ -504,6 +504,9 @@ var nonKeywordFields = map[string]bool{
 	"BaseURI":       true,
 	"DocumentRoot":  true,
 	"RetrievalURI":  true, // which URL answered the fetch, not something the document states
+	// which of $defs and definitions normalizeNode filled as a mirror of the
+	// other; parse bookkeeping about the two keywords, not a keyword itself
+	"MirroredDefinitions": true,
 }
 
 // statedForm reports the shape a schema states a keyword in, for the keywords

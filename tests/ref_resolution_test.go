@@ -432,63 +432,22 @@ func main() {
 	if err != nil && !bytes.Contains(out, []byte("FAIL ")) {
 		t.Fatalf("the driver did not run: %v\n%s", err, out)
 	}
-	failing := map[string]bool{}
-	var unexpected []string
+	// Every case in every mode, the library included. The library used to type
+	// the target of "#/$defs/T_<case>" written in another resource as the
+	// root's own decoy "$defs/T_<case>" -- resolution reached the right node,
+	// and the name it derived, T<case>, was already the decoy's -- and those ten
+	// cases (W2-W6 by a pointer and by an absolute file:// URI) were held here
+	// in a ledger. The name registry gives the target a name of its own, so
+	// there is no exception left to list.
+	var failures []string
 	for _, line := range strings.Split(string(out), "\n") {
-		rest, ok := strings.CutPrefix(line, "FAIL ")
-		if !ok {
-			continue
-		}
-		fields := strings.Fields(rest)
-		key := fields[0] + " " + fields[1]
-		failing[key] = true
-		if !refMatrixNamingLedger(fields[0], fields[1]) {
-			unexpected = append(unexpected, line)
+		if strings.HasPrefix(line, "FAIL ") {
+			failures = append(failures, line)
 		}
 	}
-	if len(unexpected) > 0 {
-		t.Errorf("a reference reached a schema other than the one it names:\n%s", strings.Join(unexpected, "\n"))
+	if len(failures) > 0 {
+		t.Errorf("a reference reached a schema other than the one it names:\n%s", strings.Join(failures, "\n"))
 	}
-	// The ledger is held in both directions: an entry whose case now passes is
-	// a defect fixed, and the entry has to go with it.
-	for _, run := range runs {
-		for _, c := range fixtures[run.withIDs].cases {
-			if refMatrixNamingLedger(run.pkg, c.id) && !failing[run.pkg+" "+c.id] {
-				t.Errorf("%s %s is in the naming ledger and passes: the library now names a reference's target apart from a same-named definition of the root, so remove the ledger entry", run.pkg, c.id)
-			}
-		}
-	}
-}
-
-// refMatrixNamingLedger lists the cases the library gets wrong for a reason that
-// is not reference resolution, which this file is about.
-//
-// Resolution reaches the right node in every one of them -- the index-level
-// test above says so, and the CLI modes, which reach the same nodes through
-// the same index, pass them. What the library does next is name that node:
-// the target of "#/$defs/T_<case>" written in another resource derives the Go
-// name T<case>, the root's own decoy "$defs/T_<case>" already holds that name,
-// and the reference is typed as the decoy's type instead of being given a name
-// of its own. The CLI does not do this, because it pins distinct names for
-// same-named definitions of different resources before generating
-// (resolveSharedDefinitionNames); the library has no such pass, and every arm
-// that names a reference's target reuses a held name. That is the audit's
-// "minted names collide with or reuse other types" finding, which the names
-// work owns: one claiming registry for every name the generator mints.
-//
-// Only the two kinds whose target and decoy share a $defs key are affected: a
-// pointer and an absolute file:// URI. The anchor kinds name their target from
-// the anchor, which no decoy's key spells.
-func refMatrixNamingLedger(pkg, caseID string) bool {
-	if !strings.Contains(pkg, "lib") {
-		return false
-	}
-	switch caseID {
-	case "W2K1d", "W3K1d", "W4K1d", "W5K1d", "W6K1d",
-		"W2K6d", "W3K6d", "W4K6d", "W5K6d", "W6K6d":
-		return true
-	}
-	return false
 }
 
 // generateRefMatrixRun generates the fixture into pkgDir in one mode.

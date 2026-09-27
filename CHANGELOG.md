@@ -101,6 +101,47 @@
   and the default now load their inputs and resolve references the same way,
   and a document an input reaches by relative path is that input, not a second
   copy of it declaring a second type.
+- Every Go identifier a generated package declares is now handed out by one
+  name registry, so no position is typed by another schema's type and no name
+  is declared twice. Names used to be minted per arm, and several arms took a
+  name another node already held: an array of objects under property `a` beside
+  a `$defs` entry `RootAItem` was typed as that definition (`{"a":[{"z":"q"}]}`
+  failed to decode, and with enum items generation was refused as "a defect in
+  schemagen"); a `oneOf` of `null` and a `$ref` bound `$defs/a-b`'s type for a
+  reference to `$defs/a_b`; a `oneOf` variant titled `Foo` reused `$defs/Foo`;
+  a variant titled `String2` beside two `String` variants declared `String2`
+  twice; an enum constant `AB` collided with a type `AB`; a union getter
+  `GetCat` collided with a field named `getCat`; a definition named
+  `SchemagenValidationMode` collided with the capability constant; and a
+  sibling package named `ecmaflags` was imported under the name the pattern
+  checks spell. A name another holder has is numbered (`Foo2`, or `String2_2`
+  for a name ending in a digit); definitions and the root claim their names
+  before anything is generated, so a name minted for a position never displaces
+  one.
+- Through the library, two references whose last pointer token is the same
+  (`#/x-alpha/1`, `#/x-beta/1`) got one Go type between them. They are numbered
+  apart, as the CLI already did. Likewise a reference that resolved to another
+  document's definition was typed as the root's same-keyed definition
+  (`other.json#/$defs/Thing` beside the root's own `$defs/Thing`); such a
+  definition is now named from the key it is written under in its own
+  resource, whichever reference reaches it — a pointer or an anchor — and
+  numbered off the root's (`Thing2`).
+- The `--shared-types` and `--schema-package` collision warnings are written from
+  the names the generator declared, after generation, so a warning no longer
+  names a type the package does not have ("other.json $defs/Name becomes
+  OtherName" in a run with no `OtherName`). A definition moved off a name
+  generated code already spells is reported too.
+- A qualified name that lands on a name another definition of the package
+  already has, or on the name of a position, is numbered instead of refusing
+  the run.
+- A draft-07 document's `definitions` entry qualified by its keyword is named
+  `DefinitionsX`, not `DefsX`: the `$defs` mirror normalization writes is no
+  longer read as the keyword the document used.
+- Under `--lenient-refs`, an unresolved `$ref` in a position that needs a type
+  name no longer binds a declared type that happens to share the derived name;
+  it spells a name of its own, which the file's DOES NOT COMPILE notice names.
+  A nullable `oneOf` of `null` and an unresolved `$ref` is `any`, like any other
+  property holding an unresolved reference.
 - Schema text can no longer become code in the generated file. A property name
   or a `$ref` string was written into a `//` comment as it stood, so a newline
   in it ended the comment and the rest was compiled:
@@ -195,6 +236,23 @@
     serves every file — is read. Whether a body is a schema is decided by
     parsing it; the `Content-Type` is named only to explain one that does not
     parse.
+
+### Changed
+
+- Library API: `generator.PinnedNameCollisionError` is gone. Names pinned
+  through `Config.DefinitionTypeNames` are held from `New`, so no other node can
+  take one and the refusal it reported cannot happen; a name that would land on
+  a pinned one is numbered. `ConstCheck.GoFieldName`, which nothing read, is
+  gone. `Generator.DeclaredTypeName` and `Generator.NameMoves` report what the
+  name registry declared and moved; `NamingDefectError` is what generation
+  returns if a declaration ever reaches a name held for another node.
+  `NumberedName` is the registry's spelling rule, for callers that name things
+  beside the generator.
+- Through the library with `SharedTypes` and no pins, identical definitions of
+  two documents are two types (`Thing`, `Thing2`) rather than one: the
+  generator cannot judge that two definitions agree, and sharing a name between
+  two nodes is what it no longer does unasked. The CLI judges agreement and pins
+  agreeing definitions to one name, so `--shared-types` still shares them.
 
 ## 0.1.3
 

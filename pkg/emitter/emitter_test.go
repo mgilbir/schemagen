@@ -361,8 +361,8 @@ func TestEmitStructWithOneOf(t *testing.T) {
 						FieldName:     "Payload",
 						JSONName:      "payload",
 						Variants: []generator.OneOfVariant{
-							{WrapperName: "Event_Click", FieldName: "Click", Type: &generator.NamedType{Name: "ClickPayload"}},
-							{WrapperName: "Event_View", FieldName: "View", Type: &generator.NamedType{Name: "ViewPayload"}},
+							{WrapperName: "Event_Click", FieldName: "Click", GetterName: "GetClick", Type: &generator.NamedType{Name: "ClickPayload"}},
+							{WrapperName: "Event_View", FieldName: "View", GetterName: "GetView", Type: &generator.NamedType{Name: "ViewPayload"}},
 						},
 					},
 				},
@@ -550,24 +550,6 @@ func TestFuncMapReceiverName(t *testing.T) {
 		got := receiverNameFunc(tt.input)
 		if got != tt.expected {
 			t.Errorf("receiverNameFunc(%q) = %q, want %q", tt.input, got, tt.expected)
-		}
-	}
-}
-
-func TestFuncMapLowerFirst(t *testing.T) {
-	tests := []struct {
-		input, expected string
-	}{
-		{"Hello", "hello"},
-		{"ABC", "aBC"},
-		{"", ""},
-		{"a", "a"},
-	}
-
-	for _, tt := range tests {
-		got := lowerFirstFunc(tt.input)
-		if got != tt.expected {
-			t.Errorf("lowerFirstFunc(%q) = %q, want %q", tt.input, got, tt.expected)
 		}
 	}
 }
@@ -843,12 +825,14 @@ func TestEmitOneOfUnionValidateDispatch(t *testing.T) {
 						{
 							WrapperName: "Envelope_Payload",
 							FieldName:   "Payload",
+							GetterName:  "GetPayload",
 							Type:        &generator.NamedType{Name: "Payload", Pointer: true},
 							Validatable: true,
 						},
 						{
 							WrapperName: "Envelope_Text",
 							FieldName:   "Text",
+							GetterName:  "GetText",
 							Type:        &generator.PrimitiveType{Name: "string"},
 						},
 					},
@@ -904,8 +888,8 @@ func TestEmitOneOfUnionWithNoValidatableVariantsEmitsNoSwitch(t *testing.T) {
 					FieldName:     "Body",
 					JSONName:      "body",
 					Variants: []generator.OneOfVariant{
-						{WrapperName: "Envelope_String", FieldName: "String", Type: &generator.PrimitiveType{Name: "string"}},
-						{WrapperName: "Envelope_Integer", FieldName: "Integer", Type: &generator.PrimitiveType{Name: "int64"}},
+						{WrapperName: "Envelope_String", FieldName: "String", GetterName: "GetString", Type: &generator.PrimitiveType{Name: "string"}},
+						{WrapperName: "Envelope_Integer", FieldName: "Integer", GetterName: "GetInteger", Type: &generator.PrimitiveType{Name: "int64"}},
 					},
 				}},
 			},
@@ -946,6 +930,7 @@ func oneOfNarrowingFile(secondFullyChecked bool) *generator.File {
 						{
 							WrapperName:    "Envelope_Payload",
 							FieldName:      "Payload",
+							GetterName:     "GetPayload",
 							Type:           &generator.NamedType{Name: "Payload", Pointer: true},
 							RequiredFields: []string{"x"},
 							Validatable:    true,
@@ -953,6 +938,7 @@ func oneOfNarrowingFile(secondFullyChecked bool) *generator.File {
 						{
 							WrapperName:    "Envelope_Any",
 							FieldName:      "Any",
+							GetterName:     "GetAny",
 							Type:           &generator.PrimitiveType{Name: "any"},
 							RequiredFields: []string{"x", "y"},
 							FullyChecked:   secondFullyChecked,

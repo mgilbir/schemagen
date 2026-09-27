@@ -430,11 +430,14 @@ func newGenerateCmd() *cobra.Command {
 			// the documents a $ref materializes can tell those from the ones the
 			// run generates itself. See collectExternalClaims.
 			ownDocs := ownedDocuments(inputByPath)
-			// The paths and documents the pinned-name diagnostic searches for a
-			// definition it had to move. Widened per generation unit below, since
-			// a moved definition may live in a document nobody listed.
-			pinDocPaths := args
+			// The documents whose definitions the names are resolved among.
+			// Widened per generation unit below, since a definition may live in
+			// a document nobody listed.
 			pinDocsByPath := inputByPath
+			// The contested names resolveSharedDefinitionNames separated, for the
+			// warning written once the generator has declared the types; see
+			// printNameSplits.
+			var sharedSplits []nameSplitReport
 			if sharedTypes {
 				// One package, one generator, and therefore one pass over the
 				// inputs in the order given. A $ref chain that runs in a circle
@@ -450,8 +453,7 @@ func newGenerateCmd() *cobra.Command {
 				// by the node instance the generator will see.
 				external := collectExternalClaims(args, inputByPath, run.index, ownDocs, externalRootNameOf)
 				pinDocsByPath = external.merge(inputByPath)
-				pinDocPaths = external.documentPaths(args)
-				pinnedDefNames = resolveSharedDefinitionNames(args, pinDocsByPath, external.claims, effectiveRootNameOf, cmd.ErrOrStderr(), rootNames.notePrefixApplied)
+				pinnedDefNames, sharedSplits = resolveSharedDefinitionNames(args, pinDocsByPath, external.claims, effectiveRootNameOf, rootNames.notePrefixApplied)
 				sharedGen = generator.New(generator.Config{
 					PackageName:         pkgName,
 					OutputDir:           outputDir,
@@ -472,6 +474,9 @@ func newGenerateCmd() *cobra.Command {
 				})
 			}
 
+			// How many of the generator's name moves have been reported. A
+			// shared generator accumulates them across the documents it runs.
+			movesReported := 0
 			for _, schemaPath := range args {
 				if verbose {
 					fmt.Fprintf(cmd.OutOrStdout(), "Processing %s\n", schemaPath)
@@ -482,6 +487,9 @@ func newGenerateCmd() *cobra.Command {
 				processedFiles[fileKey] = true
 
 				var gen *generator.Generator
+				// The names this unit's resolution separated, when the unit is
+				// this one document rather than the whole shared package.
+				var unitSplits []nameSplitReport
 				s := inputByPath[schemaPath]
 				if sharedTypes {
 					gen = sharedGen
@@ -503,11 +511,8 @@ func newGenerateCmd() *cobra.Command {
 					// Issue #297; see collectExternalClaims.
 					external := collectExternalClaims([]string{schemaPath}, inputByPath, resolver, ownDocs, externalRootNameOf)
 					pinDocsByPath = external.merge(inputByPath)
-					pinDocPaths = external.documentPaths([]string{schemaPath})
-					// Kept for the collision diagnostic below, which has to say
-					// which definition the name it could not use was chosen for.
-					pinnedDefNames = resolveSharedDefinitionNames(
-						[]string{schemaPath}, pinDocsByPath, external.claims, effectiveRootNameOf, cmd.ErrOrStderr(), rootNames.notePrefixApplied)
+					pinnedDefNames, unitSplits = resolveSharedDefinitionNames(
+						[]string{schemaPath}, pinDocsByPath, external.claims, effectiveRootNameOf, rootNames.notePrefixApplied)
 					gen = generator.New(generator.Config{
 						PackageName:         pkgName,
 						OutputDir:           outputDir,
@@ -550,13 +555,6 @@ func newGenerateCmd() *cobra.Command {
 					if errors.As(err, &collision) {
 						return explainRootTypeCollision(schemaPath, collision, generatedInputs, generatedRoots, refEdges)
 					}
-					// The name chosen to keep two same-named definitions apart
-					// was itself taken. Only this loop knows which definition
-					// that name was chosen for; see explainPinnedNameCollision.
-					var pinnedCollision *generator.PinnedNameCollisionError
-					if errors.As(err, &pinnedCollision) {
-						return explainPinnedNameCollision(schemaPath, pinnedCollision, pinnedDefNames, pinDocsByPath, pinDocPaths)
-					}
 					return fmt.Errorf("generating IR for %s: %w", schemaPath, err)
 				}
 
@@ -579,6 +577,15 @@ func newGenerateCmd() *cobra.Command {
 				warnUnenforcedSchemas(cmd.ErrOrStderr(), schemaPath, gen.UnenforcedSchemas())
 				warnUnresolvedRefs(cmd.ErrOrStderr(), schemaPath, gen.UnresolvedRefs(), gen.UnresolvedRefKeywords(), gen.UndeclaredRefTypes())
 				warnUnsatisfiableRequired(cmd.ErrOrStderr(), schemaPath, gen.UnsatisfiableRequiredProperties())
+				// Both read from the generator's name registry, after the types
+				// are declared: what a name report says a definition became is
+				// what the package declares.
+				if !sharedTypes {
+					printNameSplits(cmd.ErrOrStderr(), unitSplits, gen.DeclaredTypeName)
+					// A generator of its own, so its moves start from none.
+					movesReported = 0
+				}
+				movesReported = warnNameMoves(cmd.ErrOrStderr(), schemaPath, gen.NameMoves(), movesReported)
 
 				// Record applied overrides for unused-entry reporting. Twice
 				// over: by file base name, which is all a --field-map key can
@@ -631,6 +638,12 @@ func newGenerateCmd() *cobra.Command {
 				if verbose {
 					fmt.Fprintf(cmd.OutOrStdout(), "  -> %s\n", outPath)
 				}
+			}
+
+			// The shared package's contested names, reported once every document
+			// of it has been generated, from what the generator declared.
+			if sharedTypes {
+				printNameSplits(cmd.ErrOrStderr(), sharedSplits, sharedGen.DeclaredTypeName)
 			}
 
 			// 7. Write the shared helper file, if anything referenced one.
@@ -832,6 +845,30 @@ func warnUnsatisfiableRequired(w io.Writer, schemaPath string, props []generator
 		fmt.Fprintf(w, "warning: %s: %s.%s is both required and readOnly, so under --strict-read-write no document satisfies it: one that sets %q fails to decode (read-only property may not be set), one that omits it fails Validate (required property is missing). SetDefaults does not help -- the required check reads the keys of the document as it arrived, not the field. Drop %q from \"required\", drop \"readOnly\", or generate this type without --strict-read-write\n",
 			schemaPath, p.TypeName, p.Property, p.Property, p.Property)
 	}
+}
+
+// warnNameMoves reports the names a document chose -- its root type and its
+// definitions -- that the generator declared under another spelling because
+// something already held the one they asked for, and returns how many of moves
+// have now been looked at. moves is read from the generator's name registry
+// (Generator.NameMoves), so every name it mentions is one the package declares.
+//
+// Names the generator mints itself -- a position's, an enum constant's, a union
+// getter's -- move without a word, as they always have: nobody chose them.
+func warnNameMoves(w io.Writer, schemaPath string, moves []generator.NameMove, from int) int {
+	if from > len(moves) {
+		from = 0
+	}
+	if w != nil {
+		for _, m := range moves[from:] {
+			if m.Role != "root" && m.Role != "definition" {
+				continue
+			}
+			fmt.Fprintf(w, "warning: %s: %s would be named %s, which is %s, so it is declared as %s; rename it in the schema to choose the Go name yourself\n",
+				schemaPath, m.Claimant, m.Wanted, m.Holder, m.Got)
+		}
+	}
+	return len(moves)
 }
 
 // warnUnmatchedDocumentKeys reports --schema-package and --schema-output entries
@@ -1161,8 +1198,10 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 	// and two such documents declaring one definition name is the same silent
 	// merge here as anywhere else. Issue #297.
 	ownDocs := ownedDocuments(byPath)
-	pkgDocPaths := make(map[string][]string, len(pkgOrder))
 	pkgDocsByPath := make(map[string]map[string]*schema.Schema, len(pkgOrder))
+	// The contested names of each package, reported once that package's
+	// generator has declared its types; see printNameSplits.
+	pkgSplits := make(map[string][]nameSplitReport, len(pkgOrder))
 	for _, pkg := range pkgOrder {
 		paths := make([]string, 0, len(pkgInputs[pkg]))
 		for _, in := range pkgInputs[pkg] {
@@ -1170,8 +1209,7 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 		}
 		external := collectExternalClaims(paths, byPath, resolver, ownDocs, externalChosenRootName)
 		pkgDocsByPath[pkg] = external.merge(byPath)
-		pkgDocPaths[pkg] = external.documentPaths(paths)
-		pinnedDefNames[pkg] = resolveSharedDefinitionNames(paths, pkgDocsByPath[pkg], external.claims, rootNameOf, p.warnings, p.rootNames.notePrefixApplied)
+		pinnedDefNames[pkg], pkgSplits[pkg] = resolveSharedDefinitionNames(paths, pkgDocsByPath[pkg], external.claims, rootNameOf, p.rootNames.notePrefixApplied)
 	}
 
 	// Reject resolved output-path collisions before generating anything, and
@@ -1266,6 +1304,7 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 		// set, so a name is materialized at most once per package and the
 		// collision the check exists for cannot arise. A guard nothing can make
 		// fail is worse than none.
+		movesReported := 0
 		for _, in := range pkgInputs[pkg] {
 			if p.verbose {
 				fmt.Fprintf(out, "Processing %s -> %s\n", in.path, pkg)
@@ -1289,16 +1328,13 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 				if errors.As(err, &unresolved) {
 					return fmt.Errorf("generating IR for %s: %w\n%s", in.path, err, unresolvedRefAdvice(unresolved))
 				}
-				var pinnedCollision *generator.PinnedNameCollisionError
-				if errors.As(err, &pinnedCollision) {
-					return explainPinnedNameCollision(in.path, pinnedCollision, pinnedDefNames[pkg], pkgDocsByPath[pkg], pkgDocPaths[pkg])
-				}
 				return fmt.Errorf("generating IR for %s: %w", in.path, err)
 			}
 
 			warnUnenforcedSchemas(p.warnings, in.path, gen.UnenforcedSchemas())
 			warnUnresolvedRefs(p.warnings, in.path, gen.UnresolvedRefs(), gen.UnresolvedRefKeywords(), gen.UndeclaredRefTypes())
 			warnUnsatisfiableRequired(p.warnings, in.path, gen.UnsatisfiableRequiredProperties())
+			movesReported = warnNameMoves(p.warnings, in.path, gen.NameMoves(), movesReported)
 
 			// Recorded twice over: by file base name, which is all a --field-map
 			// key can name, and by input path, which is what a config entry
@@ -1343,6 +1379,9 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 				fmt.Fprintf(out, "  -> %s\n", outPath)
 			}
 		}
+
+		// The package's contested names, from what its generator declared.
+		printNameSplits(p.warnings, pkgSplits[pkg], gen.DeclaredTypeName)
 
 		// One helper file per generated package.
 		helperSrc, needed, err := em.EmitHelpers(generator.PackageNameForImportPath(pkg), helpers)

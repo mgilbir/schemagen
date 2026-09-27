@@ -99,7 +99,7 @@ var typeNameEmissionSites = map[string]emissionSite{
 	"inferred_alias.go.tmpl | .AccessorName":  {Kind: nameNotAType, Why: "the name of the accessor method being declared"},
 	"inferred_alias.go.tmpl | .TypeCheckName": {Kind: nameNotAType, Why: "the name of the predicate method being declared"},
 	"oneof.go.tmpl | $oneof.InterfaceName":    {Kind: nameNotAType, Why: "the sealing method's name, declared on the interface and on each wrapper"},
-	"oneof.go.tmpl | .FieldName":              {Kind: nameNotAType, Why: "spliced into the Get<Field>() method name"},
+	"oneof.go.tmpl | .GetterName":             {Kind: nameNotAType, Why: "the getter method being declared, named by the generator's name registry"},
 
 	// ---- a declaration in the file being emitted ----
 	"alias.go.tmpl | .Name":                  {Kind: nameLocalDecl, Why: "the alias this template is declaring"},

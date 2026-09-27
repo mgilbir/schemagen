@@ -800,6 +800,15 @@ type Schema struct {
 	// DetectedDraft is set during parsing to record which draft was detected/used.
 	DetectedDraft Draft `json:"-"`
 
+	// MirroredDefinitions names the definition container Normalize filled from
+	// the other one: "$defs" when the document wrote only "definitions",
+	// "definitions" when it wrote only "$defs", and empty when it wrote both or
+	// neither. The two maps hold the same nodes afterwards, so without this a
+	// reader cannot tell which keyword the document used -- and a name a
+	// definition is qualified with (DefinitionsX, DefsX) has to say the keyword
+	// the author wrote, not the mirror.
+	MirroredDefinitions string `json:"-"`
+
 	// BaseURI is the effective base URI for resolving relative $ref values
 	// within this schema. It is computed by ComputeBaseURIs and accounts for
 	// nested $id declarations that change the resolution scope.

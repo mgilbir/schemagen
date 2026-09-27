@@ -68,7 +68,7 @@ func TestExtractDiscriminatorValue(t *testing.T) {
 
 func TestDetectHeuristicDiscriminator(t *testing.T) {
 	g := &Generator{
-		generated: make(map[string]bool),
+		names: newNameRegistry(nil),
 	}
 
 	// Test: all variants have a shared "type" property with distinct const values

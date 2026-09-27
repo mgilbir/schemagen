@@ -21,8 +21,8 @@ func (*{{.WrapperName}}) {{$oneof.InterfaceName}}() {}
 {{- $parent := .ParentName -}}
 {{- $recv := receiverName $parent -}}
 {{range $oneof.Variants}}
-// Get{{.FieldName}} returns the {{.FieldName}} variant value, or the zero value if not set.
-func ({{$recv}} *{{$parent}}) Get{{.FieldName}}() {{goType .Type}} {
+// {{.GetterName}} returns the {{.FieldName}} variant value, or the zero value if not set.
+func ({{$recv}} *{{$parent}}) {{.GetterName}}() {{goType .Type}} {
 	if {{$recv}} != nil {
 		if _sel, ok := {{$recv}}.{{$oneof.FieldName}}.(*{{.WrapperName}}); ok {
 			return _sel.{{.FieldName}}
