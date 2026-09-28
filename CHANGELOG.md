@@ -4,6 +4,21 @@
 
 ### Changed
 
+- A pattern is judged by the ECMA-262 grammar for the `u` flag, the dialect
+  JSON Schema names, and nothing looser. ES2025 modifier groups are accepted
+  and matched as specified, in every position a pattern occupies:
+  `^(?i:ab)c$` accepts `ABc` and refuses `ABC`, and under `i` a class, `\w`,
+  `\b`, `\p{...}` and a backreference compare by simple case folding. They were
+  refused before, because the engine had none. What the `u` grammar makes an
+  error is now refused with the keyword's JSON Pointer where it used to
+  compile: a lone `{` or `}` (`a{`, `a{,5}`), a class escape as a range end
+  (`[\w-a]`), a quantified lookahead (`(?=a)*`), `\00`, and a `\p{...}` name
+  the specification does not list (`\p{WSpace}`; write `\p{White_Space}` or
+  `\p{space}`). A property value alias it does list, such as
+  `\p{Script=Latn}`, compiles where it used to be refused. `\-` and the other
+  ASCII punctuation escapes outside a class keep working, by the rewrite to
+  `\xHH` that already covered `\:`. No pattern in the test corpus or the JSON
+  Schema Test Suite changes verdict.
 - A keyword whose value is not a legal value of it is refused, naming its
   location, wherever the node's dialect defines the keyword, and ignored
   wherever it does not — the policy a null subschema such as
@@ -65,8 +80,8 @@
   `anyOf`, `oneOf`, `if` and `contains`, where reading it either way would
   flip the verdict. A pattern that is not a regular expression is refused at
   generation time with the JSON Pointer of the keyword. The engine dependency
-  moves to goecma262 at the commit that makes matching stack-safe and linear
-  for common patterns (`v0.1.1-0.20260926235716-c30bf4ed5344`).
+  moves to goecma262 v0.2.0, which makes matching stack-safe and linear for
+  common patterns and parses by the ECMA-262 grammar.
 - A property declared in `properties` whose name a `patternProperties` key
   matches is held to the whole of that pattern's schema, as an undeclared
   member is. Only the handful of keywords a field rule could express reached it

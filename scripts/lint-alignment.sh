@@ -101,6 +101,17 @@ if [ "${#schemas[@]}" -eq 0 ]; then
 	exit 1
 fi
 
+# The versions of the modules generated code imports are this repository's own,
+# read from its go.mod rather than written out here: the go.sum copied below is
+# the repository's, and a version named only in this file went stale once
+# already, leaving the corpus built against an engine nothing else used.
+modversion() {
+	(cd "$repo" && go list -m -f '{{.Version}}' "$1")
+}
+ecma_version=$(modversion github.com/mgilbir/goecma262) || exit 1
+xnet_version=$(modversion golang.org/x/net) || exit 1
+xtext_version=$(modversion golang.org/x/text) || exit 1
+
 status=0
 for entry in "${CONFIGS[@]}"; do
 	IFS='|' read -r -a parts <<<"$entry"
@@ -118,12 +129,12 @@ module alignlint
 go 1.23.0
 
 require (
-	github.com/mgilbir/goecma262 v0.1.1-0.20260926235716-c30bf4ed5344
+	github.com/mgilbir/goecma262 $ecma_version
 	github.com/mgilbir/schemagen v0.0.0
-	golang.org/x/net v0.38.0
+	golang.org/x/net $xnet_version
 )
 
-require golang.org/x/text v0.24.0 // indirect
+require golang.org/x/text $xtext_version // indirect
 
 replace github.com/mgilbir/schemagen => $repo
 EOF

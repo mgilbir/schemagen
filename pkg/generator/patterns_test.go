@@ -26,8 +26,14 @@ func TestPatternEngineSourceIsThePatternWhenItCompiles(t *testing.T) {
 		`(?<=a)b`,
 		`^(?<x>a)\k<x>$`,
 		`^\p{L}+$`,
+		`^\p{White_Space}\p{space}$`,
 		`^\u{1F600}$`,
 		`^\d{3}-\d{4}$`,
+		// ES2025 modifier groups.
+		`^(?i:ab)c$`,
+		`^(?i:a(?-i:b))$`,
+		`^(?ims:a.)$`,
+		`^(?-s:.)$`,
 		``,
 	} {
 		got, err := PatternEngineSource(p)
@@ -83,8 +89,19 @@ func TestPatternEngineSourceRewritesOnlyPunctuationEscapes(t *testing.T) {
 // because dialects disagree about it -- \e is ESC in PCRE, \a is BEL, \z an
 // anchor -- and a pattern that is not a regular expression in any reading
 // stays refused.
+//
+// A modifier group is a regular expression, and compiles; what ECMA-262 makes
+// an early error of is not: a flag named twice or on both sides of the "-", a
+// group that names no flag at all, a flag other than i, m or s, and the
+// Perl-style unscoped "(?i)". \p takes the property names the specification
+// lists and no other alias Unicode has for them, so \p{WSpace} is refused
+// where \p{White_Space} and \p{space} compile.
 func TestPatternEngineSourceRefusesWhatHasNoOneMeaning(t *testing.T) {
-	for _, p := range []string{`[\e]`, `\a`, `^\z`, `(`, `a{2,1}`, `(?i:a)`, `[z-a]`, `\p{NotAProperty}`} {
+	for _, p := range []string{
+		`[\e]`, `\a`, `^\z`, `(`, `a{2,1}`, `[z-a]`, `\p{NotAProperty}`,
+		`(?ii:a)`, `(?i-i:a)`, `(?-:a)`, `(?x:a)`, `(?i)a`, `(?g:a)`,
+		`\p{WSpace}`,
+	} {
 		if got, err := PatternEngineSource(p); err == nil {
 			t.Errorf("PatternEngineSource(%q) = %q, want an error", p, got)
 		}
