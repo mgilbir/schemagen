@@ -485,7 +485,10 @@ func TestEmitNotSchemaBranchesWithSimpleValidations(t *testing.T) {
 
 	src := string(out)
 	for _, want := range []string{
-		`if _num < 10`,
+		// Read through the exact core, which answers false for a value that is
+		// not a number -- so a non-number leaves the branch matching, as the
+		// keyword says it must.
+		`if jsonNumberBelow(_v, "10")`,
 		`utf8.RuneCountInString(_s) < 3`,
 		`return fmt.Errorf("not: value matches forbidden branch`,
 	} {
@@ -778,20 +781,21 @@ func TestEmitBigIntAliasOneOfVariants(t *testing.T) {
 			t.Fatalf("big-int Validate is missing %q:\n%s", want, src)
 		}
 	}
-	// Each branch bound has to reach the emitted comparison, at big.Float
-	// precision rather than through float64.
+	// Each branch bound has to reach the emitted comparison, and be decided on
+	// the value's decimal through the exact core -- not through float64, and
+	// not through a big.Float, whose fixed precision loses past it.
 	for _, want := range []string{
-		`_limit.SetString("10")`,
-		`_limit.SetString("5")`,
-		`_divisor.SetString("3")`,
-		`_limit.SetString("100")`,
+		`jsonNumberBelow(_num, "10")`,
+		`jsonNumberAbove(_num, "5")`,
+		`jsonNumberNotMultipleOf(_num, "3")`,
+		`jsonNumberAtMost(_num, "100")`,
 	} {
 		if !strings.Contains(src, want) {
 			t.Fatalf("big-int Validate is missing the branch bound %q:\n%s", want, src)
 		}
 	}
-	if strings.Contains(src, "float64(w)") {
-		t.Fatalf("big-int Validate compared through float64, losing precision past int64:\n%s", src)
+	if strings.Contains(src, "float64(w)") || strings.Contains(src, "new(big.Float)") {
+		t.Fatalf("big-int Validate compared through a float, losing precision:\n%s", src)
 	}
 }
 

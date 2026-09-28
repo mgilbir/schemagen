@@ -97,63 +97,10 @@ func (g *Generator) untypedType() GoType {
 	return &PrimitiveType{Name: "any"}
 }
 
-// rawElementSlice reports whether a Go type is a slice of json.RawMessage,
-// through a pointer if there is one: the shape an array of untyped elements has
-// under Config.RawUntyped, and the one shape whose elements a uniqueItems or a
-// contains check must compare as JSON values rather than as bytes.
-//
-// Asked of the type rather than of the schema, for the reason isExactNumberType
-// gives: the several places that build such a check reach the element's Go type
-// by different routes, and the type is the one answer they share.
-func rawElementSlice(t GoType) bool {
-	if pt, ok := t.(*PointerType); ok {
-		t = pt.Inner
-	}
-	at, ok := t.(*ArrayType)
-	if !ok {
-		return false
-	}
-	prim, ok := at.ItemType.(*PrimitiveType)
-	return ok && prim.Name == GoRawTypeName
-}
-
-// markRawElementRules sets RawElements on the uniqueItems rule of a position
-// whose elements are held as json.RawMessage, so that the emitted check reduces
-// each element to its canonical JSON text before comparing.
-//
-// json.Marshal of a RawMessage keeps the bytes as written, and the bytes are
-// not the value: [1, 1.0] and [{"a":1,"b":2},{"b":2,"a":1}] are each two
-// spellings of one element, which uniqueItems is defined to refuse. The check
-// on an `any` element gets the reduction for free from the decode; a raw
-// element has to ask for it. Called from each place that has both the rules and
-// the Go type they will be emitted against, on the same terms as
-// markExactNumberRules -- but with the failure mode reversed: a position this
-// misses compiles, and compares bytes. That is why the emitted branch takes the
-// marshalled bytes rather than the element, so it is right for an `any` element
-// as well, and why the position matrix in tests/ puts a uniqueItems beside an
-// untyped element in each shape this is called for: a property, an alias, and
-// an element that is itself an array.
-func markRawElementRules(rules []ValidationRule, t GoType) {
-	if !rawElementSlice(t) {
-		return
-	}
-	for i := range rules {
-		markRawElementRule(&rules[i], t)
-	}
-}
-
-// markRawElementRule is markRawElementRules for one rule.
-func markRawElementRule(r *ValidationRule, t GoType) {
-	if r.RuleType == "uniqueItems" && rawElementSlice(t) {
-		r.RawElements = true
-	}
-}
-
-// exactNumberRuleTypes names the rules whose emitted check reads its instance
-// as a number, and so has to be made on the literal when the instance is one
-// held exactly. Every other rule is about a string, a collection or a key set
-// and is unaffected by how a number is held.
-var exactNumberRuleTypes = map[string]bool{
+// numberRuleTypes names the rules whose emitted check reads its instance as a
+// number. Every other rule is about a string, a collection or a key set and is
+// unaffected by how a number is held.
+var numberRuleTypes = map[string]bool{
 	"minimum":          true,
 	"maximum":          true,
 	"exclusiveMinimum": true,
@@ -162,39 +109,63 @@ var exactNumberRuleTypes = map[string]bool{
 	"const":            true,
 }
 
-// markExactNumberRules sets ExactCompare on the numeric rules of a position
-// whose value is held as a json.Number.
+// markNumberRules sets NumOperand on the numeric rules of a position from the
+// Go type the position's value is held as.
 //
 // It is called from each place that has both the rules and the Go type they
-// will be emitted against, which is a list of places -- the failure mode is
-// what makes that acceptable here. A position this misses keeps `float64(x)`
-// against a json.Number, and that does not compile: the omission is a build
-// failure at the first schema that reaches it, not a check that goes on
-// answering from a rounded value. Nothing about it can be silently wrong, which
-// is the property a hand-maintained list has to have to be allowed at all.
-func markExactNumberRules(rules []ValidationRule, t GoType) {
-	if !isExactNumberType(t) {
-		return
-	}
+// will be emitted against. A place this misses leaves NumOperandAny, whose
+// check reads the number through the core whatever it is held as -- correct,
+// and slower -- so a hand-maintained list of call sites cannot make a verdict
+// wrong. What it can make is a fast comparison, and only from a type that
+// supports one.
+func markNumberRules(rules []ValidationRule, t GoType) {
 	for i := range rules {
-		markExactNumberRule(&rules[i], t)
+		markNumberRule(&rules[i], t)
 	}
 }
 
-// markExactNumberRule is markExactNumberRules for one rule, where the caller
-// holds a single rule rather than the slice it will end up in.
-func markExactNumberRule(r *ValidationRule, t GoType) {
-	if !isExactNumberType(t) || !exactNumberRuleTypes[r.RuleType] {
+// markNumberRule is markNumberRules for one rule, where the caller holds a
+// single rule rather than the slice it will end up in.
+func markNumberRule(r *ValidationRule, t GoType) {
+	if !numberRuleTypes[r.RuleType] {
 		return
 	}
-	// A const that is not a number has no literal to compare against, and the
-	// general check is already right for it: a number is not equal to a string
-	// or to an object under any reading. {"type":"number","const":"1.5"} is the
-	// schema that reaches this, and it forbids every value the field can hold.
+	// A const that is not a number is decided by its canonical text, and no
+	// representation of a number changes that: a number is not equal to a
+	// string or an object under any reading.
 	if r.RuleType == "const" && r.ExactValue == "" {
 		return
 	}
-	r.ExactCompare = true
+	r.NumOperand = numOperandOf(t)
+}
+
+// clearNumberOperands resets every rule to NumOperandAny, for a position whose
+// check is handed the number as something other than the Go type the rules
+// were marked from -- a literal the wrapper kept, a big-int wrapper.
+func clearNumberOperands(rules []ValidationRule) {
+	for i := range rules {
+		rules[i].NumOperand = NumOperandAny
+	}
+}
+
+// numOperandOf maps a Go type to the NumOperandKind its checks are written for,
+// through any number of pointers. Only the three primitive number types have a
+// form of their own; everything else is read through the core.
+func numOperandOf(t GoType) NumOperandKind {
+	switch v := t.(type) {
+	case *PrimitiveType:
+		switch v.Name {
+		case "int64":
+			return NumOperandInt64
+		case "float64":
+			return NumOperandFloat64
+		case GoNumberTypeName:
+			return NumOperandJSONNumber
+		}
+	case *PointerType:
+		return numOperandOf(v.Inner)
+	}
+	return NumOperandAny
 }
 
 // isExactNumberType reports whether a Go type is the json.Number a "number"

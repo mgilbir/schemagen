@@ -2,8 +2,24 @@ package schema
 
 import (
 	"encoding/json"
+	"fmt"
+	"math/big"
+	"math/rand"
+	"strconv"
+	"strings"
+	"syscall"
 	"testing"
+	"time"
 )
+
+// processCPU is the CPU time the process has used so far, user and system.
+func processCPU() time.Duration {
+	var ru syscall.Rusage
+	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &ru); err != nil {
+		panic(err)
+	}
+	return time.Duration(ru.Utime.Nano() + ru.Stime.Nano())
+}
 
 // TestNumberKeepsTheLiteral pins the property the type exists for: a numeric
 // keyword is the number the schema wrote, not the float64 nearest to it.
@@ -169,5 +185,164 @@ func TestNumberRoundTripsThroughMarshal(t *testing.T) {
 	}
 	if *again.Maximum != "9223372036854775807" || *again.Minimum != "1e30" || *again.MultipleOf != "1.5" {
 		t.Errorf("round trip gave %s", out)
+	}
+}
+
+// randomNumberLiteral writes a JSON number in one of the many spellings one
+// value has: leading and trailing zeros, a point or none, an exponent of either
+// case and sign or none. The values are kept to a few digits and a small
+// exponent so that pairs collide often -- equal values under different
+// spellings are what the readers below must see through.
+func randomNumberLiteral(r *rand.Rand) string {
+	var b strings.Builder
+	if r.Intn(3) == 0 {
+		b.WriteByte('-')
+	}
+	intDigits := r.Intn(4)
+	if intDigits == 0 {
+		b.WriteByte('0')
+	}
+	for i := 0; i < intDigits; i++ {
+		c := byte('0' + r.Intn(10))
+		if i == 0 && c == '0' {
+			c = '1' + byte(r.Intn(9))
+		}
+		b.WriteByte(c)
+	}
+	if r.Intn(2) == 0 {
+		b.WriteByte('.')
+		frac := 1 + r.Intn(4)
+		for i := 0; i < frac; i++ {
+			b.WriteByte("0012345678900"[r.Intn(13)])
+		}
+	}
+	if r.Intn(2) == 0 {
+		b.WriteByte("eE"[r.Intn(2)])
+		switch r.Intn(3) {
+		case 0:
+			b.WriteByte('-')
+		case 1:
+			b.WriteByte('+')
+		}
+		fmt.Fprintf(&b, "%d", r.Intn(25))
+	}
+	return b.String()
+}
+
+// TestNumberValueReadersAgreeWithBigRat holds Compare, IsInteger, Decimal and
+// Int64 to big.Rat, which reads the whole grammar exactly and is the reference
+// these readers stand in for: they answer from the digits in linear time, and
+// big.Rat's parse is quadratic in them.
+func TestNumberValueReadersAgreeWithBigRat(t *testing.T) {
+	r := rand.New(rand.NewSource(1))
+	lits := []string{
+		"0", "-0", "0.0", "0e5", "1", "1.0", "10e-1", "0.1e1", "-1", "1.5", "15e-1",
+		"9223372036854775807", "9223372036854775808", "-9223372036854775808", "-9223372036854775809",
+		"922337203685477580.7e1", "92233720368547758070e-1", "9223372036854775807.00",
+		"100000000000000000000", "1e19", "1e18", "0.000000000000000000001",
+		// Digits that fit, scaled by an exponent to the edge of int64 and past.
+		"92233720368547758e2", "92233720368547759e2", "-92233720368547758e2", "-92233720368547759e2",
+		"-9223372036854775808e0", "-922337203685477581e1",
+	}
+	for i := 0; i < 1500; i++ {
+		lits = append(lits, randomNumberLiteral(r))
+	}
+	rats := make([]*big.Rat, len(lits))
+	for i, lit := range lits {
+		v, ok := new(big.Rat).SetString(lit)
+		if !ok {
+			t.Fatalf("the literal generator wrote %q, which is not a number", lit)
+		}
+		rats[i] = v
+	}
+	failures := 0
+	fail := func(format string, args ...any) {
+		failures++
+		if failures <= 20 {
+			t.Errorf(format, args...)
+		}
+	}
+	for i, lit := range lits {
+		n, v := Number(lit), rats[i]
+
+		isInt, ok := n.IsInteger()
+		if !ok || isInt != v.IsInt() {
+			fail("Number(%q).IsInteger() = %v, %v; big.Rat says %v", lit, isInt, ok, v.IsInt())
+		}
+
+		digits, scale, neg, ok := n.Decimal()
+		if !ok {
+			fail("Number(%q).Decimal() refused it", lit)
+		} else {
+			got := new(big.Rat)
+			if digits != "" {
+				if strings.HasPrefix(digits, "0") || strings.HasSuffix(digits, "0") {
+					fail("Number(%q).Decimal() digits %q carry a leading or trailing zero", lit, digits)
+				}
+				d, _ := new(big.Int).SetString(digits, 10)
+				p := new(big.Int).Exp(big.NewInt(10), big.NewInt(max(scale, -scale)), nil)
+				if scale >= 0 {
+					got.SetInt(d.Mul(d, p))
+				} else {
+					got.SetFrac(d, p)
+				}
+				if neg {
+					got.Neg(got)
+				}
+			}
+			if got.Cmp(v) != 0 {
+				fail("Number(%q).Decimal() = %s*10^%d (neg %v), which is %s; big.Rat says %s", lit, digits, scale, neg, got.RatString(), v.RatString())
+			}
+		}
+
+		want, wantOK := int64(0), v.IsInt() && v.Num().IsInt64()
+		if wantOK {
+			want = v.Num().Int64()
+		}
+		if got, ok := n.Int64(); ok != wantOK || got != want {
+			fail("Number(%q).Int64() = %d, %v; big.Rat says %d, %v", lit, got, ok, want, wantOK)
+		}
+
+		for j := range lits {
+			c, ok := n.Compare(Number(lits[j]))
+			if !ok || c != v.Cmp(rats[j]) {
+				fail("Number(%q).Compare(%q) = %d, %v; big.Rat says %d", lit, lits[j], c, ok, v.Cmp(rats[j]))
+			}
+		}
+	}
+	if failures > 20 {
+		t.Errorf("... and %d more", failures-20)
+	}
+}
+
+// TestNumberValueReadersAreBoundedOnLongLiterals is the hostile half: a literal
+// is as long as the document writes it, and these are asked of every numeric
+// keyword the generator emits. A million digits through big.Rat takes
+// seconds; read as digits, it takes the time to scan them.
+func TestNumberValueReadersAreBoundedOnLongLiterals(t *testing.T) {
+	const width = 1000000
+	long := []Number{
+		Number("1." + strings.Repeat("7", width)),
+		Number(strings.Repeat("9", width)),
+		Number("0." + strings.Repeat("0", width) + "1"),
+		Number("1" + strings.Repeat("0", width) + "e-" + strconv.Itoa(width)),
+	}
+	// Timed by the CPU the process spends rather than the wall clock, which on
+	// a machine running other test binaries counts the time spent waiting for a
+	// CPU. No test in this package is parallel, so the process's time is this
+	// loop's.
+	before := processCPU()
+	for _, n := range long {
+		n.Int64()
+		n.IsInteger()
+		n.Decimal()
+		n.Compare(n)
+	}
+	if elapsed := processCPU() - before; elapsed > time.Second {
+		t.Errorf("reading four %d-digit literals took %v of CPU", width, elapsed)
+	}
+	// The last is 1 written long, and must still answer 1.
+	if got, ok := long[3].Int64(); !ok || got != 1 {
+		t.Errorf("1 written with %d zeros and an exponent to cancel them answered %d, %v", width, got, ok)
 	}
 }

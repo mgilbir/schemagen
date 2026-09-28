@@ -76,7 +76,7 @@ Note that `-v` is `--version` on `schemagen` itself and `--verbose` on
 | `--omit-empty` | | `true` | Add `omitempty` to optional JSON fields. With `--omit-empty=false` an optional field is written even when it holds its Go zero — `{}` marshals as `{"s":"","i":0,"b":false}` — except where that zero is a value the schema forbids at that position: a `null` for a typed property, or a zero the property's `const`, `enum`, `minLength`, `pattern` or numeric bounds exclude. Those are omitted rather than written, because there is no value to write there and every candidate is one the schema may equally reject |
 | `--strict-properties` | | `false` | Treat absent `additionalProperties` as false for validation while still preserving overflow properties for round-trip output. Read on every object schema, including the sub-schemas the generator compiles to schema data rather than to a struct. An `allOf` branch's properties are pooled into the object the branches compose, as the merged struct pools them; every other applicator's sub-schema is a schema object in its own right and is read on its own terms, which is `additionalProperties`' own reading and can make a discriminated or conditional object unsatisfiable |
 | `--strict-read-write` | | `false` | Make `readOnly` and `writeOnly` change what the type accepts and emits, not just its doc comment (see below) |
-| `--big-int` | | `false` | Generate `*big.Int` wrapper for integer types |
+| `--big-int` | | `false` | Hold `"type":"integer"` in an arbitrary-precision wrapper (`int64` + `*big.Int`) rather than an `int64` that refuses an integer past its range (see below) |
 | `--exact-numbers` | | `false` | Hold `"type":"number"` as the literal the document wrote (`json.Number`) rather than the `float64` it rounds to, and compare every numeric keyword on it exactly (see below) |
 | `--raw-untyped` | | `false` | Hold a position the schema gives no type to as the bytes the document wrote (`json.RawMessage`) rather than the `any` they decode into, so number spelling, member order and every digit round-trip (see below) |
 | `--format-assertion` | | `false` | Assert `format` on every draft. Without it the dialect decides (see below) |
@@ -334,8 +334,12 @@ property typed `"number"` is a `float64`, so a document carrying
 read-modify-write then rewrites a field the caller never touched, silently.
 
 Integers have not had that problem for some time: an `int64` holds every integer
-up to its own range exactly, and `--big-int` carries the rest. `--exact-numbers`
-is the same guarantee for the other JSON numeric type.
+up to its own range exactly, and refuses at decode one it does not hold rather
+than rounding it. `--big-int` carries the rest, in a wrapper that reads the
+literal exactly — `1e100` is 10^100, `12345678901234567891.5` is not an integer
+— and builds at most ten thousand zeros from an exponent, so `1e1000000000` is
+refused rather than allocated. `--exact-numbers` is the same guarantee for the
+other JSON numeric type.
 
 ```bash
 schemagen generate schema.json --exact-numbers
@@ -355,6 +359,31 @@ exact decimal arithmetic rather than through a `float64` that cannot tell
 compare equal, so `1.50` satisfies a `const` of `1.5` and `1e-1` satisfies a
 `maximum` of `0.1`.
 
+That arithmetic is not the flag's: it is how every numeric keyword is decided,
+in every configuration and at every position — a property, an array element, a
+map value, a union branch, a `patternProperties` member, an `if`/`then`
+branch, an unevaluated property or item, a value judged by the runtime
+evaluator. JSON Schema defines those keywords over numbers as mathematical
+values, so `0.3` is a multiple of `0.1`, `1.0000000001` is not a multiple of
+`1`, `9007199254740993` exceeds a `maximum` of `9007199254740992`, `1.0` is an
+integer (from draft 6; draft 4 reads the token, and does not call it one), and
+`1`, `1.0` and `1e0` are one element to `uniqueItems`. A number is read as the
+literal the document wrote wherever the literal survives to the check — a
+member judged from the raw JSON, a value the check decodes itself, a
+`json.Number`, a `--big-int` wrapper, a wrapper for a schema that states
+bounds and no type. Hostile literals stay cheap: a million-digit mantissa or
+an exponent of 10^20 is answered in the time it takes to read it.
+
+What the flag changes is which number a `"number"` position *holds*. A
+`float64` is judged as the number it marshals to — its shortest decimal, which
+is `0.3` for the `float64` a document's `0.3` decodes into — and without the
+flag a literal no `float64` can hold was rounded or refused when it was decoded,
+before any keyword saw it: `9007199254740993` arrives as `9007199254740992`,
+and the verdict is the one that value earns. For every literal that is the
+shortest spelling of its own `float64` — which includes every one with fifteen
+significant digits or fewer inside `float64`'s normal range — the two
+configurations give the same verdict.
+
 What it costs is arithmetic: `json.Number` is a string underneath and has
 `Float64()`, `Int64()` and `String()` and no operators. That is the trade the
 flag exists to let you make — the alternative is a dependency, and only the
@@ -363,10 +392,11 @@ turning it on changes the generated Go type.
 
 Where it does not reach: a position the schema gives no type to. Those are held
 as `any`, and `encoding/json` makes a `float64` of a JSON number on the way into
-one whatever this flag says — a tuple element, an `any` field, a value judged
-only by a runtime rule. `--exact-numbers` acts on the declared type, so a schema
-that declares none gets what it always got. `--raw-untyped`, next, is the flag
-for those.
+one whatever this flag says — a tuple element, an `any` field. `--exact-numbers`
+acts on the declared type, so a schema that declares none gets what it always
+got. `--raw-untyped`, next, is the flag for those; a tuple element is `any`
+under both. (A value judged only by a runtime rule is not one of these: the
+check decodes it itself, keeping every number as its literal.)
 
 ### Untyped positions: raw, or `any`
 
@@ -409,12 +439,16 @@ Go map — the last two — keeps each value's bytes but writes its own members 
 sorted order, as `encoding/json` writes every map; a position held whole as a
 `RawMessage` keeps its member order too.
 
-Validation verdicts do not change. A schema that states nothing has nothing to
-check, and an untyped `const` or `enum` was already held raw and compared by
-JSON equality. The checks that read such an element from beside its schema —
-`uniqueItems` on an array of them, a `contains` naming a `const` or an `enum` —
-are made through the same JSON-equality reduction rather than on the bytes, so
-`[1, 1.0]` is still not unique and `1.0` still satisfies `{"const": 1}`.
+Validation verdicts do not change for any number a `float64` holds. A schema
+that states nothing has nothing to check, and an untyped `const` or `enum` was
+already held raw and compared by JSON equality. The checks that read such an
+element from beside its schema — `uniqueItems` on an array of them, a
+`contains` naming a `const`, an `enum` or a bound — are made by JSON equality
+and exact arithmetic rather than on the bytes, so `[1, 1.0]` is still not
+unique and `1.0` still satisfies `{"const": 1}`. Past what a `float64` holds,
+those checks judge the digits the document wrote rather than the `float64`
+they round to — `[9007199254740992, 9007199254740993]` is unique, which it was
+not as two copies of one `float64`.
 
 Where it does not reach: a tuple, whose elements are `any` because they differ
 from one another and each have a schema of their own; a bare `{"type":"array"}`,
@@ -1216,6 +1250,14 @@ make golden
 # not changed.
 make test-external
 
+# Put every numeric keyword, at every position, under every configuration
+# that changes how a number is held, to the instances that separate an exact
+# reading from an approximate one, and hold each verdict to the frozen oracle
+# in testdata/number_oracle. `go test` runs a fixed sample of the grid; this
+# runs all of it (some 1800 generated packages). Run it before merging a
+# change to how a number is read, compared or decoded; CI runs it nightly.
+make grid-numbers
+
 # Fuzz the parse -> generate -> emit pipeline for panics
 make fuzz FUZZTIME=5m
 
@@ -1253,7 +1295,7 @@ under `tests/`, one package per area:
 | `tests/refs` | reference resolution, and the multi-package and shared-type differential |
 | `tests/names` | what schema text becomes in source: identifiers, receivers, comments, literals |
 | `tests/patterns` | the ECMA-262 pattern engine in every position a pattern can occupy |
-| `tests/numbers` | numeric precision, saturated bounds, canonical numbers |
+| `tests/numbers` | numeric precision, saturated bounds, canonical numbers; the exact-number core held to `big.Rat`, and the number verdict grid against its frozen oracle (a sample here, all of it under `make grid-numbers`) |
 | `tests/corpus` | sweeps over every schema in `testdata/schemas`: compile, field alignment, helper file, refusals |
 | `tests/fuzz` | `FuzzGenerate` and its seed corpus, and the backstop sweep (`make fuzz`); crashers land in `tests/fuzz/testdata/fuzz/` |
 | `tests/fuzzdeadline` | every fuzz seed held to the CPU-time budget a fuzz worker's ten-second deadline implies (`make fuzz-seeds`) |

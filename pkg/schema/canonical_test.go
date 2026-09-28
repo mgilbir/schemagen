@@ -80,6 +80,12 @@ func TestCanonicalTextGroupsEqualNumbers(t *testing.T) {
 		{"123456789012345678901234567890", "12345678901234567890123456789e1"},
 		{"123456789012345678901234567891"},
 		{"123456789012345678901234567889"},
+		// Exponents past int64, which used to be refused and kept as written --
+		// so the first two, one number, stayed two texts.
+		{"1e2000000000000", "10e1999999999999", "0.1e2000000000001"},
+		{"1e99999999999999999999", "10e99999999999999999998", "1.0e99999999999999999999"},
+		{"1e99999999999999999998"},
+		{"-1e-99999999999999999999", "-10e-100000000000000000000"},
 	}
 	byText := make(map[string]int, len(groups))
 	for gi, g := range groups {
@@ -164,6 +170,10 @@ func TestCanonicalJSONReadsTheKindsAValueCanArriveAs(t *testing.T) {
 		{"a Number", Number("1e2"), "100"},
 		{"a json.Number", json.Number("1e2"), "100"},
 		{"a mixture inside a container", []any{1, 2.5, "x"}, `[1,2.5,"x"]`},
+		// An exponent past int64 is a number a decode produces like any other,
+		// and it has a canonical text like any other. It used to be refused.
+		{"an exponent past int64", Number("1e99999999999999999999"), "1e+99999999999999999999"},
+		{"the same number spelled otherwise", Number("10.0e99999999999999999998"), "1e+99999999999999999999"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			got, ok := CanonicalJSON(tc.in)
@@ -184,7 +194,6 @@ func TestCanonicalJSONReadsTheKindsAValueCanArriveAs(t *testing.T) {
 		map[int]string{1: "a"},
 		[]any{struct{}{}},
 		Number("not a number"),
-		Number("1e99999999999999"),
 	} {
 		if got, ok := CanonicalJSON(in); ok {
 			t.Errorf("CanonicalJSON(%#v) answered %s; nothing a JSON decode produces looks like this", in, got)

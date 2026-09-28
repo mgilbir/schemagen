@@ -508,10 +508,12 @@ func (i InlineForbiddingPositionsEmptyEnumBranch) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(i._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -1120,6 +1122,7 @@ func (i *InlineForbiddingPositionsInferredEmptyEnumItems) UnmarshalJSON(data []b
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &i._value); _err == nil {
 		i._isRaw = false
+		i._raw = append(i._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -1166,6 +1169,20 @@ func (i InlineForbiddingPositionsInferredEmptyEnumItems) Validate() error {
 	if i._isRaw {
 		return nil // Constraints don't apply to non-matching types.
 	}
+	// The elements as the document wrote them, where the value was decoded
+	// from one: decoded into []any they are float64s, which round the digits
+	// the element keywords are about. Read again here keeping every number as
+	// its literal; a value assembled in Go is judged as it stands.
+	_items := i._value
+	if len(i._raw) > 0 {
+		var _decoded any
+		if jsonDecodeNumbers(i._raw, &_decoded) == nil {
+			if _arr, _ok := _decoded.([]any); _ok {
+				_items = _arr
+			}
+		}
+	}
+	_ = _items
 	// Item-level validation for inferred array.
 	if len(i._value) > 0 {
 		return fmt.Errorf("items: no items are allowed (got %d)", len(i._value))
@@ -1191,6 +1208,7 @@ func (i *InlineForbiddingPositionsInferredEmptyEnumSlot) UnmarshalJSON(data []by
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &i._value); _err == nil {
 		i._isRaw = false
+		i._raw = append(i._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -1237,6 +1255,20 @@ func (i InlineForbiddingPositionsInferredEmptyEnumSlot) Validate() error {
 	if i._isRaw {
 		return nil // Constraints don't apply to non-matching types.
 	}
+	// The elements as the document wrote them, where the value was decoded
+	// from one: decoded into []any they are float64s, which round the digits
+	// the element keywords are about. Read again here keeping every number as
+	// its literal; a value assembled in Go is judged as it stands.
+	_items := i._value
+	if len(i._raw) > 0 {
+		var _decoded any
+		if jsonDecodeNumbers(i._raw, &_decoded) == nil {
+			if _arr, _ok := _decoded.([]any); _ok {
+				_items = _arr
+			}
+		}
+	}
+	_ = _items
 	// Item-level validation for inferred array.
 	{
 		if len(i._value) > 0 {
@@ -1264,6 +1296,7 @@ func (i *InlineForbiddingPositionsInferredEmptyEnumTail) UnmarshalJSON(data []by
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &i._value); _err == nil {
 		i._isRaw = false
+		i._raw = append(i._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -1310,6 +1343,20 @@ func (i InlineForbiddingPositionsInferredEmptyEnumTail) Validate() error {
 	if i._isRaw {
 		return nil // Constraints don't apply to non-matching types.
 	}
+	// The elements as the document wrote them, where the value was decoded
+	// from one: decoded into []any they are float64s, which round the digits
+	// the element keywords are about. Read again here keeping every number as
+	// its literal; a value assembled in Go is judged as it stands.
+	_items := i._value
+	if len(i._raw) > 0 {
+		var _decoded any
+		if jsonDecodeNumbers(i._raw, &_decoded) == nil {
+			if _arr, _ok := _decoded.([]any); _ok {
+				_items = _arr
+			}
+		}
+	}
+	_ = _items
 	// Item-level validation for inferred array.
 	{
 	}
@@ -1429,10 +1476,12 @@ func (i InlineForbiddingPositionsNotAnyOfEmptyEnum) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(i._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -1504,10 +1553,12 @@ func (i InlineForbiddingPositionsNotEmptyEnum) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(i._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -1579,10 +1630,12 @@ func (i InlineForbiddingPositionsNotEmptyEnumBound) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(i._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -1709,10 +1762,12 @@ func (i InlineForbiddingPositionsNotTypedConst) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(i._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -1784,10 +1839,12 @@ func (i InlineForbiddingPositionsNotTypedEmptyEnum) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(i._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict

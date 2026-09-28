@@ -19,7 +19,7 @@ import (
 // make. The families are matched by prefix rather than by name so that a helper
 // added to a block is covered the day it is written -- a list of names is what
 // failed on PR #59 and again on the format block.
-var helperCallPattern = regexp.MustCompile(`\b(schemagenFormat\w*|schemagen[A-Z]\w*|oneofHasRequiredFields|oneofDiscriminatorValue|jsonInteger\w*|jsonExactProperties|jsonDecode\w*|jsonValueErrorf|jsonElemErrorf|jsonPathf|jsonElemPathf|checkJSONNullsAt|_dyn\w*|_schemaNode|_evalNode)\(`)
+var helperCallPattern = regexp.MustCompile(`\b(schemagenFormat\w*|schemagen[A-Z]\w*|oneofHasRequiredFields|oneofDiscriminatorValue|jsonInteger\w*|jsonExactProperties|jsonDecode\w*|jsonValueErrorf|jsonElemErrorf|jsonPathf|jsonElemPathf|checkJSONNullsAt|_dyn\w*|_schemaNode|_evalNode|jsonNumber\w*|jsonDecimal\w*|jsonIsInteger|jsonIsNumber|jsonRaw\w*|jsonFloat\w*|jsonBigInt\w*|_jsonCanonical\w*|_jsonEqualText)\(`)
 
 // TestHelperFileDeclaresEveryHelperCalled compiles the one claim the helper file
 // has to satisfy: everything the generated code calls, it declares.

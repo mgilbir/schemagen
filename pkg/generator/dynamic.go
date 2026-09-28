@@ -221,7 +221,55 @@ func (g *Generator) dynamicSchemaDef(name string, s *schema.Schema) *DynamicSche
 	if len(def.OneOf) == 0 && len(def.AnyOf) == 0 && !def.HasIfThenElse {
 		return nil
 	}
+	for i := range def.OneOf {
+		g.markDynamicStrictness(def.OneOf[i], s.OneOf[i])
+	}
+	for i := range def.AnyOf {
+		g.markDynamicStrictness(def.AnyOf[i], s.AnyOf[i])
+	}
+	g.markDynamicStrictness(def.If, s.If)
+	g.markDynamicStrictness(def.Then, s.Then)
+	g.markDynamicStrictness(def.Else, s.Else)
 	return def
+}
+
+// markDynamicStrictness sets Strict on the "type":"integer" checks of the
+// sub-schema s was converted into, from s's own draft: draft 3 and draft 4
+// read an integer off the token, every later draft off the value. The checks
+// are built by functions that are handed a schema and nothing else, so the
+// draft -- which --draft can override -- is read in here, by the generator.
+func (g *Generator) markDynamicStrictness(checks []DynamicCheck, s *schema.Schema) {
+	if s == nil {
+		return
+	}
+	strict := g.requiresStrictIntegerToken(s)
+	for i := range checks {
+		if checks[i].Kind == "type" && checks[i].Value == "integer" {
+			checks[i].Strict = strict
+		}
+	}
+}
+
+// markConditionalStrictness is markDynamicStrictness over every property of an
+// object-level conditional branch, each read against its own sub-schema.
+func (g *Generator) markConditionalStrictness(b *ObjectConditionalBranch, s *schema.Schema) {
+	if b == nil || s == nil {
+		return
+	}
+	for i := range b.Properties {
+		g.markDynamicStrictness(b.Properties[i].Checks, s.Properties[b.Properties[i].JSONName])
+	}
+}
+
+// markConditionalDefStrictness is markConditionalStrictness over the three
+// sides of an object-level if/then/else built from s.
+func (g *Generator) markConditionalDefStrictness(def *ObjectConditionalDef, s *schema.Schema) {
+	if def == nil || s == nil {
+		return
+	}
+	g.markConditionalStrictness(&def.If, s.If)
+	g.markConditionalStrictness(def.Then, s.Then)
+	g.markConditionalStrictness(def.Else, s.Else)
 }
 
 // objectConditionalKeywords lists the keywords the *condition* of an

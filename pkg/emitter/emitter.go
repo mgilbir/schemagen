@@ -407,12 +407,25 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	add(helpers.IdentityKind, "encoding/json")
 	add(helpers.IdentityKind, "math")
 	add(helpers.IdentityKind, "strconv")
-	// The exact-number comparisons read the literal as decimal digits: strconv
-	// for the exponent, math/big for the one question -- does this divide that
-	// -- that digit arithmetic alone does not answer. Neither is needed by the
-	// shadow type, which only decides whether a token is a number at all.
-	add(helpers.NumberCompare, "strconv")
+	// The canonical text of a number whose exponent took a big.Int to hold is
+	// written from that big.Int.
+	add(helpers.Canonical, "math/big")
+	// The exact-number core reads a literal as decimal digits: strconv for the
+	// exponent and for the literal of a Go number, math/big for an exponent
+	// past int64 and a divisor past uint64, math/bits for the 128-bit
+	// remainders multipleOf is decided by, math for the float64 fast path and
+	// the two values JSON cannot write, reflect for a named type over a number
+	// kind, and bytes for the decoder that keeps every number as its literal.
+	// What the pruning leaves unused is dropped with the declarations. None of
+	// it is needed by the shadow type, which only decides whether a token is a
+	// number at all.
+	add(helpers.NumberCompare, "bytes")
+	add(helpers.NumberCompare, "encoding/json")
+	add(helpers.NumberCompare, "math")
 	add(helpers.NumberCompare, "math/big")
+	add(helpers.NumberCompare, "math/bits")
+	add(helpers.NumberCompare, "reflect")
+	add(helpers.NumberCompare, "strconv")
 	// The in-place decode: the document's index is searched by offset, an
 	// object key that is not plain ASCII is handed to encoding/json after a
 	// UTF-8 scan, the commonest scalars are read with strconv, and a value of

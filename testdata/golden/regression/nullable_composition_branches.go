@@ -60,12 +60,12 @@ func (n NullableCompositionBranchesAnyBound) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(n._raw, &_v); _err != nil {
 		return fmt.Errorf("cannot decode value: %w", _err)
 	}
 	{
 		_matches := 0
-		if _dynIsInteger(_v) && _dynNumOK(_v, func(_n float64) bool { return _n >= 5.0 }) {
+		if jsonIsInteger(_v, false) && !jsonNumberBelow(_v, "5") {
 			_matches++
 		}
 		if _v == nil {
@@ -144,10 +144,12 @@ func (n NullableCompositionBranchesAnyConst) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(n._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -224,10 +226,12 @@ func (n NullableCompositionBranchesAnyEmpty) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(n._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -321,10 +325,12 @@ func (n NullableCompositionBranchesAnyFalse) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(n._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -407,10 +413,12 @@ func (n NullableCompositionBranchesAnyItems) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(n._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -476,7 +484,7 @@ func (n NullableCompositionBranchesAnyLen) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(n._raw, &_v); _err != nil {
 		return fmt.Errorf("cannot decode value: %w", _err)
 	}
 	{
@@ -560,10 +568,12 @@ func (n NullableCompositionBranchesAnyMinIt) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(n._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -792,10 +802,12 @@ func (n NullableCompositionBranchesOneConst) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(n._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -878,10 +890,12 @@ func (n NullableCompositionBranchesOneMapVal) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(n._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict

@@ -5,7 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"unicode/utf8"
 )
 
@@ -152,7 +151,7 @@ var AnnDynamicSchema = _schemaNode{
 			Type:      []string{"string"},
 		},
 		_schemaNode{
-			Minimum: _floatPtr(5),
+			Minimum: _strPtr("5"),
 			Type:    []string{"integer"},
 		},
 	},
@@ -167,10 +166,12 @@ func (a AnnDynamic) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(a._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -258,6 +259,7 @@ func (a *AnnInferred) UnmarshalJSON(data []byte) error {
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &a._value); _err == nil {
 		a._isRaw = false
+		a._raw = append(a._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -302,10 +304,25 @@ func (a AnnInferred) String() string {
 // Validate checks AnnInferred against its JSON Schema constraints.
 func (a AnnInferred) Validate() error {
 	if a._isRaw {
-		return nil // Constraints don't apply to non-matching types.
+		// Constraints don't apply to non-matching types -- but a number is not
+		// one. 1e400 is a number no float64 holds, so the typed decode refused
+		// it and it was kept here as bytes; every numeric keyword still applies
+		// to it, and is read from those bytes below. It used to be passed over
+		// as though it were a string.
+		if _, _isNum := jsonRawNumber(a._raw); !_isNum {
+			return nil
+		}
 	}
-	if float64(a._value) < 3 {
-		return jsonValueErrorf("%v is less than minimum 3", a._value)
+	// The number as the document wrote it, where the value was decoded from
+	// one; see UnmarshalJSON. A value assembled in Go is judged as the number
+	// it marshals to.
+	_num, _numText := any(a._value), fmt.Sprint(a._value)
+	if len(a._raw) > 0 {
+		_num, _numText = json.RawMessage(a._raw), string(a._raw)
+	}
+	_, _ = _num, _numText
+	if jsonNumberBelow(_num, "3") {
+		return jsonValueErrorf("%s is less than minimum 3", _numText)
 	}
 	return nil
 }
@@ -370,7 +387,7 @@ func (a AnnNot) Validate() error {
 	}
 	// Decode raw JSON to determine the value's type.
 	var _v any
-	if _err := json.Unmarshal(a._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(a._raw, &_v); _err != nil {
 		return fmt.Errorf("not: cannot decode value: %w", _err)
 	}
 	if _, _sOk := _v.(string); _sOk {
@@ -520,10 +537,12 @@ func (a AnnRuntime) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(a._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -743,7 +762,7 @@ func (a AnnTypeOnly) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(a._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(a._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -754,8 +773,8 @@ func (a AnnTypeOnly) Validate() error {
 		return fmt.Errorf("type: null is not allowed")
 	}
 	switch _tv := _v.(type) {
-	case float64:
-		if _tv != math.Trunc(_tv) || math.IsInf(_tv, 0) {
+	case json.Number:
+		if !jsonIsInteger(_tv, false) {
 			return fmt.Errorf("type: expected integer, got number")
 		}
 		return nil
@@ -894,7 +913,7 @@ func (d DepDynamic) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(d._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(d._raw, &_v); _err != nil {
 		return fmt.Errorf("cannot decode value: %w", _err)
 	}
 	{
@@ -902,7 +921,7 @@ func (d DepDynamic) Validate() error {
 		if _dynIsString(_v) && _dynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) >= 2 }) {
 			_matches++
 		}
-		if _dynIsInteger(_v) && _dynNumOK(_v, func(_n float64) bool { return _n >= 5.0 }) {
+		if jsonIsInteger(_v, false) && !jsonNumberBelow(_v, "5") {
 			_matches++
 		}
 		if _matches != 1 {
@@ -970,6 +989,7 @@ func (d *DepInferred) UnmarshalJSON(data []byte) error {
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &d._value); _err == nil {
 		d._isRaw = false
+		d._raw = append(d._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -1014,10 +1034,25 @@ func (d DepInferred) String() string {
 // Validate checks DepInferred against its JSON Schema constraints.
 func (d DepInferred) Validate() error {
 	if d._isRaw {
-		return nil // Constraints don't apply to non-matching types.
+		// Constraints don't apply to non-matching types -- but a number is not
+		// one. 1e400 is a number no float64 holds, so the typed decode refused
+		// it and it was kept here as bytes; every numeric keyword still applies
+		// to it, and is read from those bytes below. It used to be passed over
+		// as though it were a string.
+		if _, _isNum := jsonRawNumber(d._raw); !_isNum {
+			return nil
+		}
 	}
-	if float64(d._value) < 3 {
-		return jsonValueErrorf("%v is less than minimum 3", d._value)
+	// The number as the document wrote it, where the value was decoded from
+	// one; see UnmarshalJSON. A value assembled in Go is judged as the number
+	// it marshals to.
+	_num, _numText := any(d._value), fmt.Sprint(d._value)
+	if len(d._raw) > 0 {
+		_num, _numText = json.RawMessage(d._raw), string(d._raw)
+	}
+	_, _ = _num, _numText
+	if jsonNumberBelow(_num, "3") {
+		return jsonValueErrorf("%s is less than minimum 3", _numText)
 	}
 	return nil
 }
@@ -1074,7 +1109,7 @@ func (d DepNot) Validate() error {
 	}
 	// Decode raw JSON to determine the value's type.
 	var _v any
-	if _err := json.Unmarshal(d._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(d._raw, &_v); _err != nil {
 		return fmt.Errorf("not: cannot decode value: %w", _err)
 	}
 	if _, _sOk := _v.(string); _sOk {
@@ -1208,10 +1243,12 @@ func (d DepRuntime) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(d._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -1414,7 +1451,7 @@ func (d DepTypeOnly) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(d._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(d._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -1425,8 +1462,8 @@ func (d DepTypeOnly) Validate() error {
 		return fmt.Errorf("type: null is not allowed")
 	}
 	switch _tv := _v.(type) {
-	case float64:
-		if _tv != math.Trunc(_tv) || math.IsInf(_tv, 0) {
+	case json.Number:
+		if !jsonIsInteger(_tv, false) {
 			return fmt.Errorf("type: expected integer, got number")
 		}
 		return nil
@@ -1556,7 +1593,7 @@ func (p PlainDynamic) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(p._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(p._raw, &_v); _err != nil {
 		return fmt.Errorf("cannot decode value: %w", _err)
 	}
 	{
@@ -1564,7 +1601,7 @@ func (p PlainDynamic) Validate() error {
 		if _dynIsString(_v) && _dynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) >= 2 }) {
 			_matches++
 		}
-		if _dynIsInteger(_v) && _dynNumOK(_v, func(_n float64) bool { return _n >= 5.0 }) {
+		if jsonIsInteger(_v, false) && !jsonNumberBelow(_v, "5") {
 			_matches++
 		}
 		if _matches != 1 {
@@ -1626,6 +1663,7 @@ func (p *PlainInferred) UnmarshalJSON(data []byte) error {
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &p._value); _err == nil {
 		p._isRaw = false
+		p._raw = append(p._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -1670,10 +1708,25 @@ func (p PlainInferred) String() string {
 // Validate checks PlainInferred against its JSON Schema constraints.
 func (p PlainInferred) Validate() error {
 	if p._isRaw {
-		return nil // Constraints don't apply to non-matching types.
+		// Constraints don't apply to non-matching types -- but a number is not
+		// one. 1e400 is a number no float64 holds, so the typed decode refused
+		// it and it was kept here as bytes; every numeric keyword still applies
+		// to it, and is read from those bytes below. It used to be passed over
+		// as though it were a string.
+		if _, _isNum := jsonRawNumber(p._raw); !_isNum {
+			return nil
+		}
 	}
-	if float64(p._value) < 3 {
-		return jsonValueErrorf("%v is less than minimum 3", p._value)
+	// The number as the document wrote it, where the value was decoded from
+	// one; see UnmarshalJSON. A value assembled in Go is judged as the number
+	// it marshals to.
+	_num, _numText := any(p._value), fmt.Sprint(p._value)
+	if len(p._raw) > 0 {
+		_num, _numText = json.RawMessage(p._raw), string(p._raw)
+	}
+	_, _ = _num, _numText
+	if jsonNumberBelow(_num, "3") {
+		return jsonValueErrorf("%s is less than minimum 3", _numText)
 	}
 	return nil
 }
@@ -1727,7 +1780,7 @@ func (p PlainNot) Validate() error {
 	}
 	// Decode raw JSON to determine the value's type.
 	var _v any
-	if _err := json.Unmarshal(p._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(p._raw, &_v); _err != nil {
 		return fmt.Errorf("not: cannot decode value: %w", _err)
 	}
 	if _, _sOk := _v.(string); _sOk {
@@ -1801,10 +1854,12 @@ func (p PlainRuntime) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(p._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -2001,7 +2056,7 @@ func (p PlainTypeOnly) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(p._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(p._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -2012,8 +2067,8 @@ func (p PlainTypeOnly) Validate() error {
 		return fmt.Errorf("type: null is not allowed")
 	}
 	switch _tv := _v.(type) {
-	case float64:
-		if _tv != math.Trunc(_tv) || math.IsInf(_tv, 0) {
+	case json.Number:
+		if !jsonIsInteger(_tv, false) {
 			return fmt.Errorf("type: expected integer, got number")
 		}
 		return nil

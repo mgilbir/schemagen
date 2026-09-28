@@ -41,6 +41,10 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	if len({{$recv}}._raw) == 0 {
 		return nil
 	}
+	{{- /* Every number is kept as the literal the document wrote, on either
+	       path: "integer" is read off it the way the draft reads it, and 1e400
+	       is a number rather than a decode error. See jsonHeld and
+	       jsonDecodeNumbers. */}}
 	{{- if .KeepsDoc}}
 	{{- /* Only the value's first level is read here: the checks below ask its JSON
 	       type and the types of its members, and an alternative that is a type
@@ -53,7 +57,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	_v = jsonTop(_v)
 	{{- else}}
 	var _v any
-	if _err := json.Unmarshal({{$recv}}._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers({{$recv}}._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	{{- end}}
@@ -118,9 +122,9 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			{{- if eq . "object"}}
 			if _, _ok := _v.(map[string]any); _ok { _typeOk = true }
 			{{- else if eq . "integer"}}
-			if _f, _ok := _v.(float64); _ok && _f == math.Trunc(_f) && !math.IsInf(_f, 0) { _typeOk = true }
+			if jsonIsInteger(_v, {{if $.StrictInteger}}true{{else}}false{{end}}) { _typeOk = true }
 			{{- else if eq . "number"}}
-			if _, _ok := _v.(float64); _ok { _typeOk = true }
+			if jsonIsNumber(_v) { _typeOk = true }
 			{{- else if eq . "string"}}
 			if _, _ok := _v.(string); _ok { _typeOk = true }
 			{{- else if eq . "boolean"}}
@@ -151,10 +155,9 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				{{- end}}
 			} else {
 				{{- if eq .JSONType "integer"}}
-				_f, _fOk := _propVal.(float64)
-				if !_fOk || _f != math.Trunc(_f) || math.IsInf(_f, 0) { _branchMatches = false }
+				if !jsonIsInteger(_propVal, {{if $.StrictInteger}}true{{else}}false{{end}}) { _branchMatches = false }
 				{{- else if eq .JSONType "number"}}
-				if _, _fOk := _propVal.(float64); !_fOk { _branchMatches = false }
+				if !jsonIsNumber(_propVal) { _branchMatches = false }
 				{{- else if eq .JSONType "string"}}
 				if _, _sOk := _propVal.(string); !_sOk { _branchMatches = false }
 				{{- else if eq .JSONType "boolean"}}
@@ -197,12 +200,12 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		{{- end}}
 	}
 	switch _tv := _v.(type) {
-	case float64:
+	case json.Number:
 		{{- if $numOk}}
 		_ = _tv
 		return nil
 		{{- else if $intOk}}
-		if _tv != math.Trunc(_tv) || math.IsInf(_tv, 0) {
+		if !jsonIsInteger(_tv, {{if .StrictInteger}}true{{else}}false{{end}}) {
 			return fmt.Errorf("type: expected integer, got number")
 		}
 		return nil

@@ -26,6 +26,7 @@ func (c *ConstraintOnlyPositionsBranchAlternative0) UnmarshalJSON(data []byte) e
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &c._value); _err == nil {
 		c._isRaw = false
+		c._raw = append(c._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -70,10 +71,25 @@ func (c ConstraintOnlyPositionsBranchAlternative0) String() string {
 // Validate checks ConstraintOnlyPositionsBranchAlternative0 against its JSON Schema constraints.
 func (c ConstraintOnlyPositionsBranchAlternative0) Validate() error {
 	if c._isRaw {
-		return nil // Constraints don't apply to non-matching types.
+		// Constraints don't apply to non-matching types -- but a number is not
+		// one. 1e400 is a number no float64 holds, so the typed decode refused
+		// it and it was kept here as bytes; every numeric keyword still applies
+		// to it, and is read from those bytes below. It used to be passed over
+		// as though it were a string.
+		if _, _isNum := jsonRawNumber(c._raw); !_isNum {
+			return nil
+		}
 	}
-	if float64(c._value) < 3 {
-		return jsonValueErrorf("%v is less than minimum 3", c._value)
+	// The number as the document wrote it, where the value was decoded from
+	// one; see UnmarshalJSON. A value assembled in Go is judged as the number
+	// it marshals to.
+	_num, _numText := any(c._value), fmt.Sprint(c._value)
+	if len(c._raw) > 0 {
+		_num, _numText = json.RawMessage(c._raw), string(c._raw)
+	}
+	_, _ = _num, _numText
+	if jsonNumberBelow(_num, "3") {
+		return jsonValueErrorf("%s is less than minimum 3", _numText)
 	}
 	return nil
 }
@@ -145,7 +161,7 @@ func (c ConstraintOnlyPositionsBranch) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(c._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(c._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -208,7 +224,7 @@ func (c ConstraintOnlyPositionsBranch) Validate() error {
 		return fmt.Errorf("type: null is not allowed")
 	}
 	switch _tv := _v.(type) {
-	case float64:
+	case json.Number:
 		_ = _tv
 		return fmt.Errorf("type: number is not allowed")
 	case string:
@@ -289,10 +305,12 @@ func (c ConstraintOnlyPositionsListItem) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(c._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -358,7 +376,7 @@ func (c ConstraintOnlyPositionsMapValue) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(c._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(c._raw, &_v); _err != nil {
 		return fmt.Errorf("cannot decode value: %w", _err)
 	}
 	if _dynIsString(_v) {
@@ -420,7 +438,7 @@ func (c ConstraintOnlyPositionsNullsItem) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(c._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(c._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -431,7 +449,7 @@ func (c ConstraintOnlyPositionsNullsItem) Validate() error {
 		return nil
 	}
 	switch _tv := _v.(type) {
-	case float64:
+	case json.Number:
 		_ = _tv
 		return fmt.Errorf("type: number is not allowed")
 	case string:
@@ -512,10 +530,12 @@ func (c ConstraintOnlyPositionsProp) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(c._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -809,7 +829,7 @@ func (c ConstraintOnlyPositionsUnion) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(c._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(c._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -820,7 +840,7 @@ func (c ConstraintOnlyPositionsUnion) Validate() error {
 		return fmt.Errorf("type: null is not allowed")
 	}
 	switch _tv := _v.(type) {
-	case float64:
+	case json.Number:
 		_ = _tv
 		return nil
 	case string:
@@ -900,7 +920,7 @@ func (c ConstraintOnlyPositionsTupleItem0) Validate() error {
 	}
 	// Decode raw JSON to determine the value's type.
 	var _v any
-	if _err := json.Unmarshal(c._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(c._raw, &_v); _err != nil {
 		return fmt.Errorf("not: cannot decode value: %w", _err)
 	}
 	if _, _sOk := _v.(string); _sOk {

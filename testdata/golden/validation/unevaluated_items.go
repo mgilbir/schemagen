@@ -5,7 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 )
 
 // UnevaluatedItemsTestAllofExtendedTuple accepts any JSON value. Its schema is held as data and interpreted
@@ -87,10 +86,12 @@ func (u UnevaluatedItemsTestAllofExtendedTuple) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(u._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -300,8 +301,7 @@ func (u UnevaluatedItemsTest) Validate() error {
 			}
 		}
 		if _idx == 1 {
-			_cv, _cvOk := _elem.(float64)
-			if !_cvOk || _cv != math.Trunc(_cv) {
+			if !jsonIsInteger(_elem, false) {
 				return fmt.Errorf("strict_tuple: items[%d]: expected integer, got %T", _idx, _elem)
 			}
 		}
@@ -315,7 +315,7 @@ func (u UnevaluatedItemsTest) Validate() error {
 			}
 		}
 		if _idx == 1 {
-			if _, _cvOk := _elem.(float64); !_cvOk {
+			if !jsonIsNumber(_elem) {
 				return fmt.Errorf("typed_overflow: items[%d]: expected number, got %T", _idx, _elem)
 			}
 		}

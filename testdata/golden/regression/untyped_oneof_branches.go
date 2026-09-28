@@ -57,15 +57,15 @@ func (u UntypedOneOfBranches) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(u._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(u._raw, &_v); _err != nil {
 		return fmt.Errorf("cannot decode value: %w", _err)
 	}
 	{
 		_matches := 0
-		if _dynIsInteger(_v) {
+		if jsonIsInteger(_v, false) {
 			_matches++
 		}
-		if _dynNumOK(_v, func(_n float64) bool { return _n >= 2.0 }) {
+		if !jsonNumberBelow(_v, "2") {
 			_matches++
 		}
 		if _matches != 1 {

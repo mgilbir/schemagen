@@ -88,3 +88,12 @@ jobs:
       # the job.
       - name: conformance
         run: make test-external
+
+      # The whole number verdict grid. `go test ./...` in ci.yml runs a fixed
+      # sample of its cells; this compiles all of them (some 1800 generated
+      # packages) and holds every verdict to the frozen oracle in
+      # testdata/number_oracle. Run whether or not conformance passed: it is
+      # separate evidence, and a failure in one says nothing about the other.
+      - name: number verdict grid
+        if: ${{ !cancelled() }}
+        run: make grid-numbers

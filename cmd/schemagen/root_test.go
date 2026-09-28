@@ -953,7 +953,7 @@ func TestGenerateMultipleSchemasSharingHelpersCompiles(t *testing.T) {
 		if err != nil {
 			t.Fatalf("reading %s: %v", e.Name(), err)
 		}
-		if bytes.Contains(body, []byte("func _dynNumber(")) || bytes.Contains(body, []byte("func oneofHasRequiredFields(")) {
+		if bytes.Contains(body, []byte("func _dynIsString(")) || bytes.Contains(body, []byte("func jsonNumberOf(")) || bytes.Contains(body, []byte("func oneofHasRequiredFields(")) {
 			helperFiles++
 		}
 	}

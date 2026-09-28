@@ -1,6 +1,7 @@
 package emitter
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -47,9 +48,8 @@ func FuncMap() template.FuncMap {
 		"patternVar":             patternVarFunc,
 		"patternEngineSource":    patternEngineSourceFunc,
 		"dynChecksMatchPattern":  dynChecksMatchPatternFunc,
-		"dynNum":                 dynNumFunc,
-		"numOperand":             numOperandFunc,
-		"numBound":               numBoundFunc,
+		"numViolated":            numViolatedFunc,
+		"numAnyViolated":         numAnyViolatedFunc,
 		"hasManualFields":        hasManualFieldsFunc,
 		"ppTypeValue":            ppTypeValueFunc,
 		"ppTypeValues":           ppTypeValuesFunc,
@@ -78,8 +78,6 @@ func FuncMap() template.FuncMap {
 		"mkItemLevelCtx":         mkItemLevelCtxFunc,
 		"mkBigIntVariantCtx":     mkBigIntVariantCtxFunc,
 		"numBoundMsg":            numBoundMsgFunc,
-		"exactMultipleOf":        exactMultipleOfFunc,
-		"exactConstViolated":     exactConstViolatedFunc,
 		"numberEnumValue":        numberEnumValueFunc,
 		"jsonNumberLiteral":      jsonNumberLiteralFunc,
 		"mkAliasFormatCtx":       mkAliasFormatCtxFunc,
@@ -269,7 +267,7 @@ func mkUnevalItemsCtxInFunc(expr string, path formatText, args string, def *gene
 
 // BigIntVariantContext is passed to the bigint_alias_variant_checks template,
 // which needs the receiver name alongside one anyOf / oneOf branch's rules to
-// render the big.Float comparisons.
+// render the exact comparisons on the wrapper's literal.
 type BigIntVariantContext struct {
 	Recv  string
 	Rules []generator.ValidationRule
@@ -1032,121 +1030,147 @@ func requiredFieldsListFunc(fields []string) string {
 	return strings.Join(quoted, ", ")
 }
 
-// numOperandFunc renders the instance side of a numeric check: converted to
-// float64 ordinarily, and left as it is for a rule the generator settled as an
-// int64 comparison. See ValidationRule.IntegerCompare.
+// numViolatedFunc renders a numeric rule as the Go condition under which it is
+// broken: the minimum and maximum bounds, both exclusive bounds, multipleOf,
+// and a numeric const. expr is the instance, held as the Go type the rule's
+// NumOperand names.
 //
-// A rule that never sets the flag -- every one built for a "number" -- emits
-// the source it emitted before.
-func numOperandFunc(rule generator.ValidationRule, expr string) string {
-	if rule.ExactCompare {
-		// The whole comparison, folded into the operand so that the four
-		// ordering keywords keep the one shape they are written in: each is a
-		// relational operator against a bound, and numBoundFunc answers 0 for
-		// the other side. json.Number is a string underneath -- float64(x) does
-		// not compile against one -- so a rule this flag failed to reach fails
-		// the build rather than going on comparing through float64.
-		return "jsonNumberCmp(" + exactNumberOperand(expr) + ", " + strconv.Quote(exactNumberBound(rule)) + ")"
-	}
-	if rule.IntegerCompare {
-		return expr
-	}
-	return "float64(" + expr + ")"
-}
-
-// exactNumberOperand converts the instance expression to the json.Number the
-// comparison takes.
+// Every form it writes decides the keyword on the number as a mathematical
+// value, through the one exact core the generated package carries (see
+// number_compare_helpers), so which form a rule meets decides how fast it is
+// and nothing else. There used to be four readings -- a float64 quotient
+// against a 1e-9 tolerance, math.Mod, a float64 bound against an int64 element,
+// the literal -- and a keyword's verdict depended on where it sat.
 //
-// Written for every operand rather than only the ones that need it. A named
-// type over json.Number -- a $defs alias, an enum -- is not a json.Number to
-// Go and has to be converted; a field already is one and the conversion is the
-// identity. Deciding which by inspecting the expression would be guessing at
-// the Go type from a string, and getting it wrong in the first direction does
-// not compile while getting it wrong in the second costs nothing.
-func exactNumberOperand(expr string) string {
-	return "json.Number(" + expr + ")"
-}
-
-// exactNumberBound is the bound as the decimal literal jsonNumberCmp reads,
-// which is the literal the schema wrote. It is compared digit by digit against
-// the value's own literal, so nothing is gained by re-rendering it and one
-// thing is lost: 1e308 written out in integer notation is three hundred and
-// nine digits of the same number.
-func exactNumberBound(rule generator.ValidationRule) string {
-	if lit := generator.JSONNumberLiteral(rule.Value); lit != "" {
-		return lit
-	}
-	return fmt.Sprintf("%v", rule.Value)
-}
-
-// numBoundFunc renders a rule's bound as the Go constant its comparison needs:
-// integer notation when the check is made in int64, and the literal the schema
-// wrote otherwise.
-func numBoundFunc(rule generator.ValidationRule) string {
-	if rule.ExactCompare {
-		// numOperandFunc emitted the comparison; what is left for the operator
-		// to test it against is zero.
-		return "0"
-	}
-	if lit := generator.GoNumberLiteral(rule.Value); lit != "" {
-		return lit
-	}
-	return fmt.Sprintf("%v", rule.Value)
-}
-
-// numBoundMsgFunc is the bound as it is named in an error message, which is
-// always a number and never the 0 numBoundFunc answers for an exact
-// comparison: "is less than minimum 0" would be a message about the wrong one.
+//   - An int64 is compared in int64 against a bound int64 holds, and through
+//     the core against any other: {"type":"integer","maximum":1e19} and
+//     {"minimum":1.5} are not bounds a float64 conversion can be trusted with.
+//     A multipleOf int64 holds is a remainder.
+//   - A float64 is judged as the number it marshals to. Against a bound whose
+//     literal is the shortest spelling of its own float64 -- 0.1, 100, 1e308 --
+//     a float64 comparison gives exactly that answer (see
+//     generator.NumberRoundTripsFloat64); against any other the core decides.
+//     multipleOf goes through jsonFloatIsMultipleOf, whose fast path takes the
+//     divisor as digits and places.
+//   - A json.Number is compared on its literal.
+//   - Anything else -- an `any`, a named type, a raw message -- is read through
+//     jsonNumberOf, and a value that is not a number breaks no numeric keyword.
 //
-// The exact form names the literal the schema wrote, which is what the check it
-// accompanies compares against. Everywhere else this is numBoundFunc exactly,
-// so no message that existed before moves -- and a Go constant is what those
-// checks still compare, so the integer notation GoNumberLiteral chooses for a
-// whole number is still the right rendering there.
+// Every literal in the output is either strconv-quoted or a Go number literal
+// the generator rendered from a number it read, so nothing the schema spelled
+// reaches the source unescaped.
+func numViolatedFunc(rule generator.ValidationRule, expr string) (string, error) {
+	lit := generator.JSONNumberLiteral(rule.Value)
+	kind := strings.TrimPrefix(rule.RuleType, "pp")
+	if kind != rule.RuleType && kind != "" {
+		kind = strings.ToLower(kind[:1]) + kind[1:]
+	}
+	if kind == "const" {
+		lit = rule.ExactValue
+	}
+	if lit == "" {
+		return "", fmt.Errorf("%w: %s rule with %T %q where a number was expected", errEscape, rule.RuleType, rule.Value, printedValue(rule.Value))
+	}
+	return numCondition(kind, lit, rule.NumOperand, expr)
+}
+
+// numAnyViolatedFunc is numViolatedFunc for a check that carries a keyword and a
+// bound rather than a rule -- a contains or an unevaluatedItems sub-schema --
+// over an instance of any Go type.
+func numAnyViolatedFunc(kind string, bound any, expr string) (string, error) {
+	lit := generator.JSONNumberLiteral(bound)
+	if lit == "" {
+		return "", fmt.Errorf("%w: %s check with %T %q where a number was expected", errEscape, kind, bound, printedValue(bound))
+	}
+	return numCondition(kind, lit, generator.NumOperandAny, expr)
+}
+
+// numCondition is the body of numViolatedFunc, once the keyword and the literal
+// are known.
+//
+// The literal is asked about as a json.Number, which is a number to the
+// generator; the plain string it arrives as is not, and asked as one every
+// question answered no -- which silently sent every check down the slowest
+// form, correct and needlessly so.
+func numCondition(kind, lit string, operand generator.NumOperandKind, expr string) (string, error) {
+	quoted := strconv.Quote(lit)
+	num := json.Number(lit)
+	var op, anyHelper string
+	switch kind {
+	case "minimum":
+		op, anyHelper = "<", "jsonNumberBelow"
+	case "maximum":
+		op, anyHelper = ">", "jsonNumberAbove"
+	case "exclusiveMinimum":
+		op, anyHelper = "<=", "jsonNumberAtMost"
+	case "exclusiveMaximum":
+		op, anyHelper = ">=", "jsonNumberAtLeast"
+	case "multipleOf":
+		switch operand {
+		case generator.NumOperandInt64:
+			if n, ok := generator.NumberInt64(num); ok && n > 0 {
+				return fmt.Sprintf("%s%%%d != 0", expr, n), nil
+			}
+			return fmt.Sprintf("jsonNumberNotMultipleOf(int64(%s), %s)", expr, quoted), nil
+		case generator.NumOperandFloat64:
+			digits, frac, _ := generator.NumberDecimalDivisor(num)
+			return fmt.Sprintf("!jsonFloatIsMultipleOf(float64(%s), %s, %d, %d)", expr, quoted, digits, frac), nil
+		case generator.NumOperandJSONNumber:
+			return fmt.Sprintf("!jsonNumberIsMultipleOf(json.Number(%s), %s)", expr, quoted), nil
+		}
+		return fmt.Sprintf("jsonNumberNotMultipleOf(%s, %s)", expr, quoted), nil
+	case "const":
+		switch operand {
+		case generator.NumOperandInt64:
+			if n, ok := generator.NumberInt64(num); ok {
+				return fmt.Sprintf("%s != %d", expr, n), nil
+			}
+			return fmt.Sprintf("!jsonNumberEqual(int64(%s), %s)", expr, quoted), nil
+		case generator.NumOperandFloat64:
+			if generator.NumberRoundTripsFloat64(num) {
+				return fmt.Sprintf("float64(%s) != %s", expr, generator.GoNumberLiteral(num)), nil
+			}
+			return fmt.Sprintf("!jsonNumberEqual(float64(%s), %s)", expr, quoted), nil
+		case generator.NumOperandJSONNumber:
+			return fmt.Sprintf("jsonNumberCmp(json.Number(%s), %s) != 0", expr, quoted), nil
+		}
+		return fmt.Sprintf("!jsonNumberEqual(%s, %s)", expr, quoted), nil
+	default:
+		return "", fmt.Errorf("%w: %q is not a numeric keyword", errEscape, kind)
+	}
+	switch operand {
+	case generator.NumOperandInt64:
+		if n, ok := generator.NumberInt64(num); ok {
+			return fmt.Sprintf("%s %s %d", expr, op, n), nil
+		}
+		return fmt.Sprintf("%s(int64(%s), %s)", anyHelper, expr, quoted), nil
+	case generator.NumOperandFloat64:
+		if generator.NumberRoundTripsFloat64(num) {
+			return fmt.Sprintf("float64(%s) %s %s", expr, op, generator.GoNumberLiteral(num)), nil
+		}
+		return fmt.Sprintf("%s(float64(%s), %s)", anyHelper, expr, quoted), nil
+	case generator.NumOperandJSONNumber:
+		return fmt.Sprintf("jsonNumberCmp(json.Number(%s), %s) %s 0", expr, quoted, op), nil
+	}
+	return fmt.Sprintf("%s(%s, %s)", anyHelper, expr, quoted), nil
+}
+
+// numBoundMsgFunc is the bound as it is named in an error message: the literal
+// the schema wrote where the value is held as one, and the Go constant
+// GoNumberLiteral renders -- integer notation for a whole number -- elsewhere,
+// which is what these messages have always said.
 //
 // It is written into a format literal, and returns formatText: what it renders
 // is a number wherever the schema reader held one, and escaped wherever it did
 // not.
 func numBoundMsgFunc(rule generator.ValidationRule) formatText {
-	if rule.ExactCompare {
-		return fmtTextFunc(exactNumberBound(rule))
+	if rule.NumOperand == generator.NumOperandJSONNumber {
+		if lit := generator.JSONNumberLiteral(rule.Value); lit != "" {
+			return fmtTextFunc(lit)
+		}
 	}
-	return fmtTextFunc(numBoundFunc(rule))
-}
-
-// exactMultipleOfFunc renders the divisibility test for a number held exactly.
-// The float64 quotient it replaces was compared against a tolerance of 1e-9,
-// which is not a comparison the value can survive; see jsonNumberIsMultipleOf.
-func exactMultipleOfFunc(rule generator.ValidationRule, expr string) string {
-	return "jsonNumberIsMultipleOf(" + exactNumberOperand(expr) + ", " + strconv.Quote(exactNumberBound(rule)) + ")"
-}
-
-// exactConstViolatedFunc renders the const test for a number held exactly, as
-// the condition under which the rule is broken -- which is the shape the
-// emitted check wants and the shape an equality would need parenthesising to
-// reach.
-//
-// The general arm marshals the value and compares the JSON text, which reads
-// 2.50 and 2.5 as different constants and 1.0000000000000000000000000000001 as
-// 1; they are one number and two, respectively, and the schema said the
-// numbers.
-func exactConstViolatedFunc(rule generator.ValidationRule, expr string) string {
-	return "jsonNumberCmp(" + exactNumberOperand(expr) + ", " + strconv.Quote(rule.ExactValue) + ") != 0"
-}
-
-// dynNumFunc renders a JSON Schema numeric constraint as a Go float64 literal.
-//
-// The literal the schema wrote is used, so a bound keeps every digit it was
-// given; the trailing ".0" is added when the literal has no decimal point or
-// exponent, which is what keeps a whole number typed as float64 rather than as
-// an untyped integer constant in the expressions these appear in.
-func dynNumFunc(v any) string {
-	s := generator.GoNumberLiteral(v)
-	if s == "" {
-		return fmt.Sprintf("%v", v)
+	if lit := generator.GoNumberLiteral(rule.Value); lit != "" {
+		return fmtTextFunc(lit)
 	}
-	if !strings.ContainsAny(s, ".eE") {
-		s += ".0"
-	}
-	return s
+	return fmtTextFunc(fmt.Sprintf("%v", rule.Value))
 }

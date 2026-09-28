@@ -293,16 +293,34 @@ func (n Number) Float64() (float64, bool) {
 // holds exactly, and reports whether it does. The literal is read as an exact
 // decimal, so 1e2, 100.0 and 100 all answer 100, and 9223372036854775807
 // answers itself rather than the float64 it rounds to.
+//
+// It is answered from the digits, never a big.Rat: this is asked of every
+// numeric keyword the generator emits, a literal is as long as the document
+// writes it, and big.Rat's parse is quadratic in the digits and refuses an
+// exponent past ratExponentLimit -- so 1 written with a long run of zeros and
+// an exponent cancelling them would be refused although it is 1.
 func (n Number) Int64() (int64, bool) {
-	r, ok := n.Rat()
-	if !ok || !r.IsInt() {
+	digits, scale, neg, ok := n.Decimal()
+	if !ok || scale < 0 || int64(len(digits))+scale > 19 {
 		return 0, false
 	}
-	num := r.Num()
-	if !num.IsInt64() {
+	if digits == "" {
+		return 0, true
+	}
+	if neg {
+		digits = "-" + digits
+	}
+	v, err := strconv.ParseInt(digits, 10, 64)
+	if err != nil {
 		return 0, false
 	}
-	return num.Int64(), true
+	for ; scale > 0; scale-- {
+		if v > math.MaxInt64/10 || v < math.MinInt64/10 {
+			return 0, false
+		}
+		v *= 10
+	}
+	return v, true
 }
 
 // ratExponentLimit bounds how far a literal's exponent may reach before Rat

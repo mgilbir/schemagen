@@ -79,7 +79,7 @@ func (a AnythingList) validateIn(_vc *jsonValidation) error {
 	{
 		_containsCount := 0
 		_cWant := jsonConstOf(false,
-			"1.0",
+			"1",
 		)
 		_cArr := a
 		for _ci := range _cArr {
@@ -133,6 +133,7 @@ func (u *UntypedPositionsBounded) UnmarshalJSON(data []byte) error {
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &u._value); _err == nil {
 		u._isRaw = false
+		u._raw = append(u._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -177,10 +178,25 @@ func (u UntypedPositionsBounded) String() string {
 // Validate checks UntypedPositionsBounded against its JSON Schema constraints.
 func (u UntypedPositionsBounded) Validate() error {
 	if u._isRaw {
-		return nil // Constraints don't apply to non-matching types.
+		// Constraints don't apply to non-matching types -- but a number is not
+		// one. 1e400 is a number no float64 holds, so the typed decode refused
+		// it and it was kept here as bytes; every numeric keyword still applies
+		// to it, and is read from those bytes below. It used to be passed over
+		// as though it were a string.
+		if _, _isNum := jsonRawNumber(u._raw); !_isNum {
+			return nil
+		}
 	}
-	if float64(u._value) < 3 {
-		return jsonValueErrorf("%v is less than minimum 3", u._value)
+	// The number as the document wrote it, where the value was decoded from
+	// one; see UnmarshalJSON. A value assembled in Go is judged as the number
+	// it marshals to.
+	_num, _numText := any(u._value), fmt.Sprint(u._value)
+	if len(u._raw) > 0 {
+		_num, _numText = json.RawMessage(u._raw), string(u._raw)
+	}
+	_, _ = _num, _numText
+	if jsonNumberBelow(_num, "3") {
+		return jsonValueErrorf("%s is less than minimum 3", _numText)
 	}
 	return nil
 }

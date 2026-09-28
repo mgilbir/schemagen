@@ -57,12 +57,26 @@ type _schemaNode struct {
 	// nor the arms that read them.
 	Const *string // JSON encoding of the const value
 {{- end}}
+{{- /* The numeric fields are declared on the same terms: each arm that reads
+       one is code inside the evaluator, which pruning cannot take out, and a
+       node that sets a field its arm was left out for is a compile error,
+       never a check silently skipped. */}}
+{{- if or .AnnotationsMultipleOf .AnnotationsBounds}}
 
-	MultipleOf       *float64
-	Minimum          *float64
-	Maximum          *float64
-	ExclusiveMinimum *float64
-	ExclusiveMaximum *float64
+	// The numeric keywords, each as the literal the schema wrote. They are
+	// judged through the exact core against the instance's own literal, which
+	// jsonDecodeNumbers keeps; a float64 here gave 9007199254740993 and
+	// 9007199254740992 one reading, and 0.3 no multiple of 0.1.
+{{- end}}
+{{- if .AnnotationsMultipleOf}}
+	MultipleOf *string
+{{- end}}
+{{- if .AnnotationsBounds}}
+	Minimum          *string
+	Maximum          *string
+	ExclusiveMinimum *string
+	ExclusiveMaximum *string
+{{- end}}
 
 	MinLength *int
 	MaxLength *int
@@ -157,6 +171,11 @@ type _schemaNode struct {
 
 	UniqueItems bool
 {{- end}}
+
+	// StrictInteger reads "integer" off the instance's token, as draft 3 and
+	// draft 4 do: 1.0 is a number there and not an integer. Every later draft
+	// reads the value.
+	StrictInteger bool
 }
 {{- if .AnnotationsDynamic}}
 
@@ -457,12 +476,15 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 		return res.fail("schema is false, which no value satisfies")
 	}
 
-	if len(n.Type) > 0 && !_dynTypeMatchesAny(n.Type, v) {
+	if len(n.Type) > 0 && !_dynTypeMatchesAny(n.Type, v, n.StrictInteger) {
 		return res.fail("value is not of type " + _dynJoin(n.Type))
 	}
 {{- if .AnnotationsEquality}}
+	{{- /* The value is read exactly -- every number the literal the document
+	       wrote (see jsonHeld) -- so the const is too: read as float64s, the
+	       const 9007199254740993 admitted 9007199254740992. */}}
 	if n.Const != nil {
-		ok, err := jsonMatchesJSON(v, jsonConstOf(true, *n.Const))
+		ok, err := jsonMatchesJSON(v, jsonConstOf(false, *n.Const))
 		if err != nil {
 			return res.undecide(err)
 		}
@@ -471,7 +493,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 		}
 	}
 	if len(n.Enum) > 0 {
-		ok, err := jsonMatchesJSON(v, jsonConstOf(true, n.Enum...))
+		ok, err := jsonMatchesJSON(v, jsonConstOf(false, n.Enum...))
 		if err != nil {
 			return res.undecide(err)
 		}
@@ -481,21 +503,27 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 	}
 {{- end}}
 
-	if n.MultipleOf != nil && !_dynNumOK(v, func(f float64) bool { return _dynMultipleOf(f, *n.MultipleOf) }) {
+	// The numeric keywords, through the exact core: each helper answers false
+	// for a value that is not a number, which every one of them is satisfied by.
+{{- if .AnnotationsMultipleOf}}
+	if n.MultipleOf != nil && jsonNumberNotMultipleOf(v, *n.MultipleOf) {
 		return res.fail("value is not a multiple of the required factor")
 	}
-	if n.Minimum != nil && !_dynNumOK(v, func(f float64) bool { return f >= *n.Minimum }) {
+{{- end}}
+{{- if .AnnotationsBounds}}
+	if n.Minimum != nil && jsonNumberBelow(v, *n.Minimum) {
 		return res.fail("value is below the minimum")
 	}
-	if n.Maximum != nil && !_dynNumOK(v, func(f float64) bool { return f <= *n.Maximum }) {
+	if n.Maximum != nil && jsonNumberAbove(v, *n.Maximum) {
 		return res.fail("value is above the maximum")
 	}
-	if n.ExclusiveMinimum != nil && !_dynNumOK(v, func(f float64) bool { return f > *n.ExclusiveMinimum }) {
+	if n.ExclusiveMinimum != nil && jsonNumberAtMost(v, *n.ExclusiveMinimum) {
 		return res.fail("value is not above the exclusive minimum")
 	}
-	if n.ExclusiveMaximum != nil && !_dynNumOK(v, func(f float64) bool { return f < *n.ExclusiveMaximum }) {
+	if n.ExclusiveMaximum != nil && jsonNumberAtLeast(v, *n.ExclusiveMaximum) {
 		return res.fail("value is not below the exclusive maximum")
 	}
+{{- end}}
 
 	if n.MinLength != nil && !_dynStrOK(v, func(s string) bool { return _dynRuneLen(s) >= *n.MinLength }) {
 		return res.fail("string is shorter than the minimum length")
@@ -860,14 +888,15 @@ func _node(n _schemaNode) *_schemaNode { return &n }
 func _boolPtr(b bool) *bool            { return &b }
 func _strPtr(s string) *string         { return &s }
 func _intPtr(i int) *int               { return &i }
-func _floatPtr(f float64) *float64     { return &f }
 
-func _dynTypeMatches(t string, v any) bool {
+// _dynTypeMatches reads a JSON type name against a value, with "integer" read
+// the way the node's draft reads it -- see _schemaNode.StrictInteger.
+func _dynTypeMatches(t string, v any, strictInteger bool) bool {
 	switch t {
 	case "integer":
-		return _dynIsInteger(v)
+		return jsonIsInteger(v, strictInteger)
 	case "number":
-		return _dynIsNumber(v)
+		return jsonIsNumber(v)
 	case "string":
 		return _dynIsString(v)
 	case "boolean":
@@ -884,23 +913,13 @@ func _dynTypeMatches(t string, v any) bool {
 
 // _dynTypeMatchesAny reads a type union the way JSON Schema does: the value has
 // to match one of the listed types, not all of them.
-func _dynTypeMatchesAny(types []string, v any) bool {
+func _dynTypeMatchesAny(types []string, v any, strictInteger bool) bool {
 	for _, t := range types {
-		if _dynTypeMatches(t, v) {
+		if _dynTypeMatches(t, v, strictInteger) {
 			return true
 		}
 	}
 	return false
-}
-
-// _dynMultipleOf avoids the floating point error that plain math.Mod shows for
-// values such as 4.5 / 1.5.
-func _dynMultipleOf(f, by float64) bool {
-	if by == 0 {
-		return false
-	}
-	q := f / by
-	return q == math.Trunc(q)
 }
 
 // _dynRuneLen counts characters rather than bytes, which is the unit minLength

@@ -5,7 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 )
 
 // ArrayConst accepts any JSON value and validates a root-level "not" constraint.
@@ -847,10 +846,12 @@ func (e EnumOutsideDeclaredTypeConstOutsideOneOf) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(e._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -1753,10 +1754,12 @@ func (e EnumOutsideDeclaredTypeNotConstOutside) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(e._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -3032,17 +3035,11 @@ func (e EnumOutsideDeclaredType) Validate() error {
 		}
 	}
 	if e._jsonKeys["constOutsideProp"] {
-		{
-			_constV := e.ConstOutsideProp
-			_constOK, _constErr := jsonMatchesConst(&_constV, func(_p **string, _m *jsonValidation) (jsonID, error) {
-				return jsonIDPtr[*string, string](*_p, _m, jsonIdentifyAt[string])
-			}, jsonConstOf(false, "5"))
-			if _constErr != nil {
-				return fmt.Errorf("constOutsideProp: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
-			}
-			if !_constOK {
-				return fmt.Errorf("constOutsideProp: value must be %s, got %s", "5", _schemagenClipText(jsonMarshalText(&_constV)))
-			}
+		if e.ConstOutsideProp == nil {
+			return fmt.Errorf("constOutsideProp: value must be %s, got null", "5")
+		}
+		if !jsonNumberEqual(*e.ConstOutsideProp, "5") {
+			return fmt.Errorf("constOutsideProp: value must be %s, got %s", "5", _schemagenClipText(fmt.Sprint(*e.ConstOutsideProp)))
 		}
 	}
 	if e._jsonKeys["constOutsideUnevalItems"] {
@@ -3051,31 +3048,19 @@ func (e EnumOutsideDeclaredType) Validate() error {
 		}
 	}
 	if e._jsonKeys["fracOutsideInteger"] {
-		{
-			_constV := e.FracOutsideInteger
-			_constOK, _constErr := jsonMatchesConst(&_constV, func(_p **int64, _m *jsonValidation) (jsonID, error) {
-				return jsonIDPtr[*int64, int64](*_p, _m, jsonIdentifyAt[int64])
-			}, jsonConstOf(false, "2.5"))
-			if _constErr != nil {
-				return fmt.Errorf("fracOutsideInteger: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
-			}
-			if !_constOK {
-				return fmt.Errorf("fracOutsideInteger: value must be %s, got %s", "2.5", _schemagenClipText(jsonMarshalText(&_constV)))
-			}
+		if e.FracOutsideInteger == nil {
+			return fmt.Errorf("fracOutsideInteger: value must be %s, got null", "2.5")
+		}
+		if !jsonNumberEqual(int64(*e.FracOutsideInteger), "2.5") {
+			return fmt.Errorf("fracOutsideInteger: value must be %s, got %s", "2.5", _schemagenClipText(fmt.Sprint(*e.FracOutsideInteger)))
 		}
 	}
 	if e._jsonKeys["integerFloatSpelling"] {
-		{
-			_constV := e.IntegerFloatSpelling
-			_constOK, _constErr := jsonMatchesConst(&_constV, func(_p **int64, _m *jsonValidation) (jsonID, error) {
-				return jsonIDPtr[*int64, int64](*_p, _m, jsonIdentifyAt[int64])
-			}, jsonConstOf(false, "1"))
-			if _constErr != nil {
-				return fmt.Errorf("integerFloatSpelling: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
-			}
-			if !_constOK {
-				return fmt.Errorf("integerFloatSpelling: value must be %s, got %s", "1", _schemagenClipText(jsonMarshalText(&_constV)))
-			}
+		if e.IntegerFloatSpelling == nil {
+			return fmt.Errorf("integerFloatSpelling: value must be %s, got null", "1")
+		}
+		if *e.IntegerFloatSpelling != 1 {
+			return fmt.Errorf("integerFloatSpelling: value must be %s, got %s", "1", _schemagenClipText(fmt.Sprint(*e.IntegerFloatSpelling)))
 		}
 	}
 	if e._jsonKeys["typedConst"] {
@@ -3360,8 +3345,7 @@ func (e EnumOutsideDeclaredType) Validate() error {
 	for _idx, _elem := range e.ConstOutsideUnevalItems {
 		_ = _elem
 		if _idx == 0 {
-			_cv, _cvOk := _elem.(float64)
-			if !_cvOk || _cv != math.Trunc(_cv) {
+			if !jsonIsInteger(_elem, false) {
 				return fmt.Errorf("constOutsideUnevalItems: items[%d]: expected integer, got %T", _idx, _elem)
 			}
 		}

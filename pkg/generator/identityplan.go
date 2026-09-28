@@ -116,7 +116,10 @@ func (g *Generator) resolveIdentityPlans() {
 						}
 					}
 				case "const":
-					if f := structField(d, r.FieldName); f != nil && !r.ExactCompare {
+					// A numeric const is compared as a number, by value, in
+					// whatever Go type the field holds it (ExactValue); only
+					// any other const reads the value's identity.
+					if f := structField(d, r.FieldName); f != nil && r.ExactValue == "" {
 						r.Identifier = g.jsonIdentifier(f.Type, false)
 					}
 				}
@@ -187,7 +190,7 @@ func (g *Generator) resolveItemLevelIdentifiers(levels []ItemLevel) {
 			case "uniqueItems":
 				r.Identifier = g.elemIdentifier(lv.ElemType)
 			case "const":
-				if !r.ExactCompare {
+				if r.ExactValue == "" {
 					r.Identifier = g.jsonIdentifier(lv.ElemType, false)
 				}
 			}
@@ -346,7 +349,7 @@ func (g *Generator) identityReach() map[string]bool {
 				switch {
 				case r.RuleType == "uniqueItems":
 					visit(g.itemType(f.Type))
-				case r.RuleType == "const" && !r.ExactCompare:
+				case r.RuleType == "const" && r.ExactValue == "":
 					visit(f.Type)
 				}
 			}
@@ -382,7 +385,7 @@ func visitItemLevels(ivs []ItemValidationDef, g *Generator, visit func(GoType)) 
 				switch {
 				case r.RuleType == "uniqueItems":
 					visit(g.itemType(lv.ElemType))
-				case r.RuleType == "const" && !r.ExactCompare:
+				case r.RuleType == "const" && r.ExactValue == "":
 					visit(lv.ElemType)
 				}
 			}

@@ -5,7 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 )
 
 type Readings []float64
@@ -98,6 +97,7 @@ func (n *NumberPositionsConstrained) UnmarshalJSON(data []byte) error {
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &n._value); _err == nil {
 		n._isRaw = false
+		n._raw = append(n._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -142,10 +142,25 @@ func (n NumberPositionsConstrained) String() string {
 // Validate checks NumberPositionsConstrained against its JSON Schema constraints.
 func (n NumberPositionsConstrained) Validate() error {
 	if n._isRaw {
-		return nil // Constraints don't apply to non-matching types.
+		// Constraints don't apply to non-matching types -- but a number is not
+		// one. 1e400 is a number no float64 holds, so the typed decode refused
+		// it and it was kept here as bytes; every numeric keyword still applies
+		// to it, and is read from those bytes below. It used to be passed over
+		// as though it were a string.
+		if _, _isNum := jsonRawNumber(n._raw); !_isNum {
+			return nil
+		}
 	}
-	if float64(n._value) < 3.5 {
-		return jsonValueErrorf("%v is less than minimum 3.5", n._value)
+	// The number as the document wrote it, where the value was decoded from
+	// one; see UnmarshalJSON. A value assembled in Go is judged as the number
+	// it marshals to.
+	_num, _numText := any(n._value), fmt.Sprint(n._value)
+	if len(n._raw) > 0 {
+		_num, _numText = json.RawMessage(n._raw), string(n._raw)
+	}
+	_, _ = _num, _numText
+	if jsonNumberBelow(_num, "3.5") {
+		return jsonValueErrorf("%s is less than minimum 3.5", _numText)
 	}
 	return nil
 }
@@ -622,27 +637,16 @@ func (n NumberPositions) Validate() error {
 		}
 	}
 	if n._jsonKeys["bounded"] {
-		{
-			if n.Bounded != nil {
-				_quot := float64(*n.Bounded) / 0.5
-				if math.Abs(_quot-math.Round(_quot)) > 1e-9 {
-					return fmt.Errorf("bounded: value %v is not a multiple of 0.5", *n.Bounded)
-				}
-			}
+		if n.Bounded != nil && !jsonFloatIsMultipleOf(float64(*n.Bounded), "0.5", 5, 1) {
+			return fmt.Errorf("bounded: value %v is not a multiple of 0.5", *n.Bounded)
 		}
 	}
 	if n._jsonKeys["constant"] {
-		{
-			_constV := n.Constant
-			_constOK, _constErr := jsonMatchesConst(&_constV, func(_p **float64, _m *jsonValidation) (jsonID, error) {
-				return jsonIDPtr[*float64, float64](*_p, _m, jsonIdentifyAt[float64])
-			}, jsonConstOf(false, "2.5"))
-			if _constErr != nil {
-				return fmt.Errorf("constant: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
-			}
-			if !_constOK {
-				return fmt.Errorf("constant: value must be %s, got %s", "2.5", _schemagenClipText(jsonMarshalText(&_constV)))
-			}
+		if n.Constant == nil {
+			return fmt.Errorf("constant: value must be %s, got null", "2.5")
+		}
+		if float64(*n.Constant) != 2.5 {
+			return fmt.Errorf("constant: value must be %s, got %s", "2.5", _schemagenClipText(fmt.Sprint(*n.Constant)))
 		}
 	}
 	if n._jsonKeys["integerBeside"] {
@@ -704,11 +708,8 @@ func (n NumberPositions) Validate() error {
 				_cKind, _cText := jsonKindAt(&_cArr[_ci])
 				_ = _cText
 				_cMatch := true
-				if _cMatch && _cKind == jsonIDNumberKind {
-					_cf, _cOK := jsonFloatOf(_cKind, _cText)
-					if !_cOK || _cf < 7.5 {
-						_cMatch = false
-					}
+				if _cMatch && _cKind == jsonIDNumberKind && jsonNumberBelow(json.Number(_cText), "7.5") {
+					_cMatch = false
 				}
 				if _cMatch {
 					_containsCount++

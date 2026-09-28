@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
+	"math/big"
 	"net/url"
 	"slices"
 	"sort"
@@ -3319,7 +3319,7 @@ func (g *Generator) applyTypeReconciliation(name string, s *schema.Schema) {
 	switch {
 	case admitsNonObject && !sd.AcceptNonObject:
 		sd.AcceptNonObject = true
-		sd.NonObjectValidations = extractNonObjectValidationRules(s)
+		sd.NonObjectValidations = g.nonObjectValidationRules(s)
 		// Both, and for the reasons generateStructDef gives where it opens the
 		// hatch itself: the decoder is what diverts the document and the
 		// marshaller is what gives the raw bytes back, so a hatch with neither
@@ -4046,10 +4046,11 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 		g.declare(name)
 		branches, allowed := g.typeUnionBranches(s, name)
 		g.appendDef(&TypeOnlySchemaDef{
-			Name:         name,
-			Doc:          g.docFor(name, s),
-			AllowedTypes: allowed,
-			TypeBranches: branches,
+			Name:          name,
+			Doc:           g.docFor(name, s),
+			AllowedTypes:  allowed,
+			TypeBranches:  branches,
+			StrictInteger: g.requiresStrictIntegerToken(s),
 		})
 		return nil
 	}
@@ -4075,6 +4076,20 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			oneOfVariants = extractOneOfVariantRules(s, goType)
 		}
 		g.declare(name)
+		if isInferred || (g.config.BigIntSupport && primaryType == "integer") {
+			// Neither wrapper judges its number through the Go type resolveType
+			// answered: the inferred one reads the literal it kept from the
+			// document, and the big-int one reads the digits of whichever of
+			// its two halves holds the value. Both go through the exact core
+			// by the number's literal, which is what NumOperandAny writes.
+			clearNumberOperands(rules)
+			for _, v := range anyOfVariants {
+				clearNumberOperands(v)
+			}
+			for _, v := range oneOfVariants {
+				clearNumberOperands(v)
+			}
+		}
 		if isInferred {
 			// Type was inferred from constraints — generate wrapper struct that
 			// accepts any JSON value but validates only matching types.
@@ -4140,7 +4155,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			elemGoType, _ := containerElem(goType)
 			itemsFalse, itemsType, itemsTypeName, itemsChecks, itemsNested, tupleItems, addlItemsFalse, addlItemsType, addlItemsTypeName := g.extractInferredItemConstraints(s, name, elemGoType)
 			// Extract contains/minContains/maxContains constraints.
-			containsDef, minContains, maxContains := g.containsDefFor(s, name, goType)
+			containsDef, minContains, maxContains := g.containsDefFor(s, name)
 			// Extract unevaluatedItems constraint.
 			unevalItems := g.buildUnevaluatedItemsDef(s)
 			if !g.validationKeywordsEnabled() {
@@ -4176,6 +4191,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 				StrictReadWrite:         g.config.StrictReadWrite,
 				ItemsNode:               itemsNode,
 				AdditionalItemsNode:     addlItemsNode,
+				StrictInteger:           g.requiresStrictIntegerToken(s),
 				InferredGoType:          inferredGoType,
 				InferredJSONType:        primaryType,
 				Validations:             rules,
@@ -4199,7 +4215,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 		} else {
 			tupleItems := g.buildTupleItemDefs(s, name)
 			tupleTail := g.buildTupleTailDef(s, name)
-			containsDef, minContains, maxContains := g.containsDefFor(s, name, goType)
+			containsDef, minContains, maxContains := g.containsDefFor(s, name)
 			unevalItems := g.buildUnevaluatedItemsDef(s)
 			var itemValidations []ItemValidationDef
 			if g.validationKeywordsEnabled() {
@@ -5276,8 +5292,8 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				// integer is materialized into under BigIntSupport (see
 				// bigIntInlineWrapper). It was generated from this property's
 				// own schema, so its Validate already carries these keywords --
-				// compared through big.Float, which is the only comparison that
-				// holds for a value no int64 can express. Emitted here the rule
+				// compared exactly on the literal the wrapper keeps, which is the
+				// only comparison that holds for a value no int64 can express. Emitted here the rule
 				// would not compile at all: it converts the field to a float64,
 				// and the field is a struct.
 				if g.isBigIntAliasType(ft) {
@@ -5307,13 +5323,9 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 						continue
 					}
 				}
-				// A number held exactly is compared on its literal. The
-				// field is a json.Number there, which no float64 conversion
-				// accepts, so a rule this misses does not compile.
-				markExactNumberRule(&rules[i], ft)
-				// An element held as its own bytes is compared as a JSON value,
-				// not as the bytes. See markRawElementRules.
-				markRawElementRule(&rules[i], ft)
+				// A numeric check is written for the Go type the field holds
+				// its number as. See markNumberRule.
+				markNumberRule(&rules[i], ft)
 				// The string rules pass the field to functions that take a
 				// string; a field typed as a named string needs an explicit
 				// conversion for that to compile.
@@ -5629,7 +5641,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	// These are checked against _rawNonObject when the data is not an object.
 	var nonObjRules []ValidationRule
 	if acceptNonObj && g.validationKeywordsEnabled() {
-		nonObjRules = extractNonObjectValidationRules(s)
+		nonObjRules = g.nonObjectValidationRules(s)
 	}
 
 	// Build unevaluatedProperties constraint if present.
@@ -6224,10 +6236,11 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			pt := primarySchemaType(merged)
 			if pt == "null" || (pt == "" && len(merged.Type) > 1) {
 				g.emitDefAs(name, &TypeOnlySchemaDef{
-					Name:         name,
-					Doc:          g.docFor(name, s),
-					AllowedTypes: merged.Type,
-					TypeBranches: g.extractTypeSchemaBranches(merged.TypeSchemas, name),
+					Name:          name,
+					Doc:           g.docFor(name, s),
+					AllowedTypes:  merged.Type,
+					TypeBranches:  g.extractTypeSchemaBranches(merged.TypeSchemas, name),
+					StrictInteger: g.requiresStrictIntegerToken(s),
 				})
 				return nil
 			}
@@ -6369,7 +6382,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				oneOfVariants = extractOneOfVariantRules(s, goType)
 				tupleItems = g.buildTupleItemDefs(arraySchema, name)
 				tupleTail = g.buildTupleTailDef(arraySchema, name)
-				containsDef, minContains, maxContains = g.containsDefFor(arraySchema, name, goType)
+				containsDef, minContains, maxContains = g.containsDefFor(arraySchema, name)
 				unevalItems = g.buildUnevaluatedItemsDef(merged)
 				// The alias *is* the slice, so the per-element checks hang off
 				// the receiver rather than off a field.
@@ -6435,7 +6448,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				elemGoType, _ = containerElem(goType)
 			}
 			itemsFalse, itemsType, itemsTypeName, itemsChecks, itemsNested, tupleItems, addlItemsFalse, addlItemsType, addlItemsTypeName := g.extractInferredItemConstraints(arraySchema, name, elemGoType)
-			containsDef, minContains, maxContains := g.containsDefFor(arraySchema, name, goType)
+			containsDef, minContains, maxContains := g.containsDefFor(arraySchema, name)
 			unevalItems := g.buildUnevaluatedItemsDef(merged)
 			if !g.validationKeywordsEnabled() {
 				itemsFalse = false
@@ -6474,6 +6487,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				StrictReadWrite:         g.config.StrictReadWrite,
 				ItemsNode:               itemsNode,
 				AdditionalItemsNode:     addlItemsNode,
+				StrictInteger:           g.requiresStrictIntegerToken(s),
 				InferredGoType:          inferredGoType,
 				InferredJSONType:        primaryType,
 				Validations:             rules,
@@ -6510,6 +6524,17 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				oneOfVariants = extractOneOfVariantRules(s, goType)
 			}
 			g.declare(name)
+			if inferredFromConstraints || (g.config.BigIntSupport && primaryType == "integer") {
+				// Read by literal, for the reason the arm without an allOf
+				// gives.
+				clearNumberOperands(rules)
+				for _, v := range anyOfVariants {
+					clearNumberOperands(v)
+				}
+				for _, v := range oneOfVariants {
+					clearNumberOperands(v)
+				}
+			}
 			if inferredFromConstraints {
 				// A bound is all the merge had to go on, so the type is a guess
 				// about what the schema is *about*, not a statement that the
@@ -7110,6 +7135,7 @@ func (g *Generator) extractObjectConditionalDefs(s *schema.Schema, taken []Runti
 	var defs []ObjectConditionalDef
 	if !runtimeBranchTaken(taken, s, "if") {
 		if def := objectConditionalDef(s); def != nil {
+			g.markConditionalDefStrictness(def, s)
 			defs = append(defs, *def)
 		}
 	}
@@ -7119,6 +7145,7 @@ func (g *Generator) extractObjectConditionalDefs(s *schema.Schema, taken []Runti
 			continue
 		}
 		if def := objectConditionalDef(resolved); def != nil {
+			g.markConditionalDefStrictness(def, resolved)
 			defs = append(defs, *def)
 		}
 	}
@@ -7190,6 +7217,9 @@ func (g *Generator) objectOneOfBranchOnPath(s *schema.Schema, onPath map[*schema
 	propNames := sortedKeys(resolved.Properties)
 	for _, propName := range propNames {
 		if check := objectPropertyCheckFromSchema(propName, resolved.Properties[propName]); check != nil {
+			// "integer" is read off the raw member, the way the property's own
+			// draft reads it.
+			check.StrictInteger = g.requiresStrictIntegerToken(resolved.Properties[propName])
 			branch.Checks = append(branch.Checks, *check)
 		}
 	}
@@ -7957,14 +7987,17 @@ func (g *Generator) branchNarrowedValues(values []any, branch *schema.Schema, on
 // one is not: an intersection that believed them equal would keep a value one of
 // the two schemas does not list, and #215/#216/#220 are the record of what
 // reading a JSON number through float64 costs. So a number is compared as the
-// exact rational #230 already carries it as, under which 1, 1.0 and 1e0 are one
+// exact value #230 already carries it as, under which 1, 1.0 and 1e0 are one
 // member because JSON says they are one number.
 //
-// A literal big.Rat cannot read -- one whose exponent is past ratExponentLimit
-// -- falls back to its own text, which can only ever make two values look
-// different. That is the direction that drops a member from an intersection
-// rather than inventing one, and a dropped member is a rejection the schema
-// states somewhere else.
+// The key is the number's canonical text (schema.Number.CanonicalText), which
+// every spelling of one value shares whatever its exponent, and which is read
+// in time linear in the literal. It used to be a big.Rat's, which is quadratic
+// in the digits and refused an exponent past ratExponentLimit -- where the
+// literal's own text stood in, so 1e6000 and 10e5999 were two members. A text
+// that is not a number at all still falls back to itself, which can only make
+// two values look different: the direction that drops a member from an
+// intersection rather than inventing one.
 func exactEnumValueKey(v any) string {
 	var b strings.Builder
 	writeExactEnumValueKey(&b, v)
@@ -8020,9 +8053,9 @@ func writeExactEnumValueKey(b *strings.Builder, v any) {
 }
 
 func writeExactNumberKey(b *strings.Builder, n schema.Number) {
-	if r, ok := n.Rat(); ok {
+	if text, ok := n.CanonicalText(); ok && n != "" {
 		b.WriteString("n")
-		b.WriteString(r.RatString())
+		b.WriteString(text)
 		return
 	}
 	b.WriteString("n?")
@@ -8291,10 +8324,37 @@ func tighterExclusive(a, b *schema.SchemaOrFloat, lower bool) *schema.SchemaOrFl
 	return a
 }
 
-// combineMultipleOf combines two multipleOf divisors: a value must be divisible
-// by both. For integral divisors this is their least common multiple. When one
-// divisor is an exact multiple of the other, the larger (tighter) one is kept.
-// Otherwise (incompatible non-integral divisors) the first is retained.
+// combineMultipleOf combines two multipleOf divisors into the one a value must
+// be a multiple of to be a multiple of both: their least common multiple.
+//
+// Two decimals always have one, and it is a decimal. Written as fractions in
+// lowest terms, p1/q1 and p2/q2, the common multiples are exactly the
+// multiples of lcm(p1,p2)/gcd(q1,q2) -- and both denominators are products of
+// twos and fives, so their gcd is too. 0.3 and 0.2 combine to 0.6; 4 and 6 to
+// 12; 0.5 and 3 to 3.
+//
+// It is computed on the values the literals name. This used to divide the two
+// as float64s and keep the first divisor wherever neither quotient came out
+// whole -- which is every pair of non-integral divisors that do not divide one
+// another, so {"allOf":[{"multipleOf":0.3}],"multipleOf":0.2} dropped the 0.3
+// and admitted 0.2 -- and to decide the ones it did keep through float64
+// quotients, which call 0.3/0.1 2.9999999999999996.
+//
+// Each divisor is read as digits*10^scale (schema.Number.Decimal), never as a
+// big.Rat. big.Rat's decimal parse is quadratic in the digits -- two
+// million-digit divisors held generation for seconds -- and it refuses an
+// exponent past ratExponentLimit, where this kept the first divisor and
+// dropped the second from the merged schema: 1 written with six thousand zeros
+// and an exponent cancelling them was simply lost beside 0.3. The lcm is taken
+// prime by prime instead. With s the smaller scale, the divisors are
+// A*10^(sa-s) and B*10^(sb-s) times 10^s, and an lcm is the product over
+// primes of the larger power: the powers of two and five are counted --
+// exponent arithmetic, however far apart the scales are -- and only the parts
+// of A and B coprime to ten go through a gcd. Nothing larger than the literals
+// is ever built.
+//
+// A divisor that is not a number, or is zero -- which the keyword forbids --
+// is not combined, and the first stands.
 func combineMultipleOf(a, b *schema.Number) *schema.Number {
 	if a == nil {
 		return b
@@ -8302,54 +8362,93 @@ func combineMultipleOf(a, b *schema.Number) *schema.Number {
 	if b == nil {
 		return a
 	}
-	// The integral case is settled on the integers themselves. Reading them
-	// through float64 first would take the lcm of two roundings, which is a
-	// divisor neither schema wrote.
-	if ai, aok := a.Int64(); aok {
-		if bi, bok := b.Int64(); bok {
-			if ai == 0 || bi == 0 {
-				return a
-			}
-			n := schema.Number(strconv.FormatInt(lcmInt64(ai, bi), 10))
-			return &n
+	ad, as, _, aok := a.Decimal()
+	bd, bs, _, bok := b.Decimal()
+	if !aok || !bok || ad == "" || bd == "" {
+		return a
+	}
+	// The sign is dropped: the multiples of -d are the multiples of d.
+	s := min(as, bs)
+	ua, ub := as-s, bs-s
+	ai, bi := decimalDigitsToBig(ad), decimalDigitsToBig(bd)
+	a2, a5 := stripTwosAndFives(ai)
+	b2, b5 := stripTwosAndFives(bi)
+	e2 := max(ua+a2, ub+b2)
+	e5 := max(ua+a5, ub+b5)
+	lcm := new(big.Int).Quo(ai, new(big.Int).GCD(nil, nil, ai, bi))
+	lcm.Mul(lcm, bi)
+	// 2^e2 * 5^e5 is 10^m times whichever of the two runs longer. One of
+	// ua and ub is zero, so e2 and e5 differ by at most the powers of two and
+	// five the digits themselves carry, and what is multiplied in stays the
+	// size of the literals.
+	m := min(e2, e5)
+	lcm.Lsh(lcm, uint(e2-m))
+	lcm.Mul(lcm, new(big.Int).Exp(big.NewInt(5), big.NewInt(e5-m), nil))
+	text, ok := schema.Number(lcm.String() + "e" + strconv.FormatInt(s+m, 10)).CanonicalText()
+	if !ok {
+		return a
+	}
+	n := schema.Number(text)
+	for _, d := range []*schema.Number{a, b} {
+		if c, ok := n.Compare(schema.Number(strings.TrimPrefix(string(*d), "-"))); ok && c == 0 {
+			return d
 		}
 	}
-	av, aok := numFloat(*a)
-	bv, bok := numFloat(*b)
-	if !aok || !bok {
-		return a
-	}
-	if av == 0 || bv == 0 {
-		return a
-	}
-	if q := av / bv; q == math.Trunc(q) { // av is a multiple of bv → av is tighter
-		return a
-	}
-	if q := bv / av; q == math.Trunc(q) { // bv is a multiple of av → bv is tighter
-		return b
-	}
-	return a
+	return &n
 }
 
-// lcmInt64 returns the least common multiple of two non-negative integers.
-func lcmInt64(a, b int64) int64 {
-	if a < 0 {
-		a = -a
+// decimalDigitsToBig builds the integer a run of decimal digits spells.
+//
+// big.Int's own SetString multiplies in one word at a time, which is
+// quadratic in the digits; splitting the run in half and joining the halves
+// with one multiplication by a power of ten puts the work in big.Int's
+// Karatsuba multiply instead. It is the generator's copy of the emitted
+// jsonDigitsToBig.
+func decimalDigitsToBig(digits string) *big.Int {
+	if len(digits) <= 1024 {
+		z, _ := new(big.Int).SetString(digits, 10)
+		return z
 	}
-	if b < 0 {
-		b = -b
-	}
-	if a == 0 || b == 0 {
-		return 0
-	}
-	return a / gcdInt64(a, b) * b
+	mid := len(digits) / 2
+	hi := decimalDigitsToBig(digits[:len(digits)-mid])
+	lo := decimalDigitsToBig(digits[len(digits)-mid:])
+	hi.Mul(hi, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(mid)), nil))
+	return hi.Add(hi, lo)
 }
 
-func gcdInt64(a, b int64) int64 {
-	for b != 0 {
-		a, b = b, a%b
+// stripTwosAndFives divides every factor of two and of five out of a positive
+// n, in place, and reports how many of each there were. The twos are its
+// trailing zero bits. The fives are divided out by 5^(2^k) from the largest
+// such power that fits down, so a number that is a power of five with a
+// million digits costs a few dozen divisions rather than a million.
+func stripTwosAndFives(n *big.Int) (twos, fives int64) {
+	tz := n.TrailingZeroBits()
+	n.Rsh(n, tz)
+	// A remainder by a single word is one linear pass, and settles the usual
+	// case -- no five at all -- before any large power is built or divided by.
+	if new(big.Int).Rem(n, big.NewInt(5)).Sign() != 0 {
+		return int64(tz), 0
 	}
-	return a
+	powers := []*big.Int{big.NewInt(5)}
+	for {
+		last := powers[len(powers)-1]
+		if last.BitLen()*2 > n.BitLen()+1 {
+			break
+		}
+		powers = append(powers, new(big.Int).Mul(last, last))
+	}
+	q, r := new(big.Int), new(big.Int)
+	for k := len(powers) - 1; k >= 0; k-- {
+		for {
+			q.QuoRem(n, powers[k], r)
+			if r.Sign() != 0 {
+				break
+			}
+			n.Set(q)
+			fives += int64(1) << k
+		}
+	}
+	return int64(tz), fives
 }
 
 // generateAnyOfDef merges all anyOf sub-schemas into a single struct.
@@ -9054,7 +9153,10 @@ func oneOfVariantChecks(variant *schema.Schema, goType GoType) []ValidationRule 
 			}
 		}
 	}
-	markExactNumberRules(checks, goType)
+	// The numeric checks are left unmarked, so they read the number through
+	// the exact core: the template judges them on the document's own bytes,
+	// which is what selects a branch, rather than on a candidate that may be a
+	// float64 that has already rounded the literal.
 	return checks
 }
 
@@ -9624,6 +9726,19 @@ func (g *Generator) generateEnumDef(name string, s *schema.Schema) error {
 	}
 
 	baseType := g.resolveBaseType(s)
+
+	// A float64 holds a number as the float64 it marshals to, and a float64
+	// switch decides membership. That is exact for a member whose literal is the
+	// shortest spelling of its own float64, and for no other: the members of
+	// {"enum":[9007199254740992,9007199254740993]} are one float64 -- the switch
+	// over them was a duplicate case and did not compile -- and a member like
+	// 9007199254740993 alone is a value no float64 holds, so an enum over it
+	// could never admit the document that wrote it. Such an enum holds the
+	// literal instead: the json.Number base --exact-numbers gives every number,
+	// whose members are compared through the exact core.
+	if prim, ok := baseType.(*PrimitiveType); ok && prim.Name == "float64" && !enumMembersHeldByFloat64(s.Enum) {
+		baseType = &PrimitiveType{Name: GoNumberTypeName}
+	}
 
 	// The const form declares one Go constant per member against baseType, so a
 	// member that is not a constant of that type is a build failure rather than a
@@ -14366,8 +14481,9 @@ func jsonValueIsZeroOfKind(v any, kind string) bool {
 		case int64:
 			return n == 0
 		case json.Number:
-			f, err := n.Float64()
-			return err == nil && f == 0
+			// On the digits: 1e-400 is not zero, and its float64 is.
+			c, ok := schema.Number(n).Compare("0")
+			return ok && c == 0
 		}
 		return false
 	case zeroKindBoolean:
@@ -14417,23 +14533,27 @@ func patternRefusesEmptyString(pattern string) bool {
 func numericBoundsExcludeZero(s *schema.Schema) bool {
 	minExclusive := s.ExclusiveMinimum != nil && s.ExclusiveMinimum.Bool != nil && *s.ExclusiveMinimum.Bool
 	maxExclusive := s.ExclusiveMaximum != nil && s.ExclusiveMaximum.Bool != nil && *s.ExclusiveMaximum.Bool
+	// Each bound is compared with zero on its digits. Read through a float64,
+	// {"minimum":1e-400} was a minimum of 0 -- the literal underflows -- and
+	// was taken to admit the zero it excludes.
+	sign := func(n schema.Number) (int, bool) { return n.Compare("0") }
 	if s.Minimum != nil {
-		if f, ok := s.Minimum.Float64(); ok && (f > 0 || (minExclusive && f >= 0)) {
+		if c, ok := sign(*s.Minimum); ok && (c > 0 || (minExclusive && c >= 0)) {
 			return true
 		}
 	}
 	if s.Maximum != nil {
-		if f, ok := s.Maximum.Float64(); ok && (f < 0 || (maxExclusive && f <= 0)) {
+		if c, ok := sign(*s.Maximum); ok && (c < 0 || (maxExclusive && c <= 0)) {
 			return true
 		}
 	}
 	if s.ExclusiveMinimum != nil && s.ExclusiveMinimum.Number != nil {
-		if f, ok := s.ExclusiveMinimum.Number.Float64(); ok && f >= 0 {
+		if c, ok := sign(*s.ExclusiveMinimum.Number); ok && c >= 0 {
 			return true
 		}
 	}
 	if s.ExclusiveMaximum != nil && s.ExclusiveMaximum.Number != nil {
-		if f, ok := s.ExclusiveMaximum.Number.Float64(); ok && f <= 0 {
+		if c, ok := sign(*s.ExclusiveMaximum.Number); ok && c <= 0 {
 			return true
 		}
 	}
@@ -15970,8 +16090,8 @@ func jsonValueIsInteger(v any) bool {
 	if !ok {
 		return false
 	}
-	r, ok := n.Rat()
-	return ok && r.IsInt()
+	isInt, ok := n.IsInteger()
+	return ok && isInt
 }
 
 // enumFitsConstForm reports whether every member can be declared as a Go
@@ -16325,7 +16445,7 @@ func (g *Generator) elemContainsDef(s *schema.Schema, parentName string, elemTyp
 	if s == nil || s.Contains == nil || !g.validationKeywordsEnabled() {
 		return nil, nil, nil
 	}
-	def, minContains, maxContains := g.containsDefFor(s, parentName, elemType)
+	def, minContains, maxContains := g.containsDefFor(s, parentName)
 	if !containsCanReject(def, minContains, maxContains) {
 		return nil, nil, nil
 	}
@@ -16353,7 +16473,7 @@ func (g *Generator) buildFieldContains(parentName, fieldName, jsonName string, f
 	if _, ok := base.(*ArrayType); !ok {
 		return nil
 	}
-	def, minContains, maxContains := g.containsDefFor(s, parentName+fieldName, fieldType)
+	def, minContains, maxContains := g.containsDefFor(s, parentName+fieldName)
 	if !containsCanReject(def, minContains, maxContains) {
 		return nil
 	}
@@ -16588,8 +16708,7 @@ func elementRules(elemType GoType, s *schema.Schema) []ValidationRule {
 			}
 			rule.StringBacked = stringBacked
 		}
-		markExactNumberRule(&rule, elemType)
-		markRawElementRule(&rule, elemType)
+		markNumberRule(&rule, elemType)
 		out = append(out, rule)
 	}
 	return out
@@ -17761,14 +17880,12 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
 			RuleType: "minimum", Value: *s.Minimum,
-			IntegerCompare: integerComparable(s, *s.Minimum),
 		})
 	}
 	if s.Maximum != nil {
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
 			RuleType: "maximum", Value: *s.Maximum,
-			IntegerCompare: integerComparable(s, *s.Maximum),
 		})
 	}
 	if s.Pattern != nil {
@@ -17818,13 +17935,11 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 			rules = append(rules, ValidationRule{
 				FieldName: goFieldName, JSONName: jsonName,
 				RuleType: "exclusiveMinimum", Value: *s.ExclusiveMinimum.Number,
-				IntegerCompare: integerComparable(s, *s.ExclusiveMinimum.Number),
 			})
 		} else if s.ExclusiveMinimum.Bool != nil && *s.ExclusiveMinimum.Bool && s.Minimum != nil {
 			rules = append(rules, ValidationRule{
 				FieldName: goFieldName, JSONName: jsonName,
 				RuleType: "exclusiveMinimum", Value: *s.Minimum,
-				IntegerCompare: integerComparable(s, *s.Minimum),
 			})
 		}
 	}
@@ -17834,13 +17949,11 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 			rules = append(rules, ValidationRule{
 				FieldName: goFieldName, JSONName: jsonName,
 				RuleType: "exclusiveMaximum", Value: *s.ExclusiveMaximum.Number,
-				IntegerCompare: integerComparable(s, *s.ExclusiveMaximum.Number),
 			})
 		} else if s.ExclusiveMaximum.Bool != nil && *s.ExclusiveMaximum.Bool && s.Maximum != nil {
 			rules = append(rules, ValidationRule{
 				FieldName: goFieldName, JSONName: jsonName,
 				RuleType: "exclusiveMaximum", Value: *s.Maximum,
-				IntegerCompare: integerComparable(s, *s.Maximum),
 			})
 		}
 	}
@@ -17848,7 +17961,6 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
 			RuleType: "multipleOf", Value: *s.MultipleOf,
-			IntegerCompare: integerComparable(s, *s.MultipleOf),
 		})
 	}
 	if s.UniqueItems != nil && *s.UniqueItems {
@@ -17945,13 +18057,12 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 				FieldName: goFieldName, JSONName: jsonName,
 				RuleType: "const", Value: constJSON,
 			}
-			// The const's own literal, kept beside the JSON text the general
-			// check compares. Value has already been folded through float64 by
-			// constJSONValue -- deliberately, because the general check marshals
-			// an `any` whose number encoding/json made a float64 of -- and a
-			// position holding the number exactly has to compare against what
-			// the schema wrote instead. Empty for a const that is not a number,
-			// which is every position that has no exact comparison to make.
+			// A numeric const is also kept as its literal, which the numeric
+			// checks compare against by value in whatever Go type the field
+			// holds its number as. Value is the canonical text of the same
+			// const, which the general check compares a marshalled value
+			// against for every other kind of field. Empty for a const that is
+			// not a number.
 			if s.Const != nil {
 				rule.ExactValue = JSONNumberLiteral(*s.Const)
 			}
@@ -18023,8 +18134,7 @@ func allOfConstraintRules(goFieldName, jsonName string, s *schema.Schema, fieldT
 		}
 		out = append(out, r)
 	}
-	markExactNumberRules(out, fieldType)
-	markRawElementRules(out, fieldType)
+	markNumberRules(out, fieldType)
 	return out
 }
 
@@ -18400,9 +18510,10 @@ func (g *Generator) extractNotSchemaDef(name string, s *schema.Schema) *NotSchem
 	// not: {type: X} or not: {type: [X, Y]} → reject values of those types.
 	if len(not.Type) > 0 && g.isTypeOnlyNegationOperand(not) {
 		return &NotSchemaDef{
-			Name:     name,
-			Doc:      g.docFor(name, s),
-			NotTypes: not.Type,
+			Name:          name,
+			Doc:           g.docFor(name, s),
+			NotTypes:      not.Type,
+			StrictInteger: g.requiresStrictIntegerToken(not),
 		}
 	}
 
@@ -18412,9 +18523,10 @@ func (g *Generator) extractNotSchemaDef(name string, s *schema.Schema) *NotSchem
 		branches := g.extractNotSchemaBranches(not.AnyOf)
 		if len(branches) == len(not.AnyOf) {
 			return &NotSchemaDef{
-				Name:        name,
-				Doc:         g.docFor(name, s),
-				NotBranches: branches,
+				Name:          name,
+				Doc:           g.docFor(name, s),
+				NotBranches:   branches,
+				StrictInteger: g.requiresStrictIntegerToken(not),
 			}
 		}
 	}
@@ -18612,10 +18724,11 @@ func (g *Generator) extractTypeOnlySchemaDef(name string, s *schema.Schema) *Typ
 
 	branches, allowed := g.typeUnionBranches(s, name)
 	return &TypeOnlySchemaDef{
-		Name:         name,
-		Doc:          g.docFor(name, s),
-		AllowedTypes: allowed,
-		TypeBranches: branches,
+		Name:          name,
+		Doc:           g.docFor(name, s),
+		AllowedTypes:  allowed,
+		TypeBranches:  branches,
+		StrictInteger: g.requiresStrictIntegerToken(s),
 	}
 }
 
@@ -18726,9 +18839,10 @@ func (g *Generator) anyOfUnionType(s *schema.Schema, contextName string) (GoType
 	}
 	g.declareFor(name, s)
 	g.appendDef(&TypeOnlySchemaDef{
-		Name:         name,
-		Doc:          g.docFor(name, s),
-		TypeBranches: branches,
+		Name:          name,
+		Doc:           g.docFor(name, s),
+		TypeBranches:  branches,
+		StrictInteger: g.requiresStrictIntegerToken(s),
 	})
 	return &NamedType{Name: name}, true
 }
@@ -18784,10 +18898,11 @@ func (g *Generator) typeUnionWrapper(s *schema.Schema, contextName string) (GoTy
 	branches, allowed := g.typeUnionBranches(s, name)
 	g.declareFor(name, s)
 	g.appendDef(&TypeOnlySchemaDef{
-		Name:         name,
-		Doc:          g.docFor(name, s),
-		AllowedTypes: allowed,
-		TypeBranches: branches,
+		Name:          name,
+		Doc:           g.docFor(name, s),
+		AllowedTypes:  allowed,
+		TypeBranches:  branches,
+		StrictInteger: g.requiresStrictIntegerToken(s),
 	})
 	return &NamedType{Name: name}, true
 }
@@ -19891,6 +20006,7 @@ func (g *Generator) extractDependentSchemaConstraints(s *schema.Schema, taken su
 		// saw only keys the struct did not declare -- a branch constraining a
 		// declared property was checked against a map that could never hold it.
 		if branch := objectConditionalBranchLenient(dependentSchemaKeyword(trigger), depSchema); branch != nil {
+			g.markConditionalStrictness(branch, depSchema)
 			branch.RequiredKeys = nil
 			if !branch.Empty() {
 				constraint.Branch = branch
@@ -19931,7 +20047,7 @@ func (g *Generator) extractDependentSchemaConstraints(s *schema.Schema, taken su
 // its name because TestContainsGateNamesEveryKeywordTheChecksRead reads that
 // function's source to hold containsCheckKeywords against what it actually
 // consults, and a wrapper is not what that gate is about.
-func (g *Generator) containsDefFor(s *schema.Schema, parentName string, holder GoType) (*ContainsDef, *CountBound, *CountBound) {
+func (g *Generator) containsDefFor(s *schema.Schema, parentName string) (*ContainsDef, *CountBound, *CountBound) {
 	def, minC, maxC := g.extractContainsDef(s, parentName)
 	if def != nil {
 		// What the flag decides is how a candidate element is decoded for the
@@ -19941,59 +20057,8 @@ func (g *Generator) containsDefFor(s *schema.Schema, parentName string, holder G
 		// answered "no element matches the contains schema" for a document the
 		// schema permits (issue #219).
 		def.StrictReadWrite = g.config.StrictReadWrite
-		g.markRawElementContains(def, s.Contains, holder)
 	}
 	return def, minC, maxC
-}
-
-// markRawElementContains settles how a const or enum `contains` reads an
-// element held as json.RawMessage, which is what an untyped element is under
-// Config.RawUntyped.
-//
-// The check marshals each element and compares the text against the literal
-// the schema wrote. For an `any` element the marshal is a reduction -- the
-// decode already folded 1.0 to 1 and sorted the members -- and constJSONValue
-// folds the schema's side the same way, so the two texts agree wherever the
-// values do. A RawMessage marshals back as written, and the fold on the schema
-// side is then the wrong half: the check would compare a value that kept its
-// digits against a literal that lost them. So both sides are put through the
-// emitted _jsonCanonical instead, which is the reduction an untyped enum has
-// been compared through since #272, and the schema's side is re-rendered with
-// every digit so the reduction has them to work with.
-//
-// holder is the slice the elements are read from, and the answer is taken from
-// it rather than from the schema for the reason rawElementSlice gives.
-func (g *Generator) markRawElementContains(def *ContainsDef, contains *schema.Schema, holder GoType) {
-	if def == nil || contains == nil || !rawElementSlice(holder) {
-		return
-	}
-	def.RawElements = true
-	if def.ConstJSON != "" {
-		var v any
-		switch {
-		case contains.Const != nil:
-			v = *contains.Const
-		case len(contains.Enum) == 1:
-			v = contains.Enum[0]
-		default:
-			return
-		}
-		if b, err := exactJSONValue(v); err == nil {
-			def.ConstJSON = string(b)
-		}
-		return
-	}
-	if len(def.EnumJSON) > 0 && len(contains.Enum) == len(def.EnumJSON) {
-		exact := make([]string, 0, len(contains.Enum))
-		for _, v := range contains.Enum {
-			b, err := exactJSONValue(v)
-			if err != nil {
-				return
-			}
-			exact = append(exact, string(b))
-		}
-		def.EnumJSON = exact
-	}
 }
 
 // extractContainsDef resolves a `contains` sub-schema into the check it carries.
@@ -20034,7 +20099,7 @@ func (g *Generator) extractContainsDef(s *schema.Schema, parentName string) (*Co
 		return &ContainsDef{IsTrue: true}, minC, maxC
 	}
 
-	def := &ContainsDef{ExactNumbers: g.config.ExactNumbers}
+	def := &ContainsDef{}
 
 	// Const → marshal to JSON for exact matching.
 	if containsSch.Const != nil {
@@ -20156,8 +20221,7 @@ func extractAliasValidationRules(s *schema.Schema, goType GoType) []ValidationRu
 		}
 		rules = append(rules, r)
 	}
-	markExactNumberRules(rules, goType)
-	markRawElementRules(rules, goType)
+	markNumberRules(rules, goType)
 	if len(rules) == 0 {
 		return nil
 	}
@@ -20331,7 +20395,7 @@ func aliasVariantRules(variant *schema.Schema, goType GoType) ([]ValidationRule,
 		}
 		rules = append(rules, r)
 	}
-	markExactNumberRules(rules, goType)
+	markNumberRules(rules, goType)
 	return rules, true
 }
 
@@ -20786,6 +20850,21 @@ func extractNonObjectValidationRules(s *schema.Schema) []ValidationRule {
 	return extractPatternPropertyValidationRules(s)
 }
 
+// nonObjectValidationRules is extractNonObjectValidationRules with the dialect
+// read in: a "type" rule among them classifies the raw value, and whether 1.0
+// is an integer is the draft's answer. The patternProperties rules take the
+// same answer from PatternPropertyDef.StrictInteger.
+func (g *Generator) nonObjectValidationRules(s *schema.Schema) []ValidationRule {
+	rules := extractNonObjectValidationRules(s)
+	strict := g.requiresStrictIntegerToken(s)
+	for i := range rules {
+		if rules[i].RuleType == "ppType" {
+			rules[i].StrictInteger = strict
+		}
+	}
+	return rules
+}
+
 // buildUnevaluatedPropertiesDef constructs an UnevaluatedPropertiesDef for a schema
 // that has an unevaluatedProperties keyword. It walks the schema tree to determine
 // which properties are "evaluated" (covered by properties, patternProperties,
@@ -20834,7 +20913,25 @@ func (g *Generator) buildUnevaluatedPropertiesDef(s *schema.Schema) *Unevaluated
 			if goType != nil {
 				def.ValueType = goType.GoTypeName()
 				rules := extractValidationRules("", "", uneval)
-				markExactNumberRules(rules, goType)
+				if unevalType == "integer" || unevalType == "number" {
+					// A number is judged on the member's own literal rather
+					// than decoded into a Go number first: int64 refused 1.0,
+					// which is an integer from draft 6 on (and
+					// unevaluatedProperties is 2019-09 on), float64 refused
+					// 1e400, and both round the digits the bounds are about.
+					// So the check reads the raw member, which is held as
+					// json.RawMessage, and only the numeric keywords -- the
+					// ones a number can break -- are kept.
+					def.ValueJSONType = unevalType
+					def.ValueTypeStated = primarySchemaType(uneval) != ""
+					numeric := rules[:0:0]
+					for _, r := range rules {
+						if numberRuleTypes[r.RuleType] && (r.RuleType != "const" || r.ExactValue != "") {
+							numeric = append(numeric, r)
+						}
+					}
+					rules = numeric
+				}
 				def.Validations = rules
 			} else {
 				// Non-primitive type (object/array) — too complex, allow permissively.
@@ -22742,6 +22839,9 @@ func (g *Generator) tupleItemDefFor(posSch *schema.Schema, posName string) (Tupl
 	if def.TypeName != "" {
 		def.Node = g.elementNode(def.TypeName, posSch)
 	}
+	// A tuple is written with array-form items in draft 3 and draft 4, which
+	// read "integer" off the token; see TupleItemDef.StrictInteger.
+	def.StrictInteger = g.requiresStrictIntegerToken(posSch)
 	return def, ok
 }
 

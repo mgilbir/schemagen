@@ -38,10 +38,12 @@ var canonicalAgreementDocuments = []string{
 	`0.1`, `0.2`, `0.30000000000000004`, `9007199254740993`, `9223372036854775807`,
 	`{"n":[1.50,1e2,123456789012345678901234567890]}`,
 	`1e-400`, `1e400`, `1e5000`,
-	// Past the exponent either side will read. Both refuse, and the answer both
-	// give for a refusal is the literal as written -- which is what makes a
-	// refusal safe: a number can then only ever compare equal to itself.
+	// Exponents past what an int64 scale holds, which both sides read into a
+	// big.Int. They used to refuse these and keep the literal, so the first two
+	// here -- one number -- stayed two texts.
 	`1e99999999999999`, `-1e-99999999999999`,
+	`1e99999999999999999999`, `10e99999999999999999998`, `0.1E+100000000000000000000`,
+	`-12.5e-99999999999999999999`,
 	// Not JSON at all. Nothing a schema states arrives here looking like this,
 	// but the baked list is data written by another program, and the arm
 	// _jsonCanonicalTexts takes for a literal it cannot read is the one that

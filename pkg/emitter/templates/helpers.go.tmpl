@@ -355,7 +355,11 @@ type jsonDoc struct {
 	// they start, computed the first time a check comparing values asks for
 	// one: a value read lazily is a view of the document, which nothing
 	// changes, so what was computed once holds. See jsonLazy.jsonDocID.
-	ids atomic.Pointer[jsonIDCache]
+	// idsExact are the same, read with every number exact (see
+	// jsonLazy.exact): one span has two identities where its numbers read two
+	// ways, so each reading keeps its own.
+	ids      atomic.Pointer[jsonIDCache]
+	idsExact atomic.Pointer[jsonIDCache]
 	{{- end}}
 	data   []byte
 	own    []byte
@@ -475,26 +479,38 @@ func jsonDecodeHeld[T any](doc *jsonDoc, raw []byte, p *T, dec jsonAt[T]) error 
 // the member may hold the rest of the document. Decoded whole, it was decoded
 // once per level of a recursive document, which made those checks quadratic in
 // its depth.
+//
+// exact says how a number in it reads. A check that judges the document's own
+// bytes -- a conditional's branch, the runtime evaluator, a type union over a
+// held member -- reads every number as the literal the document wrote, as a
+// json.Number: the numeric keywords are defined over numbers as mathematical
+// values, and a float64 reads 9007199254740993 as 9007199254740992 and 1e400 as
+// nothing at all. An element of a tuple this package holds as []any (see
+// jsonLazyItemsOr) reads as the float64 the tuple holds, since that is the
+// value the type has.
 type jsonLazy struct {
-	d  *jsonDoc
-	sp jsonSpan
+	d     *jsonDoc
+	sp    jsonSpan
+	exact bool
 }
 
 // jsonHeld is a member its owner holds as raw JSON, for a check that reads it
-// as encoding/json decodes it into an any: read lazily where it is a view of
-// the document the owner keeps, and decoded whole where it is not.
+// as decoded JSON, every number the literal the document wrote: read lazily
+// where it is a view of the document the owner keeps, and decoded whole where
+// it is not.
 func jsonHeld(doc *jsonDoc, raw []byte) (any, error) {
 	if sp, ok := doc.spanOf(raw); ok {
-		return jsonLazy{doc, sp}, nil
+		return jsonLazy{doc, sp, true}, nil
 	}
 	var v any
-	err := json.Unmarshal(raw, &v)
+	err := jsonDecodeNumbers(raw, &v)
 	return v, err
 }
 
 // jsonReadLazily is raw JSON a value holds, read one level at a time through a
 // document opened over it -- the value's own bytes, which it never changes and
-// hands out only as copies, so the document reads them where they are.
+// hands out only as copies, so the document reads them where they are -- with
+// every number the literal it wrote (see jsonLazy.exact).
 func jsonReadLazily(raw []byte) (any, error) {
 	d, sp, err := jsonOpenDoc(raw)
 	if err != nil {
@@ -503,7 +519,7 @@ func jsonReadLazily(raw []byte) (any, error) {
 	d.own = raw
 	d.views = 1
 	_ = d.finish(nil)
-	return jsonLazy{d, sp}, nil
+	return jsonLazy{d, sp, true}, nil
 }
 
 // jsonTop is v with its first level read, where it is a jsonLazy: what a check
@@ -517,9 +533,10 @@ func jsonTop(v any) any {
 }
 
 // jsonLevel is the value's first level as encoding/json decodes it into an any
-// -- a map[string]any, a []any, a string, a float64, a bool or nil -- with every
-// member and element a jsonLazy in turn. A key written twice means its last
-// value, as it does to encoding/json.
+// -- a map[string]any, a []any, a string, a number, a bool or nil -- with every
+// member and element a jsonLazy in turn, read the same way. A number is a
+// json.Number where the value is exact and a float64 where it is not. A key
+// written twice means its last value, as it does to encoding/json.
 func (l jsonLazy) jsonLevel() any {
 	d, sp := l.d, l.sp
 	switch d.data[sp.start] {
@@ -531,7 +548,7 @@ func (l jsonLazy) jsonLevel() any {
 			if !ok {
 				return m
 			}
-			m[k] = jsonLazy{d, v}
+			m[k] = jsonLazy{d, v, l.exact}
 		}
 	case '[':
 		a := []any{}
@@ -541,11 +558,15 @@ func (l jsonLazy) jsonLevel() any {
 			if !ok {
 				return a
 			}
-			a = append(a, jsonLazy{d, v})
+			a = append(a, jsonLazy{d, v, l.exact})
 		}
 	}
 	var v any
-	_ = json.Unmarshal(d.raw(sp), &v)
+	if l.exact {
+		_ = jsonDecodeNumbers(d.raw(sp), &v)
+	} else {
+		_ = json.Unmarshal(d.raw(sp), &v)
+	}
 	return v
 }
 
@@ -568,7 +589,7 @@ func jsonLazyItemsOr[S ~[]any](p *S, d *jsonDoc, sp jsonSpan, dec jsonAt[S]) err
 		if !ok {
 			break
 		}
-		s = append(s, jsonLazy{d, e})
+		s = append(s, jsonLazy{d, e, false})
 	}
 	*p = s
 	return nil
@@ -583,10 +604,17 @@ func jsonDecodeLazy[T any](l jsonLazy, p *T, dec jsonAt[T]) error {
 
 // MarshalJSON writes the value as encoding/json writes its decoded form, which
 // is what a check comparing values by their encoding reads: the same number
-// spellings and key order the whole decode would have produced.
+// spellings and key order the whole decode would have produced -- every number
+// as its literal where the value is exact.
 func (l jsonLazy) MarshalJSON() ([]byte, error) {
 	var v any
-	if err := json.Unmarshal(l.d.raw(l.sp), &v); err != nil {
+	var err error
+	if l.exact {
+		err = jsonDecodeNumbers(l.d.raw(l.sp), &v)
+	} else {
+		err = json.Unmarshal(l.d.raw(l.sp), &v)
+	}
+	if err != nil {
 		return nil, err
 	}
 	return json.Marshal(v)
@@ -1935,33 +1963,12 @@ func oneofDiscriminatorValue(d *jsonDoc, sp jsonSpan, prop string) (string, erro
 
 {{define "dyn_helpers"}}
 // The helpers below evaluate JSON Schema constraints against a value decoded
-// into `any`, for schemas that declare no type of their own. json.Unmarshal
-// produces float64 for every JSON number; the int cases cover values built in
-// Go rather than decoded.
-func _dynNumber(v any) (float64, bool) {
-	switch n := v.(type) {
-	case float64:
-		return n, true
-	case float32:
-		return float64(n), true
-	case int:
-		return float64(n), true
-	case int64:
-		return float64(n), true
-	case json.Number:
-		f, err := n.Float64()
-		return f, err == nil
-	}
-	return 0, false
-}
-
-func _dynIsNumber(v any) bool { _, ok := _dynNumber(v); return ok }
-
-func _dynIsInteger(v any) bool {
-	f, ok := _dynNumber(v)
-	return ok && f == math.Trunc(f)
-}
-
+// into `any`, for schemas that declare no type of their own. The value is
+// decoded by jsonDecodeNumbers, so a number is the json.Number the document
+// wrote; one built in Go may be any Go number type. Either way a number is read
+// through the exact core (see jsonNumberOf), and a numeric keyword is decided
+// there -- a float64 read here once called 0.3 no multiple of 0.1 and admitted
+// 9007199254740993 under a maximum of 9007199254740992.
 func _dynIsString(v any) bool { _, ok := v.(string); return ok }
 
 func _dynIsBool(v any) bool { _, ok := v.(bool); return ok }
@@ -1969,16 +1976,6 @@ func _dynIsBool(v any) bool { _, ok := v.(bool); return ok }
 func _dynIsObject(v any) bool { _, ok := v.(map[string]any); return ok }
 
 func _dynIsArray(v any) bool { _, ok := v.([]any); return ok }
-
-// _dynNumOK applies a numeric constraint. A non-number satisfies it vacuously:
-// JSON Schema keywords only constrain values of the type they apply to.
-func _dynNumOK(v any, ok func(float64) bool) bool {
-	f, isNum := _dynNumber(v)
-	if !isNum {
-		return true
-	}
-	return ok(f)
-}
 
 // _dynStrOK applies a string constraint, vacuously true for non-strings.
 func _dynStrOK(v any, ok func(string) bool) bool {
@@ -1992,17 +1989,18 @@ func _dynStrOK(v any, ok func(string) bool) bool {
 
 {{define "dyn_const_helper"}}
 // _dynConstOK reports whether a decoded JSON value equals a constant, which is
-// passed already encoded. Both are compared by identity (see jsonID), read the
-// way encoding/json decodes a value into an any, so number spelling, string
-// escaping and object key order are settled the same way for each, and the
-// comparison then differs only where the values do. It used to re-encode the
-// value to compare the text.
+// passed already encoded. Both are compared by identity (see jsonID), exactly:
+// v is read with every number the literal the document wrote (see jsonHeld),
+// and so is the const -- read as float64s, the const 9007199254740993 admitted
+// 9007199254740992. Number spelling, string escaping and object key order are
+// settled the same way for each, and the comparison then differs only where the
+// values do. It used to re-encode the value to compare the text.
 //
 // v is always a decoded document -- each caller decodes it, or reads it lazily,
 // immediately before -- so it is read as decoded JSON (see jsonIDJSON), which
 // never fails on one.
 func _dynConstOK(v any, want string) bool {
-	ok, err := jsonMatchesJSON(v, jsonConstOf(true, want))
+	ok, err := jsonMatchesJSON(v, jsonConstOf(false, want))
 	return err == nil && ok
 }
 {{- end}}
@@ -2358,144 +2356,245 @@ func jsonIPAddrDecode(data []byte, family string) (netip.Addr, error) {
 }
 {{- end}}
 
-{{define "number_compare_helpers"}}
-// jsonNumberParts splits a JSON number literal into its sign, its significant
-// digits and the power of ten the last of those digits stands for: the value is
-// (neg ? -1 : 1) * digits * 10^scale, with digits carrying no leading zero.
+{{- /* The exact-number core: one block (HelperSet.NumberCompare), written in
+       sections -- reader, value, compare, integer, multipleOf, bigint, decode
+       -- that are rendered together. What a package keeps of it is settled
+       declaration by declaration by the helper pruning (see prune.go), which
+       is finer than any split into blocks would be. */}}
+{{define "number_reader_helpers"}}
+// The functions below, and the number blocks built on them, are the one
+// reading of a JSON number this package makes. Every numeric keyword --
+// minimum, maximum, both exclusive bounds, multipleOf, the "integer" type, and
+// the numeric half of const, enum and uniqueItems -- is decided through them,
+// whatever Go type the number happens to be held in, so that a position's
+// representation can never change the verdict on it.
 //
-// Nothing is expanded. 1e1000000000 is a three-field answer rather than a
-// billion digits, which is what lets the comparisons below be total: every
-// number the JSON grammar allows has an answer here, at a cost set by the
-// length of the literal rather than by its magnitude. A parse into float64
-// cannot be asked these questions at all -- it holds 2^53 and 2^53+1 as one
-// number, and holds 1e400 as an infinity -- which is the whole reason the value
-// is kept as its literal.
+// JSON Schema defines those keywords over numbers as mathematical values, and a
+// JSON number has no precision limit. float64 cannot be asked any of these
+// questions: it holds 2^53 and 2^53+1 as one number, holds 0.1 as a binary
+// fraction that is not a tenth, and holds 1e400 as an infinity. So the number
+// is kept as the decimal the document wrote and the arithmetic is done on its
+// digits, at a cost set by the length of the literal rather than by the
+// magnitude it names.
+
+// jsonDecimal is a JSON number literal read as the exact decimal it names: a
+// sign, a run of significant digits, and the power of ten the last of those
+// digits stands for.
 //
-// A zero of any spelling -- 0, -0.0, 0e100 -- answers with no digits at all,
-// and its sign goes with them. JSON Schema has no -0 distinct from 0:
-// {"minimum":0} admits -0.0, and float64, which does keep the sign, agrees only
-// because -0.0 < 0 is false there too.
+// The digit run is held as the two pieces of the literal it came from -- what
+// stood before the point and what stood after it -- rather than joined, so that
+// reading a literal allocates nothing. Both ends of the run are trimmed: a
+// leading zero carries no value and a trailing one moves into the scale. That is
+// what makes two spellings of one number -- 1.50 and 1.5, 100 and 1e2, 0.1 and
+// 1e-1 -- come out as the same fields, and what lets multipleOf rely on neither
+// run being divisible by ten.
 //
-// ok is false for a string that is not a JSON number. Nothing decoded can be
-// one -- the decode goes through jsonNumber, which refuses anything that is not
-// a number token -- so it takes a caller assigning a literal by hand, and
-// json.Number's own MarshalJSON refuses that value in turn.
-func jsonNumberParts(s string) (neg bool, digits string, scale int64, ok bool) {
+// The scale is an int64 wherever the literal's exponent has at most fifteen
+// digits, and a big.Int past that. The JSON grammar puts no bound on an
+// exponent, and 1e99999999999999999999 is a legal document; saturating it, as
+// this reader once did, made it compare equal to 1e99999999999999999998. Held
+// as a big.Int it costs arithmetic on a number as long as the exponent the
+// document wrote, which is still a cost set by the literal's length.
+type jsonDecimal struct {
+	bigScale *big.Int // the scale, when the exponent written does not fit scale
+	hi, lo   string   // the significant digits are hi followed by lo
+	scale    int64    // value = digits * 10^scale, when bigScale is nil
+	neg      bool     // false for every zero
+}
+
+func (d *jsonDecimal) width() int { return len(d.hi) + len(d.lo) }
+
+func (d *jsonDecimal) digit(i int) byte {
+	if i < len(d.hi) {
+		return d.hi[i]
+	}
+	return d.lo[i-len(d.hi)]
+}
+
+// isZero reports a zero of any spelling -- 0, -0.0, 0e100 -- which has no
+// digits left once they are trimmed. Its sign goes with them: JSON Schema has
+// no -0 distinct from 0, and {"minimum":0} admits -0.0.
+func (d *jsonDecimal) isZero() bool { return len(d.hi) == 0 && len(d.lo) == 0 }
+
+// scaleBig is the scale as a big.Int, for the arithmetic a huge exponent takes
+// out of int64.
+func (d *jsonDecimal) scaleBig() *big.Int {
+	if d.bigScale != nil {
+		return new(big.Int).Set(d.bigScale)
+	}
+	return big.NewInt(d.scale)
+}
+
+// jsonExponentDigits is the widest exponent, in digits, held in an int64. The
+// arithmetic on a scale adds and subtracts digit counts, which a literal in
+// memory cannot make large enough to carry an int64 of fifteen digits past its
+// range.
+const jsonExponentDigits = 15
+
+// jsonNumberParts reads a JSON number literal as the decimal it names. ok is
+// false for a string that is not a JSON number.
+//
+// Nothing a decode produces can take that arm -- a number is only ever held
+// from a number token -- so it takes a value assembled by hand, which
+// json.Number's own encoder refuses to write in turn. The empty string is
+// json.Number's zero value, which encoding/json writes as 0, and reads as 0
+// here.
+func jsonNumberParts(s string) (jsonDecimal, bool) {
+	var _d jsonDecimal
 	if s == "" {
-		// json.Number's zero value, which encoding/json writes back out as 0.
-		return false, "", 0, true
+		return _d, true
 	}
 	_i := 0
-	if _i < len(s) && (s[_i] == '-' || s[_i] == '+') {
-		neg = s[_i] == '-'
+	if s[0] == '-' || s[0] == '+' {
+		_d.neg = s[0] == '-'
 		_i++
 	}
-	_start := _i
+	_intStart := _i
 	for _i < len(s) && s[_i] >= '0' && s[_i] <= '9' {
 		_i++
 	}
-	_int := s[_start:_i]
+	_int := s[_intStart:_i]
 	_frac := ""
 	if _i < len(s) && s[_i] == '.' {
 		_i++
-		_start = _i
+		_fracStart := _i
 		for _i < len(s) && s[_i] >= '0' && s[_i] <= '9' {
 			_i++
 		}
-		_frac = s[_start:_i]
+		_frac = s[_fracStart:_i]
 	}
 	if _int == "" && _frac == "" {
-		return false, "", 0, false
+		return jsonDecimal{}, false
 	}
-	_exp := int64(0)
+	var _exp int64
+	var _bigExp *big.Int
 	if _i < len(s) && (s[_i] == 'e' || s[_i] == 'E') {
 		_i++
-		_esign := int64(1)
+		_eNeg := false
 		if _i < len(s) && (s[_i] == '+' || s[_i] == '-') {
-			if s[_i] == '-' {
-				_esign = -1
-			}
+			_eNeg = s[_i] == '-'
 			_i++
 		}
-		_start = _i
+		_eStart := _i
 		for _i < len(s) && s[_i] >= '0' && s[_i] <= '9' {
 			_i++
 		}
-		if _start == _i {
-			return false, "", 0, false
+		if _eStart == _i {
+			return jsonDecimal{}, false
 		}
-		// Saturated rather than parsed into whatever fits. An exponent past
-		// this limit is further from zero, or nearer to it, than any other
-		// literal can be by a margin no comparison can close, so clamping
-		// changes no answer; letting an int64 wrap would answer the opposite.
-		_e, _err := strconv.ParseInt(s[_start:_i], 10, 64)
-		if _err != nil || _e > 1<<40 {
-			_e = 1 << 40
+		_eDigits := s[_eStart:_i]
+		for len(_eDigits) > 1 && _eDigits[0] == '0' {
+			_eDigits = _eDigits[1:]
 		}
-		_exp = _esign * _e
+		if len(_eDigits) <= jsonExponentDigits {
+			_exp, _ = strconv.ParseInt(_eDigits, 10, 64)
+			if _eNeg {
+				_exp = -_exp
+			}
+		} else {
+			_bigExp, _ = new(big.Int).SetString(_eDigits, 10)
+			if _eNeg {
+				_bigExp.Neg(_bigExp)
+			}
+		}
 	}
 	if _i != len(s) {
-		return false, "", 0, false
+		return jsonDecimal{}, false
 	}
-	digits = _int + _frac
-	scale = _exp - int64(len(_frac))
-	// Leading zeros go, and they are what makes two spellings of one number
-	// line up: the comparison below reads the position of the leading digit as
-	// the scale plus the digit count, so 0.1 kept as two digits would sit one
-	// decimal place above 1e-1 kept as one, and the two would not compare
-	// equal. Trailing zeros are left where they are -- 1.50 is three digits at
-	// a scale two lower than 1.5's two, which is the same leading position and
-	// the same digits once the shorter run is padded, so nothing is gained by
-	// moving them.
-	for len(digits) > 0 && digits[0] == '0' {
-		digits = digits[1:]
+	_scale := -int64(len(_frac))
+	for len(_int) > 0 && _int[0] == '0' {
+		_int = _int[1:]
 	}
-	// Nothing left is a zero of some spelling -- 0, -0.0, 0e100 -- and its sign
-	// goes with its digits.
-	if digits == "" {
-		return false, "", 0, true
+	if _int == "" {
+		for len(_frac) > 0 && _frac[0] == '0' {
+			_frac = _frac[1:]
+		}
 	}
-	return neg, digits, scale, true
+	for len(_frac) > 0 && _frac[len(_frac)-1] == '0' {
+		_frac = _frac[:len(_frac)-1]
+		_scale++
+	}
+	if _frac == "" {
+		for len(_int) > 0 && _int[len(_int)-1] == '0' {
+			_int = _int[:len(_int)-1]
+			_scale++
+		}
+	}
+	if _int == "" && _frac == "" {
+		return jsonDecimal{}, true
+	}
+	_d.hi, _d.lo = _int, _frac
+	if _bigExp != nil {
+		_d.bigScale = _bigExp.Add(_bigExp, big.NewInt(_scale))
+	} else {
+		_d.scale = _exp + _scale
+	}
+	return _d, true
 }
 
-// jsonNumberCmp compares a JSON number against a decimal literal exactly,
-// answering -1, 0 or 1 as the number is less than, equal to or greater than the
-// literal.
+// jsonRawNumber is the number literal a JSON text holds, when it holds one.
+func jsonRawNumber(b []byte) (string, bool) {
+	_lo, _hi := 0, len(b)
+	for _lo < _hi && (b[_lo] == ' ' || b[_lo] == '\t' || b[_lo] == '\n' || b[_lo] == '\r') {
+		_lo++
+	}
+	for _hi > _lo && (b[_hi-1] == ' ' || b[_hi-1] == '\t' || b[_hi-1] == '\n' || b[_hi-1] == '\r') {
+		_hi--
+	}
+	if _lo == _hi || (b[_lo] != '-' && (b[_lo] < '0' || b[_lo] > '9')) {
+		return "", false
+	}
+	_s := string(b[_lo:_hi])
+	if _, _ok := jsonNumberParts(_s); !_ok {
+		return "", false
+	}
+	return _s, true
+}
+{{- end}}
+
+{{- /* Ordering: two literals compared exactly, and a value in any representation
+       compared against a literal -- the bounds keywords and a numeric const. */}}
+{{define "number_compare_helpers"}}
+// jsonDecimalCmp compares two JSON number literals exactly, answering -1, 0 or
+// 1 as the first is less than, equal to or greater than the second.
 //
-// Exactly is the point: this is what every numeric keyword on an exactly held
-// number is enforced through, and a comparison made in float64 would give the
-// value and the bound one reading between them wherever they differ past the
-// 53rd bit. It is also what makes 1.50 equal to 1.5 and 1e2 equal to 100, which
-// a comparison of the literals as text would not.
+// Exactly is the point: a comparison made in float64 gives the value and the
+// bound one reading between them wherever they differ past the 53rd bit, so
+// {"maximum":9007199254740992} admitted 9007199254740993. It is also what makes
+// 1.50 equal to 1.5 and 1e2 equal to 100, which comparing the literals as text
+// would not.
 //
-// A value neither side can read compares equal, so no check fires on it. That
-// costs nothing a decode can produce -- jsonNumber refuses a token that is not
-// a number -- and a hand-assigned non-number is reported by MarshalJSON, which
-// refuses to write it at all.
-func jsonNumberCmp(a json.Number, b string) int {
-	_aNeg, _aDig, _aScale, _aOK := jsonNumberParts(string(a))
-	_bNeg, _bDig, _bScale, _bOK := jsonNumberParts(b)
+// A literal either side cannot read compares equal, so no check fires on it.
+// That costs nothing a decode can produce; see jsonNumberParts.
+func jsonDecimalCmp(a, b string) int {
+	_a, _aOK := jsonNumberParts(a)
+	_b, _bOK := jsonNumberParts(b)
 	if !_aOK || !_bOK {
 		return 0
 	}
-	if _aDig == "" || _bDig == "" {
+	return jsonDecimalOrder(&_a, &_b)
+}
+
+// jsonDecimalOrder is jsonDecimalCmp over two literals already read.
+func jsonDecimalOrder(a, b *jsonDecimal) int {
+	if a.isZero() || b.isZero() {
 		switch {
-		case _aDig == "" && _bDig == "":
+		case a.isZero() && b.isZero():
 			return 0
-		case _aDig == "":
-			if _bNeg {
+		case a.isZero():
+			if b.neg {
 				return 1
 			}
 			return -1
 		default:
-			if _aNeg {
+			if a.neg {
 				return -1
 			}
 			return 1
 		}
 	}
-	if _aNeg != _bNeg {
-		if _aNeg {
+	if a.neg != b.neg {
+		if a.neg {
 			return -1
 		}
 		return 1
@@ -2505,21 +2604,33 @@ func jsonNumberCmp(a json.Number, b string) int {
 	// those digits are. Both runs are free of leading and trailing zeros, so
 	// the position is the scale plus the digit count.
 	_c := 0
-	_aLead := _aScale + int64(len(_aDig))
-	_bLead := _bScale + int64(len(_bDig))
-	switch {
-	case _aLead < _bLead:
-		_c = -1
-	case _aLead > _bLead:
-		_c = 1
-	default:
-		for _k := 0; _k < len(_aDig) || _k < len(_bDig); _k++ {
+	if a.bigScale == nil && b.bigScale == nil {
+		_aLead := a.scale + int64(a.width())
+		_bLead := b.scale + int64(b.width())
+		switch {
+		case _aLead < _bLead:
+			_c = -1
+		case _aLead > _bLead:
+			_c = 1
+		}
+	} else {
+		_aLead := a.scaleBig()
+		_aLead.Add(_aLead, big.NewInt(int64(a.width())))
+		_bLead := b.scaleBig()
+		_bLead.Add(_bLead, big.NewInt(int64(b.width())))
+		_c = _aLead.Cmp(_bLead)
+	}
+	if _c == 0 {
+		// The same leading position: the digits decide, the shorter run read
+		// as if padded with the zeros that were trimmed from it.
+		_aw, _bw := a.width(), b.width()
+		for _k := 0; _k < _aw || _k < _bw; _k++ {
 			_x, _y := byte('0'), byte('0')
-			if _k < len(_aDig) {
-				_x = _aDig[_k]
+			if _k < _aw {
+				_x = a.digit(_k)
 			}
-			if _k < len(_bDig) {
-				_y = _bDig[_k]
+			if _k < _bw {
+				_y = b.digit(_k)
 			}
 			if _x != _y {
 				if _x < _y {
@@ -2531,63 +2642,608 @@ func jsonNumberCmp(a json.Number, b string) int {
 			}
 		}
 	}
-	if _aNeg {
+	if a.neg {
 		return -_c
 	}
 	return _c
 }
 
-// jsonNumberIsMultipleOf reports whether v is an exact multiple of m.
+// jsonNumberCmp is jsonDecimalCmp for a number held as a json.Number, which is
+// what --exact-numbers holds a "number" as.
+func jsonNumberCmp(a json.Number, b string) int {
+	return jsonDecimalCmp(string(a), b)
+}
+
+// jsonNumberOrder compares a number held in any representation against a
+// literal, and reports whether the value is a number at all. A value that is
+// not one satisfies every numeric keyword, which is what the callers below
+// read the false as.
+//
+// An infinity is not a JSON number but it is ordered: it lies past every
+// literal, so a bound refuses it rather than being satisfied by it.
+func jsonNumberOrder(v any, b string) (int, bool) {
+	switch _f := v.(type) {
+	case float64:
+		if math.IsInf(_f, 0) {
+			if _f > 0 {
+				return 1, true
+			}
+			return -1, true
+		}
+	case float32:
+		if math.IsInf(float64(_f), 0) {
+			if _f > 0 {
+				return 1, true
+			}
+			return -1, true
+		}
+	}
+	_lit, _ok := jsonNumberOf(v)
+	if !_ok {
+		return 0, false
+	}
+	return jsonDecimalCmp(_lit, b), true
+}
+
+// jsonNumberBelow, jsonNumberAbove, jsonNumberAtMost and jsonNumberAtLeast are
+// the four orderings the bounds keywords are broken by -- minimum, maximum,
+// exclusiveMinimum and exclusiveMaximum in that order -- and jsonNumberEqual is
+// const. Each is false for a value that is not a number, so that a check
+// written as "if broken, refuse" passes over a string or an object as the
+// keyword says it must.
+func jsonNumberBelow(v any, b string) bool {
+	_c, _ok := jsonNumberOrder(v, b)
+	return _ok && _c < 0
+}
+
+func jsonNumberAbove(v any, b string) bool {
+	_c, _ok := jsonNumberOrder(v, b)
+	return _ok && _c > 0
+}
+
+func jsonNumberAtMost(v any, b string) bool {
+	_c, _ok := jsonNumberOrder(v, b)
+	return _ok && _c <= 0
+}
+
+func jsonNumberAtLeast(v any, b string) bool {
+	_c, _ok := jsonNumberOrder(v, b)
+	return _ok && _c >= 0
+}
+
+func jsonNumberEqual(v any, b string) bool {
+	_c, _ok := jsonNumberOrder(v, b)
+	return _ok && _c == 0
+}
+{{- end}}
+
+{{- /* multipleOf, exactly: modular arithmetic on the digit runs, and the float64
+       fast path for the divisors a schema usually writes. */}}
+{{define "number_multipleof_helpers"}}
+// jsonNumberIsMultipleOf is jsonDecimalIsMultipleOf for a number held as a
+// json.Number.
+func jsonNumberIsMultipleOf(v json.Number, m string) bool {
+	return jsonDecimalIsMultipleOf(string(v), m)
+}
+
+// jsonDecimalIsMultipleOf reports whether v divided by m is an integer, exactly.
 //
 // Both are decimals, so the question is whether one integer divides another
-// once the two scales are lined up: v is Dv*10^sv and m is Dm*10^sm, and v/m is
-// a whole number exactly when Dm divides Dv*10^(sv-sm). The float64 quotient
-// this replaces was compared against a tolerance of 1e-9, which called
-// 4611686018427387905 a multiple of 4611686018427387904 -- the two share a
-// float64 -- and would call any large enough pair of neighbours the same.
+// once the scales are lined up: v is Dv*10^sv and m is Dm*10^sm, and v/m is
+// (Dv/Dm)*10^k with k = sv-sm. The float64 quotient this replaces was compared
+// against a tolerance of 1e-9, which called 1.0000000001 a multiple of 1 and
+// 1e-10 one too, and called 4611686018427387905 a multiple of
+// 4611686018427387904 because the two share a float64; the math.Mod it replaced
+// elsewhere called 0.3 no multiple of 0.1, because neither is one in binary.
 //
-// Neither power of ten is ever built. A positive difference of scales is folded
-// into the divisor by modular exponentiation, and a negative one is decided by
-// length first: a divisor with more digits than the dividend divides nothing
-// but zero.
+// Neither digit run ends in a zero -- jsonNumberParts moved those into the
+// scale -- so neither is divisible by ten. A negative k asks Dm*10^-k to divide
+// Dv, which asks ten to divide Dv, so it answers no without any arithmetic. A
+// k of zero or more asks Dm to divide Dv*10^k, which holds exactly when
+// (Dv mod Dm)*(10^k mod Dm) is a multiple of Dm -- and that is computed without
+// building either Dv or 10^k: the first is reduced eighteen digits at a time,
+// the second by modular exponentiation. The cost follows the length of the two
+// literals, so a million-digit instance or an exponent of 10^20 is answered in
+// the time it takes to read it.
 //
 // A multipleOf of zero divides nothing, and the keyword forbids it; the answer
-// here is the one the float64 path gave, which is to accept, because a division
-// by zero produced a NaN that no tolerance test rejected.
-func jsonNumberIsMultipleOf(v json.Number, m string) bool {
-	_, _vDig, _vScale, _vOK := jsonNumberParts(string(v))
-	_, _mDig, _mScale, _mOK := jsonNumberParts(m)
-	if !_vOK || !_mOK || _mDig == "" {
+// here is to accept, which is what every reading of it has given. Zero is a
+// multiple of every number.
+func jsonDecimalIsMultipleOf(v, m string) bool {
+	_v, _vOK := jsonNumberParts(v)
+	_m, _mOK := jsonNumberParts(m)
+	if !_vOK || !_mOK || _m.isZero() || _v.isZero() {
 		return true
 	}
-	if _vDig == "" {
-		// Zero is a multiple of every number.
+	var _k *big.Int
+	_kSmall := int64(0)
+	if _v.bigScale == nil && _m.bigScale == nil {
+		_kSmall = _v.scale - _m.scale
+		if _kSmall < 0 {
+			return false
+		}
+	} else {
+		_k = _v.scaleBig()
+		_k.Sub(_k, _m.scaleBig())
+		if _k.Sign() < 0 {
+			return false
+		}
+	}
+	if _m.width() <= 18 {
+		_dm := jsonDigitsModUint(&_m, 0)
+		_r := jsonDigitsModUint(&_v, _dm)
+		if _r == 0 {
+			return true
+		}
+		var _p uint64
+		if _k == nil {
+			_p = jsonPowModUint(10, uint64(_kSmall), _dm)
+		} else {
+			_p = new(big.Int).Exp(big.NewInt(10), _k, new(big.Int).SetUint64(_dm)).Uint64()
+		}
+		_hi, _lo := bits.Mul64(_r, _p)
+		return bits.Rem64(_hi, _lo, _dm) == 0
+	}
+	_dm := jsonDigitsModBig(&_m, nil)
+	_r := jsonDigitsModBig(&_v, _dm)
+	if _r.Sign() == 0 {
 		return true
 	}
-	_dv, _dvOK := new(big.Int).SetString(_vDig, 10)
-	_dm, _dmOK := new(big.Int).SetString(_mDig, 10)
-	if !_dvOK || !_dmOK {
-		return true
+	if _k == nil {
+		_k = big.NewInt(_kSmall)
 	}
-	_ten := big.NewInt(10)
-	_k := _vScale - _mScale
-	if _k >= 0 {
-		// 10^_k mod _dm, computed without building 10^_k: the exponent may be
-		// astronomical and the answer is smaller than _dm either way.
-		_p := new(big.Int).Exp(_ten, big.NewInt(_k), _dm)
-		_r := new(big.Int).Mod(_dv, _dm)
-		_r.Mul(_r, _p)
-		_r.Mod(_r, _dm)
-		return _r.Sign() == 0
+	_r.Mul(_r, new(big.Int).Exp(big.NewInt(10), _k, _dm))
+	_r.Mod(_r, _dm)
+	return _r.Sign() == 0
+}
+
+// jsonDigitsModUint is a decimal's digit run modulo m, read eighteen digits at
+// a time so that no intermediate outgrows the 128 bits bits.Mul64 gives: the
+// running remainder is below m and a chunk below 10^18, so their combination is
+// below m*2^64 and bits.Rem64 can take it. An m of zero reads the run as the
+// number it is, which is only asked of a run of eighteen digits or fewer.
+func jsonDigitsModUint(d *jsonDecimal, m uint64) uint64 {
+	var _r uint64
+	_w := d.width()
+	for _i := 0; _i < _w; {
+		_n := _w - _i
+		if _n > 18 {
+			_n = 18
+		}
+		var _chunk uint64
+		for _j := 0; _j < _n; _j++ {
+			_chunk = _chunk*10 + uint64(d.digit(_i+_j)-'0')
+		}
+		if m == 0 {
+			_r = _r*jsonPow10[_n] + _chunk
+		} else {
+			_hi, _lo := bits.Mul64(_r, jsonPow10[_n])
+			var _carry uint64
+			_lo, _carry = bits.Add64(_lo, _chunk, 0)
+			_r = bits.Rem64(_hi+_carry, _lo, m)
+		}
+		_i += _n
 	}
-	// The divisor is _dm followed by -_k zeros, so once that run is as long as
-	// the dividend's own digits the divisor is the larger number and divides it
-	// only if it is zero, which it is not.
-	if -_k >= int64(len(_vDig)) {
+	return _r
+}
+
+// jsonDigitsModBig is jsonDigitsModUint for a divisor past uint64, and a nil m
+// reads the run as the number it is. Reducing as it goes keeps the work linear
+// in the run's length; parsing the run whole into a big.Int would not be.
+func jsonDigitsModBig(d *jsonDecimal, m *big.Int) *big.Int {
+	_r := new(big.Int)
+	_t := new(big.Int)
+	_w := d.width()
+	for _i := 0; _i < _w; {
+		_n := _w - _i
+		if _n > 18 {
+			_n = 18
+		}
+		var _chunk uint64
+		for _j := 0; _j < _n; _j++ {
+			_chunk = _chunk*10 + uint64(d.digit(_i+_j)-'0')
+		}
+		_r.Mul(_r, _t.SetUint64(jsonPow10[_n]))
+		_r.Add(_r, _t.SetUint64(_chunk))
+		if m != nil {
+			_r.Mod(_r, m)
+		}
+		_i += _n
+	}
+	return _r
+}
+
+// jsonPowModUint is b^e mod m by repeated squaring, in 128-bit products.
+func jsonPowModUint(b, e, m uint64) uint64 {
+	if m == 1 {
+		return 0
+	}
+	_r := uint64(1)
+	_b := b % m
+	for e > 0 {
+		if e&1 == 1 {
+			_hi, _lo := bits.Mul64(_r, _b)
+			_r = bits.Rem64(_hi, _lo, m)
+		}
+		_hi, _lo := bits.Mul64(_b, _b)
+		_b = bits.Rem64(_hi, _lo, m)
+		e >>= 1
+	}
+	return _r
+}
+
+var jsonPow10 = [...]uint64{1, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10,
+	1e11, 1e12, 1e13, 1e14, 1e15, 1e16, 1e17, 1e18}
+
+// jsonNumberNotMultipleOf is multipleOf broken, for a number held in any
+// representation. It is false for a value that is not a number, so that a
+// check written as "if broken, refuse" passes over a string or an object as
+// the keyword says it must.
+func jsonNumberNotMultipleOf(v any, m string) bool {
+	_lit, _ok := jsonNumberOf(v)
+	return _ok && !jsonDecimalIsMultipleOf(_lit, m)
+}
+
+// jsonFloatIsMultipleOf is multipleOf for a float64, judged on the number it
+// marshals to (see jsonNumberOf) with a fast path for the divisors a schema
+// usually writes.
+//
+// The generator passes the divisor twice: as its literal, and as
+// mDigits*10^-mFrac where it can be written that way with mDigits below 2^53
+// and mFrac at most 15 -- 3 is (3, 0), 0.01 is (1, 2) -- and mDigits is 0
+// otherwise. With x = f*10^mFrac below 2^51 in magnitude, the float64 spacing at
+// f is under half of 10^-mFrac, so at most one decimal with mFrac places reads
+// back as f, and it is the shortest one exactly when it exists: round(x)
+// names it, dividing back by 10^mFrac -- a correctly rounded operation on two
+// exact operands -- checks that it does read back as f, and then the question
+// is whether mDigits divides that integer. No decimal with mFrac places reading
+// back as f means the number f marshals to has more places than the divisor,
+// which no multiple of it has. Everything else is answered on the literal.
+func jsonFloatIsMultipleOf(f float64, m string, mDigits int64, mFrac int) bool {
+	if mDigits > 0 {
+		_x := f * jsonFloatPow10[mFrac]
+		if _x > -(1<<51) && _x < 1<<51 {
+			_n := math.Round(_x)
+			if _n/jsonFloatPow10[mFrac] == f {
+				return int64(_n)%mDigits == 0
+			}
+			return false
+		}
+	}
+	return !jsonNumberNotMultipleOf(f, m)
+}
+
+var jsonFloatPow10 = [...]float64{1, 1e1, 1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10,
+	1e11, 1e12, 1e13, 1e14, 1e15}
+{{- end}}
+
+{{- /* "integer": integrality by value from draft 6 on, by token in draft 3/4,
+       and the raw-member type probe that answers it for a member read from the
+       document. */}}
+{{define "number_integer_helpers"}}
+// jsonDecimalIsIntegral reports whether a literal names an integer: a number
+// with a zero fractional part, however it is written. 1.0, 1e2 and 1e308 all
+// do; 1.5 and 1e-1 do not. This is "integer" from draft 6 on.
+func jsonDecimalIsIntegral(s string) bool {
+	_d, _ok := jsonNumberParts(s)
+	if !_ok {
 		return false
 	}
-	_d := new(big.Int).Mul(_dm, new(big.Int).Exp(_ten, big.NewInt(-_k), nil))
-	return new(big.Int).Mod(_dv, _d).Sign() == 0
+	if _d.isZero() {
+		return true
+	}
+	if _d.bigScale != nil {
+		return _d.bigScale.Sign() >= 0
+	}
+	return _d.scale >= 0
+}
+
+// jsonDecimalIsIntegerToken reports whether a literal is written as an
+// integer: without a fraction and without an exponent. Draft 3 and draft 4
+// define "integer" by the token rather than by its value -- the official
+// suite's zeroTerminatedFloats says 1.0 is not one there -- so this is what
+// those drafts ask.
+func jsonDecimalIsIntegerToken(s string) bool {
+	if _, _ok := jsonNumberParts(s); !_ok {
+		return false
+	}
+	for _i := 0; _i < len(s); _i++ {
+		if s[_i] == '.' || s[_i] == 'e' || s[_i] == 'E' {
+			return false
+		}
+	}
+	return true
+}
+
+// jsonIsInteger reports whether a value is a number JSON Schema calls an
+// integer: one with a zero fractional part from draft 6 on, and under strict --
+// draft 3 and draft 4 -- one written without a fraction or an exponent.
+//
+// The token can only be read where it was kept. A float64 or an int64 has
+// forgotten how the document wrote it, so strict is answered from the value for
+// those, which is the answer every such position has always given.
+func jsonIsInteger(v any, strict bool) bool {
+	_lit, _ok := jsonNumberOf(v)
+	if !_ok {
+		return false
+	}
+	if strict && jsonHoldsLiteral(v) {
+		return jsonDecimalIsIntegerToken(_lit)
+	}
+	return jsonDecimalIsIntegral(_lit)
+}
+
+// jsonHoldsLiteral reports whether a number is held as text a document wrote
+// -- or, for a type with a MarshalJSON of its own, as the text it writes.
+func jsonHoldsLiteral(v any) bool {
+	switch v.(type) {
+	case json.Number, json.RawMessage:
+		return true
+	case float64, float32, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
+		return false
+	{{- if .Decode}}
+	case jsonLazy:
+		// Read as the float64 it stands for where it is not exact, which has
+		// no token left to read.
+		return v.(jsonLazy).exact
+	{{- end}}
+	case json.Marshaler:
+		return true
+	}
+	return false
+}
+
+// jsonRawKind names the JSON type a raw value is, for the checks that read a
+// member from the document rather than from the Go value it was decoded into.
+// A number is "integer" when jsonIsInteger says so under the same strictness,
+// and "number" otherwise, so every arm that accepts "number" also accepts
+// "integer".
+func jsonRawKind(b []byte, strict bool) string {
+	_lo := 0
+	for _lo < len(b) && (b[_lo] == ' ' || b[_lo] == '\t' || b[_lo] == '\n' || b[_lo] == '\r') {
+		_lo++
+	}
+	if _lo == len(b) {
+		return "unknown"
+	}
+	switch b[_lo] {
+	case '"':
+		return "string"
+	case '{':
+		return "object"
+	case '[':
+		return "array"
+	case 't', 'f':
+		return "boolean"
+	case 'n':
+		return "null"
+	}
+	if _, _ok := jsonRawNumber(b); !_ok {
+		return "unknown"
+	}
+	if jsonIsInteger(json.RawMessage(b), strict) {
+		return "integer"
+	}
+	return "number"
+}
+{{- end}}
+
+{{- /* Any Go value a number is held in, read as the literal it stands for.
+       Every block that judges a value rather than a literal reads it here. */}}
+{{define "number_value_helpers"}}
+// jsonNumberOf returns the decimal literal of a number, in whichever of the Go
+// types generated code holds a number in, and reports whether the value is a
+// number at all.
+//
+// The literal is the number the value stands for in JSON. For a json.Number or
+// a json.RawMessage that is the text the document wrote; for a type with a
+// MarshalJSON of its own -- the --big-int wrapper, a named json.Number -- it is
+// what that writes; for an integer kind it is the integer.
+//
+// For a float64 it is the shortest decimal that reads back as the same float64,
+// which is the number encoding/json writes for it. That is a choice, and the
+// only coherent one: a float64 does not remember the literal it was decoded
+// from, and of the numbers it could stand for, the one it marshals to is the
+// one any document built from it carries. So a float64 holding 0.3 is judged as
+// 0.3 -- a multiple of 0.1, as the document that wrote it said -- and not as the
+// binary fraction it holds, which is not. A document number float64 cannot hold
+// was changed when it was decoded into one, before any keyword saw it; a
+// position that must judge every digit has to hold the literal instead, which is
+// what --exact-numbers and --raw-untyped are for.
+//
+// An infinity and a NaN are not numbers JSON can write, and answer false.
+func jsonNumberOf(v any) (string, bool) {
+	switch _n := v.(type) {
+	case json.Number:
+		if _n == "" {
+			return "0", true
+		}
+		if _, _ok := jsonNumberParts(string(_n)); !_ok {
+			return "", false
+		}
+		return string(_n), true
+	case float64:
+		if math.IsInf(_n, 0) || math.IsNaN(_n) {
+			return "", false
+		}
+		return strconv.FormatFloat(_n, 'g', -1, 64), true
+	case float32:
+		if math.IsInf(float64(_n), 0) || math.IsNaN(float64(_n)) {
+			return "", false
+		}
+		return strconv.FormatFloat(float64(_n), 'g', -1, 32), true
+	case int:
+		return strconv.FormatInt(int64(_n), 10), true
+	case int8:
+		return strconv.FormatInt(int64(_n), 10), true
+	case int16:
+		return strconv.FormatInt(int64(_n), 10), true
+	case int32:
+		return strconv.FormatInt(int64(_n), 10), true
+	case int64:
+		return strconv.FormatInt(_n, 10), true
+	case uint:
+		return strconv.FormatUint(uint64(_n), 10), true
+	case uint8:
+		return strconv.FormatUint(uint64(_n), 10), true
+	case uint16:
+		return strconv.FormatUint(uint64(_n), 10), true
+	case uint32:
+		return strconv.FormatUint(uint64(_n), 10), true
+	case uint64:
+		return strconv.FormatUint(_n, 10), true
+	case json.RawMessage:
+		return jsonRawNumber(_n)
+	{{- if .Decode}}
+	case jsonLazy:
+		// A value read lazily from a document: the literal the document wrote
+		// where the value is exact, and otherwise the float64 it is read as,
+		// which is the number the value stands for there (see jsonLazy.exact).
+		_lit, _ok := jsonRawNumber(_n.d.raw(_n.sp))
+		if !_ok || _n.exact {
+			return _lit, _ok
+		}
+		_f, _err := strconv.ParseFloat(_lit, 64)
+		if _err != nil {
+			return "", false
+		}
+		return jsonNumberOf(_f)
+	{{- end}}
+	case nil, bool, string, []any, map[string]any:
+		return "", false
+	case json.Marshaler:
+		_b, _err := _n.MarshalJSON()
+		if _err != nil {
+			return "", false
+		}
+		return jsonRawNumber(_b)
+	}
+	// A named type over a Go number kind: a $defs alias, an enum. Its kind is
+	// what it is held as, so the same readings apply.
+	_rv := reflect.ValueOf(v)
+	switch _rv.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return strconv.FormatInt(_rv.Int(), 10), true
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return strconv.FormatUint(_rv.Uint(), 10), true
+	case reflect.Float32:
+		return jsonNumberOf(float32(_rv.Float()))
+	case reflect.Float64:
+		return jsonNumberOf(_rv.Float())
+	case reflect.Pointer:
+		if _rv.IsNil() {
+			return "", false
+		}
+		return jsonNumberOf(_rv.Elem().Interface())
+	}
+	return "", false
+}
+
+// jsonIsNumber reports whether a value is a JSON number, in any of the Go types
+// one is held in.
+func jsonIsNumber(v any) bool {
+	_, _ok := jsonNumberOf(v)
+	return _ok
+}
+{{- end}}
+
+{{- /* The integer reader for --big-int: the one section that builds a big.Int
+       from a literal, which the pruning leaves out of a package that holds no
+       big-int wrapper. */}}
+{{define "number_bigint_helpers"}}
+// jsonBigIntExponentLimit is how many zeros an exponent may add to an integer
+// jsonBigIntFromLiteral builds. The digits a literal writes out in full cost
+// what the document cost to send; the ones an exponent stands for do not, and
+// 1e1000000000 is ten bytes naming a number a big.Int would need 400MB to
+// hold. Ten thousand is far past any integer a schema means -- float64 stops
+// at 308, and a 4096-bit key is 1234 digits -- and costs microseconds.
+const jsonBigIntExponentLimit = 10000
+
+// jsonBigIntFromLiteral reads a JSON number literal as the integer it names,
+// exactly: 1.0, 1e2 and 12345678901234567891 all answer, 1.5 and
+// 12345678901234567891.5 do not. ok is false for a literal that names no
+// integer, and tooLarge is set with it when the literal does name one, but one
+// whose exponent adds more zeros than jsonBigIntExponentLimit.
+//
+// This replaces a parse into a big.Float of 64 bits, which is not arbitrary
+// precision: it read 12345678901234567891.5 as the integer
+// 12345678901234567892, and 1e100 as a different integer than 10^100.
+func jsonBigIntFromLiteral(s string) (_v *big.Int, ok bool, tooLarge bool) {
+	_d, _ok := jsonNumberParts(s)
+	if !_ok {
+		return nil, false, false
+	}
+	if _d.isZero() {
+		return new(big.Int), true, false
+	}
+	if _d.bigScale != nil {
+		if _d.bigScale.Sign() < 0 {
+			return nil, false, false
+		}
+		return nil, false, true
+	}
+	if _d.scale < 0 {
+		return nil, false, false
+	}
+	if _d.scale > jsonBigIntExponentLimit {
+		return nil, false, true
+	}
+	_v = jsonDigitsToBig(_d.hi + _d.lo)
+	if _d.scale > 0 {
+		_v.Mul(_v, new(big.Int).Exp(big.NewInt(10), big.NewInt(_d.scale), nil))
+	}
+	if _d.neg {
+		_v.Neg(_v)
+	}
+	return _v, true, false
+}
+
+// jsonDigitsToBig reads a run of decimal digits as a big.Int by halves:
+// big.Int's own SetString multiplies in eighteen digits at a time, which is
+// quadratic in the length and took ten seconds over a million-digit number. The
+// halves are joined with one multiplication by a power of ten, so the whole is
+// the cost of the multiplications -- a small fraction of a second there.
+func jsonDigitsToBig(digits string) *big.Int {
+	if len(digits) <= 1024 {
+		_z, _ := new(big.Int).SetString(digits, 10)
+		return _z
+	}
+	_mid := len(digits) / 2
+	_hi := jsonDigitsToBig(digits[:len(digits)-_mid])
+	_lo := jsonDigitsToBig(digits[len(digits)-_mid:])
+	_hi.Mul(_hi, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(_mid)), nil))
+	return _hi.Add(_hi, _lo)
+}
+{{- end}}
+
+{{- /* The literal-keeping decode: one function over encoding/json, which
+       every check that reads a document's own bytes decodes through, and --
+       for a type-only or not schema that states no numeric keyword -- often
+       the only one of the core a package keeps. */}}
+{{define "number_decode_helpers"}}
+// jsonDecodeNumbers decodes a JSON text into an `any` with every number held
+// as the json.Number the document wrote, rather than as the float64
+// json.Unmarshal would make of it.
+//
+// It is what every check that judges a value decoded from the document's own
+// bytes decodes through -- a schema kept as data and evaluated at run time, a
+// wrapper over a value the schema gives no type, a branch of an if/then/else --
+// because those are positions where the literal is still in hand, and a float64
+// would throw away exactly the digits the keywords are about: 9007199254740993
+// read as 9007199254740992 passed {"maximum":9007199254740992}, and 1e400 read
+// as nothing at all refused a document every keyword it met would have
+// admitted.
+//
+// A text that is not one JSON value is refused with the error json.Unmarshal
+// gives for it, so a caller reports the same failure it always did.
+func jsonDecodeNumbers(data []byte, v *any) error {
+	if !json.Valid(data) {
+		var _discard any
+		return json.Unmarshal(data, &_discard)
+	}
+	_dec := json.NewDecoder(bytes.NewReader(data))
+	_dec.UseNumber()
+	return _dec.Decode(v)
 }
 {{- end}}
 
@@ -2810,25 +3466,16 @@ func _jsonCanonicalValue(b *strings.Builder, v any) {
 	}
 }
 
-// _jsonCanonicalNumberLimit bounds the exponent a literal may state before this
-// gives up on reading it. It is far past anything a document means -- float64
-// stops at 308 -- and far short of where the arithmetic below would wrap.
-//
-// Refused rather than clamped: two literals clamped to one scale would
-// canonicalise to one text and a const would then accept a number it forbids,
-// which is the whole defect this function exists to close. A refusal falls back
-// to the literal as written, which can only ever compare equal to itself.
-const _jsonCanonicalNumberLimit = 1 << 40
-
 // _jsonCanonicalNumber returns a JSON number literal in the one spelling every
 // mathematically equal literal shares.
 //
-// The literal is split into a sign, its significant digits and the power of ten
-// the last digit stands for. Both ends of the digit run are trimmed, which is
-// what makes the form canonical: leading zeros carry nothing, and trailing ones
-// move into the scale, so 1.50 and 1.5 come out identical and so do 100 and
-// 1e2. Every spelling of zero -- 0, -0.0, 0e100 -- comes out "0", sign
-// included, because JSON Schema has no -0 distinct from 0.
+// The literal is read by jsonNumberParts, the reader every numeric keyword is
+// decided through, so this reduction and the comparisons cannot disagree about
+// which literals name one number: two literals canonicalise to one text exactly
+// when jsonDecimalCmp calls them equal. Both ends of the digit run are trimmed,
+// which is what makes the form canonical -- 1.50 and 1.5 come out identical, and
+// so do 100 and 1e2. Every spelling of zero -- 0, -0.0, 0e100 -- comes out "0",
+// sign included, because JSON Schema has no -0 distinct from 0.
 //
 // Where it puts the decimal point is encoding/json's own rule, and copying it
 // is deliberate: json writes a float in exponent form below 1e-6 and at or
@@ -2837,27 +3484,53 @@ const _jsonCanonicalNumberLimit = 1 << 40
 // every enum and const that was already being compared correctly exactly where
 // it was.
 //
+// An exponent of any size is read. This used to refuse one past 2^40 and fall
+// back to the literal as written, which kept 1e2000000000000 and
+// 10e1999999999999 apart -- one number, two texts. The scale is a big.Int there,
+// and the text is written from it.
+//
 // A literal this cannot read comes back unchanged. Nothing a decode produces
 // can take that arm -- encoding/json only fills a json.Number from a number
 // token -- so it takes a hand-assembled value to reach, and the value then
 // compares equal to itself and to nothing else.
 func _jsonCanonicalNumber(s string) string {
-	_neg, _digits, _scale, _ok := _jsonCanonicalParts(s)
+	_d, _ok := jsonNumberParts(s)
 	if !_ok {
 		return s
 	}
-	if _digits == "" {
+	if _d.isZero() {
 		return "0"
 	}
+	_digits := _d.hi + _d.lo
 	_k := int64(len(_digits))
-	// The decimal point sits after this many digits, counting from the left; at
-	// or below zero the number is written "0.something".
-	_point := _scale + _k
-
 	var _b strings.Builder
-	if _neg {
+	if _d.neg {
 		_b.WriteByte('-')
 	}
+	if _d.bigScale != nil {
+		// The decimal point sits a big.Int away from the digits, which is
+		// always outside the range the plain forms below cover: an exponent
+		// that took a big.Int to hold cannot be brought back under 21 by a
+		// literal that fits in memory. So the exponent form, written from the
+		// big.Int.
+		_e := new(big.Int).Add(_d.bigScale, big.NewInt(_k-1))
+		_b.WriteString(_digits[:1])
+		if _k > 1 {
+			_b.WriteByte('.')
+			_b.WriteString(_digits[1:])
+		}
+		if _e.Sign() >= 0 {
+			_b.WriteString("e+")
+		} else {
+			_b.WriteString("e-")
+			_e.Neg(_e)
+		}
+		_b.WriteString(_e.String())
+		return _b.String()
+	}
+	// The decimal point sits after this many digits, counting from the left; at
+	// or below zero the number is written "0.something".
+	_point := _d.scale + _k
 	switch {
 	case _k <= _point && _point <= 21:
 		_b.WriteString(_digits)
@@ -2887,70 +3560,6 @@ func _jsonCanonicalNumber(s string) string {
 	}
 	return _b.String()
 }
-
-func _jsonCanonicalParts(s string) (neg bool, digits string, scale int64, ok bool) {
-	if s == "" {
-		return false, "", 0, true
-	}
-	_i := 0
-	if _i < len(s) && (s[_i] == '-' || s[_i] == '+') {
-		neg = s[_i] == '-'
-		_i++
-	}
-	_start := _i
-	for _i < len(s) && s[_i] >= '0' && s[_i] <= '9' {
-		_i++
-	}
-	_int := s[_start:_i]
-	_frac := ""
-	if _i < len(s) && s[_i] == '.' {
-		_i++
-		_start = _i
-		for _i < len(s) && s[_i] >= '0' && s[_i] <= '9' {
-			_i++
-		}
-		_frac = s[_start:_i]
-	}
-	if _int == "" && _frac == "" {
-		return false, "", 0, false
-	}
-	_exp := int64(0)
-	if _i < len(s) && (s[_i] == 'e' || s[_i] == 'E') {
-		_i++
-		_start = _i
-		if _i < len(s) && (s[_i] == '+' || s[_i] == '-') {
-			_i++
-		}
-		_digitsStart := _i
-		for _i < len(s) && s[_i] >= '0' && s[_i] <= '9' {
-			_i++
-		}
-		if _digitsStart == _i {
-			return false, "", 0, false
-		}
-		_e, _err := strconv.ParseInt(s[_start:_i], 10, 64)
-		if _err != nil || _e > _jsonCanonicalNumberLimit || _e < -_jsonCanonicalNumberLimit {
-			return false, "", 0, false
-		}
-		_exp = _e
-	}
-	if _i != len(s) {
-		return false, "", 0, false
-	}
-	digits = _int + _frac
-	scale = _exp - int64(len(_frac))
-	for len(digits) > 0 && digits[0] == '0' {
-		digits = digits[1:]
-	}
-	for len(digits) > 0 && digits[len(digits)-1] == '0' {
-		digits = digits[:len(digits)-1]
-		scale++
-	}
-	if digits == "" {
-		return false, "", 0, true
-	}
-	return neg, digits, scale, true
-}
 {{- end}}
 
 {{define "identity_core_helpers"}}
@@ -2976,9 +3585,9 @@ var jsonIDSeeds = [2]maphash.Seed{maphash.MakeSeed(), maphash.MakeSeed()}
 
 // The kinds an identity is tagged with, so that no value of one kind shares an
 // identity with a value of another: the string "1" and the number 1, the array
-// [] and the object {}. jsonIDLiteralKind is a number literal the canonical
-// reading refuses (see _jsonCanonicalNumber), which is equal to its own
-// spelling only.
+// [] and the object {}. jsonIDLiteralKind is a number whose exponent is past
+// what jsonNumberDigits reads into an int64, identified by its canonical text
+// (see jsonIDNumber).
 const (
 	jsonIDNullKind    = 'n'
 	jsonIDTrueKind    = 't'
@@ -3039,14 +3648,17 @@ func jsonIDString(s string) jsonID {
 }
 
 // jsonIDNumber is the identity of a number literal: its canonical reading, so
-// that 1, 1.0 and 1e0 are one number. It reads the literal as
-// _jsonCanonicalParts does -- the two are held together by the tests -- without
-// building its digit string. A literal that reading refuses is equal to its own
-// spelling only, as it is there.
+// that 1, 1.0 and 1e0 are one number. It reads the literal as jsonNumberParts
+// does -- the two are held together by the tests -- without building its digit
+// string. A literal whose exponent is past what jsonNumberDigits holds in an
+// int64 is identified by its canonical text instead (see _jsonCanonicalNumber,
+// which reads any exponent): 1e2000000000000 and 10e1999999999999 are one
+// number, and no literal that fits in memory reaches such a value from a small
+// exponent, so the two kinds of identity never name one number.
 func jsonIDNumber[S ~string | ~[]byte](s S) jsonID {
 	neg, lo, hi, scale, ok := jsonNumberDigits(s)
 	if !ok {
-		return jsonIDBytes(jsonIDLiteralKind, []byte(s))
+		return jsonIDText(jsonIDLiteralKind, _jsonCanonicalNumber(string(s)))
 	}
 	if lo == hi {
 		return jsonIDText(jsonIDNumberKind, "0")
@@ -3063,6 +3675,12 @@ func jsonIDNumber[S ~string | ~[]byte](s S) jsonID {
 	}
 	return jsonIDMix(jsonIDBytes(jsonIDNumberKind, digits), jsonIDNumberKind, jsonID{uint64(scale), sign})
 }
+
+// jsonIDExponentLimit is the widest exponent jsonNumberDigits reads into an
+// int64 scale: the scale adds and subtracts digit counts, which no literal in
+// memory makes large enough to carry an exponent this size past int64's range.
+// A literal past it is read by jsonIDNumber through its canonical text.
+const jsonIDExponentLimit = 1 << 40
 
 // jsonNumberDigits reads a number literal into its sign, its significant digits
 // and the power of ten the last of them stands for. The digits are positions lo
@@ -3109,7 +3727,7 @@ func jsonNumberDigits[S ~string | ~[]byte](s S) (neg bool, lo, hi int, scale int
 			return false, 0, 0, 0, false
 		}
 		e, err := strconv.ParseInt(string(s[expStart:i]), 10, 64)
-		if err != nil || e > _jsonCanonicalNumberLimit || e < -_jsonCanonicalNumberLimit {
+		if err != nil || e > jsonIDExponentLimit || e < -jsonIDExponentLimit {
 			return false, 0, 0, 0, false
 		}
 		exp = e
@@ -3972,7 +4590,7 @@ func jsonTreeJSONIn(v any) (any, bool, error) {
 		return t, true, err
 	{{- if .Decode}}
 	case jsonLazy:
-		t, err := jsonTreeRaw(x.d.raw(x.sp), true)
+		t, err := jsonTreeRaw(x.d.raw(x.sp), !x.exact)
 		return t, true, err
 	{{- end}}
 	}
@@ -4083,26 +4701,34 @@ func (c *jsonIDCache) put(at int, id jsonID) {
 	c.mu.Unlock()
 }
 
-// jsonDocID is the value's identity as JSON, read the way encoding/json decodes
-// it into an any -- every number a float64 -- which is what its MarshalJSON
-// writes. It is read off the document, and every object and array read on the
-// way is kept there: a check that compares values asks at every level of a
-// document for the identity of what is below it, and each object and array is
-// read once however many levels ask.
+// jsonDocID is the value's identity as JSON, read the way its MarshalJSON
+// writes it: every number the literal the document wrote where the value is
+// exact, and the float64 encoding/json decodes it into where it is not. It is
+// read off the document, and every object and array read on the way is kept
+// there: a check that compares values asks at every level of a document for the
+// identity of what is below it, and each object and array is read once however
+// many levels ask.
 func (l jsonLazy) jsonDocID() (jsonID, error) {
-	c := l.d.ids.Load()
-	if c == nil {
-		l.d.ids.CompareAndSwap(nil, &jsonIDCache{ids: make(map[int]jsonID)})
-		c = l.d.ids.Load()
+	cache := &l.d.ids
+	if l.exact {
+		cache = &l.d.idsExact
 	}
-	return l.d.jsonIDAt(l.sp, c, 0)
+	c := cache.Load()
+	if c == nil {
+		cache.CompareAndSwap(nil, &jsonIDCache{ids: make(map[int]jsonID)})
+		c = cache.Load()
+	}
+	return l.d.jsonIDAt(l.sp, c, l.exact, 0)
 }
 
-func (d *jsonDoc) jsonIDAt(sp jsonSpan, c *jsonIDCache, depth int) (jsonID, error) {
+func (d *jsonDoc) jsonIDAt(sp jsonSpan, c *jsonIDCache, exact bool, depth int) (jsonID, error) {
 	data := d.data
 	switch data[sp.start] {
 	case '{', '[':
 	default:
+		if exact {
+			return jsonIDRaw(data[sp.start:sp.end])
+		}
 		return jsonIDRawAsDecoded(data[sp.start:sp.end])
 	}
 	if id, ok := c.get(sp.start); ok {
@@ -4120,7 +4746,7 @@ func (d *jsonDoc) jsonIDAt(sp jsonSpan, c *jsonIDCache, depth int) (jsonID, erro
 			if !ok {
 				break
 			}
-			eid, err := d.jsonIDAt(e, c, depth+1)
+			eid, err := d.jsonIDAt(e, c, exact, depth+1)
 			if err != nil {
 				return jsonID{}, err
 			}
@@ -4148,7 +4774,7 @@ func (d *jsonDoc) jsonIDAt(sp jsonSpan, c *jsonIDCache, depth int) (jsonID, erro
 			kid := jsonIDBytes(jsonIDStringKind, k)
 			v := jsonSkipSpace(data, jsonSkipSpace(data, keyEnd)+1)
 			end := d.valueEnd(v)
-			vid, err := d.jsonIDAt(jsonSpan{v, end}, c, depth+1)
+			vid, err := d.jsonIDAt(jsonSpan{v, end}, c, exact, depth+1)
 			if err != nil {
 				return jsonID{}, err
 			}
@@ -5464,7 +6090,7 @@ func jsonOmitZeroAt[T any](p *T) bool {
 // decodes it into an any, every number a float64.
 func (l jsonLazy) jsonIdentity(m *jsonValidation) (jsonID, error) {
 	if m.reading() {
-		t, err := jsonTreeRaw(l.d.raw(l.sp), true)
+		t, err := jsonTreeRaw(l.d.raw(l.sp), !l.exact)
 		if err != nil {
 			return jsonID{}, err
 		}
@@ -5549,7 +6175,7 @@ func jsonKindAny(v any) (byte, string) {
 		return jsonKindRaw(x, false)
 	{{- if .Decode}}
 	case jsonLazy:
-		return jsonKindRaw(x.d.raw(x.sp), true)
+		return jsonKindRaw(x.d.raw(x.sp), !x.exact)
 	{{- end}}
 	}
 	// Anything else is read as a tree (see jsonTreeAny), whose kind is the

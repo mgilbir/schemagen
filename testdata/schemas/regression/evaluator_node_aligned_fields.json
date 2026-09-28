@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","anyOf":[{"prefixItems":[{"format":"date","minLength":2,"maxLength":10}]},{"prefixItems":[{"type":"integer","minimum":1,"exclusiveMaximum":100,"multipleOf":1}]}],"unevaluatedItems":false}

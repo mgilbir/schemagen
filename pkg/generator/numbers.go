@@ -3,6 +3,7 @@ package generator
 import (
 	"encoding/json"
 	"math"
+	"math/big"
 	"strconv"
 	"strings"
 
@@ -139,10 +140,16 @@ const goConstIntBits = 256
 //     A magnitude float64 cannot hold at all keeps its digits and moves the
 //     decimal point, which is a float constant rather than an integer one and
 //     so is refused where it is converted rather than where it is written.
+//
+// The first arm reads the literal's digits and scale (schema.Number.Decimal),
+// never a big.Rat: a literal is as long as the document writes it, big.Rat's
+// parse is quadratic in the digits, and this renders every numeric keyword and
+// member the emitter writes. Only a number already known to have at most
+// goConstIntDigits digits is built as a big.Int.
 func goConstLiteral(n schema.Number) string {
 	lit := string(n)
-	if r, ok := n.Rat(); ok && r.IsInt() && r.Num().BitLen() <= goConstIntBits {
-		return r.Num().String()
+	if whole, ok := goConstInteger(n); ok {
+		return whole
 	}
 	if strings.ContainsAny(lit, ".eE") {
 		return lit
@@ -162,6 +169,36 @@ func goConstLiteral(n schema.Number) string {
 		return lit
 	}
 	return neg + digits[:1] + "." + digits[1:] + "e" + strconv.Itoa(len(digits)-1)
+}
+
+// goConstIntDigits is the most decimal digits a goConstIntBits-bit integer
+// has: 2^256 is a 78-digit number. A whole number with more is past the bound
+// whatever its digits, and one with fewer than 78 is within it.
+const goConstIntDigits = 78
+
+// goConstInteger writes the number in integer notation when it is a whole
+// number of at most goConstIntBits bits, and reports whether it is one. It
+// decides on the digit count first, so a long literal costs a scan and nothing
+// more.
+func goConstInteger(n schema.Number) (string, bool) {
+	digits, scale, neg, ok := n.Decimal()
+	if !ok || scale < 0 {
+		return "", false
+	}
+	if digits == "" {
+		return "0", true
+	}
+	if int64(len(digits))+scale > goConstIntDigits {
+		return "", false
+	}
+	whole, _ := new(big.Int).SetString(digits+strings.Repeat("0", int(scale)), 10)
+	if whole.BitLen() > goConstIntBits {
+		return "", false
+	}
+	if neg {
+		whole.Neg(whole)
+	}
+	return whole.String(), true
 }
 
 // GoNumberLiteral renders a schema-supplied number as a Go constant.
@@ -189,64 +226,41 @@ func GoNumberLiteral(v any) string {
 	return goConstLiteral(n)
 }
 
-// constJSONValue encodes a schema-supplied value as the JSON the generated code
-// compares an instance against.
+// constJSONValue encodes a schema-supplied value as the canonical JSON text the
+// generated code compares an instance against: the one text every JSON value
+// equal to it reduces to (see schema.CanonicalJSON), with every number kept
+// exactly.
 //
-// Numbers are folded through float64 here, deliberately, because that is what
-// the other side of the comparison is: the emitted check decodes the instance
-// into `any` and marshals it back, and encoding/json makes a float64 of a JSON
-// number on the way in. Writing the literal instead would put "1.0" on one side
-// of an equality whose other side always says "1", and turn an enum that works
-// today into a rejection of the document it was written to admit.
+// Every emitted comparison against it is by identity (jsonConstOf and the
+// jsonMatches* readers), which read the instance side by the same rule, so 1.0
+// in a document satisfies {"const":1} and "A" satisfies {"const":"A"} in
+// whatever form the instance is held. This used to fold numbers through
+// float64, because the other side of the comparison was an `any` decoded by
+// encoding/json and marshalled back -- which made {"const":9007199254740993}
+// accept 9007199254740992, and compared a member read from the document as raw
+// bytes, so {"k":1.0} failed a const of 1. Both sides are exact now, and the
+// fold is gone.
 //
-// So this is the one place a number is read through float64 on purpose, and the
-// limitation belongs to the comparison rather than to the value: two integers
-// that share a float64 -- 9223372036854775806 and 9223372036854775807 -- remain
-// indistinguishable to it. Making it exact means canonicalising numbers by
-// value on both sides, which is a change to the emitted decode as much as to
-// this, and it is not made here.
+// The emitted reduction and schema.CanonicalJSON are held to one answer by
+// tests/canonical_agreement_test.go. A value the reduction cannot read -- a Go
+// type no decode produces -- falls back to its marshalled text, which can only
+// ever equal itself.
 func constJSONValue(v any) ([]byte, error) {
-	return json.Marshal(foldNumbersToFloat(v))
+	if text, ok := schema.CanonicalJSON(v); ok {
+		return []byte(text), nil
+	}
+	return json.Marshal(v)
 }
 
 // exactJSONValue encodes a schema-supplied value as the JSON the document
 // wrote, with every number kept as its literal.
 //
-// It is constJSONValue without the fold, for the comparisons whose other side
-// is raw JSON rather than a Go value: an enum or a const held as
-// json.RawMessage is compared against the instance's own bytes, and both sides
-// go through the emitted _jsonCanonical rather than through a float64. Nothing
-// is decided here beyond keeping the digits -- the reduction to one spelling
-// per value happens in the generated code, so there is a single implementation
-// of it and not one on each side. See issue #272.
+// It is for the members baked into generated source as the schema wrote them
+// -- an enum held as json.RawMessage -- which the generated code reduces with
+// _jsonCanonical at package initialisation, so that the reduction of the
+// schema's side and of the instance's is one function. See issue #272.
 func exactJSONValue(v any) ([]byte, error) {
 	return json.Marshal(v)
-}
-
-// foldNumbersToFloat rewrites every number a value holds as its float64
-// reading, leaving a number float64 cannot hold as the literal it was.
-func foldNumbersToFloat(v any) any {
-	switch t := v.(type) {
-	case json.Number, schema.Number:
-		if f, ok := numFloat(t); ok {
-			return f
-		}
-		return v
-	case []any:
-		out := make([]any, len(t))
-		for i, e := range t {
-			out[i] = foldNumbersToFloat(e)
-		}
-		return out
-	case map[string]any:
-		out := make(map[string]any, len(t))
-		// maporder: copies members under their own keys, which are distinct, so no order writes a different map.
-		for k, e := range t {
-			out[k] = foldNumbersToFloat(e)
-		}
-		return out
-	}
-	return v
 }
 
 // JSONNumberLiteral renders a schema-supplied number as the JSON number
@@ -267,48 +281,85 @@ func JSONNumberLiteral(v any) string {
 }
 
 // numCmp compares two schema numbers exactly, returning -1, 0 or 1, and reports
-// whether both could be read. big.Rat parses the JSON number grammar without
-// rounding, so 9223372036854775806 and 9223372036854775807 compare as the
-// distinct numbers they are rather than as the one float64 they share.
+// whether both could be read. It reads the digits rather than a float64, so
+// 9223372036854775806 and 9223372036854775807 compare as the distinct numbers
+// they are, and it reads an exponent of any size. See schema.Number.Compare.
 func numCmp(a, b schema.Number) (int, bool) {
-	ra, okA := a.Rat()
-	rb, okB := b.Rat()
-	if !okA || !okB {
-		return 0, false
-	}
-	return ra.Cmp(rb), true
+	return a.Compare(b)
 }
 
-// integerComparable reports whether a numeric bound on this schema can be
-// enforced in int64 rather than in float64. See ValidationRule.IntegerCompare
-// for why that is a correctness question and not a performance one.
+// NumberRoundTripsFloat64 reports whether a number's value is exactly that of
+// the shortest decimal its float64 is written as.
 //
-// Both halves have to hold. The instance has to be an int64, which is what a
-// schema saying "integer" -- and nothing else but "null", which only makes the
-// field a pointer -- is held as. And the bound has to name an integer int64
-// holds exactly, because it is written into the source as an untyped constant
-// and Go will refuse one that the int64 it is compared against cannot take.
-func integerComparable(s *schema.Schema, bound any) bool {
-	if s == nil {
+// It is what lets a check on a float64 be made in float64 and still be exact.
+// A float64 is judged as the number it marshals to -- its shortest decimal, see
+// jsonNumberOf in the emitted core -- and float64 rounding is monotonic, so for
+// a bound B with float64 b: a value f below b marshals to a number below B, one
+// above b to one above B, and f equal to b marshals to b's shortest decimal,
+// which is B exactly when this holds. The float64 comparison then gives the
+// answer the exact one would, for every f. 0.1, 100, 1e308 and 5e-324 all hold;
+// 9007199254740993, whose float64 is 9007199254740992, does not, and neither
+// does 1e-400, which has none but zero.
+func NumberRoundTripsFloat64(v any) bool {
+	n, ok := schemaNumber(v)
+	if !ok {
 		return false
 	}
-	if _, ok := numInt64(bound); !ok {
+	f, ok := n.Float64()
+	if !ok || math.IsInf(f, 0) || math.IsNaN(f) {
 		return false
 	}
-	integer := false
-	for _, t := range s.Type {
-		switch t {
-		case "integer":
-			integer = true
-		case "null":
-			// A permitted null makes the Go field a pointer; the value it
-			// points at is still the int64 the other entry names.
-		default:
-			return false
-		}
-	}
-	return integer
+	c, ok := n.Compare(schema.Number(strconv.FormatFloat(f, 'g', -1, 64)))
+	return ok && c == 0
 }
+
+// NumberDecimalDivisor writes a multipleOf divisor as digits*10^-frac, for the
+// float64 fast path in the emitted jsonFloatIsMultipleOf: digits is positive
+// and below 2^53, frac is at most 15, and digits carries no trailing zero once
+// frac is above zero. ok is false for a divisor that cannot be written so --
+// 1e20, 1e-20, 0.1234567890123456789 -- which the fast path then leaves to the
+// literal.
+//
+// The literal is read as digits and a scale, never as a big.Rat: this is asked
+// of every multipleOf the emitter writes, and a divisor is as long as the
+// document writes it. The digits carry no trailing zero, so the fewest places
+// that make the divisor whole are the negated scale, when it is negative.
+func NumberDecimalDivisor(v any) (digits int64, frac int, ok bool) {
+	n, ok := schemaNumber(v)
+	if !ok {
+		return 0, 0, false
+	}
+	ds, scale, neg, ok := n.Decimal()
+	if !ok || neg || ds == "" {
+		return 0, 0, false
+	}
+	if scale < 0 {
+		if scale < -15 {
+			return 0, 0, false
+		}
+		frac, scale = int(-scale), 0
+	}
+	// 2^53 has sixteen digits; anything longer is past it.
+	if int64(len(ds))+scale > 16 {
+		return 0, 0, false
+	}
+	digits, err := strconv.ParseInt(ds, 10, 64)
+	if err != nil {
+		return 0, 0, false
+	}
+	for ; scale > 0; scale-- {
+		digits *= 10
+	}
+	if digits >= 1<<53 {
+		return 0, 0, false
+	}
+	return digits, frac, true
+}
+
+// NumberInt64 is numInt64, for the emitter: a numeric check on an int64 is
+// written in int64 against a bound this answers, and through the exact core
+// against any other.
+func NumberInt64(v any) (int64, bool) { return numInt64(v) }
 
 // numInt64 returns the number as an int64 when it names an integer int64 holds
 // exactly. 9223372036854775807 answers itself; 9223372036854775808 answers

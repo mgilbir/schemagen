@@ -46,6 +46,16 @@ var helperMinimalityCases = []struct {
 		func(c *generator.Config) { c.StrictReadWrite = true }},
 	{"--big-int and --exact-numbers", `{"type":"object","properties":{"i":{"type":"integer","maximum":9007199254740993},"f":{"type":"number","multipleOf":0.1}}}`,
 		func(c *generator.Config) { c.BigIntSupport = true; c.ExactNumbers = true }},
+	// Each way into the exact-number core: a member's type read off the
+	// document (jsonRawKind), a bound float64 cannot hold, a multipleOf, the
+	// big-int reader alone, and the evaluator's bounds and multipleOf arms,
+	// which are compiled in only where a node states them.
+	{"a oneOf branch typing a member integer", `{"type":"object","properties":{"k":{}},"oneOf":[{"properties":{"k":{"type":"integer"}}},{"properties":{"k":{"type":"string"}}}]}`, nil},
+	{"a maximum float64 cannot hold", `{"type":"object","properties":{"n":{"type":"number","maximum":9007199254740993}}}`, nil},
+	{"a multipleOf", `{"type":"object","properties":{"n":{"type":"number","multipleOf":0.1}}}`, nil},
+	{"a --big-int integer", `{"type":"object","properties":{"n":{"type":"integer"}}}`,
+		func(c *generator.Config) { c.BigIntSupport = true }},
+	{"the evaluator judging bounds and a multipleOf", `{"$schema":"https://json-schema.org/draft/2020-12/schema","prefixItems":[{"minimum":1,"exclusiveMaximum":9,"multipleOf":3}],"unevaluatedItems":false}`, nil},
 }
 
 // TestHelperDeclarationsAreAllNeeded holds the pruned helper file (see

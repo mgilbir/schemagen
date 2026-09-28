@@ -5,7 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 )
 
 type Measurement struct {
@@ -208,13 +207,8 @@ func (m Measurement) Validate() error {
 		}
 	}
 	if m._jsonKeys["rating"] {
-		{
-			if m.Rating != nil {
-				_quot := float64(*m.Rating) / 0.5
-				if math.Abs(_quot-math.Round(_quot)) > 1e-9 {
-					return fmt.Errorf("rating: value %v is not a multiple of 0.5", *m.Rating)
-				}
-			}
+		if m.Rating != nil && !jsonFloatIsMultipleOf(float64(*m.Rating), "0.5", 5, 1) {
+			return fmt.Errorf("rating: value %v is not a multiple of 0.5", *m.Rating)
 		}
 	}
 	if float64(m.Temperature) <= -273.15 {

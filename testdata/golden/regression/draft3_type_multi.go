@@ -55,7 +55,7 @@ func (d Draft3typeMulti) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(d._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(d._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -103,7 +103,7 @@ func (d Draft3typeMulti) Validate() error {
 		return fmt.Errorf("type: null is not allowed")
 	}
 	switch _tv := _v.(type) {
-	case float64:
+	case json.Number:
 		_ = _tv
 		return fmt.Errorf("type: number is not allowed")
 	case string:

@@ -96,6 +96,7 @@ func (a *AllOfBoundOnlyArr) UnmarshalJSON(data []byte) error {
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &a._value); _err == nil {
 		a._isRaw = false
+		a._raw = append(a._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -142,6 +143,20 @@ func (a AllOfBoundOnlyArr) Validate() error {
 	if a._isRaw {
 		return nil // Constraints don't apply to non-matching types.
 	}
+	// The elements as the document wrote them, where the value was decoded
+	// from one: decoded into []any they are float64s, which round the digits
+	// the element keywords are about. Read again here keeping every number as
+	// its literal; a value assembled in Go is judged as it stands.
+	_items := a._value
+	if len(a._raw) > 0 {
+		var _decoded any
+		if jsonDecodeNumbers(a._raw, &_decoded) == nil {
+			if _arr, _ok := _decoded.([]any); _ok {
+				_items = _arr
+			}
+		}
+	}
+	_ = _items
 	if len(a._value) < 2 {
 		return jsonValueErrorf("has %d items, minimum is 2", len(a._value))
 	}
@@ -376,6 +391,7 @@ func (a *AllOfBoundOnlyNum) UnmarshalJSON(data []byte) error {
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &a._value); _err == nil {
 		a._isRaw = false
+		a._raw = append(a._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -420,10 +436,25 @@ func (a AllOfBoundOnlyNum) String() string {
 // Validate checks AllOfBoundOnlyNum against its JSON Schema constraints.
 func (a AllOfBoundOnlyNum) Validate() error {
 	if a._isRaw {
-		return nil // Constraints don't apply to non-matching types.
+		// Constraints don't apply to non-matching types -- but a number is not
+		// one. 1e400 is a number no float64 holds, so the typed decode refused
+		// it and it was kept here as bytes; every numeric keyword still applies
+		// to it, and is read from those bytes below. It used to be passed over
+		// as though it were a string.
+		if _, _isNum := jsonRawNumber(a._raw); !_isNum {
+			return nil
+		}
 	}
-	if float64(a._value) < 5 {
-		return jsonValueErrorf("%v is less than minimum 5", a._value)
+	// The number as the document wrote it, where the value was decoded from
+	// one; see UnmarshalJSON. A value assembled in Go is judged as the number
+	// it marshals to.
+	_num, _numText := any(a._value), fmt.Sprint(a._value)
+	if len(a._raw) > 0 {
+		_num, _numText = json.RawMessage(a._raw), string(a._raw)
+	}
+	_, _ = _num, _numText
+	if jsonNumberBelow(_num, "5") {
+		return jsonValueErrorf("%s is less than minimum 5", _numText)
 	}
 	return nil
 }

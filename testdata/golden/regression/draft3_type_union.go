@@ -5,7 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 )
 
 // Draft3typeUnion accepts any JSON value and validates that it is one of the allowed types.
@@ -56,7 +55,7 @@ func (d Draft3typeUnion) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(d._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(d._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -84,8 +83,8 @@ func (d Draft3typeUnion) Validate() error {
 		return fmt.Errorf("type: null is not allowed")
 	}
 	switch _tv := _v.(type) {
-	case float64:
-		if _tv != math.Trunc(_tv) || math.IsInf(_tv, 0) {
+	case json.Number:
+		if !jsonIsInteger(_tv, true) {
 			return fmt.Errorf("type: expected integer, got number")
 		}
 		return nil

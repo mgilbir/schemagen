@@ -21,40 +21,35 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{{- range $struct.NonObjectValidations}}
 		{{- if or (eq .RuleType "ppMinimum") (eq .RuleType "ppMaximum") (eq .RuleType "ppExclusiveMinimum") (eq .RuleType "ppExclusiveMaximum") (eq .RuleType "ppMultipleOf")}}
 		{
-			// Decoded through a pointer so that a JSON null is told apart from a
-			// number. encoding/json takes a null into any Go type as a no-op and
-			// reports no error, so a plain float64 came back at its zero and the
-			// bound was measured against a value the document never wrote --
-			// `null` against {"properties":{...},"minimum":5} was refused for
-			// being 0 (issue #270). A numeric keyword does not apply to a value
-			// that is not a number.
-			var _num *float64
-			if err := json.Unmarshal(_nonObj, &_num); err == nil && _num != nil {
-				num := *_num
+			// Read as the literal the document wrote, and only when it is a
+			// number: a numeric keyword does not apply to anything else, and a
+			// null in particular is not a zero (issue #270). The literal is
+			// what the keyword is about -- a float64 would round 9007199254740993
+			// onto its neighbour, and refuse 1e400 outright.
+			if _lit, _isNum := jsonRawNumber(_nonObj); _isNum {
 				{{- if eq .RuleType "ppMinimum"}}
-				if num < {{countExpr .Value}} {
-					return jsonValueErrorf("value %v is less than minimum {{fmtText .Value}}", num)
+				if {{numViolated . "json.Number(_lit)"}} {
+					return jsonValueErrorf("value %s is less than minimum {{fmtText .Value}}", _lit)
 				}
 				{{- end}}
 				{{- if eq .RuleType "ppMaximum"}}
-				if num > {{countExpr .Value}} {
-					return jsonValueErrorf("value %v exceeds maximum {{fmtText .Value}}", num)
+				if {{numViolated . "json.Number(_lit)"}} {
+					return jsonValueErrorf("value %s exceeds maximum {{fmtText .Value}}", _lit)
 				}
 				{{- end}}
 				{{- if eq .RuleType "ppExclusiveMinimum"}}
-				if num <= {{countExpr .Value}} {
-					return jsonValueErrorf("value %v must be greater than {{fmtText .Value}}", num)
+				if {{numViolated . "json.Number(_lit)"}} {
+					return jsonValueErrorf("value %s must be greater than {{fmtText .Value}}", _lit)
 				}
 				{{- end}}
 				{{- if eq .RuleType "ppExclusiveMaximum"}}
-				if num >= {{countExpr .Value}} {
-					return jsonValueErrorf("value %v must be less than {{fmtText .Value}}", num)
+				if {{numViolated . "json.Number(_lit)"}} {
+					return jsonValueErrorf("value %s must be less than {{fmtText .Value}}", _lit)
 				}
 				{{- end}}
 				{{- if eq .RuleType "ppMultipleOf"}}
-				_quot := num / {{numLit .Value}}
-				if math.Abs(_quot - math.Round(_quot)) > 1e-9 {
-					return jsonValueErrorf("value %v is not a multiple of {{fmtText .Value}}", num)
+				if {{numViolated . "json.Number(_lit)"}} {
+					return jsonValueErrorf("value %s is not a multiple of {{fmtText .Value}}", _lit)
 				}
 				{{- end}}
 			}
@@ -119,31 +114,11 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{{- end}}
 		{{- if eq .RuleType "ppType"}}
 		{
-			_trim := bytes.TrimSpace(_nonObj)
-			var jt string
-			if len(_trim) == 0 {
-				jt = "unknown"
-			} else {
-				switch _trim[0] {
-				case '"': jt = "string"
-				case '{': jt = "object"
-				case '[': jt = "array"
-				case 't', 'f': jt = "boolean"
-				case 'n': jt = "null"
-				default:
-					jt = "number"
-					isInt := true
-					for _, _ch := range _trim {
-						if _ch == '.' || _ch == 'e' || _ch == 'E' {
-							isInt = false
-							break
-						}
-					}
-					if isInt {
-						jt = "integer"
-					}
-				}
-			}
+			{{- /* The JSON type the raw value is, with "integer" read the way the
+			       schema's draft reads it: off the token under draft 3 and 4, off
+			       the value -- so 1.0 is one -- from draft 6 on. This scanned the
+			       token under every draft. See jsonRawKind. */}}
+			jt := jsonRawKind(_nonObj, {{if .StrictInteger}}true{{else}}false{{end}})
 			{{- $wants := ppTypeValues .Value}}
 			{{- if eq (len $wants) 1}}
 			{{- $want := index $wants 0}}
@@ -226,91 +201,61 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- end}}
+	{{- /* The numeric keywords. numViolated writes the condition under which the
+	       rule is broken, for the Go type the field holds its number as, and
+	       every form it writes is exact -- see numViolatedFunc. */}}
 	{{- if eq .RuleType "minimum"}}
 	{{- if .IsPointer}}
-	if {{$recv}}.{{.FieldName}} != nil && {{numOperand . (printf "*%s.%s" $recv .FieldName)}} < {{numBound .}} {
+	if {{$recv}}.{{.FieldName}} != nil && {{numViolated . (printf "*%s.%s" $recv .FieldName)}} {
 		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is less than minimum {{numBoundMsg .}}", *{{$recv}}.{{.FieldName}})
 	}
 	{{- else}}
-	if {{numOperand . (printf "%s.%s" $recv .FieldName)}} < {{numBound .}} {
+	if {{numViolated . (printf "%s.%s" $recv .FieldName)}} {
 		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is less than minimum {{numBoundMsg .}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "maximum"}}
 	{{- if .IsPointer}}
-	if {{$recv}}.{{.FieldName}} != nil && {{numOperand . (printf "*%s.%s" $recv .FieldName)}} > {{numBound .}} {
+	if {{$recv}}.{{.FieldName}} != nil && {{numViolated . (printf "*%s.%s" $recv .FieldName)}} {
 		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v exceeds maximum {{numBoundMsg .}}", *{{$recv}}.{{.FieldName}})
 	}
 	{{- else}}
-	if {{numOperand . (printf "%s.%s" $recv .FieldName)}} > {{numBound .}} {
+	if {{numViolated . (printf "%s.%s" $recv .FieldName)}} {
 		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v exceeds maximum {{numBoundMsg .}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMinimum"}}
 	{{- if .IsPointer}}
-	if {{$recv}}.{{.FieldName}} != nil && {{numOperand . (printf "*%s.%s" $recv .FieldName)}} <= {{numBound .}} {
+	if {{$recv}}.{{.FieldName}} != nil && {{numViolated . (printf "*%s.%s" $recv .FieldName)}} {
 		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be greater than {{numBoundMsg .}}", *{{$recv}}.{{.FieldName}})
 	}
 	{{- else}}
-	if {{numOperand . (printf "%s.%s" $recv .FieldName)}} <= {{numBound .}} {
+	if {{numViolated . (printf "%s.%s" $recv .FieldName)}} {
 		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be greater than {{numBoundMsg .}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMaximum"}}
 	{{- if .IsPointer}}
-	if {{$recv}}.{{.FieldName}} != nil && {{numOperand . (printf "*%s.%s" $recv .FieldName)}} >= {{numBound .}} {
+	if {{$recv}}.{{.FieldName}} != nil && {{numViolated . (printf "*%s.%s" $recv .FieldName)}} {
 		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be less than {{numBoundMsg .}}", *{{$recv}}.{{.FieldName}})
 	}
 	{{- else}}
-	if {{numOperand . (printf "%s.%s" $recv .FieldName)}} >= {{numBound .}} {
+	if {{numViolated . (printf "%s.%s" $recv .FieldName)}} {
 		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v must be less than {{numBoundMsg .}}", {{$recv}}.{{.FieldName}})
 	}
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "multipleOf"}}
-	{{- if .ExactCompare}}
-	{{- /* Exact: the two decimals are lined up and one integer divided by the
-	       other, rather than a float64 quotient compared against a tolerance
-	       that cannot tell neighbouring large numbers apart. */}}
 	{{- if .IsPointer}}
-	if {{$recv}}.{{.FieldName}} != nil && !{{exactMultipleOf . (printf "*%s.%s" $recv .FieldName)}} {
+	if {{$recv}}.{{.FieldName}} != nil && {{numViolated . (printf "*%s.%s" $recv .FieldName)}} {
 		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBoundMsg .}}", *{{$recv}}.{{.FieldName}})
 	}
 	{{- else}}
-	if !{{exactMultipleOf . (printf "%s.%s" $recv .FieldName)}} {
+	if {{numViolated . (printf "%s.%s" $recv .FieldName)}} {
 		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBoundMsg .}}", {{$recv}}.{{.FieldName}})
-	}
-	{{- end}}
-	{{- else if .IntegerCompare}}
-	{{- /* Exact: both operands are int64, so divisibility is a remainder
-	       rather than a float64 quotient compared against a tolerance. */}}
-	{{- if .IsPointer}}
-	if {{$recv}}.{{.FieldName}} != nil && *{{$recv}}.{{.FieldName}} % {{numBound .}} != 0 {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBoundMsg .}}", *{{$recv}}.{{.FieldName}})
-	}
-	{{- else}}
-	if {{$recv}}.{{.FieldName}} % {{numBound .}} != 0 {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBoundMsg .}}", {{$recv}}.{{.FieldName}})
-	}
-	{{- end}}
-	{{- else}}
-	{
-		{{- if .IsPointer}}
-		if {{$recv}}.{{.FieldName}} != nil {
-		_quot := float64(*{{$recv}}.{{.FieldName}}) / {{numBound .}}
-		if math.Abs(_quot - math.Round(_quot)) > 1e-9 {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBoundMsg .}}", *{{$recv}}.{{.FieldName}})
-		}
-		}
-		{{- else}}
-		_quot := float64({{$recv}}.{{.FieldName}}) / {{numBound .}}
-		if math.Abs(_quot - math.Round(_quot)) > 1e-9 {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %v is not a multiple of {{numBoundMsg .}}", {{$recv}}.{{.FieldName}})
-		}
-		{{- end}}
 	}
 	{{- end}}
 	{{- end}}
@@ -414,18 +359,20 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "const"}}
-	{{- if .ExactCompare}}
-	{{- /* The const is a number and the value is held as its literal, so the
-	       two are compared as numbers: the general arm below compares against
-	       the const's text as folded through float64, which reads a literal
-	       float64 cannot hold as a neighbour it rounds to; the schema named the
-	       number. */}}
+	{{- if .ExactValue}}
+	{{- /* A numeric const is compared as a number, by value: 1.0 and 1e0 are
+	       the const 1 whatever the field holds them as. */}}
 	{{- if .IsPointer}}
-	if {{$recv}}.{{.FieldName}} != nil && {{exactConstViolated . (printf "*%s.%s" $recv .FieldName)}} {
+	{{- /* A nil pointer is a null the document wrote, or an absence the
+	       required check has already answered for; neither is the const. */}}
+	if {{$recv}}.{{.FieldName}} == nil {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value must be %s, got null", {{printf "%q" .Value}})
+	}
+	if {{numViolated . (printf "*%s.%s" $recv .FieldName)}} {
 		return fmt.Errorf("{{jsonErrorName .JSONName}}: value must be %s, got %s", {{printf "%q" .Value}}, _schemagenClipText(fmt.Sprint(*{{$recv}}.{{.FieldName}})))
 	}
 	{{- else}}
-	if {{exactConstViolated . (printf "%s.%s" $recv .FieldName)}} {
+	if {{numViolated . (printf "%s.%s" $recv .FieldName)}} {
 		return fmt.Errorf("{{jsonErrorName .JSONName}}: value must be %s, got %s", {{printf "%q" .Value}}, _schemagenClipText(fmt.Sprint({{$recv}}.{{.FieldName}})))
 	}
 	{{- end}}
@@ -539,29 +486,11 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			if _branchMatches {
 				if _raw, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .JSONName}}]; _ok {
 					{{- if .JSONType}}
-					_jt := "unknown"
-					_b := bytes.TrimSpace(_raw)
-					if len(_b) > 0 {
-						switch _b[0] {
-						case '"': _jt = "string"
-						case '{': _jt = "object"
-						case '[': _jt = "array"
-						case 't', 'f': _jt = "boolean"
-						case 'n': _jt = "null"
-						default:
-							_jt = "number"
-							_isInt := true
-							for _, _c := range _b {
-								if _c == '.' || _c == 'e' || _c == 'E' {
-									_isInt = false
-									break
-								}
-							}
-							if _isInt {
-								_jt = "integer"
-							}
-						}
-					}
+					{{- /* The member's JSON type, with "integer" read the way the
+					       property's draft reads it -- off the value from draft 6
+					       on, so {"k":1.0} matches an integer branch. This scanned
+					       the token under every draft. */}}
+					_jt := jsonRawKind(_raw, {{if .StrictInteger}}true{{else}}false{{end}})
 					{{- if eq .JSONType "number"}}
 					if _jt != "number" && _jt != "integer" {
 						_branchMatches = false
@@ -573,15 +502,16 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					{{- end}}
 					{{- end}}
 					{{- if .AllowedValues}}
+					{{- /* Compared by identity (see jsonMatchesConstRaw), not by
+					       the member's bytes: 1.0 is the member 1, and an object
+					       is its members in any order. */}}
 					if _branchMatches {
-						_valueMatches := false
-						switch string(bytes.TrimSpace(_raw)) {
-						{{- range .AllowedValues}}
-						case {{printf "%q" .}}:
-							_valueMatches = true
-						{{- end}}
-						}
-						if !_valueMatches {
+						_valueMatches, _valueErr := jsonMatchesConstRaw(_raw, jsonConstOf(false,
+							{{- range .AllowedValues}}
+							{{printf "%q" .}},
+							{{- end}}
+						))
+						if _valueErr != nil || !_valueMatches {
 							_branchMatches = false
 						}
 					}
@@ -619,29 +549,11 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			if _branchMatches {
 				if _raw, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .JSONName}}]; _ok {
 					{{- if .JSONType}}
-					_jt := "unknown"
-					_b := bytes.TrimSpace(_raw)
-					if len(_b) > 0 {
-						switch _b[0] {
-						case '"': _jt = "string"
-						case '{': _jt = "object"
-						case '[': _jt = "array"
-						case 't', 'f': _jt = "boolean"
-						case 'n': _jt = "null"
-						default:
-							_jt = "number"
-							_isInt := true
-							for _, _c := range _b {
-								if _c == '.' || _c == 'e' || _c == 'E' {
-									_isInt = false
-									break
-								}
-							}
-							if _isInt {
-								_jt = "integer"
-							}
-						}
-					}
+					{{- /* The member's JSON type, with "integer" read the way the
+					       property's draft reads it -- off the value from draft 6
+					       on, so {"k":1.0} matches an integer branch. This scanned
+					       the token under every draft. */}}
+					_jt := jsonRawKind(_raw, {{if .StrictInteger}}true{{else}}false{{end}})
 					{{- if eq .JSONType "number"}}
 					if _jt != "number" && _jt != "integer" {
 						_branchMatches = false
@@ -653,15 +565,16 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					{{- end}}
 					{{- end}}
 					{{- if .AllowedValues}}
+					{{- /* Compared by identity (see jsonMatchesConstRaw), not by
+					       the member's bytes: 1.0 is the member 1, and an object
+					       is its members in any order. */}}
 					if _branchMatches {
-						_valueMatches := false
-						switch string(bytes.TrimSpace(_raw)) {
-						{{- range .AllowedValues}}
-						case {{printf "%q" .}}:
-							_valueMatches = true
-						{{- end}}
-						}
-						if !_valueMatches {
+						_valueMatches, _valueErr := jsonMatchesConstRaw(_raw, jsonConstOf(false,
+							{{- range .AllowedValues}}
+							{{printf "%q" .}},
+							{{- end}}
+						))
+						if _valueErr != nil || !_valueMatches {
 							_branchMatches = false
 						}
 					}
@@ -768,46 +681,11 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				{{- range $pp.Validations}}
 				{{- if eq .RuleType "ppType"}}
 				{
-					_trim := bytes.TrimSpace(_member)
-					var jt string
-					if len(_trim) == 0 {
-						jt = "unknown"
-					} else {
-						switch _trim[0] {
-						case '"': jt = "string"
-						case '{': jt = "object"
-						case '[': jt = "array"
-						case 't', 'f': jt = "boolean"
-						case 'n': jt = "null"
-						default:
-							jt = "number"
-							{{- if $pp.StrictInteger}}
-							// Draft 3 and 4 read the token: a number written with a
-							// fractional part or an exponent is not an integer,
-							// whatever its value.
-							isInt := true
-							for _, _ch := range _trim {
-								if _ch == '.' || _ch == 'e' || _ch == 'E' {
-									isInt = false
-									break
-								}
-							}
-							if isInt {
-								jt = "integer"
-							}
-							{{- else}}
-							// Draft 6 onward reads the value: 1.0 is an integer, so
-							// the number is parsed rather than scanned. Every arm
-							// below that accepts "number" also accepts "integer", so
-							// widening this classification narrows nothing.
-							var _ppNum float64
-							if json.Unmarshal(_trim, &_ppNum) == nil &&
-								!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
-								jt = "integer"
-							}
-							{{- end}}
-						}
-					}
+					{{- /* Draft 3 and 4 read "integer" off the token, and every
+					       later draft off the value, so 1.0 is one there. The value
+					       is read from the literal: a float64 made 1e400 a decode
+					       error, and so not an integer. See jsonRawKind. */}}
+					jt := jsonRawKind(_member, {{if $pp.StrictInteger}}true{{else}}false{{end}})
 					{{- $wants := ppTypeValues .Value}}
 					{{- if eq (len $wants) 1}}
 					{{- $want := index $wants 0}}
@@ -843,37 +721,33 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				{{- end}}
 				{{- if or (eq .RuleType "ppMinimum") (eq .RuleType "ppMaximum") (eq .RuleType "ppExclusiveMinimum") (eq .RuleType "ppExclusiveMaximum") (eq .RuleType "ppMultipleOf")}}
 				{
-					// Through a pointer, so that a null is told apart from a
-					// number: encoding/json takes a null into a float64 as a
-					// no-op and reports no error, so the bound was measured
-					// against a zero the document never wrote (issue #270).
-					var _num *float64
-					if err := json.Unmarshal(_member, &_num); err == nil && _num != nil {
-						num := *_num
+					// Read as the literal the document wrote, and only when it is
+					// a number: a null is not a zero (issue #270), and a float64
+					// would round the digits the keyword is about.
+					if _lit, _isNum := jsonRawNumber(_member); _isNum {
 						{{- if eq .RuleType "ppMinimum"}}
-						if num < {{countExpr .Value}} {
-							return fmt.Errorf("patternProperties %s: key %s value %v is less than minimum {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), num)
+						if {{numViolated . "json.Number(_lit)"}} {
+							return fmt.Errorf("patternProperties %s: key %s value %s is less than minimum {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), _lit)
 						}
 						{{- end}}
 						{{- if eq .RuleType "ppMaximum"}}
-						if num > {{countExpr .Value}} {
-							return fmt.Errorf("patternProperties %s: key %s value %v exceeds maximum {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), num)
+						if {{numViolated . "json.Number(_lit)"}} {
+							return fmt.Errorf("patternProperties %s: key %s value %s exceeds maximum {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), _lit)
 						}
 						{{- end}}
 						{{- if eq .RuleType "ppExclusiveMinimum"}}
-						if num <= {{countExpr .Value}} {
-							return fmt.Errorf("patternProperties %s: key %s value %v must be greater than {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), num)
+						if {{numViolated . "json.Number(_lit)"}} {
+							return fmt.Errorf("patternProperties %s: key %s value %s must be greater than {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), _lit)
 						}
 						{{- end}}
 						{{- if eq .RuleType "ppExclusiveMaximum"}}
-						if num >= {{countExpr .Value}} {
-							return fmt.Errorf("patternProperties %s: key %s value %v must be less than {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), num)
+						if {{numViolated . "json.Number(_lit)"}} {
+							return fmt.Errorf("patternProperties %s: key %s value %s must be less than {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), _lit)
 						}
 						{{- end}}
 						{{- if eq .RuleType "ppMultipleOf"}}
-						_quot := num / {{numLit .Value}}
-						if math.Abs(_quot - math.Round(_quot)) > 1e-9 {
-							return fmt.Errorf("patternProperties %s: key %s value %v is not a multiple of {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), num)
+						if {{numViolated . "json.Number(_lit)"}} {
+							return fmt.Errorf("patternProperties %s: key %s value %s is not a multiple of {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), _lit)
 						}
 						{{- end}}
 					}
@@ -1362,6 +1236,8 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		_rbInstance := make(map[string]any, len({{$recv}}._jsonRawProps))
 		{{- $lk := leastKey "_rbKey" "_rbRaw" (printf "%s._jsonRawProps" $recv) "_failed"}}
 		{{- template "least_key_open" $lk}}
+			{{- /* Read lazily, with every number the literal the document wrote,
+			       which the evaluator judges exactly. See jsonHeld. */}}
 			_rbVal, _rbErr := jsonHeld({{$recv}}._doc, _rbRaw)
 			if _rbErr != nil {
 				return jsonValueErrorf("cannot decode property %s: %w", _schemagenQuote(_rbKey), _rbErr)
@@ -1467,7 +1343,10 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- end}}
 			{{- range .IfBranch.ConstChecks}}
 			if _ifMatch {
-				if _rv, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .PropertyName}}]; !_ok || string(_rv) != {{printf "%q" .JSONValue}} {
+				{{- /* By identity, not by bytes: {"k":1.0} is the const 1. */}}
+				if _rv, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .PropertyName}}]; !_ok {
+					_ifMatch = false
+				} else if _cm, _ce := jsonMatchesConstRaw(_rv, jsonConstOf(false, {{printf "%q" .JSONValue}})); _ce != nil || !_cm {
 					_ifMatch = false
 				}
 			}
@@ -1498,7 +1377,9 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- end}}
 			{{- range $branch.ConstChecks}}
 			if _branchMatch {
-				if _rv, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .PropertyName}}]; !_ok || string(_rv) != {{printf "%q" .JSONValue}} {
+				if _rv, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .PropertyName}}]; !_ok {
+					_branchMatch = false
+				} else if _cm, _ce := jsonMatchesConstRaw(_rv, jsonConstOf(false, {{printf "%q" .JSONValue}})); _ce != nil || !_cm {
 					_branchMatch = false
 				}
 			}
@@ -1525,7 +1406,9 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				{{- end}}
 				{{- range $branch.ConstChecks}}
 				if _branchMatch {
-					if _rv, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .PropertyName}}]; !_ok || string(_rv) != {{printf "%q" .JSONValue}} {
+					if _rv, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .PropertyName}}]; !_ok {
+						_branchMatch = false
+					} else if _cm, _ce := jsonMatchesConstRaw(_rv, jsonConstOf(false, {{printf "%q" .JSONValue}})); _ce != nil || !_cm {
 						_branchMatch = false
 					}
 				}
@@ -1610,6 +1493,26 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				if string(_member) != "null" {
 					return jsonValueErrorf("unevaluated property %s: must be null", _schemagenQuote(_key))
 				}
+				{{- else if $uneval.ValueJSONType}}
+				{{- /* A number is judged on the member's own literal. Decoded
+				       into a Go number first, 1.0 was refused as an integer
+				       (int64 will not take it) and 1e400 as a number, and the
+				       bounds saw a rounded value. See jsonRawKind. */}}
+				{{- if $uneval.ValueTypeStated}}
+				_uKind := jsonRawKind(_member, false)
+				{{- if eq $uneval.ValueJSONType "integer"}}
+				if _uKind != "integer" {
+					return jsonValueErrorf("unevaluated property %s: must be an integer", _schemagenQuote(_key))
+				}
+				{{- else}}
+				if _uKind != "integer" && _uKind != "number" {
+					return jsonValueErrorf("unevaluated property %s: must be a number", _schemagenQuote(_key))
+				}
+				{{- end}}
+				{{- end}}
+				{{- range $uneval.Validations}}
+				{{- template "validation_rule_inline" .}}
+				{{- end}}
 				{{- else if $uneval.ValueType}}
 				var _uVal {{$uneval.ValueType}}
 				if _uErr := {{if $uneval.ValueDecoder}}jsonDecodeHeld({{$recv}}._doc, _member, &_uVal, {{$uneval.ValueDecoder}}){{else}}json.Unmarshal(_member, &_uVal){{end}}; _uErr != nil {
@@ -1660,6 +1563,26 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				if string(_member) != "null" {
 					return jsonValueErrorf("unevaluated property %s: must be null", _schemagenQuote(_key))
 				}
+				{{- else if $uneval.ValueJSONType}}
+				{{- /* A number is judged on the member's own literal. Decoded
+				       into a Go number first, 1.0 was refused as an integer
+				       (int64 will not take it) and 1e400 as a number, and the
+				       bounds saw a rounded value. See jsonRawKind. */}}
+				{{- if $uneval.ValueTypeStated}}
+				_uKind := jsonRawKind(_member, false)
+				{{- if eq $uneval.ValueJSONType "integer"}}
+				if _uKind != "integer" {
+					return jsonValueErrorf("unevaluated property %s: must be an integer", _schemagenQuote(_key))
+				}
+				{{- else}}
+				if _uKind != "integer" && _uKind != "number" {
+					return jsonValueErrorf("unevaluated property %s: must be a number", _schemagenQuote(_key))
+				}
+				{{- end}}
+				{{- end}}
+				{{- range $uneval.Validations}}
+				{{- template "validation_rule_inline" .}}
+				{{- end}}
 				{{- else if $uneval.ValueType}}
 				var _uVal {{$uneval.ValueType}}
 				if _uErr := {{if $uneval.ValueDecoder}}jsonDecodeHeld({{$recv}}._doc, _member, &_uVal, {{$uneval.ValueDecoder}}){{else}}json.Unmarshal(_member, &_uVal){{end}}; _uErr != nil {
@@ -1757,63 +1680,35 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{$container}} {
 		return {{$errf}}("{{$path}}: value %s does not match pattern %s", {{$args}}, _schemagenQuote(string({{$elem}})), {{printf "%q" .Value}})
 	}
 	{{- end}}
+	{{- /* An element's numeric keywords, written for the element's own Go type
+	       exactly as a field's are. They used to be written as float64(elem)
+	       for every element that was not a json.Number, which is how
+	       [9007199254740993] passed {"items":{"type":"integer","maximum":
+	       9007199254740992}} while the same bound on a scalar field refused it. */}}
 	{{- if eq .RuleType "minimum"}}
-	{{- if .ExactCompare}}
-	if {{numOperand . $elem}} < {{numBound .}} {
-		return {{$errf}}("{{$path}}: value %v is less than minimum {{numBoundMsg .}}", {{$args}}, {{$elem}})
-	}
-	{{- else}}
-	if float64({{$elem}}) < {{countExpr .Value}} {
+	if {{numViolated . $elem}} {
 		return {{$errf}}("{{$path}}: value %v is less than minimum {{fmtText .Value}}", {{$args}}, {{$elem}})
 	}
 	{{- end}}
-	{{- end}}
 	{{- if eq .RuleType "maximum"}}
-	{{- if .ExactCompare}}
-	if {{numOperand . $elem}} > {{numBound .}} {
-		return {{$errf}}("{{$path}}: value %v exceeds maximum {{numBoundMsg .}}", {{$args}}, {{$elem}})
-	}
-	{{- else}}
-	if float64({{$elem}}) > {{countExpr .Value}} {
+	if {{numViolated . $elem}} {
 		return {{$errf}}("{{$path}}: value %v exceeds maximum {{fmtText .Value}}", {{$args}}, {{$elem}})
 	}
 	{{- end}}
-	{{- end}}
 	{{- if eq .RuleType "exclusiveMinimum"}}
-	{{- if .ExactCompare}}
-	if {{numOperand . $elem}} <= {{numBound .}} {
-		return {{$errf}}("{{$path}}: value %v must be greater than {{numBoundMsg .}}", {{$args}}, {{$elem}})
-	}
-	{{- else}}
-	if float64({{$elem}}) <= {{countExpr .Value}} {
+	if {{numViolated . $elem}} {
 		return {{$errf}}("{{$path}}: value %v must be greater than {{fmtText .Value}}", {{$args}}, {{$elem}})
 	}
 	{{- end}}
-	{{- end}}
 	{{- if eq .RuleType "exclusiveMaximum"}}
-	{{- if .ExactCompare}}
-	if {{numOperand . $elem}} >= {{numBound .}} {
-		return {{$errf}}("{{$path}}: value %v must be less than {{numBoundMsg .}}", {{$args}}, {{$elem}})
-	}
-	{{- else}}
-	if float64({{$elem}}) >= {{countExpr .Value}} {
+	if {{numViolated . $elem}} {
 		return {{$errf}}("{{$path}}: value %v must be less than {{fmtText .Value}}", {{$args}}, {{$elem}})
 	}
 	{{- end}}
-	{{- end}}
 	{{- if eq .RuleType "multipleOf"}}
-	{{- if .ExactCompare}}
-	if !{{exactMultipleOf . $elem}} {
-		return {{$errf}}("{{$path}}: value %v is not a multiple of {{numBoundMsg .}}", {{$args}}, {{$elem}})
+	if {{numViolated . $elem}} {
+		return {{$errf}}("{{$path}}: value %v is not a multiple of {{fmtText .Value}}", {{$args}}, {{$elem}})
 	}
-	{{- else}}
-	{
-		_q := float64({{$elem}}) / {{numLit .Value}}
-		if math.Abs(_q - math.Round(_q)) > 1e-9 {
-			return {{$errf}}("{{$path}}: value %v is not a multiple of {{fmtText .Value}}", {{$args}}, {{$elem}})
-		}
-	}
-	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "minItems"}}
 	if len({{$elem}}) < {{countExpr .Value}} {
@@ -1848,8 +1743,8 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{$container}} {
 	{{- template "string_content_check" (mkStringContentCtxArgs $elem $path $args .)}}
 	{{- end}}
 	{{- if eq .RuleType "const"}}
-	{{- if .ExactCompare}}
-	if {{exactConstViolated . $elem}} {
+	{{- if .ExactValue}}
+	if {{numViolated . $elem}} {
 		return {{$errf}}("{{$path}}: value must be %s, got %s", {{$args}}, {{printf "%q" .Value}}, _schemagenClipText(fmt.Sprint({{$elem}})))
 	}
 	{{- else}}
@@ -1935,49 +1830,33 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{$container}} {
 					return jsonValueErrorf("unevaluated property %s: length %d exceeds maximum {{fmtText .Value}}", _schemagenQuote(_key), utf8.RuneCountInString(_uVal))
 				}
 {{- end}}
+{{- /* The numeric keywords read the member's raw literal: a number value is
+       never decoded into _uVal (see the ValueJSONType arm that calls this),
+       and a member that is not a number breaks none of them. */}}
 {{- if eq .RuleType "minimum"}}
-{{- if .ExactCompare}}
-				if {{numOperand . "_uVal"}} < {{numBound .}} {
-					return jsonValueErrorf("unevaluated property %s: value %v is less than minimum {{numBoundMsg .}}", _schemagenQuote(_key), _uVal)
+				if {{numViolated . "json.RawMessage(_member)"}} {
+					return jsonValueErrorf("unevaluated property %s: value %s is less than minimum {{fmtText .Value}}", _schemagenQuote(_key), _member)
 				}
-{{- else}}
-				if float64(_uVal) < {{countExpr .Value}} {
-					return jsonValueErrorf("unevaluated property %s: value %v is less than minimum {{fmtText .Value}}", _schemagenQuote(_key), _uVal)
-				}
-{{- end}}
 {{- end}}
 {{- if eq .RuleType "maximum"}}
-{{- if .ExactCompare}}
-				if {{numOperand . "_uVal"}} > {{numBound .}} {
-					return jsonValueErrorf("unevaluated property %s: value %v exceeds maximum {{numBoundMsg .}}", _schemagenQuote(_key), _uVal)
+				if {{numViolated . "json.RawMessage(_member)"}} {
+					return jsonValueErrorf("unevaluated property %s: value %s exceeds maximum {{fmtText .Value}}", _schemagenQuote(_key), _member)
 				}
-{{- else}}
-				if float64(_uVal) > {{countExpr .Value}} {
-					return jsonValueErrorf("unevaluated property %s: value %v exceeds maximum {{fmtText .Value}}", _schemagenQuote(_key), _uVal)
-				}
-{{- end}}
 {{- end}}
 {{- if eq .RuleType "exclusiveMinimum"}}
-{{- if .ExactCompare}}
-				if {{numOperand . "_uVal"}} <= {{numBound .}} {
-					return jsonValueErrorf("unevaluated property %s: value %v must be greater than {{numBoundMsg .}}", _schemagenQuote(_key), _uVal)
+				if {{numViolated . "json.RawMessage(_member)"}} {
+					return jsonValueErrorf("unevaluated property %s: value %s must be greater than {{fmtText .Value}}", _schemagenQuote(_key), _member)
 				}
-{{- else}}
-				if float64(_uVal) <= {{countExpr .Value}} {
-					return jsonValueErrorf("unevaluated property %s: value %v must be greater than {{fmtText .Value}}", _schemagenQuote(_key), _uVal)
-				}
-{{- end}}
 {{- end}}
 {{- if eq .RuleType "exclusiveMaximum"}}
-{{- if .ExactCompare}}
-				if {{numOperand . "_uVal"}} >= {{numBound .}} {
-					return jsonValueErrorf("unevaluated property %s: value %v must be less than {{numBoundMsg .}}", _schemagenQuote(_key), _uVal)
-				}
-{{- else}}
-				if float64(_uVal) >= {{countExpr .Value}} {
-					return jsonValueErrorf("unevaluated property %s: value %v must be less than {{fmtText .Value}}", _schemagenQuote(_key), _uVal)
+				if {{numViolated . "json.RawMessage(_member)"}} {
+					return jsonValueErrorf("unevaluated property %s: value %s must be less than {{fmtText .Value}}", _schemagenQuote(_key), _member)
 				}
 {{- end}}
+{{- if eq .RuleType "const"}}
+				if {{numViolated . "json.RawMessage(_member)"}} {
+					return jsonValueErrorf("unevaluated property %s: value must be %s, got %s", _schemagenQuote(_key), {{printf "%q" .Value}}, _schemagenClipText(string(_member)))
+				}
 {{- end}}
 {{- if eq .RuleType "pattern"}}
 				if _uMatched, _uMErr := {{patternVar .Value}}.matches(string(_uVal)); _uMErr != nil {
@@ -1987,18 +1866,9 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{$container}} {
 				}
 {{- end}}
 {{- if eq .RuleType "multipleOf"}}
-{{- if .ExactCompare}}
-				if !{{exactMultipleOf . "_uVal"}} {
-					return jsonValueErrorf("unevaluated property %s: value %v is not a multiple of {{numBoundMsg .}}", _schemagenQuote(_key), _uVal)
+				if {{numViolated . "json.RawMessage(_member)"}} {
+					return jsonValueErrorf("unevaluated property %s: value %s is not a multiple of {{fmtText .Value}}", _schemagenQuote(_key), _member)
 				}
-{{- else}}
-				{
-					_q := float64(_uVal) / {{numLit .Value}}
-					if math.Abs(_q - math.Round(_q)) > 1e-9 {
-						return jsonValueErrorf("unevaluated property %s: value %v is not a multiple of {{fmtText .Value}}", _schemagenQuote(_key), _uVal)
-					}
-				}
-{{- end}}
 {{- end}}
 {{- end}}
 
@@ -2170,11 +2040,17 @@ declares a field for it at all.
 			{{- range .Def.Checks}}
 			{{- if eq .CheckType "type"}}
 			{{- if eq .Value "integer"}}
-			if _cf, _cOK := jsonFloatOf(_cKind, _cText); !_cOK || _cf != math.Trunc(_cf) {
+			{{- /* contains is draft 6 on, where a zero fractional part makes an
+			       integer. Decided on the number's literal as the element holds
+			       it -- every digit of a json.Number or raw member, a float64's
+			       shortest spelling -- rather than through a float64 parse,
+			       which called 1e400 no number at all and 9007199254740993.5 an
+			       integer. */}}
+			if _cKind != jsonIDNumberKind || !jsonDecimalIsIntegral(_cText) {
 				_cMatch = false
 			}
 			{{- else if eq .Value "number"}}
-			if _, _cOK := jsonFloatOf(_cKind, _cText); !_cOK {
+			if _cKind != jsonIDNumberKind {
 				_cMatch = false
 			}
 			{{- else if eq .Value "string"}}
@@ -2207,47 +2083,14 @@ declares a field for it at all.
 			       a null, which encoding/json decodes into a float64 as 0 and
 			       into a string as "", was measured as that zero. */}}
 			{{- else if or (eq .CheckType "minimum") (eq .CheckType "maximum") (eq .CheckType "exclusiveMinimum") (eq .CheckType "exclusiveMaximum") (eq .CheckType "multipleOf")}}
-			if _cMatch && _cKind == jsonIDNumberKind {
-				{{- if $.Def.ExactNumbers}}
-				{{- if eq .CheckType "minimum"}}
-				if jsonNumberCmp(json.Number(_cText), {{jsonNumberLiteral .Value}}) < 0 {
-				{{- else if eq .CheckType "maximum"}}
-				if jsonNumberCmp(json.Number(_cText), {{jsonNumberLiteral .Value}}) > 0 {
-				{{- else if eq .CheckType "exclusiveMinimum"}}
-				if jsonNumberCmp(json.Number(_cText), {{jsonNumberLiteral .Value}}) <= 0 {
-				{{- else if eq .CheckType "exclusiveMaximum"}}
-				if jsonNumberCmp(json.Number(_cText), {{jsonNumberLiteral .Value}}) >= 0 {
-				{{- else}}
-				if !jsonNumberIsMultipleOf(json.Number(_cText), {{jsonNumberLiteral .Value}}) {
-				{{- end}}
-					_cMatch = false
-				}
-				{{- else}}
-				_cf, _cOK := jsonFloatOf(_cKind, _cText)
-				{{- if eq .CheckType "minimum"}}
-				if !_cOK || _cf < {{countExpr .Value}} {
-					_cMatch = false
-				}
-				{{- else if eq .CheckType "maximum"}}
-				if !_cOK || _cf > {{countExpr .Value}} {
-					_cMatch = false
-				}
-				{{- else if eq .CheckType "exclusiveMinimum"}}
-				if !_cOK || _cf <= {{countExpr .Value}} {
-					_cMatch = false
-				}
-				{{- else if eq .CheckType "exclusiveMaximum"}}
-				if !_cOK || _cf >= {{countExpr .Value}} {
-					_cMatch = false
-				}
-				{{- else}}
-				if !_cOK {
-					_cMatch = false
-				} else if _cq := _cf / {{numLit .Value}}; math.Abs(_cq - math.Round(_cq)) > 1e-9 {
-					_cMatch = false
-				}
-				{{- end}}
-				{{- end}}
+			{{- /* Decided on the element's number exactly, through the core: its
+			       literal as the element holds it -- every digit of a json.Number,
+			       a raw member or a --big-int wrapper, an int64's digits, a
+			       float64's shortest spelling. A float64 parse with a 1e-9
+			       tolerance on the quotient called 1.0000000001 a multiple of 1,
+			       and 1e400 no number at all. */}}
+			if _cMatch && _cKind == jsonIDNumberKind && {{numAnyViolated .CheckType .Value "json.Number(_cText)"}} {
+				_cMatch = false
 			}
 			{{- else if eq .CheckType "minLength"}}
 			if _cMatch && _cKind == jsonIDStringKind && len([]rune(_cText)) < {{countExpr .Value}} {
@@ -2399,13 +2242,15 @@ declares a field for it at all.
 		}
 {{- else if .JSONType}}
 		if {{$.Cond}} {
+			{{- /* Any Go type a number can be held in, not only the float64 a
+			       decode into `any` makes: a tuple built in Go may hold an int64,
+			       and one read with UseNumber a json.Number. */}}
 			{{- if eq .JSONType "integer"}}
-			_cv, _cvOk := _elem.(float64)
-			if !_cvOk || _cv != math.Trunc(_cv) {
+			if !jsonIsInteger(_elem, {{if .StrictInteger}}true{{else}}false{{end}}) {
 				return {{$errf}}("{{$path}}[%d]: expected integer, got %T", {{$args}}_idx, _elem)
 			}
 			{{- else if eq .JSONType "number"}}
-			if _, _cvOk := _elem.(float64); !_cvOk {
+			if !jsonIsNumber(_elem) {
 				return {{$errf}}("{{$path}}[%d]: expected number, got %T", {{$args}}_idx, _elem)
 			}
 			{{- else if eq .JSONType "string"}}
@@ -2480,11 +2325,14 @@ declares a field for it at all.
 					return {{$errf}}("{{$path}}[%d]: must be a string", {{$args}}_ui)
 				}
 				{{- else if eq .ValueType "integer"}}
-				if _uiNum, _uiOK := jsonFloatOf(_uiKind, _uiText); !_uiOK || _uiNum != math.Trunc(_uiNum) {
+				{{- /* Decided on the item's literal as it is held: unevaluatedItems
+				       is 2019-09 on, where 1.0 is an integer, and a float64 parse
+				       called 1e400 no number at all. */}}
+				if _uiKind != jsonIDNumberKind || !jsonDecimalIsIntegral(_uiText) {
 					return {{$errf}}("{{$path}}[%d]: must be an integer", {{$args}}_ui)
 				}
 				{{- else if eq .ValueType "number"}}
-				if _, _uiOK := jsonFloatOf(_uiKind, _uiText); !_uiOK {
+				if _uiKind != jsonIDNumberKind {
 					return {{$errf}}("{{$path}}[%d]: must be a number", {{$args}}_ui)
 				}
 				{{- else if eq .ValueType "boolean"}}
@@ -2542,28 +2390,29 @@ declares a field for it at all.
 {{- $errf := pathErrf $path}}
 {{- $args := argPrefix .Args}}
 {{- range .Def.Checks}}
+				{{- /* The numeric keywords read the element's own number in
+				       whatever Go type the slice holds it. A type assertion to
+				       float64 saw nothing in a []int64 or a []json.Number, and
+				       let every element of those through unchecked. */}}
 				{{- if eq .CheckType "minimum"}}
-				if _uiNumVal, _uiOk := _uiElem.(float64); _uiOk && _uiNumVal < {{countExpr .Value}} {
+				if {{numAnyViolated .CheckType .Value "_uiElem"}} {
 					return {{$errf}}("{{$path}}[%d]: must be >= {{fmtText .Value}}", {{$args}}_ui)
 				}
 				{{- else if eq .CheckType "maximum"}}
-				if _uiNumVal, _uiOk := _uiElem.(float64); _uiOk && _uiNumVal > {{countExpr .Value}} {
+				if {{numAnyViolated .CheckType .Value "_uiElem"}} {
 					return {{$errf}}("{{$path}}[%d]: must be <= {{fmtText .Value}}", {{$args}}_ui)
 				}
 				{{- else if eq .CheckType "exclusiveMinimum"}}
-				if _uiNumVal, _uiOk := _uiElem.(float64); _uiOk && _uiNumVal <= {{countExpr .Value}} {
+				if {{numAnyViolated .CheckType .Value "_uiElem"}} {
 					return {{$errf}}("{{$path}}[%d]: must be > {{fmtText .Value}}", {{$args}}_ui)
 				}
 				{{- else if eq .CheckType "exclusiveMaximum"}}
-				if _uiNumVal, _uiOk := _uiElem.(float64); _uiOk && _uiNumVal >= {{countExpr .Value}} {
+				if {{numAnyViolated .CheckType .Value "_uiElem"}} {
 					return {{$errf}}("{{$path}}[%d]: must be < {{fmtText .Value}}", {{$args}}_ui)
 				}
 				{{- else if eq .CheckType "multipleOf"}}
-				if _uiNumVal, _uiOk := _uiElem.(float64); _uiOk {
-					_uiQuot := _uiNumVal / {{numLit .Value}}
-					if math.Abs(_uiQuot-math.Round(_uiQuot)) > 1e-9 {
-						return {{$errf}}("{{$path}}[%d]: must be a multiple of {{fmtText .Value}}", {{$args}}_ui)
-					}
+				if {{numAnyViolated .CheckType .Value "_uiElem"}} {
+					return {{$errf}}("{{$path}}[%d]: must be a multiple of {{fmtText .Value}}", {{$args}}_ui)
 				}
 				{{- else if eq .CheckType "minLength"}}
 				if _uiStrKind, _uiStrVal := jsonKindAny(_uiElem); _uiStrKind == jsonIDStringKind && utf8.RuneCountInString(_uiStrVal) < {{countExpr .Value}} {

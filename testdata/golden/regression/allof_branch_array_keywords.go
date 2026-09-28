@@ -5,7 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 )
 
 type ContainsInt []any
@@ -46,7 +45,7 @@ func (c ContainsInt) Validate() error {
 			_cKind, _cText := jsonKindAt(&_cArr[_ci])
 			_ = _cText
 			_cMatch := true
-			if _cf, _cOK := jsonFloatOf(_cKind, _cText); !_cOK || _cf != math.Trunc(_cf) {
+			if _cKind != jsonIDNumberKind || !jsonDecimalIsIntegral(_cText) {
 				_cMatch = false
 			}
 			if _cMatch {
@@ -78,6 +77,7 @@ func (h *HasInteger) UnmarshalJSON(data []byte) error {
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &h._value); _err == nil {
 		h._isRaw = false
+		h._raw = append(h._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -124,15 +124,29 @@ func (h HasInteger) Validate() error {
 	if h._isRaw {
 		return nil // Constraints don't apply to non-matching types.
 	}
+	// The elements as the document wrote them, where the value was decoded
+	// from one: decoded into []any they are float64s, which round the digits
+	// the element keywords are about. Read again here keeping every number as
+	// its literal; a value assembled in Go is judged as it stands.
+	_items := h._value
+	if len(h._raw) > 0 {
+		var _decoded any
+		if jsonDecodeNumbers(h._raw, &_decoded) == nil {
+			if _arr, _ok := _decoded.([]any); _ok {
+				_items = _arr
+			}
+		}
+	}
+	_ = _items
 	// contains validation: count elements matching the contains sub-schema.
 	{
 		_containsCount := 0
-		_cArr := h._value
+		_cArr := _items
 		for _ci := range _cArr {
 			_cKind, _cText := jsonKindAt(&_cArr[_ci])
 			_ = _cText
 			_cMatch := true
-			if _cf, _cOK := jsonFloatOf(_cKind, _cText); !_cOK || _cf != math.Trunc(_cf) {
+			if _cKind != jsonIDNumberKind || !jsonDecimalIsIntegral(_cText) {
 				_cMatch = false
 			}
 			if _cMatch {
@@ -268,7 +282,7 @@ func (r RefToContains) Validate() error {
 			_cKind, _cText := jsonKindAt(&_cArr[_ci])
 			_ = _cText
 			_cMatch := true
-			if _cf, _cOK := jsonFloatOf(_cKind, _cText); !_cOK || _cf != math.Trunc(_cf) {
+			if _cKind != jsonIDNumberKind || !jsonDecimalIsIntegral(_cText) {
 				_cMatch = false
 			}
 			if _cMatch {

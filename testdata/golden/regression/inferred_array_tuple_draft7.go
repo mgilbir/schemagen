@@ -299,6 +299,7 @@ func (i *InferredArrayTupleDraft7One) UnmarshalJSON(data []byte) error {
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &i._value); _err == nil {
 		i._isRaw = false
+		i._raw = append(i._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -345,8 +346,22 @@ func (i InferredArrayTupleDraft7One) Validate() error {
 	if i._isRaw {
 		return nil // Constraints don't apply to non-matching types.
 	}
+	// The elements as the document wrote them, where the value was decoded
+	// from one: decoded into []any they are float64s, which round the digits
+	// the element keywords are about. Read again here keeping every number as
+	// its literal; a value assembled in Go is judged as it stands.
+	_items := i._value
+	if len(i._raw) > 0 {
+		var _decoded any
+		if jsonDecodeNumbers(i._raw, &_decoded) == nil {
+			if _arr, _ok := _decoded.([]any); _ok {
+				_items = _arr
+			}
+		}
+	}
+	_ = _items
 	// Item-level validation for inferred array.
-	for _i, _elem := range i._value {
+	for _i, _elem := range _items {
 		_tv, _tvErr := jsonTreeView(_elem)
 		if _tvErr != nil {
 			return fmt.Errorf("items[%d]: %w", _i, jsonMarshalError(&_elem, _tvErr))
@@ -376,6 +391,7 @@ func (i *InferredArrayTupleDraft7Ref) UnmarshalJSON(data []byte) error {
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &i._value); _err == nil {
 		i._isRaw = false
+		i._raw = append(i._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -422,8 +438,22 @@ func (i InferredArrayTupleDraft7Ref) Validate() error {
 	if i._isRaw {
 		return nil // Constraints don't apply to non-matching types.
 	}
+	// The elements as the document wrote them, where the value was decoded
+	// from one: decoded into []any they are float64s, which round the digits
+	// the element keywords are about. Read again here keeping every number as
+	// its literal; a value assembled in Go is judged as it stands.
+	_items := i._value
+	if len(i._raw) > 0 {
+		var _decoded any
+		if jsonDecodeNumbers(i._raw, &_decoded) == nil {
+			if _arr, _ok := _decoded.([]any); _ok {
+				_items = _arr
+			}
+		}
+	}
+	_ = _items
 	// Item-level validation for inferred array.
-	for _i, _elem := range i._value {
+	for _i, _elem := range _items {
 		_tv, _tvErr := jsonTreeView(_elem)
 		if _tvErr != nil {
 			return fmt.Errorf("items[%d]: %w", _i, jsonMarshalError(&_elem, _tvErr))
@@ -727,6 +757,7 @@ func (i *InferredArrayTupleDraft7Tup) UnmarshalJSON(data []byte) error {
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &i._value); _err == nil {
 		i._isRaw = false
+		i._raw = append(i._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -773,6 +804,20 @@ func (i InferredArrayTupleDraft7Tup) Validate() error {
 	if i._isRaw {
 		return nil // Constraints don't apply to non-matching types.
 	}
+	// The elements as the document wrote them, where the value was decoded
+	// from one: decoded into []any they are float64s, which round the digits
+	// the element keywords are about. Read again here keeping every number as
+	// its literal; a value assembled in Go is judged as it stands.
+	_items := i._value
+	if len(i._raw) > 0 {
+		var _decoded any
+		if jsonDecodeNumbers(i._raw, &_decoded) == nil {
+			if _arr, _ok := _decoded.([]any); _ok {
+				_items = _arr
+			}
+		}
+	}
+	_ = _items
 	// Item-level validation for inferred array.
 	{
 		if len(i._value) > 0 {

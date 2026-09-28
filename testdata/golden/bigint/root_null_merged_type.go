@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"strings"
 )
 
 // RootNullBigIntMergedType holds an integer value with arbitrary-precision support (int64 + *big.Int).
@@ -38,41 +37,28 @@ func (r *RootNullBigIntMergedType) UnmarshalJSON(data []byte) error {
 	}
 	// Try float with zero fractional part only for float-notation numbers (e.g., 1.0, 1e2).
 	_s := _n.String()
-	if strings.ContainsAny(_s, ".eE") {
-		// Read exactly rather than through float64: see jsonIntegerFromLiteral.
-		// The round-trip check this replaces asked float64 whether it had lost
-		// anything, which is the one question it cannot answer -- 2^53+1 comes
-		// back as 2^53 and round-trips perfectly.
-		if _i64, _iOK := jsonIntegerFromLiteral(_s); _iOK {
-			r._int64 = _i64
-			r._isBigInt = false
-			r._bigInt = nil
-			return nil
-		}
-	}
-	// Try big.Int for values that overflow int64.
-	_bi := new(big.Int)
-	// Handle float-format bignums (e.g., 1e100).
-	if strings.ContainsAny(_s, ".eE") {
-		_bf := new(big.Float)
-		if _, _ok := _bf.SetString(_s); _ok {
-			if _bf.IsInt() {
-				_bf.Int(_bi)
-				r._bigInt = _bi
-				r._isBigInt = true
-				r._int64 = 0
-				return nil
-			}
-		}
-		return fmt.Errorf("value %s is not an integer", _s)
-	}
-	if _, _ok := _bi.SetString(_s, 10); _ok {
-		r._bigInt = _bi
-		r._isBigInt = true
-		r._int64 = 0
+	// Everything else is read exactly, from the literal's digits: an int64
+	// where one holds it (1.0, 1e2), a big.Int where none does. The big.Float of
+	// 64 bits this replaces was not arbitrary precision -- it read
+	// 12345678901234567891.5 as the integer 12345678901234567892, and 1e100 as
+	// a different integer from 10^100. See jsonBigIntFromLiteral.
+	if _i64, _iOK := jsonIntegerFromLiteral(_s); _iOK {
+		r._int64 = _i64
+		r._isBigInt = false
+		r._bigInt = nil
 		return nil
 	}
-	return fmt.Errorf("value %s is not a valid integer", _s)
+	_bi, _isInt, _tooLarge := jsonBigIntFromLiteral(_s)
+	if _tooLarge {
+		return fmt.Errorf("value %s is an integer with more digits than this type builds from an exponent", _schemagenClipText(_s))
+	}
+	if !_isInt {
+		return fmt.Errorf("value %s is not an integer", _schemagenClipText(_s))
+	}
+	r._bigInt = _bi
+	r._isBigInt = true
+	r._int64 = 0
+	return nil
 }
 func (r RootNullBigIntMergedType) MarshalJSON() ([]byte, error) {
 	if r._isBigInt && r._bigInt != nil {

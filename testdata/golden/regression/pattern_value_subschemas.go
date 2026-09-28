@@ -3,10 +3,8 @@
 package testpkg
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"math"
 	"unicode/utf8"
 )
 
@@ -520,7 +518,7 @@ func (p PatternValueSubschemasPattern7) Validate() error {
 	}
 	// Decode raw JSON to determine the value's type.
 	var _v any
-	if _err := json.Unmarshal(p._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(p._raw, &_v); _err != nil {
 		return fmt.Errorf("not: cannot decode value: %w", _err)
 	}
 	if _, _sOk := _v.(string); _sOk {
@@ -814,35 +812,7 @@ func (p PatternValueSubschemasPattern10) Validate() error {
 				return fmt.Errorf("patternProperties: key %s: %w", _schemagenQuote(_key), _ppErr)
 			} else if _ppMatched {
 				{
-					_trim := bytes.TrimSpace(_member)
-					var jt string
-					if len(_trim) == 0 {
-						jt = "unknown"
-					} else {
-						switch _trim[0] {
-						case '"':
-							jt = "string"
-						case '{':
-							jt = "object"
-						case '[':
-							jt = "array"
-						case 't', 'f':
-							jt = "boolean"
-						case 'n':
-							jt = "null"
-						default:
-							jt = "number"
-							// Draft 6 onward reads the value: 1.0 is an integer, so
-							// the number is parsed rather than scanned. Every arm
-							// below that accepts "number" also accepts "integer", so
-							// widening this classification narrows nothing.
-							var _ppNum float64
-							if json.Unmarshal(_trim, &_ppNum) == nil &&
-								!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
-								jt = "integer"
-							}
-						}
-					}
+					jt := jsonRawKind(_member, false)
 					if jt != "string" {
 						return fmt.Errorf("patternProperties %s: key %s value must be string", "^z", _schemagenQuote(_key))
 					}
@@ -1087,7 +1057,7 @@ func (p PatternValueSubschemasPattern12) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(p._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(p._raw, &_v); _err != nil {
 		return fmt.Errorf("cannot decode value: %w", _err)
 	}
 	{
@@ -1095,7 +1065,7 @@ func (p PatternValueSubschemasPattern12) Validate() error {
 		if _dynIsString(_v) {
 			_matches++
 		}
-		if _dynIsInteger(_v) {
+		if jsonIsInteger(_v, false) {
 			_matches++
 		}
 		if _matches != 1 {
@@ -1157,7 +1127,7 @@ func (p PatternValueSubschemasPattern13) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(p._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(p._raw, &_v); _err != nil {
 		return fmt.Errorf("cannot decode value: %w", _err)
 	}
 	if _dynIsString(_v) {
@@ -2154,35 +2124,7 @@ func (p PatternValueSubschemas) Validate() error {
 				return fmt.Errorf("patternProperties: key %s: %w", _schemagenQuote(_key), _ppErr)
 			} else if _ppMatched {
 				{
-					_trim := bytes.TrimSpace(_member)
-					var jt string
-					if len(_trim) == 0 {
-						jt = "unknown"
-					} else {
-						switch _trim[0] {
-						case '"':
-							jt = "string"
-						case '{':
-							jt = "object"
-						case '[':
-							jt = "array"
-						case 't', 'f':
-							jt = "boolean"
-						case 'n':
-							jt = "null"
-						default:
-							jt = "number"
-							// Draft 6 onward reads the value: 1.0 is an integer, so
-							// the number is parsed rather than scanned. Every arm
-							// below that accepts "number" also accepts "integer", so
-							// widening this classification narrows nothing.
-							var _ppNum float64
-							if json.Unmarshal(_trim, &_ppNum) == nil &&
-								!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
-								jt = "integer"
-							}
-						}
-					}
+					jt := jsonRawKind(_member, false)
 					if jt != "integer" {
 						return fmt.Errorf("patternProperties %s: key %s value must be integer", "^r", _schemagenQuote(_key))
 					}
@@ -2192,35 +2134,7 @@ func (p PatternValueSubschemas) Validate() error {
 				return fmt.Errorf("patternProperties: key %s: %w", _schemagenQuote(_key), _ppErr)
 			} else if _ppMatched {
 				{
-					_trim := bytes.TrimSpace(_member)
-					var jt string
-					if len(_trim) == 0 {
-						jt = "unknown"
-					} else {
-						switch _trim[0] {
-						case '"':
-							jt = "string"
-						case '{':
-							jt = "object"
-						case '[':
-							jt = "array"
-						case 't', 'f':
-							jt = "boolean"
-						case 'n':
-							jt = "null"
-						default:
-							jt = "number"
-							// Draft 6 onward reads the value: 1.0 is an integer, so
-							// the number is parsed rather than scanned. Every arm
-							// below that accepts "number" also accepts "integer", so
-							// widening this classification narrows nothing.
-							var _ppNum float64
-							if json.Unmarshal(_trim, &_ppNum) == nil &&
-								!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
-								jt = "integer"
-							}
-						}
-					}
+					jt := jsonRawKind(_member, false)
 					if jt != "string" {
 						return fmt.Errorf("patternProperties %s: key %s value must be string", "^s", _schemagenQuote(_key))
 					}
