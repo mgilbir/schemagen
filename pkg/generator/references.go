@@ -86,6 +86,13 @@ func (g *Generator) referenceTargetUncounted(s *schema.Schema) (string, *schema.
 	return "", nil
 }
 
+// resolvedRefKey names one reference as written on one node: the key
+// Generator.resolvedRefMemo remembers a resolution under.
+type resolvedRefKey struct {
+	ref string
+	ctx *schema.Schema
+}
+
 // referenceOn reports the reference s carries without resolving it, by the same
 // precedence referenceTarget applies.
 //

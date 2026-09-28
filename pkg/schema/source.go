@@ -108,6 +108,74 @@ func (s *Schema) SourceLocationWithin(root *Schema) ([]string, bool) {
 	return tokens, true
 }
 
+// SourceLink reports the last link of the chain SourceLocation follows: the
+// node whose object the document wrote s in, and the reference tokens from that
+// node to s. For a document's root, holder is the root as the document was read
+// and rel is empty. ok is false for a node never located, and for the root of a
+// value SourceLocation does not locate (see unlocated).
+//
+// Two nodes with the same link were written at the same place: a value copy of
+// a node keeps its original's link, so this is how to find the node a copy was
+// made of without spelling out the whole location. rel is the node's own
+// record, and must not be modified.
+func (s *Schema) SourceLink() (holder *Schema, rel []string, ok bool) {
+	if s == nil || !s.src.set {
+		return nil, nil, false
+	}
+	if s.src.parent == nil {
+		return s.src.doc, nil, s.src.doc != nil
+	}
+	return s.src.parent, s.src.rel, true
+}
+
+// Written reports the node the document wrote where s is located: s itself
+// for a node read from the document, and the original for a value copy of one,
+// which keeps its original's location. It asks the node holding the location
+// which subschema it read there, so it costs a scan of that node's subschemas
+// and no walk of the document. found is false for a node never located and for
+// one a rewrite placed at a location the holder did not read a subschema at;
+// there s is returned.
+func (s *Schema) Written() (orig *Schema, found bool) {
+	if s == nil || !s.src.set {
+		return s, false
+	}
+	if s.src.parent == nil {
+		if s.src.doc != nil {
+			return s.src.doc, true
+		}
+		return s, false
+	}
+	for _, c := range s.src.parent.srcChildren {
+		if !sameTokens(c.tokens, s.src.rel) {
+			continue
+		}
+		if c.node != nil {
+			return c.node, true
+		}
+		// A boolean held by a SchemaOrBool, made a node on demand: the node
+		// is the holder's own, and a copy of the holder shares it.
+		return s, true
+	}
+	return s, false
+}
+
+// sameTokens reports whether two reference-token paths are one: the same
+// slice, as a copy's and its original's are, or equal token by token.
+func sameTokens(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	if len(a) == 0 || &a[0] == &b[0] {
+		return true
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // pathUpTo follows the location links up from s until it reaches stop, or a
 // document's root when stop is nil or not on the way, and returns the node it
 // stopped at and the reference tokens from there to s. ok is false for a node

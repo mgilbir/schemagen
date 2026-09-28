@@ -26,6 +26,7 @@ var notShapeFlags = map[string]string{
 	"shared-types":            "one package from several schemas; the script generates one package per schema, and --shared-types requires static validation and distinct root names the corpus does not have",
 	"schema-package":          "multi-package generation from several documents, the same reason as shared-types; cmd/schemagen/multipkg_compile_test.go compiles those trees",
 	"schema-output":           "where a document's file goes; requires schema-package",
+	"strict-keywords":         "refuses a schema carrying an unknown keyword or generates exactly what it generates without the flag; it never changes a type",
 }
 
 // TestLintAlignmentCoversEveryShapeFlag holds scripts/lint-alignment.sh to the

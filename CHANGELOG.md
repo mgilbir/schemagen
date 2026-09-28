@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+### Added
+
+- Every run checks the code it generated against the schema, keyword by
+  keyword, and prints a `warning:` for each assertion no check in the
+  generated code carries, and for each schema no generated type answers for —
+  each one a document `Validate()` may accept although the schema rejects it —
+  naming where the keyword is written and the type it belongs to. It reads the
+  generated code's own description rather than the generator's intentions, and
+  it reports without refusing: the code is the same with or without it. In the
+  library the list is `Generator.Unclaimed()`. What is written inside a
+  keyword reported because the runtime evaluator declined it is counted on that
+  one warning rather than given its own. Among what it reports today:
+  a `date-time`, `ipv4` or `ipv6` field decoded into `time.Time` or
+  `netip.Addr` does not enforce its format in full (`time.Time` takes a
+  `-24:00` offset, `netip.Addr` takes `""` and a zoned IPv6 address).
+- `--strict-keywords` (`strictKeywords`, `Config.StrictKeywords`) refuses a
+  schema that uses a keyword schemagen does not know, naming where each is
+  written — the way to hear about a misspelled assertion such as `minLenght`.
+  Without it such a keyword is an annotation and constrains nothing, as JSON
+  Schema 2019-09 and later define it and every earlier draft says to treat
+  one.
+- A schema whose metaschema declares a vocabulary schemagen does not implement
+  as required is refused, naming the metaschema and the vocabulary, as JSON
+  Schema requires; one declared optional is ignored.
+
 ### Changed
 
 - **Generated code imports a runtime module instead of carrying its own
@@ -65,6 +90,22 @@
   ASCII punctuation escapes outside a class keep working, by the rewrite to
   `\xHH` that already covered `\:`. No pattern in the test corpus or the JSON
   Schema Test Suite changes verdict.
+- Generation reads which keywords a schema node states from its fields
+  directly rather than through reflection, and resolves each reference once
+  per run rather than every time it is met; together they pay for the
+  checking above.
+- The dialect a node is read under has one answer, shared by the resource
+  index and the generator: `--draft` (`Config.Draft`) for the documents listed,
+  a nested resource's own `$schema` only where it also declares its own `$id`,
+  and the enclosing resource's dialect everywhere else. A `$schema` that
+  `--draft` overrides is reported with a `warning:` naming where it is written
+  (`Generator.DialectOverrides()` in the library). Before, the index read an
+  overridden document by its own `$schema` while the generator read it by
+  `--draft`, and a nested `$schema` without an `$id` switched the dialect of
+  the keywords under it. A `schema.ResourceIndex` passed as `Config.Resolver`
+  that was built for a different draft than `Config.Draft` is an error naming
+  both.
+
 - A keyword whose value is not a legal value of it is refused, naming its
   location, wherever the node's dialect defines the keyword, and ignored
   wherever it does not — the policy a null subschema such as
@@ -193,6 +234,12 @@
   evaluated for `unevaluatedItems` read no `enum`, exclusive bound or
   `multipleOf` in it — the generated package did not compile where that was
   all the `contains` said, and ignored it beside a `minimum` or `maximum`.
+- A `$ref` under an `unevaluatedItems` schema no longer panics the generator.
+  The validation rules of a value were built by a function that asked a blank
+  generator — no resource index, no definitions, no draft — whether
+  `unevaluatedItems` closes a tuple, and a reference there was resolved
+  through nothing: `{"properties":{"a":{"unevaluatedItems":{"anyOf":[{"$ref":"#/$defs/s"}]}}},"$defs":{"s":{}}}`
+  crashed. The rules are now built by the generator that is generating.
 - Every JSON Schema pattern is matched by one engine, compiled once, and a
   match the engine cannot decide is an error rather than a "no". A `contains`
   whose sub-schema had a `pattern` compiled it with Go's RE2 on every element,

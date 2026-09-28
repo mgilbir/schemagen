@@ -106,7 +106,7 @@ func TestAReachedDocumentsEmbeddedResourceKeepsItsOwnDialect(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "t.json"), []byte(`{
 		"$id": "https://ex.test/t.json",
 		"const": "root",
-		"$defs": {"kept": {"$schema": "https://json-schema.org/draft/2020-12/schema", "const": "embedded"}}
+		"$defs": {"kept": {"$id": "https://ex.test/kept.json", "$schema": "https://json-schema.org/draft/2020-12/schema", "const": "embedded"}}
 	}`), 0o644); err != nil {
 		t.Fatal(err)
 	}

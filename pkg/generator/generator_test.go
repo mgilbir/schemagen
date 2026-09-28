@@ -4847,7 +4847,7 @@ func TestInlineWrapperIsNotTakenForATypedProperty(t *testing.T) {
 
 // TestEmptyNotPropertyLeavesNoForbiddenFieldRule pins the interaction that made
 // the whole external suite stop compiling. {"properties":{"foo":{"not":{}}}}
-// forbids the property outright, and extractValidationRules answers it with a
+// forbids the property outright, and rulesFor answers it with a
 // "forbidden" rule emitted as `field != nil`. Once the property became a
 // wrapper struct that guard stopped compiling -- `r.Foo != nil` against a
 // non-nilable type -- in 23 groups across every draft.
@@ -9310,7 +9310,6 @@ func TestRefDisplacesSiblingValuesFollowsTheDraft(t *testing.T) {
 		t.Run(tc.draft.String(), func(t *testing.T) {
 			g := New(Config{PackageName: "testpkg"})
 			g.draft = tc.draft
-			g.draftOverridden = true
 
 			var withRef schema.Schema
 			if err := json.Unmarshal([]byte(`{"$ref":"#/$defs/T","const":"a"}`), &withRef); err != nil {
@@ -9360,7 +9359,6 @@ func TestRefMergesSiblingValuesFollowsTheDraft(t *testing.T) {
 		t.Run(tc.draft.String(), func(t *testing.T) {
 			g := New(Config{PackageName: "testpkg"})
 			g.draft = tc.draft
-			g.draftOverridden = true
 
 			// Each spelling of the sibling, including the two a re-marshaled
 			// schema does not show.

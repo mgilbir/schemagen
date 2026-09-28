@@ -199,6 +199,11 @@ var nameSiteAllowances = map[string]string{
 	"resolveIdentityPlans: NamedType{Name: d.MarshalAs}":      "the type an alias's MarshalJSON already delegates to, named when the delegate was settled",
 	"resolveIdentityPlans: NamedType{Name: d.Name}":           "the identity of an alias already in the file, read over the alias itself: the name it was declared under",
 	"resolveDecodePlans: NamedType{Name: d.Name}":             "the decode plan of an alias already in the file, written over the alias itself: the name it was declared under",
+	// The keyword ledger runs after every declaration is made and declares
+	// nothing: each of these reads what Go kinds an existing type decodes.
+	"typeOnlyClaims: NamedType{Name: b.TypeName}": "the keyword ledger reading a type-schema branch's type, already named by the registry when the branch was built; looked up, never declared",
+	"ad: NamedType{Name: a.ValidateAs}":           "the keyword ledger reading the type an alias validates through, named when the delegate was settled; looked up, never declared",
+	"checkScope: NamedType{Name: d.name}":         "the keyword ledger reading a declaration already in the file, by the name it was declared under; looked up, never declared",
 }
 
 // TestNoTypeNameIsBuiltOutsideTheRegistry reads every place pkg/generator names

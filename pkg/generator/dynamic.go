@@ -139,7 +139,7 @@ func modelledChecks(s *schema.Schema) ([]DynamicCheck, bool) {
 	if s.Pattern != nil {
 		checks = append(checks, DynamicCheck{Kind: "pattern", Value: *s.Pattern})
 	}
-	return checks, whole
+	return claimDynamicChecks(checks, s), whole
 }
 
 // dynamicBranches converts a list of sub-schemas, failing closed if any one of
@@ -323,7 +323,11 @@ func objectPropertyChecks(s *schema.Schema) ([]DynamicCheck, bool) {
 	if err != nil {
 		return nil, false
 	}
-	return append(checks, DynamicCheck{Kind: "const", Value: string(encoded)}), true
+	// The checks were read off the copy; the node the document wrote is s.
+	for i := range checks {
+		checks[i].Claim.Source = s
+	}
+	return append(checks, DynamicCheck{Kind: "const", Value: string(encoded), Claim: claimOf(s, "const")}), true
 }
 
 // objectConditionalBranch converts one side of an object-level if/then/else.
@@ -356,7 +360,7 @@ func objectConditionalBranch(keyword string, s *schema.Schema) (*ObjectCondition
 		}
 	}
 
-	branch := &ObjectConditionalBranch{Keyword: keyword}
+	branch := &ObjectConditionalBranch{Keyword: keyword, Claim: claimOf(s, "")}
 	branch.RequiredKeys = append(branch.RequiredKeys, s.Required...)
 	sort.Strings(branch.RequiredKeys)
 	for _, name := range sortedKeys(s.Properties) {
@@ -427,7 +431,7 @@ func objectPropertyChecksLenient(s *schema.Schema) []DynamicCheck {
 		if err != nil {
 			return nil
 		}
-		checks = append(checks, DynamicCheck{Kind: "const", Value: string(encoded)})
+		checks = append(checks, DynamicCheck{Kind: "const", Value: string(encoded), Claim: claimOf(s, "const")})
 	}
 	return checks
 }
@@ -454,7 +458,7 @@ func objectConditionalBranchLenient(keyword string, s *schema.Schema) *ObjectCon
 	if s == nil || s.IsBooleanSchema() || len(s.Extensions) > 0 || schemaCarriesRef(s) {
 		return nil
 	}
-	branch := &ObjectConditionalBranch{Keyword: keyword}
+	branch := &ObjectConditionalBranch{Keyword: keyword, Claim: claimOf(s, "")}
 	branch.RequiredKeys = append(branch.RequiredKeys, s.Required...)
 	sort.Strings(branch.RequiredKeys)
 	for _, name := range sortedKeys(s.Properties) {
@@ -494,7 +498,7 @@ func objectConditionalDef(s *schema.Schema) *ObjectConditionalDef {
 		// flattens `then` into the struct.
 		return nil
 	}
-	def := &ObjectConditionalDef{If: *ifBranch}
+	def := &ObjectConditionalDef{If: *ifBranch, Claim: claimOf(s, "if")}
 	if s.Then != nil {
 		if then := objectConditionalBranchLenient("then", s.Then); !then.Empty() {
 			def.Then = then

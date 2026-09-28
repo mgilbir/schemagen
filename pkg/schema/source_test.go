@@ -242,3 +242,29 @@ func TestMalformedEntriesAreRecordedWhereTheDocumentWroteThem(t *testing.T) {
 		}
 	}
 }
+
+// TestWrittenFindsTheOriginalOfACopy: Written answers, for a value copy of a
+// node, the node the document wrote there, from the location the copy keeps
+// and without a walk of the document; for a node of the document, the node
+// itself; for a document's root and a copy of it, the root; and for a node
+// no document wrote, the node, with found false.
+func TestWrittenFindsTheOriginalOfACopy(t *testing.T) {
+	var doc Schema
+	if err := json.Unmarshal([]byte(`{"properties":{"a":{"type":"string"},"b":{"items":{"minimum":1}}},"$defs":{"d":{}}}`), &doc); err != nil {
+		t.Fatal(err)
+	}
+	doc.Normalize()
+	for _, orig := range []*Schema{&doc, doc.Properties["a"], doc.Properties["b"].Items.Schema, doc.Defs["d"]} {
+		if got, found := orig.Written(); !found || got != orig {
+			t.Errorf("Written of a node of the document = %p, %v; want the node itself", got, found)
+		}
+		cp := *orig
+		if got, found := cp.Written(); !found || got != orig {
+			t.Errorf("Written of a copy = %p, %v; want its original %p", got, found, orig)
+		}
+	}
+	built := &Schema{Type: TypeList{"string"}}
+	if got, found := built.Written(); found || got != built {
+		t.Errorf("Written of a node no document wrote = %p, %v; want itself, not found", got, found)
+	}
+}

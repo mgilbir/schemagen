@@ -57,9 +57,14 @@ type ResourceIndex struct {
 
 	anonymous int
 
-	// draft is the dialect a node is read under where normalization settled
-	// none for it; see WithIndexDraft.
+	// draft is the dialect chosen from outside for the documents registered
+	// with AddDocument; see WithIndexDraft and dialect.go.
 	draft Draft
+
+	// inputs holds the roots of the documents registered with AddDocument,
+	// which draft is chosen for, as opposed to the documents a reference made
+	// the index load, which keep a dialect they state.
+	inputs map[*Schema]bool
 }
 
 // AnonymousDocumentScheme is the URI scheme of the base URI a document is given
@@ -70,12 +75,16 @@ const AnonymousDocumentScheme = "schemagen-document"
 // ResourceIndexOption configures a ResourceIndex.
 type ResourceIndexOption func(*ResourceIndex)
 
-// WithIndexDraft states the dialect the documents are read under where their
-// normalization settled none: a caller that decodes a document, calls
-// Normalize, and generates it under Config.Draft. It matters to what a
-// resource is -- through draft 7 an "$id" beside a "$ref" is ignored with the
-// rest of the $ref's siblings (see refReplacesSiblings) -- so it has to be the
-// dialect the generator reads the document under.
+// WithIndexDraft chooses, from outside, the dialect the documents registered
+// with AddDocument are read under -- the --draft flag, Config.Draft. It wins
+// over the $schema those documents state; an embedded resource declaring its
+// own $id and $schema, and a document a reference makes the index load that
+// states its $schema, keep their own. See DialectOf and dialect.go.
+//
+// It matters to what a resource is -- through draft 7 an "$id" beside a "$ref"
+// is ignored with the rest of the $ref's siblings (see refReplacesSiblings) --
+// so it has to be the dialect the generator reads the documents under, and the
+// generator refuses an index chosen otherwise than its Config.Draft.
 func WithIndexDraft(d Draft) ResourceIndexOption {
 	return func(x *ResourceIndex) { x.draft = d }
 }
@@ -89,6 +98,7 @@ func NewResourceIndex(loader SchemaResolver, opts ...ResourceIndexOption) *Resou
 		byURI:     make(map[string]*Resource),
 		byRoot:    make(map[*Schema]*Resource),
 		documents: make(map[*Schema]*Resource),
+		inputs:    make(map[*Schema]bool),
 	}
 	for _, opt := range opts {
 		opt(x)
@@ -177,7 +187,16 @@ func (e *ReferenceError) Unwrap() []error {
 //
 // Nothing is registered when the document claims a URI that another resource
 // already holds, in this document or in another; the error says which two.
+//
+// A document registered here is one the caller handed over, and the dialect
+// WithIndexDraft chose is chosen for it; see DialectOf.
 func (x *ResourceIndex) AddDocument(doc *Schema, retrieval *url.URL) error {
+	return x.addDocument(doc, retrieval, true)
+}
+
+// addDocument is AddDocument, for a document the caller handed over (input)
+// or one a reference made the index load.
+func (x *ResourceIndex) addDocument(doc *Schema, retrieval *url.URL, input bool) error {
 	if doc == nil {
 		return fmt.Errorf("resource index: nil document")
 	}
@@ -200,9 +219,12 @@ func (x *ResourceIndex) AddDocument(doc *Schema, retrieval *url.URL) error {
 		x.anonymous++
 		base = &url.URL{Scheme: AnonymousDocumentScheme, Host: "doc-" + strconv.Itoa(x.anonymous), Path: "/"}
 	}
-	doc.computeBaseURIs(base, doc, x.draft)
+	dialect := func(n *Schema) Draft {
+		return dialectOf(n, x.draft, func(r *Schema) bool { return x.inputs[r] || (input && r == doc) })
+	}
+	doc.computeBaseURIs(base, doc, dialect)
 
-	resources := documentResources(doc, x.draft)
+	resources := documentResources(doc, dialect)
 	// Validate everything before committing anything, so a refused document
 	// leaves the index as it was.
 	claims := make(map[string]*Resource, len(resources)+1)
@@ -242,6 +264,9 @@ func (x *ResourceIndex) AddDocument(doc *Schema, retrieval *url.URL) error {
 		x.byRoot[res.Root] = res
 	}
 	x.documents[doc] = resources[0]
+	if input {
+		x.inputs[doc] = true
+	}
 	return nil
 }
 
@@ -264,7 +289,7 @@ func (x *ResourceIndex) alias(u *url.URL, res *Resource) error {
 // documentResources lists the resources of a document whose base URIs have been
 // computed: the document root first, then every node that is its own document
 // root, in the order subSchemas visits them.
-func documentResources(doc *Schema, fallback Draft) []*Resource {
+func documentResources(doc *Schema, dialect func(*Schema) Draft) []*Resource {
 	var out []*Resource
 	seen := make(map[*Schema]bool)
 	var walk func(s *Schema)
@@ -274,7 +299,7 @@ func documentResources(doc *Schema, fallback Draft) []*Resource {
 		}
 		seen[s] = true
 		if s == doc || s.DocumentRoot == s {
-			out = append(out, newResource(s, fallback))
+			out = append(out, newResource(s, dialect))
 		}
 		for _, sub := range subSchemas(s) {
 			walk(sub)
@@ -285,7 +310,7 @@ func documentResources(doc *Schema, fallback Draft) []*Resource {
 }
 
 // newResource indexes one resource rooted at root.
-func newResource(root *Schema, fallback Draft) *Resource {
+func newResource(root *Schema, dialect func(*Schema) Draft) *Resource {
 	res := &Resource{
 		CanonicalURI:   canonicalResourceURI(root),
 		Draft:          DetectDraft(root),
@@ -296,7 +321,7 @@ func newResource(root *Schema, fallback Draft) *Resource {
 	if root.BaseURI == nil {
 		res.CanonicalURI = ""
 	}
-	collectResourceAnchors(root, res, true, fallback)
+	collectResourceAnchors(root, res, true, dialect)
 	return res
 }
 
@@ -566,7 +591,7 @@ func (x *ResourceIndex) registerLoaded(doc *Schema, target *url.URL) (*Resource,
 	if retrieval == nil && whole == doc {
 		retrieval = target
 	}
-	if err := x.AddDocument(whole, retrieval); err != nil {
+	if err := x.addDocument(whole, retrieval, false); err != nil {
 		return nil, err
 	}
 	res := x.byRoot[doc]
@@ -625,13 +650,15 @@ func (r *Resource) anchor(name string) (*Schema, error) {
 
 // Graph is the resource graph of one registered document: every resource it
 // holds, keyed as BuildResourceGraph keys them, read from this index. A
-// resource that declares no dialect is given defaultDraft.
+// resource is described by the dialect DialectOf reads it under where
+// WithIndexDraft chose one from outside; otherwise by the one it declares, and
+// one that declares none is given defaultDraft.
 func (x *ResourceIndex) Graph(doc *Schema, defaultDraft Draft) *ResourceGraph {
 	g := &ResourceGraph{Root: doc, Resources: make(map[string]*Resource)}
 	if doc == nil {
 		return g
 	}
-	for _, res := range documentResources(doc, x.draft) {
+	for _, res := range documentResources(doc, x.DialectOf) {
 		// A boolean document is a resource a reference can name, and one with
 		// nothing in it to plan validation for: the graph has always left it
 		// out, and ResourceCount is emitted into generated code.
@@ -650,6 +677,9 @@ func (x *ResourceIndex) Graph(doc *Schema, defaultDraft Draft) *ResourceGraph {
 		}
 		view := *res
 		view.Draft = resourceDraft(res.Root, defaultDraft)
+		if x.draft != DraftUnknown {
+			view.Draft = x.DialectOf(res.Root)
+		}
 		g.Resources[key] = &view
 	}
 	return g

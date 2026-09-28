@@ -271,6 +271,30 @@ type nodeBuilder struct {
 	// without another site running -- so the first is the innermost, which is the
 	// one that actually refused.
 	declined string
+
+	// compiled records every node rendered into the literal, in the order first
+	// met, for the keyword ledger: a literal the build returned enforces every
+	// keyword these nodes state, since keywordsOnly refuses the whole build over
+	// one it does not model. See evaluatorClaim.
+	compiled      map[*schema.Schema]bool
+	compiledOrder []*schema.Schema
+}
+
+// noteCompiled records that s was rendered into the literal.
+func (b *nodeBuilder) noteCompiled(s *schema.Schema) {
+	if b.compiled[s] {
+		return
+	}
+	if b.compiled == nil {
+		b.compiled = map[*schema.Schema]bool{}
+	}
+	b.compiled[s] = true
+	b.compiledOrder = append(b.compiledOrder, s)
+}
+
+// compiledNodes lists the nodes rendered so far, in the order first met.
+func (b *nodeBuilder) compiledNodes() []*schema.Schema {
+	return append([]*schema.Schema(nil), b.compiledOrder...)
 }
 
 // refuse records why the build is refusing and returns the refusal.
@@ -522,6 +546,7 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		b.depth--
 		b.resource = enclosing
 	}()
+	b.noteCompiled(s)
 
 	pad := strings.Repeat("\t", indent)
 	inner := strings.Repeat("\t", indent+1)
@@ -1562,7 +1587,7 @@ func (g *Generator) annotationSchemaDef(name string, s *schema.Schema) *Annotati
 	if !ok {
 		return nil
 	}
-	return &AnnotationSchemaDef{Name: name, Doc: g.docFor(name, s), NodeLiteral: lit, NeedsPattern: b.usesPattern, AccessRules: g.accessRulesFor(s, 1)}
+	return &AnnotationSchemaDef{Name: name, Doc: g.docFor(name, s), NodeLiteral: lit, NeedsPattern: b.usesPattern, AccessRules: g.accessRulesFor(s, 1), Claim: evaluatorClaim(s, "", b)}
 }
 
 // dynamicScopeSchemaDef compiles a schema whose bookended dynamic reference has
@@ -1895,39 +1920,63 @@ func statedConstraints(s *schema.Schema) ([]string, bool) {
 	if s == nil {
 		return nil, false
 	}
-	seen, ok := schemaKeywordSet(s)
+	// The same reading as schemaKeywordSet -- the marshaled key set and the
+	// keys its encoding hides -- taken as a list rather than a set: this runs
+	// once per node of every document the keyword ledger walks, and the set is
+	// sized for every field a schema can have.
+	keys, ok := s.AppendMarshaledKeywords(make([]string, 0, 8))
 	if !ok {
 		return nil, false
 	}
-	// maporder: fills a set; the same members end up in it in any order.
+	keys = append(keys, s.KeywordsMarshaledFormOmits()...)
+	// maporder: the keys are sorted before they are returned.
 	for key := range s.Extensions {
-		seen[key] = true
-	}
-	// A keyword whose partner is absent asserts nothing, so listing it would be
-	// a false alarm -- and a diagnostic that cries wolf gets ignored, which
-	// would cost the ones that are real.
-	if s.Contains == nil {
-		delete(seen, "minContains")
-		delete(seen, "maxContains")
-	}
-	if s.If == nil {
-		delete(seen, "then")
-		delete(seen, "else")
-	}
-	if len(s.PrefixItems) == 0 && (s.Items == nil || len(s.Items.Schemas) == 0) {
-		delete(seen, "additionalItems")
+		keys = append(keys, key)
 	}
 
-	var dropped []string
-	// maporder: dropped is sorted before it is returned.
-	for key := range seen {
-		if nonConstrainingKeywords[key] || inertKeywords[key] {
-			continue
+	dropped := keys[:0]
+	for _, key := range keys {
+		if statedKeyConstrains(s, key) {
+			dropped = append(dropped, key)
 		}
-		dropped = append(dropped, key)
 	}
 	sort.Strings(dropped)
-	return dropped, true
+	// A hidden key the marshaled form also shows (a non-empty enum) is listed
+	// once.
+	out := dropped[:0]
+	for i, key := range dropped {
+		if i > 0 && key == dropped[i-1] {
+			continue
+		}
+		out = append(out, key)
+	}
+	if len(out) == 0 {
+		return nil, true
+	}
+	return out, true
+}
+
+// statedKeyConstrains reports whether key, which s states, constrains
+// anything: not a keyword known to constrain nothing, and not one whose partner
+// is absent -- which asserts nothing, so listing it would be a false alarm,
+// and a diagnostic that cries wolf gets ignored, which would cost the ones
+// that are real.
+func statedKeyConstrains(s *schema.Schema, key string) bool {
+	switch key {
+	case "minContains", "maxContains":
+		if s.Contains == nil {
+			return false
+		}
+	case "then", "else":
+		if s.If == nil {
+			return false
+		}
+	case "additionalItems":
+		if len(s.PrefixItems) == 0 && (s.Items == nil || len(s.Items.Schemas) == 0) {
+			return false
+		}
+	}
+	return !nonConstrainingKeywords[key] && !inertKeywords[key]
 }
 
 // nonConstrainingKeywords are the keywords whose absence from a generated check
@@ -2012,6 +2061,7 @@ func (g *Generator) runtimeSchemaDefBuilding(name string, s *schema.Schema) (def
 	}
 	lit, nodes, ok := b.build(s)
 	if !ok {
+		g.noteEvaluatorDecline(s, "*", b.declined)
 		return nil, true, b.declined
 	}
 	if unownedNodeLiterals[lit] {
@@ -2027,6 +2077,7 @@ func (g *Generator) runtimeSchemaDefBuilding(name string, s *schema.Schema) (def
 		// key lists have nowhere to live and the flag did nothing here at all.
 		// minDepth is 1 rather than 2 for exactly that reason.
 		AccessRules: g.accessRulesFor(s, 1),
+		Claim:       evaluatorClaim(s, "", b),
 	}, false, ""
 }
 

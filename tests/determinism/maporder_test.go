@@ -63,6 +63,7 @@ import (
 var mapOrderGuardedPackages = []string{
 	".",
 	"cmd/schemagen",
+	"internal/gentest",
 	"internal/tagoracle",
 	"internal/tagoracle/probe",
 	"internal/testgo",
@@ -82,6 +83,9 @@ var mapOrderGuardedPackages = []string{
 	"runtime/internal/quote",
 	"tests/external",
 	"tests/internal/testsupport",
+	// The keyword grid's cells, which the grid test and the Bowtie oracle
+	// both key and order by.
+	"tests/keywordgrid",
 }
 
 // mapOrderSite is one place where a map's iteration order is read.

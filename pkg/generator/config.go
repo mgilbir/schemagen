@@ -225,6 +225,24 @@ type Config struct {
 	// non-conformant with nothing in the corpus to say so.
 	StrictReadWrite bool
 
+	// StrictKeywords refuses a schema that uses a keyword this generator does
+	// not know, with an error naming where each one is written.
+	//
+	// Off, which is the default, such a keyword is an annotation: it is
+	// carried in the schema and constrains nothing, which is what JSON Schema
+	// 2019-09 and 2020-12 say an unknown keyword is, and what every earlier
+	// draft says to do with one. That is the right reading for the vendor
+	// keywords real schemas carry -- "x-go-type", OpenAPI's "example" -- and the
+	// wrong one for a keyword that was meant to assert and is misspelled
+	// ("minLenght") or comes from a vocabulary schemagen does not implement.
+	// This is the setting that tells the two apart, by refusing both.
+	//
+	// A metaschema that declares a vocabulary this generator does not
+	// implement as required is refused whatever this says: the specification
+	// says an implementation that does not recognise a required vocabulary must
+	// refuse the schema.
+	StrictKeywords bool
+
 	Validation   ValidationMode // Controls static vs hybrid/runtime validation planning.
 	FieldNames   FieldNameMap   // Optional per-type overrides pinning JSON properties to specific Go field names.
 	LenientRefs  bool           // When true, $refs that no resolver can serve degrade to any instead of failing generation.

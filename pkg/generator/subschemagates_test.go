@@ -17,7 +17,7 @@ import (
 // keyword has to be compiled to the runtime evaluator instead.
 //
 // They are read from the *extractors' own source*, in the way
-// TestEveryElementRuleTypeIsClassified reads extractValidationRules, and for the
+// TestEveryElementRuleTypeIsClassified reads statedRules, and for the
 // same reason. A gate written as a hand-kept list of keywords is a list somebody
 // has to remember to update, and the failure mode of forgetting is silent: the
 // gate says the reduction read the whole sub-schema, the reduction did not, and

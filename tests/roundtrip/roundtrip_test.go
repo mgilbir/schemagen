@@ -5910,7 +5910,7 @@ var conformingByFormat = []string{
 // `{"enum":[]}` came out `type Root any` and accepted all six documents, and
 // `{"type":"string","enum":[]}` came out `type Root string` and accepted every
 // string. An inline property spelling it went the same way through
-// extractValidationRules.
+// rulesFor.
 //
 // The populated enum beside them is the control. Forbidding every enum would
 // satisfy the invalid half of both arms and mean nothing at all.

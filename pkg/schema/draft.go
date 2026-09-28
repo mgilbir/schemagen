@@ -141,7 +141,22 @@ func (s *Schema) Normalize() {
 // records that it has been normalized, and under which dialect, and is not read
 // as a document again; its children are still visited, so a subtree attached
 // to an already-normalized node is normalized under the dialect it inherits.
+//
+// A dialect supplied from outside is the one the whole document is read under
+// but for an embedded resource -- a node declaring its own $id beside its own
+// $schema -- which keeps its own; a $schema written on any other nested node is
+// overridden with the root's. Without one, every nested $schema switches the
+// subtree below it, as it always has. That is the rule of dialect.go, which the
+// resource index and the generator read too.
 func (s *Schema) NormalizeForDraft(d Draft) {
+	s.normalizeForDraft(d, d != DraftUnknown)
+}
+
+// normalizeForDraft is NormalizeForDraft, with given saying whether d was
+// chosen from outside the document -- which decides which nested $schema may
+// switch a subtree's dialect (ownDialect). A subschema normalized on demand
+// passes on the answer its parent was normalized under.
+func (s *Schema) normalizeForDraft(d Draft, given bool) {
 	if s == nil {
 		return
 	}
@@ -186,56 +201,62 @@ func (s *Schema) NormalizeForDraft(d Draft) {
 	if declared == DraftUnknown {
 		declared = d
 	}
-	s.gateDialectKeywords(d, declared)
-	s.normalizeNode(d)
+	s.gateDialectKeywords(d, declared, given)
+	s.normalizeNode(d, given)
 }
 
 // gateDialectKeywords clears, over the whole tree, every keyword a node's own
-// dialect does not define. A node declaring its own $schema takes that dialect,
-// for itself and everything below it. A node already normalized is not read
-// again; see NormalizeForDraft. declared is the dialect the document itself
-// states for the node, which differs from d only under a dialect chosen from
-// outside it.
-func (s *Schema) gateDialectKeywords(d, declared Draft) {
+// dialect does not define. A nested node whose own $schema switches the
+// dialect (ownDialect) takes it, for itself and everything below it. A node
+// already normalized is not read again; see NormalizeForDraft. declared is the
+// dialect the document itself states for the node, which differs from d only
+// under a dialect chosen from outside it.
+func (s *Schema) gateDialectKeywords(d, declared Draft, given bool) {
 	if s == nil || s.IsBooleanSchema() {
 		return
 	}
 	if s.normalized {
 		d, declared = s.DetectedDraft, s.DetectedDraft
+		given = s.dialectGiven
 	} else {
 		s.dropKeywordsOutsideDialect(d, declared)
 		s.settleMalformedKeywords(d)
 	}
 	s.eachChild(func(sub *Schema) {
 		child, childDeclared := d, declared
-		if own := DetectDraft(sub); own != DraftUnknown {
+		if own := ownDialect(sub, given); own != DraftUnknown {
 			child, childDeclared = own, own
+		} else if stated := DetectDraft(sub); stated != DraftUnknown {
+			childDeclared = stated
 		}
-		sub.gateDialectKeywords(child, childDeclared)
+		sub.gateDialectKeywords(child, childDeclared, given)
 	})
 }
 
 // normalizeInherited normalizes a nested node under the dialect it inherits,
-// which its own $schema overrides for it and everything below it.
-func (s *Schema) normalizeInherited(d Draft) {
+// which its own $schema overrides for it and everything below it where it may
+// (ownDialect).
+func (s *Schema) normalizeInherited(d Draft, given bool) {
 	if s == nil || s.IsBooleanSchema() {
 		return
 	}
-	if own := DetectDraft(s); own != DraftUnknown {
+	if own := ownDialect(s, given); own != DraftUnknown {
 		d = own
 	}
-	s.normalizeNode(d)
+	s.normalizeNode(d, given)
 }
 
-func (s *Schema) normalizeNode(d Draft) {
+func (s *Schema) normalizeNode(d Draft, given bool) {
 	if s.normalized {
 		d = s.DetectedDraft
+		given = s.dialectGiven
 	} else {
 		s.rewriteLegacyKeywords(d)
 		s.DetectedDraft = d
+		s.dialectGiven = given
 		s.normalized = true
 	}
-	s.normalizeChildren(d)
+	s.normalizeChildren(d, given)
 }
 
 // rewriteLegacyKeywords rewrites every keyword this node states in a spelling
@@ -446,8 +467,8 @@ func (s *Schema) dedupeEnum() {
 
 // normalizeChildren recursively normalizes all nested sub-schemas under the
 // dialect they inherit from this one.
-func (s *Schema) normalizeChildren(d Draft) {
-	s.eachChild(func(sub *Schema) { sub.normalizeInherited(d) })
+func (s *Schema) normalizeChildren(d Draft, given bool) {
+	s.eachChild(func(sub *Schema) { sub.normalizeInherited(d, given) })
 }
 
 // eachChild calls fn for every sub-schema this node holds directly.
