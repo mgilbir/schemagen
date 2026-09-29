@@ -30,23 +30,31 @@ type Resource struct {
 	// own, and an anchor written inside that one belongs to it and not here.
 	// That subtree gets its own Resource in the graph.
 	//
-	// These two are part of this package's API rather than of anything in this
-	// repository: the generator maintains anchor indexes of its own, keyed by
-	// the ref path it needs for naming a Go type, and pkg/generator's
-	// resourceDynamicAnchor answers the DynamicAnchors question by walking the
-	// resource on each call because it must also answer it for documents a
-	// resolver fetched, which are not in this graph. Wiring that call site to
-	// this index would change which node wins where a resource declares one name
-	// twice -- undefined by the spec, but a change all the same -- and would go
-	// silently blind on those fetched documents, so it is left alone
-	// deliberately.
+	// Anchors is what every "#name" reference is answered from: ResourceIndex
+	// resolves a plain-name fragment by looking it up here, in the resource the
+	// reference names, and nowhere else. The generator used to keep an index of
+	// its own, of the *root* document's anchors, and consulted it before the
+	// resource a reference was written in -- so "#name" in another document
+	// meant the root's node whenever the root declared that name. There is no
+	// second index now. DynamicAnchors is the same resource's declarations for
+	// the dynamic-scope walk, which pkg/generator's resourceDynamicAnchor
+	// performs by the same scoping rule.
 	//
-	// An index nothing in the tree reads is an index that can rot, so the
-	// contract is pinned from outside the traversal that builds it:
+	// The contract is pinned from outside the traversal that builds it:
 	// TestResourceIndexReachesEveryAnchorPosition finds the anchors in a fixture
 	// by walking its raw JSON and requires these maps to hold exactly those.
 	Anchors        map[string]*Schema
 	DynamicAnchors map[string]*Schema
+
+	// ambiguous holds the plain-name fragments more than one node of this
+	// resource declares. Anchors keeps the first of them, in subSchemas order,
+	// so the map is still a function of the document; a reference that names
+	// one is refused (see AmbiguousAnchorError) rather than answered with it.
+	ambiguous map[string]bool
+
+	// document is the root of the document this resource was registered
+	// with, set by ResourceIndex.
+	document *Schema
 }
 
 // ResourceGraph indexes schema resources, anchors, and dynamic anchors by their
@@ -59,19 +67,22 @@ type ResourceGraph struct {
 
 // BuildResourceGraph computes base/document scopes and indexes every resource in
 // the schema tree. defaultDraft is used when a resource does not declare $schema.
+//
+// It is ResourceIndex.Graph over an index holding only root, retrieved from
+// baseURI: one walk decides what a resource is and what it declares, for the
+// graph and for every reference resolved, so the two cannot disagree. A graph
+// has nowhere to report a document that claims one URI twice; it keeps the
+// first such resource, in subSchemas order, and a ResourceIndex refuses the
+// document (see DuplicateIdentifierError).
 func BuildResourceGraph(root *Schema, baseURI *url.URL, defaultDraft Draft) *ResourceGraph {
 	if root == nil {
 		return &ResourceGraph{Resources: map[string]*Resource{}}
 	}
-
-	root.ComputeBaseURIs(baseURI, root)
-
-	g := &ResourceGraph{
-		Root:      root,
-		Resources: make(map[string]*Resource),
-	}
-	g.collectResources(root, defaultDraft)
-	return g
+	x := NewResourceIndex(nil, WithIndexDraft(defaultDraft))
+	// A refused document still has its base URIs computed, which is all Graph
+	// reads; see above.
+	_ = x.AddDocument(root, baseURI)
+	return x.Graph(root, defaultDraft)
 }
 
 // SortedResourceURIs returns resource URIs in deterministic order.
@@ -85,31 +96,6 @@ func (g *ResourceGraph) SortedResourceURIs() []string {
 	}
 	sort.Strings(keys)
 	return keys
-}
-
-func (g *ResourceGraph) collectResources(s *Schema, defaultDraft Draft) {
-	if s == nil || s.IsBooleanSchema() {
-		return
-	}
-
-	if s.DocumentRoot == s || len(g.Resources) == 0 {
-		uri := canonicalResourceURI(s)
-		if _, exists := g.Resources[uri]; !exists {
-			res := &Resource{
-				CanonicalURI:   uri,
-				Draft:          resourceDraft(s, defaultDraft),
-				Root:           s,
-				Anchors:        make(map[string]*Schema),
-				DynamicAnchors: make(map[string]*Schema),
-			}
-			collectResourceAnchors(s, res, true)
-			g.Resources[uri] = res
-		}
-	}
-
-	for _, sub := range subSchemas(s) {
-		g.collectResources(sub, defaultDraft)
-	}
 }
 
 func canonicalResourceURI(s *Schema) string {
@@ -129,7 +115,7 @@ func resourceDraft(s *Schema, fallback Draft) Draft {
 	return DraftUnknown
 }
 
-func collectResourceAnchors(s *Schema, res *Resource, isRoot bool) {
+func collectResourceAnchors(s *Schema, res *Resource, isRoot bool, fallback Draft) {
 	if s == nil || s.IsBooleanSchema() {
 		return
 	}
@@ -138,19 +124,33 @@ func collectResourceAnchors(s *Schema, res *Resource, isRoot bool) {
 	}
 	// AnchorNames is the one statement of which keywords declare a plain-name
 	// fragment; see its doc comment for why this must not be a list kept here.
-	for _, name := range AnchorNames(s) {
+	//
+	// The first declaration of a name, in subSchemas order, is the one kept, and
+	// a second node declaring it marks the name ambiguous; see Resource.ambiguous.
+	// The same node reached twice -- "definitions" and "$defs" are mirrored into
+	// each other by Normalize -- is one declaration, not two.
+	for _, name := range anchorNamesIn(s, fallback) {
+		if have, ok := res.Anchors[name]; ok {
+			if have != s {
+				if res.ambiguous == nil {
+					res.ambiguous = make(map[string]bool)
+				}
+				res.ambiguous[name] = true
+			}
+			continue
+		}
 		res.Anchors[name] = s
 	}
-	if s.DynamicAnchor != "" {
+	if _, ok := res.DynamicAnchors[s.DynamicAnchor]; s.DynamicAnchor != "" && !ok {
 		res.DynamicAnchors[s.DynamicAnchor] = s
 	}
 	// "$recursiveAnchor" names nothing, so it is not in Anchors. It declares the
 	// resource's unnamed dynamic anchor, which is what "$recursiveRef": "#"
 	// walks to.
-	if s.RecursiveAnchor != nil && *s.RecursiveAnchor {
+	if _, ok := res.DynamicAnchors[""]; s.RecursiveAnchor != nil && *s.RecursiveAnchor && !ok {
 		res.DynamicAnchors[""] = s
 	}
 	for _, sub := range subSchemas(s) {
-		collectResourceAnchors(sub, res, false)
+		collectResourceAnchors(sub, res, false, fallback)
 	}
 }

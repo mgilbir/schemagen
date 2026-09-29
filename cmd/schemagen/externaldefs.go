@@ -73,12 +73,16 @@ import (
 // the guard watching, in the multi-document spelling as well as the single one.
 // See externalClaimName.
 //
-// The walk resolves through the run's own loaded documents and through the very
-// resolver the generator is given, so a node comes back as the instance the
-// generator will see -- the pins resolveSharedDefinitionNames produces are keyed
-// by node identity, and a second copy would carry none of them. Where this walk
-// cannot resolve a ref it records nothing, which leaves that reference exactly
-// as it behaves today: the guard can miss, but it cannot invent a collision.
+// The walk resolves through the run's resource index, the very one the
+// generator is given, so a reference reaches the node generation will reach and
+// comes back as the instance the generator will see -- the pins
+// resolveSharedDefinitionNames produces are keyed by node identity, and a
+// second copy would carry none of them. It used to resolve by a walk of its own
+// beside the generator's, and the two could disagree about which node a
+// reference names; a claim filed against a node generation never reaches is a
+// warning about a type nobody declares. Where this walk cannot resolve a ref it
+// records nothing, which leaves that reference exactly as it behaves today: the
+// guard can miss, but it cannot invent a collision.
 
 // externalClaims is what the walk found: the claims referenced documents make,
 // and the identities under which the diagnostic and the qualifier prefix know
@@ -138,9 +142,9 @@ func (e externalClaims) documentPaths(paths []string) []string {
 // chosenRootName is the name --root-name gives a document, or "" for a document
 // no key names -- the caller's say over what a referenced document's claims are
 // qualified with, reached by the flag's "id:" and "file:" keys.
-func collectExternalClaims(paths []string, byPath map[string]*schema.Schema, resolver schema.SchemaResolver, owned map[*schema.Schema]bool, chosenRootName func(path string, s *schema.Schema) string) externalClaims {
+func collectExternalClaims(paths []string, byPath map[string]*schema.Schema, index *schema.ResourceIndex, owned map[*schema.Schema]bool, chosenRootName func(path string, s *schema.Schema) string) externalClaims {
 	w := &externalWalker{
-		resolver:          resolver,
+		index:             index,
 		owned:             owned,
 		chosenName:        chosenRootName,
 		labelOf:           map[*schema.Schema]string{},
@@ -148,9 +152,6 @@ func collectExternalClaims(paths []string, byPath map[string]*schema.Schema, res
 		byLabel:           map[string]*schema.Schema{},
 		inputPath:         map[*schema.Schema]string{},
 		definitionEntries: map[*schema.Schema]map[*schema.Schema]bool{},
-		resources:         map[string]*schema.Schema{},
-		indexed:           map[*schema.Schema]bool{},
-		fileRoot:          map[*schema.Schema]bool{},
 		scanned:           map[*schema.Schema]bool{},
 		claimed:           map[*schema.Schema]bool{},
 	}
@@ -176,12 +177,10 @@ func collectExternalClaims(paths []string, byPath map[string]*schema.Schema, res
 	var queue []scanTarget
 	for _, path := range paths {
 		if s := byPath[path]; s != nil {
-			// The resources this input embeds, so a $ref naming one by its $id
-			// finds it here. No resolver can: an embedded resource's $id is not a
-			// file and is not an input's $id, so the run's mapping resolver and
-			// its file resolver both answer no -- which is exactly why the walk
+			// The resources this input embeds are in the index already -- it
+			// registered them with the document -- so a $ref naming one by its
+			// $id finds it, which is what the walk once could not do and why it
 			// could not see issue #308's collision.
-			w.indexResources(s)
 			queue = append(queue, scanTarget{node: s, file: path})
 		}
 	}
@@ -198,7 +197,10 @@ type scanTarget struct {
 }
 
 type externalWalker struct {
-	resolver   schema.SchemaResolver
+	// index is the run's resource index, which every reference is resolved
+	// through and which says which resource and which document a node
+	// belongs to.
+	index      *schema.ResourceIndex
 	owned      map[*schema.Schema]bool
 	chosenName func(string, *schema.Schema) string
 
@@ -213,62 +215,18 @@ type externalWalker struct {
 	// definitions hold. See isDefinitionEntry.
 	definitionEntries map[*schema.Schema]map[*schema.Schema]bool
 
-	// resources maps the canonical URI of every schema resource the walk has
-	// seen -- the run's inputs, the resources they embed, and the same for every
-	// document the resolver hands back -- to that resource's root node. It is
-	// what a $ref naming an embedded resource by its $id resolves through.
-	resources map[string]*schema.Schema
-	indexed   map[*schema.Schema]bool
-	// fileRoot marks the resources that are a whole document -- the root of a
-	// file the caller could open -- as against a resource embedded inside one.
-	// Only the first is named by a file path; an embedded resource's identity is
-	// the $id that makes it one, and letting it take its file's name would give
-	// two resources one label.
-	fileRoot map[*schema.Schema]bool
-
 	scanned map[*schema.Schema]bool
 	claimed map[*schema.Schema]bool
 	claims  []nameClaim
 }
 
-// indexResources records every schema resource in a document, so that a $ref
-// naming one by its $id can be resolved to the node instance the generator will
-// see.
-//
-// A resource is a node ComputeBaseURIs made its own document root, which is what
-// carrying an $id means; the root itself is one whether or not it declares one.
-// The first resource recorded under a URI keeps it: two documents of one run may
-// declare the same $id, and picking the later one would move a claim onto a node
-// the generator will not reach from here.
-func (w *externalWalker) indexResources(root *schema.Schema) {
-	if root == nil || w.indexed[root] {
-		return
-	}
-	w.indexed[root] = true
-	w.fileRoot[root] = true
-	generator.WalkSchema(root, func(node *schema.Schema) {
-		if node != root && node.DocumentRoot != node {
-			return
-		}
-		uri := resourceURI(node)
-		if uri == "" {
-			return
-		}
-		if _, ok := w.resources[uri]; !ok {
-			w.resources[uri] = node
-		}
-	})
-}
-
-// resourceURI is the canonical URI a schema resource is known by: the base URI
-// ComputeBaseURIs computed for it, without an empty fragment. A resource whose
-// document declares no $id at all has none, and is reachable only from inside
-// its own document.
-func resourceURI(s *schema.Schema) string {
-	if s == nil || s.BaseURI == nil {
-		return ""
-	}
-	return strings.TrimSuffix(s.BaseURI.String(), "#")
+// isWholeDocument reports whether a resource is a whole document -- the root of
+// a file the caller could open -- as against a resource embedded inside one.
+// Only the first is named by a file path; an embedded resource's identity is the
+// $id that makes it one, and letting it take its file's name would give two
+// resources one label.
+func (w *externalWalker) isWholeDocument(res *schema.Schema) bool {
+	return w.index != nil && w.index.DocumentOf(res) == res
 }
 
 // run follows every $ref reachable from the seeds, breadth first. A node is
@@ -300,110 +258,65 @@ func (w *externalWalker) run(queue []scanTarget) {
 // claimed wholesale by collectNameClaims (an input this unit generates) or
 // already counted here once; a reference that stays put reaches nothing new.
 func (w *externalWalker) follow(site refSite, fromFile string) (scanTarget, bool) {
-	docPart, fragment := splitRef(site.Ref)
-
-	// The run's own documents and the resources they embed, first. A ref that
-	// names an embedded resource by its $id reaches nothing else: no resolver
-	// derives a file from such a URI, which is why the pre-#308 walk gave up on
-	// it, and a fragment-only ref never left this document to begin with.
-	if res, node, ok := w.resolveLocally(docPart, fragment, site); ok {
-		if !w.cross(site.Scope, res, node, site.Ref, fragment, fromFile, docPart) {
-			return scanTarget{}, false
-		}
-		return scanTarget{node: node, file: fromFile}, true
-	}
-
-	if docPart == "" {
-		return scanTarget{}, false // stays inside its own document, and unresolvable
-	}
-	doc, docURL := w.resolveDocument(docPart, site.Base)
-	if doc == nil {
+	if w.index == nil || site.Node == nil {
 		return scanTarget{}, false
 	}
-	// What the generator does with a document the resolver handed it, and for
-	// the same reason: the refs inside it are written against its own base URI,
-	// and DocumentRoot is what says whether a node reached inside it is a
-	// resource root in its own right. Only a document that has not been through
-	// it already, so a second reference cannot rebase the first one's document.
-	if doc.DocumentRoot == nil {
-		doc.ComputeBaseURIs(docURL, doc)
+	docPart, fragment := splitRef(site.Ref)
+	node, err := w.index.Resolve(site.Ref, site.Node)
+	if err != nil || node == nil {
+		return scanTarget{}, false
 	}
-	w.indexResources(doc)
-	node := doc
-	if fragment != "" {
-		resolved, err := schema.NewLocalResolver(doc).Resolve("#" + fragment)
-		if err != nil || resolved == nil {
-			return scanTarget{}, false
-		}
-		node = resolved
+	// The resource the node belongs to, which is not the resource the lookup
+	// started from wherever issue #308 lives: "#/$defs/A/$defs/X" is a pointer
+	// through the outer document that lands inside the resource "$defs/A"
+	// establishes, and it is that resource's definition namespace the name X is
+	// claimed out of. And it is the document only when the document embeds
+	// none: a fetched document is as free to embed resources as an input is,
+	// and recording the claim against the file would put two namespaces under
+	// one label.
+	resource := w.index.ResourceOf(node)
+	if resource == nil {
+		return scanTarget{}, false
 	}
-	file := externalFilePath(docPart, site.Base, fromFile)
-	// The resource the node belongs to, which is the document only when the
-	// document embeds none. A fetched document is as free to embed resources as
-	// an input is, and recording the claim against the file would put two
-	// namespaces under one label -- so which of them declared a contested name
-	// would depend on whether the walk reached that file through this arm or
-	// through resolveLocally, the second reference through a file having indexed
-	// its resources for the first.
-	res := node.DocumentRoot
-	if res == nil {
-		res = doc
-	}
-	if !w.cross(site.Scope, res, node, site.Ref, fragment, file, docPart) {
+	file := w.documentFile(w.index.DocumentOf(node), fromFile)
+	if !w.cross(site.Scope, resource.Root, node, site.Ref, fragment, file, docPart) {
 		return scanTarget{}, false
 	}
 	return scanTarget{node: node, file: file}, true
 }
 
-// resolveLocally resolves a $ref against the resources the walk already holds:
-// the resource named by the ref's document part, or -- for a fragment-only ref
-// -- the one the reference is written in.
+// documentFile names the file a document was read from, as the caller would
+// write it: an input's own path; otherwise the file's path relative to the
+// directory of the file the walk came from, written onto that file's directory
+// as the caller wrote it -- so a document beside "schemas/main.json" reads as
+// "schemas/other.json", as it did when this path was worked out by joining the
+// reference onto the referring file. A document that is not a local file has no
+// file name, and is identified by its $id instead.
 //
-// It answers with the resource the *resolved node* belongs to rather than the
-// one the lookup started from, because those differ exactly where issue #308
-// lives: "#/$defs/A/$defs/X" is a pointer through the outer document that lands
-// inside the resource "$defs/A" establishes, and it is that resource's
-// definition namespace the name X is claimed out of.
-func (w *externalWalker) resolveLocally(docPart, fragment string, site refSite) (res, node *schema.Schema, ok bool) {
-	from := site.Scope
-	if docPart != "" {
-		from = w.resourceNamed(docPart, site.Base)
+// Display only: which document it is was the index's answer.
+func (w *externalWalker) documentFile(doc *schema.Schema, fromFile string) string {
+	if doc == nil {
+		return ""
 	}
-	if from == nil {
-		return nil, nil, false
+	if path, ok := w.inputPath[doc]; ok {
+		return path
 	}
-	node = from
-	if fragment != "" {
-		resolved, err := schema.NewLocalResolver(from).Resolve("#" + fragment)
-		if err != nil || resolved == nil {
-			return nil, nil, false
-		}
-		node = resolved
+	if doc.RetrievalURI == nil || doc.RetrievalURI.Scheme != "file" {
+		return ""
 	}
-	res = node.DocumentRoot
-	if res == nil {
-		res = from
+	file := filepath.FromSlash(doc.RetrievalURI.Path)
+	if fromFile == "" {
+		return file
 	}
-	return res, node, true
-}
-
-// resourceNamed reports the resource a ref's document part names, resolved
-// against the base URI in effect. Both spellings are tried -- the URI the ref
-// resolves to and the ref as written -- because an $id is matched verbatim and a
-// document may declare one that is not the URI it would be reached by.
-func (w *externalWalker) resourceNamed(docPart string, base *url.URL) *schema.Schema {
-	refURL, err := url.Parse(docPart)
+	fromAbs, err := filepath.Abs(fromFile)
 	if err != nil {
-		return nil
+		return file
 	}
-	if base != nil {
-		absolute := *base.ResolveReference(refURL)
-		absolute.Fragment = ""
-		if res := w.resources[strings.TrimSuffix(absolute.String(), "#")]; res != nil {
-			return res
-		}
+	rel, err := filepath.Rel(filepath.Dir(fromAbs), file)
+	if err != nil {
+		return file
 	}
-	return w.resources[strings.TrimSuffix(docPart, "#")]
+	return filepath.Join(filepath.Dir(fromFile), rel)
 }
 
 // cross reports whether a resolved reference reached a node whose Go type name
@@ -485,41 +398,6 @@ func (w *externalWalker) isDefinitionEntry(res, node *schema.Schema) bool {
 		w.definitionEntries[res] = entries
 	}
 	return entries[node]
-}
-
-// resolveDocument asks the run's own resolver for the document a ref names, in
-// the order the generator asks: the URI the ref resolves to against the base in
-// effect, then the ref as written. The two differ for exactly the case this walk
-// exists for -- a relative path under a document whose $id is an absolute URI,
-// where only the second reaches the file resolver.
-//
-// The URL returned is the one the successful call was made with, which is what
-// the generator passes to ComputeBaseURIs for the document it just loaded.
-func (w *externalWalker) resolveDocument(docPart string, base *url.URL) (*schema.Schema, *url.URL) {
-	if w.resolver == nil {
-		// A run with no resolver still has the resources its own inputs embed,
-		// which resolveLocally has already been asked about. There is nothing
-		// off disk to reach.
-		return nil, nil
-	}
-	refURL, err := url.Parse(docPart)
-	if err != nil {
-		return nil, nil
-	}
-	if base != nil {
-		absolute := base.ResolveReference(refURL)
-		docURL := *absolute
-		docURL.Fragment = ""
-		if s, err := w.resolver.ResolveSchema(docURL.String(), base); err == nil && s != nil {
-			return s, &docURL
-		}
-	}
-	if s, err := w.resolver.ResolveSchema(docPart, base); err == nil && s != nil {
-		docURL := *refURL
-		docURL.Fragment = ""
-		return s, &docURL
-	}
-	return nil, nil
 }
 
 // record adds the claim a referenced node makes on a Go type name, once per
@@ -617,7 +495,7 @@ func (w *externalWalker) labelFor(doc *schema.Schema, file, docPart string) stri
 		return label
 	}
 	candidates := []string{file, docIDOf(doc), docPart}
-	if !w.fileRoot[doc] {
+	if !w.isWholeDocument(doc) {
 		candidates = []string{docIDOf(doc), docPart, file}
 	}
 	label := ""
@@ -735,32 +613,6 @@ func pointerClaimParts(fragment string) (keyword, defKey string) {
 	}
 	last := len(tokens) - 1
 	return strings.Join(tokens[:last], "/"), tokens[last]
-}
-
-// externalFilePath reports the file a referenced document was read from, as a
-// caller would write it. It mirrors schema.FileResolver's path derivation: a
-// scheme-less ref is a path relative to the document holding it, and a file://
-// ref names its path outright. A ref with any other scheme names no file, and
-// the document is identified by its $id instead.
-//
-// Display only -- resolution itself is the resolver's, above.
-func externalFilePath(docPart string, base *url.URL, fromFile string) string {
-	u, err := url.Parse(docPart)
-	if err != nil {
-		return ""
-	}
-	switch {
-	case u.Scheme == "file":
-		return u.Path
-	case u.Scheme != "":
-		return ""
-	case base != nil && base.Scheme == "file":
-		return filepath.Join(filepath.Dir(base.Path), u.Path)
-	case fromFile != "":
-		return filepath.Join(filepath.Dir(fromFile), u.Path)
-	default:
-		return u.Path
-	}
 }
 
 // ownedDocuments is the set of document roots a run generates itself.

@@ -2,7 +2,6 @@ package schemagen
 
 import (
 	"fmt"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,9 +18,23 @@ func loadDoc(t *testing.T, path, pkg string) packageDoc {
 		t.Fatal(err)
 	}
 	s.Normalize()
-	s.ComputeBaseURIs(nil, s)
 	id := strings.TrimSuffix(s.ID, "#")
 	return packageDoc{id: id, pkg: pkg, path: path, schema: s}
+}
+
+// orderDocs registers docs with a resource index, as runMultiPackage's
+// loadRunDocuments does, and orders their packages through it. The index has no
+// loader: a reference to a document that is not one of docs reaches nothing,
+// which is what an ordering test about the run's own documents needs.
+func orderDocs(t *testing.T, pkgOrder []string, docs []packageDoc) ([]string, error) {
+	t.Helper()
+	index := schema.NewResourceIndex(nil)
+	for _, d := range docs {
+		if err := index.AddDocument(d.schema, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return orderPackagesByDependencies(pkgOrder, docs, index)
 }
 
 // writeDocs writes a two-document set where b.json $refs a.json.
@@ -57,17 +70,13 @@ func writeDocs(t *testing.T) (dir, aPath, bPath string) {
 
 func TestOrderPackagesByDependencies(t *testing.T) {
 	_, aPath, bPath := writeDocs(t)
-	docPackages := map[string]string{
-		"app://a.json": "example.com/m/apkg",
-		"app://b.json": "example.com/m/bpkg",
-	}
 	docs := []packageDoc{
 		loadDoc(t, bPath, "example.com/m/bpkg"),
 		loadDoc(t, aPath, "example.com/m/apkg"),
 	}
 	// Caller listed the dependent package first; ordering must fix that.
-	got, err := orderPackagesByDependencies(
-		[]string{"example.com/m/bpkg", "example.com/m/apkg"}, docs, docPackages)
+	got, err := orderDocs(t,
+		[]string{"example.com/m/bpkg", "example.com/m/apkg"}, docs)
 	if err != nil {
 		t.Fatalf("ordering: %v", err)
 	}
@@ -99,16 +108,12 @@ func TestOrderPackagesDetectsCycle(t *testing.T) {
 		"properties": {"x": {"$ref": "app://x.json#/definitions/thing"}},
 		"definitions": {"thing": {"type": "string"}}
 	}`)
-	docPackages := map[string]string{
-		"app://x.json": "example.com/m/xpkg",
-		"app://y.json": "example.com/m/ypkg",
-	}
 	docs := []packageDoc{
 		loadDoc(t, xPath, "example.com/m/xpkg"),
 		loadDoc(t, yPath, "example.com/m/ypkg"),
 	}
-	_, err := orderPackagesByDependencies(
-		[]string{"example.com/m/xpkg", "example.com/m/ypkg"}, docs, docPackages)
+	_, err := orderDocs(t,
+		[]string{"example.com/m/xpkg", "example.com/m/ypkg"}, docs)
 	if err == nil {
 		t.Fatal("expected an error for mutually-referencing packages")
 	}
@@ -238,71 +243,18 @@ func TestOrderingUsesPerNodeBaseURI(t *testing.T) {
 		"definitions": {"widget": {"type": "object", "properties": {"size": {"type": "integer"}}}}
 	}`)
 
-	docPackages := map[string]string{
-		"https://ex.test/dir/b.json":        "example.com/m/bpkg",
-		"https://ex.test/other/widget.json": "example.com/m/wpkg",
-	}
 	docs := []packageDoc{
 		loadDoc(t, bPath, "example.com/m/bpkg"),
 		loadDoc(t, wPath, "example.com/m/wpkg"),
 	}
-	got, err := orderPackagesByDependencies(
-		[]string{"example.com/m/bpkg", "example.com/m/wpkg"}, docs, docPackages)
+	got, err := orderDocs(t,
+		[]string{"example.com/m/bpkg", "example.com/m/wpkg"}, docs)
 	if err != nil {
 		t.Fatalf("ordering: %v", err)
 	}
 	want := "example.com/m/wpkg,example.com/m/bpkg"
 	if strings.Join(got, ",") != want {
 		t.Errorf("order = %v, want [wpkg bpkg]: the rescoped ref should still create the edge", got)
-	}
-}
-
-func TestRefTargetDocumentsEdgeCases(t *testing.T) {
-	mustParse := func(raw string) *url.URL {
-		u, err := url.Parse(raw)
-		if err != nil {
-			t.Fatalf("parsing base %q: %v", raw, err)
-		}
-		return u
-	}
-	cases := []struct {
-		name     string
-		ref      string
-		base     *url.URL
-		wantSome string // a candidate that must be present ("" = expect none)
-	}{
-		{"fragment only", "#/definitions/x", mustParse("https://ex.test/a.json"), ""},
-		{"empty ref", "", nil, ""},
-		{"absolute as written", "https://ex.test/a.json#/definitions/x", nil, "https://ex.test/a.json"},
-		{"relative against hierarchical base", "a.json#/definitions/x", mustParse("https://ex.test/dir/b.json"), "https://ex.test/dir/a.json"},
-		{"parent relative", "../a.json", mustParse("https://ex.test/dir/b.json"), "https://ex.test/a.json"},
-		{"host case normalized", "https://EX.TEST/a.json", nil, "https://ex.test/a.json"},
-		{"no base, relative ref still offered verbatim", "a.json", nil, "a.json"},
-		{"opaque urn base is not resolved against", "other.json", mustParse("urn:example:thing"), "other.json"},
-	}
-	for _, tc := range cases {
-		got := refTargetDocuments(tc.ref, tc.base)
-		if tc.wantSome == "" {
-			if len(got) != 0 {
-				t.Errorf("%s: expected no candidates, got %v", tc.name, got)
-			}
-			continue
-		}
-		found := false
-		for _, c := range got {
-			if c == tc.wantSome {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("%s: candidates %v should include %q", tc.name, got, tc.wantSome)
-		}
-		for _, c := range got {
-			if strings.HasPrefix(c, "urn:///") {
-				t.Errorf("%s: produced a bogus candidate %q", tc.name, c)
-			}
-		}
 	}
 }
 
@@ -336,7 +288,7 @@ func writeChain(t *testing.T, n int) (paths []string, docPackages map[string]str
 }
 
 func TestOrderingChainOfFivePackages(t *testing.T) {
-	paths, docPackages := writeChain(t, 5)
+	paths, _ := writeChain(t, 5)
 	var docs []packageDoc
 	var given []string
 	for i, p := range paths {
@@ -344,7 +296,7 @@ func TestOrderingChainOfFivePackages(t *testing.T) {
 		docs = append(docs, loadDoc(t, p, pkg))
 		given = append(given, pkg)
 	}
-	got, err := orderPackagesByDependencies(given, docs, docPackages)
+	got, err := orderDocs(t, given, docs)
 	if err != nil {
 		t.Fatalf("ordering: %v", err)
 	}
@@ -360,7 +312,6 @@ func TestOrderingIsDeterministicForIndependentPackages(t *testing.T) {
 	dir := t.TempDir()
 	var docs []packageDoc
 	var given []string
-	docPackages := map[string]string{}
 	for _, name := range []string{"c", "a", "b"} {
 		src := fmt.Sprintf(`{
 			"$schema": "http://json-schema.org/draft-07/schema#",
@@ -374,9 +325,8 @@ func TestOrderingIsDeterministicForIndependentPackages(t *testing.T) {
 		pkg := "example.com/m/" + name
 		docs = append(docs, loadDoc(t, p, pkg))
 		given = append(given, pkg)
-		docPackages["https://ex.test/"+name+".json"] = pkg
 	}
-	first, err := orderPackagesByDependencies(given, docs, docPackages)
+	first, err := orderDocs(t, given, docs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,7 +334,7 @@ func TestOrderingIsDeterministicForIndependentPackages(t *testing.T) {
 		t.Errorf("independent packages should keep the given order: got %v, want %v", first, given)
 	}
 	for i := 0; i < 20; i++ {
-		again, err := orderPackagesByDependencies(given, docs, docPackages)
+		again, err := orderDocs(t, given, docs)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -407,8 +357,7 @@ func TestOrderingIgnoresRefsToUnmappedDocuments(t *testing.T) {
 		t.Fatal(err)
 	}
 	docs := []packageDoc{loadDoc(t, p, "example.com/m/apkg")}
-	got, err := orderPackagesByDependencies([]string{"example.com/m/apkg"}, docs,
-		map[string]string{"https://ex.test/a.json": "example.com/m/apkg"})
+	got, err := orderDocs(t, []string{"example.com/m/apkg"}, docs)
 	if err != nil {
 		t.Fatalf("a ref outside the run should not affect ordering: %v", err)
 	}
@@ -439,16 +388,12 @@ func TestCycleErrorNamesDocumentsAndRefs(t *testing.T) {
 		"properties": {"x": {"$ref": "https://ex.test/x.json#/definitions/thing"}},
 		"definitions": {"thing": {"type": "string"}}
 	}`)
-	docPackages := map[string]string{
-		"https://ex.test/x.json": "example.com/m/xpkg",
-		"https://ex.test/y.json": "example.com/m/ypkg",
-	}
 	docs := []packageDoc{
 		loadDoc(t, xPath, "example.com/m/xpkg"),
 		loadDoc(t, yPath, "example.com/m/ypkg"),
 	}
-	_, err := orderPackagesByDependencies(
-		[]string{"example.com/m/xpkg", "example.com/m/ypkg"}, docs, docPackages)
+	_, err := orderDocs(t,
+		[]string{"example.com/m/xpkg", "example.com/m/ypkg"}, docs)
 	if err == nil {
 		t.Fatal("expected a cycle error")
 	}

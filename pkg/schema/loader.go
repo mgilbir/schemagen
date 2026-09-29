@@ -3,6 +3,7 @@ package schema
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -80,6 +81,22 @@ func LoadFromFile(path string) (*Schema, error) {
 	if err := json.Unmarshal(data, &s); err != nil {
 		return nil, fmt.Errorf("parsing schema JSON: %w", err)
 	}
+	// Where the document was read from is its base URI until an "$id" says
+	// otherwise (RFC 3986 §5.1.3, which 2020-12 §9.1.1 defers to), so a
+	// relative reference inside it is read next to this file whoever loads it.
+	if u, err := FileURI(path); err == nil {
+		s.RetrievalURI = u
+	}
 
 	return &s, nil
+}
+
+// FileURI is the file:// URI of a local path, made absolute: the retrieval URI
+// of a document read from that file.
+func FileURI(path string) (*url.URL, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return nil, err
+	}
+	return &url.URL{Scheme: "file", Path: filepath.ToSlash(abs)}, nil
 }

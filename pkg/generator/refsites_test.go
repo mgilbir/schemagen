@@ -273,6 +273,11 @@ var refReadingSites = map[string]refReadingSite{
 		Verdict: refAsksAboutOneKeyword, Reads: "$ref",
 		Why: "refDisplacesSiblingValues on the other side of the same draft split",
 	},
+	"schema/resolver.go | refReplacesSiblings": {
+		Verdict: refAsksAboutOneKeyword, Reads: "$ref",
+		Why: "the pre-2019-09 rule that a $ref replaces its siblings, asked of an $id beside it; the drafts " +
+			"it applies to have no other reference keyword",
+	},
 	"generator/generator.go | (*Generator).siblingsWouldDropNot": {
 		Verdict: refAsksAboutOneKeyword, Reads: "EffectiveRef()",
 		Why: "the same pre-2019-09 sibling rule as refDisplacesSiblingValues, asked once for the two places a " +
@@ -345,6 +350,10 @@ var refReadingSites = map[string]refReadingSite{
 		Verdict: refNotASchemaReference, Reads: "$ref",
 		Why: "ResolveError.Ref is the reference string the error is about",
 	},
+	"schema/index.go | (*ReferenceError).Error": {
+		Verdict: refNotASchemaReference, Reads: "$ref",
+		Why: "ReferenceError.Ref is the reference string the error is about",
+	},
 	"cmd/schemagen/pkgorder.go | packageDependencies": {
 		Verdict: refNotASchemaReference, Reads: "$ref",
 		Why: "refSite.Ref, already collected from all three keywords by collectRefSites",
@@ -353,9 +362,9 @@ var refReadingSites = map[string]refReadingSite{
 		Verdict: refNotASchemaReference, Reads: "$ref",
 		Why: "as packageDependencies",
 	},
-	"cmd/schemagen/pkgorder.go | refTargetFile": {
+	"cmd/schemagen/pkgorder.go | siteTargetDocument": {
 		Verdict: refNotASchemaReference, Reads: "$ref",
-		Why: "as packageDependencies",
+		Why: "as packageDependencies: refSite.Ref, resolved as written on refSite.Node",
 	},
 	"cmd/schemagen/pkgorder.go | cycleError": {
 		Verdict: refNotASchemaReference, Reads: "$ref",

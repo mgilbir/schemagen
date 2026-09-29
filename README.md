@@ -666,11 +666,28 @@ Under neither setting do these keywords change a validation verdict.
 
 ### Unresolvable References
 
-A `$ref` is resolved two ways. By **absolute URI**, matched against the `$id` of
-the documents given to the same run — so a document a `$ref` names by its `$id`
-has to be one of the inputs, in every configuration. And by **relative path**,
-read from that path next to the referring schema file. `--allow-remote-refs`
-adds a third route, fetching `http(s)` refs over the network.
+A `$ref` is resolved against the base URI of the schema resource it is written
+in, as RFC 3986 and the JSON Schema specification say, in every configuration —
+the default, `--shared-types`, and `--schema-package` or a config file's
+packages alike. A document's base URI is the file it was read from, unless its
+`$id` says otherwise; a subschema with its own `$id` is a resource of its own,
+with its own base URI, `$defs` and anchors. So `"#/$defs/Name"` and `"#name"`
+mean the `Name` and the `name` of the resource the reference is written in, and
+never a same-named one of another document.
+
+The URI a reference resolves to is matched against every document of the run
+and every resource embedded in one — by `$id`, and by the file a document was
+read from — so a document named by its `$id` has to be one of the inputs or
+reached by another reference. A **relative path** is read from that path next
+to the referring schema file; where the referring document's `$id` is a URI
+nothing serves (`https://example.com/schemas/x.json`, say), it is read next to
+the file that document was read from. `--allow-remote-refs` adds fetching
+`http(s)` refs over the network. A document reached by several of these
+spellings is read once and is one document.
+
+Two schemas of one run that identify as the same URI — the same `$id` twice,
+in one document or in two — are refused: a URI names one schema. A plain-name
+anchor declared twice in one resource is refused when a reference names it.
 
 A `$ref` that no resolver can serve fails generation by default, naming the
 refs it could not resolve. Previously such refs degraded silently: property and
@@ -979,7 +996,7 @@ This enables the HTTP resolver, which fetches and caches remote schemas at gener
 
 > **Security note:** with `--allow-remote-refs`, `$ref` URLs from the input schema are fetched with no host allowlist. Running it on an untrusted schema is a server-side request forgery (SSRF) vector -- a `$ref` can point the fetch at internal services or cloud metadata endpoints. Only enable it for schemas you trust, and prefer vendoring remote schemas locally.
 >
-> Within that limit, remote fetches are bounded: responses are capped at 10 MiB, redirect chains at 5 hops with `https` → `http` downgrades refused, and a body that does not parse as JSON is refused (with the `Content-Type` named when it is not a JSON one). The `Content-Type` itself is not a gate: `raw.githubusercontent.com` serves every file as `text/plain`, and a body that parses as a schema is one whatever the header says. Two URLs that redirect to one document share one parsed copy of it. Local (`file`) `$ref` resolution is confined to the schema's own directory subtree, with symlinks resolved before the check, so a link inside the subtree cannot read outside it.
+> Within that limit, remote fetches are bounded: responses are capped at 10 MiB, redirect chains at 5 hops with `https` → `http` downgrades refused, and a body that does not parse as JSON is refused (with the `Content-Type` named when it is not a JSON one). The `Content-Type` itself is not a gate: `raw.githubusercontent.com` serves every file as `text/plain`, and a body that parses as a schema is one whatever the header says. Two URLs that redirect to one document share one parsed copy of it. Local (`file`) `$ref` resolution is confined to the directory subtree of the input schema the referring file sits in — with several inputs, each reference to the input directories that hold the file it is written in, so two inputs in sibling directories do not open either directory to the other — with symlinks resolved before the check, so a link inside the subtree cannot read outside it.
 
 ### Draft Override
 
@@ -1088,7 +1105,7 @@ The generation pipeline has these stages:
 4. **Generate IR** -- Convert the normalized schema into an intermediate representation of Go types, resolving `$ref` targets (`pkg/generator`)
 5. **Emit** -- Render the IR into formatted Go source code using templates (`pkg/emitter`)
 
-Note that generation performs I/O: `$ref` targets are read from the local filesystem (confined to the schema's directory subtree), and, when `--allow-remote-refs` is set, fetched over the network.
+Note that generation performs I/O: `$ref` targets are read from the local filesystem (confined to the input schemas' directory subtrees, as above), and, when `--allow-remote-refs` is set, fetched over the network.
 
 ## Development
 

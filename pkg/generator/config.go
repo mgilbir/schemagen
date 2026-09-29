@@ -11,7 +11,7 @@ type Config struct {
 	//                      Extra properties are still captured in an overflow map for round-trip fidelity,
 	//                      but Validate rejects them. When false (default), absent additionalProperties
 	//                      follows JSON Schema spec (defaults to true), so overflow properties are accepted.
-	Resolver      schema.SchemaResolver // External schema resolver for $ref resolution (remote, file, etc.)
+	Resolver      schema.SchemaResolver // Loads the documents a $ref names that the generator does not hold (file, remote, etc.). References are resolved by a schema.ResourceIndex built over it; a *schema.ResourceIndex given here is used as it is, and shared.
 	Draft         schema.Draft          // Override draft detection; when set, this takes precedence over $schema URI, except for embedded/remote resources that declare both $id and their own $schema.
 	BigIntSupport bool                  // When true, "type":"integer" generates wrapper struct with int64 + *big.Int support for arbitrary-precision integers.
 

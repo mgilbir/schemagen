@@ -340,13 +340,14 @@ func (g *Generator) findDynamicAnchorDeclarations(name string) []*schema.Schema 
 // resourceDynamicAnchor finds the anchor a schema resource declares under a
 // given name, or nil.
 //
-// The scope rule is the one pkg/schema's resource graph applies, and it is the
-// reason this is not findDynamicAnchor: a nested $id starts a resource of its
-// own, so an anchor written *on* that nested root belongs to it and not to the
-// resource being asked about. findDynamicAnchor stops descending at such a
-// boundary but still reads the boundary node itself, which is right for "what
-// can this document reach" and wrong for "what does this resource contribute to
-// the dynamic scope".
+// The scope rule is the one pkg/schema's resource index applies to every
+// "#name" a reference names: a nested $id starts a resource of its own, so an
+// anchor written *on* that nested root belongs to it and not to the resource
+// being asked about. A walk that stops descending at such a boundary but still
+// reads the boundary node itself -- the generator's findDynamicAnchor, until the
+// index replaced it -- answers "what does this document hold", which is the
+// wrong question for "what does this resource contribute to the dynamic scope"
+// and for "what does #name mean here" alike.
 //
 // The difference is not theoretical. In the suite's "after leaving a dynamic
 // scope" schema the document root holds $defs/thingy, whose own $id makes it the

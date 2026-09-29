@@ -343,66 +343,29 @@ func newGenerateCmd() *cobra.Command {
 			// file. See packageDecls.
 			decls := newPackageDecls(pkgName)
 
-			// Every input of the run is loaded once, up front, and indexed by
-			// $id. Two things need that index.
+			// Every input of the run is loaded once, up front, and registered
+			// with the one resource index every generator of the run resolves
+			// through; see loadRunDocuments.
 			//
 			// In shared-types mode all schemas run through one generator so
 			// types materialized by an earlier schema are referenced, not
 			// re-emitted, and a cross-input $ref has to resolve to the same
 			// loaded instance as the input itself (instance identity is what
-			// the generated-types registry keys on).
+			// the generated-types registry keys on). Under the default
+			// configuration nothing is shared between the per-input generators,
+			// but the index is still what makes a $ref that addresses another
+			// input by its $id resolve (issue #223), and what reads a relative
+			// $ref next to the file it is written in, as it does in every mode.
 			//
-			// Under the default configuration nothing is shared between the
-			// per-input generators, but the index is still what makes a $ref
-			// that addresses a document by its own $id resolve at all: no
-			// resolver derives a file name from an absolute URI, so
-			// {"$ref":"https://ex.test/c.json"} reached only the file resolver,
-			// which refuses the scheme. --shared-types and --schema-package
-			// both resolved it and the default did not, for no reason a caller
-			// could see (issue #223).
-			inputByPath := make(map[string]*schema.Schema)
-			inputByID := make(map[string]*schema.Schema)
-			for _, schemaPath := range args {
-				s, err := schema.LoadFromFile(schemaPath)
-				if err != nil {
-					return fmt.Errorf("loading %s: %w", schemaPath, err)
-				}
-				// --draft is the caller's statement about the document, and it
-				// has to reach normalization as well as generation:
-				// normalization is where a keyword the dialect does not define
-				// is dropped, and answering "which dialect" in two places from
-				// two sources is issue #203 in miniature. Config.Draft below
-				// carries the same value on to the generator.
-				s.NormalizeForDraft(draft)
-				s.ComputeBaseURIs(nil, s)
-				inputByPath[schemaPath] = s
-				id := docIDOf(s)
-				if id != "" {
-					if prev, ok := inputByID[id]; ok && prev != s {
-						if sharedTypes {
-							return fmt.Errorf("duplicate $id %q across input schemas", id)
-						}
-						// Outside shared-types mode two inputs may legitimately
-						// declare one $id (the same document listed twice under
-						// different paths, or two revisions generated into
-						// separate files). The identity is then ambiguous, so it
-						// answers no $ref: leaving it out restores exactly the
-						// pre-#223 behaviour for that URI rather than picking a
-						// document for the caller.
-						inputByID[id] = nil
-						continue
-					}
-					if _, ok := inputByID[id]; !ok {
-						inputByID[id] = s
-					}
-				}
+			// Two inputs claiming one $id are refused in every mode. The
+			// default mode used to leave such an $id answering no $ref, but the
+			// inputs of a run share one index now, and a URI naming two of its
+			// schemas names neither (2020-12 §9.1.2).
+			run, err := loadRunDocuments(args, draft, allowRemoteRefs)
+			if err != nil {
+				return err
 			}
-			// maporder: deletes the nil entries; which are deleted does not depend on the order they are met in.
-			for id, s := range inputByID {
-				if s == nil {
-					delete(inputByID, id)
-				}
-			}
+			inputByPath := run.byPath
 
 			// The root type name of an input, from the same two sources
 			// generation reads and in the same order. Shared with the
@@ -477,28 +440,15 @@ func newGenerateCmd() *cobra.Command {
 				// inputs in the order given. A $ref chain that runs in a circle
 				// has no such order, and the failure it used to produce named
 				// the root type names instead — see checkInputRefCycle.
-				refEdges = buildDocRefEdges(args, inputByPath)
+				refEdges = buildDocRefEdges(args, inputByPath, run.index)
 				if err := checkInputRefCycle(args, refEdges); err != nil {
 					return err
 				}
-				absPath, _ := filepath.Abs(args[0])
-				// The same --draft the inputs above were normalized under. A
-				// document a $ref pulls in is a document of this run too, and
-				// reading it under a dialect nobody asked for is how one command
-				// line came to enforce two (issue #314).
-				resolvers := []schema.SchemaResolver{
-					schema.NewMappingResolver(inputByID),
-					schema.NewFileResolver(filepath.Dir(absPath), schema.WithFileResolverDraft(draft)),
-				}
-				if allowRemoteRefs {
-					resolvers = append(resolvers, schema.NewHTTPResolver(schema.WithHTTPResolverDraft(draft)))
-				}
-				// Resolved before the names are, and through the very resolver
-				// the generator is handed: a document reached by $ref declares
-				// types in this package too, and the pins that separate them are
-				// keyed by the node instance the generator will see.
-				sharedResolver := schema.NewCompositeResolver(resolvers...)
-				external := collectExternalClaims(args, inputByPath, sharedResolver, ownDocs, externalRootNameOf)
+				// Resolved before the names are, and through the very index the
+				// generator is handed: a document reached by $ref declares types
+				// in this package too, and the pins that separate them are keyed
+				// by the node instance the generator will see.
+				external := collectExternalClaims(args, inputByPath, run.index, ownDocs, externalRootNameOf)
 				pinDocsByPath = external.merge(inputByPath)
 				pinDocPaths = external.documentPaths(args)
 				pinnedDefNames = resolveSharedDefinitionNames(args, pinDocsByPath, external.claims, effectiveRootNameOf, cmd.ErrOrStderr(), rootNames.notePrefixApplied)
@@ -513,7 +463,7 @@ func newGenerateCmd() *cobra.Command {
 					RawUntyped:          rawUntyped,
 					FormatAssertion:     formatAssertion,
 					FormatAnnotation:    formatAnnotation,
-					Resolver:            sharedResolver,
+					Resolver:            run.index,
 					Draft:               draft,
 					Validation:          validationMode,
 					LenientRefs:         lenientRefs,
@@ -536,27 +486,10 @@ func newGenerateCmd() *cobra.Command {
 				if sharedTypes {
 					gen = sharedGen
 				} else {
-					// Create generator with config. The resolver chain matches
-					// the one shared-types mode builds: the run's own documents
-					// by $id first, then a file resolver rooted at this schema
-					// file's directory, then HTTP if --allow-remote-refs asked
-					// for it. Consulting the loaded inputs first is what makes a
-					// $ref by document $id resolve here as it does there (issue
-					// #223); a relative ref still reaches the file resolver,
-					// since nothing relative matches an absolute $id.
-					absPath, _ := filepath.Abs(schemaPath)
-					resolvers := make([]schema.SchemaResolver, 0, 3)
-					if len(inputByID) > 0 {
-						resolvers = append(resolvers, schema.NewMappingResolver(inputByID))
-					}
-					resolvers = append(resolvers, schema.NewFileResolver(filepath.Dir(absPath), schema.WithFileResolverDraft(draft)))
-					if allowRemoteRefs {
-						resolvers = append(resolvers, schema.NewHTTPResolver(schema.WithHTTPResolverDraft(draft)))
-					}
-					var resolver schema.SchemaResolver = resolvers[0]
-					if len(resolvers) > 1 {
-						resolver = schema.NewCompositeResolver(resolvers...)
-					}
+					// Create generator with config. It resolves through the
+					// run's index, as the shared-types generator does: the same
+					// base URIs, the same instances, the same confinement.
+					resolver := run.index
 
 					// This document, and whatever its $refs pull in beside it.
 					// Only this input path is listed: each input writes its own
@@ -1095,15 +1028,17 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 		pkg  string
 	}
 
+	// Loaded and registered exactly as the other two modes load theirs; see
+	// loadRunDocuments. A $ref resolves to the instances this run loaded, which
+	// the cross-package registry keys types by, however it spells the document.
+	run, err := loadRunDocuments(args, p.draft, p.allowRemoteRefs)
+	if err != nil {
+		return err
+	}
 	inputs := make([]*input, 0, len(args))
 	byID := make(map[string]*schema.Schema)
 	for _, schemaPath := range args {
-		s, err := schema.LoadFromFile(schemaPath)
-		if err != nil {
-			return fmt.Errorf("loading %s: %w", schemaPath, err)
-		}
-		s.NormalizeForDraft(p.draft)
-		s.ComputeBaseURIs(nil, s)
+		s := run.byPath[schemaPath]
 		id := strings.TrimSuffix(s.ID, "#")
 		if id == "" {
 			id = strings.TrimSuffix(s.LegacyID, "#")
@@ -1142,21 +1077,7 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 		}
 	}
 
-	// Resolve $refs through the instances this run already loaded, and root a
-	// file resolver at every input's directory so a sibling-relative ref inside
-	// any input resolves, not just inside the first one.
-	resolvers := []schema.SchemaResolver{schema.NewMappingResolver(byID)}
-	for _, dir := range inputDirs(args) {
-		resolvers = append(resolvers, schema.NewFileResolver(dir, schema.WithFileResolverDraft(p.draft)))
-	}
-	if p.allowRemoteRefs {
-		resolvers = append(resolvers, schema.NewHTTPResolver(schema.WithHTTPResolverDraft(p.draft)))
-	}
-	// Whatever spelling a ref uses, a document this run owns must come back as
-	// the instance already loaded for it: the cross-package registry keys types
-	// by node identity, so a second copy would go unrecognized and be
-	// duplicated locally.
-	resolver := newCanonicalInstanceResolver(schema.NewCompositeResolver(resolvers...), byID)
+	resolver := run.index
 	// A $ref may target a subschema carrying its own $id, which is a resource
 	// root in its own right and cannot be traced back to the file containing
 	// it. Register every resource $id inside each input against that input's
@@ -1185,7 +1106,7 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 	for _, in := range inputs {
 		docs = append(docs, packageDoc{id: in.id, pkg: in.pkg, path: in.path, schema: in.s})
 	}
-	orderedPkgs, err := orderPackagesByDependencies(pkgOrder, docs, p.schemaPackages)
+	orderedPkgs, err := orderPackagesByDependencies(pkgOrder, docs, run.index)
 	if err != nil {
 		return err
 	}
