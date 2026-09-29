@@ -253,8 +253,10 @@ func TestDecodeValidateMarshalCostIsLinearInTheDocument(t *testing.T) {
 	if testing.Short() {
 		t.Skip("generates, compiles and measures a package per shape")
 	}
-	// Not parallel: it times what it measures, and does it best with the
-	// machine to itself.
+	// Not parallel: it times what it measures. The time is the CPU time the
+	// driver spends, not the wall clock, so the other test binaries go test runs
+	// beside this one -- each package under tests/ is one -- slow it down
+	// without moving the ratios it is judged on.
 	bin := schemagenBinary(t)
 	out := t.TempDir()
 	var imports, entries strings.Builder
@@ -316,7 +318,7 @@ func TestDecodeValidateMarshalCostIsLinearInTheDocument(t *testing.T) {
 		native[shape.name] = shape.nativeMarshal
 	}
 	for _, m := range results {
-		t.Logf("%-18s %-10s depths %v: allocated %v B, best of five %v ns, live %v B, document %v B",
+		t.Logf("%-18s %-10s depths %v: allocated %v B, least CPU of five %v ns, live %v B, document %v B",
 			m.Shape, m.Kind, m.Depths, m.Bytes, m.Nanos, m.Live, m.Sizes)
 		if m.Kind == "marshalled" && native[m.Shape] {
 			continue
@@ -371,9 +373,9 @@ func checkCostGrowth(t *testing.T, m costMeasurement) {
 		t.Errorf("%s: allocation grew %.1fx for %.0fx the depth (%v bytes at depths %v) -- linear is %.0fx, quadratic %.0fx",
 			label, byteRatio, growth, m.Bytes, m.Depths, growth, growth*growth)
 	}
-	// Wall time is measured as the best of several runs, and still allowed five
-	// times the linear factor: it is the noisy signal, and exists to catch the
-	// scan that allocates nothing.
+	// Time is the least CPU time of several runs, and still allowed five times
+	// the linear factor: it is the noisy signal, and exists to catch the scan
+	// that allocates nothing.
 	timeRatio := float64(m.Nanos[last]) / float64(max(m.Nanos[0], 1))
 	if timeRatio > 5*growth && m.Nanos[last] > int64(50*time.Millisecond) {
 		t.Errorf("%s: time grew %.1fx for %.0fx the depth (%v ns at depths %v)", label, timeRatio, growth, m.Nanos, m.Depths)
@@ -409,7 +411,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
-	"time"
+	"syscall"
 
 @IMPORTS@
 )
@@ -444,8 +446,19 @@ type result struct {
 	Errors []string ` + "`json:\"errors\"`" + `
 }
 
+// cpuNanos is the CPU time the process has used, user and system. Unlike the
+// wall clock it does not count the time the process waited for a CPU, which is
+// what a machine busy with other test binaries adds.
+func cpuNanos() int64 {
+	var ru syscall.Rusage
+	if err := syscall.Getrusage(syscall.RUSAGE_SELF, &ru); err != nil {
+		panic(err)
+	}
+	return ru.Utime.Nano() + ru.Stime.Nano()
+}
+
 // measure runs op once for the bytes it allocates and the live heap what it
-// returns holds, and five more times for the best time.
+// returns holds, and five more times for the least CPU time.
 func measure(op func() (any, error)) (alloc uint64, nanos int64, live int64, errText string) {
 	var ms runtime.MemStats
 	// Twice: an object a sync.Pool held survives one collection in the pool's
@@ -468,9 +481,9 @@ func measure(op func() (any, error)) (alloc uint64, nanos int64, live int64, err
 	}
 	nanos = int64(^uint64(0) >> 1)
 	for i := 0; i < 5; i++ {
-		t0 := time.Now()
+		t0 := cpuNanos()
 		_, _ = op()
-		if d := time.Since(t0).Nanoseconds(); d < nanos {
+		if d := cpuNanos() - t0; d < nanos {
 			nanos = d
 		}
 	}
