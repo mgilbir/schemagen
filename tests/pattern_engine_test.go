@@ -442,6 +442,117 @@ func TestDivergentPatternsAreJudgedAsECMA262(t *testing.T) {
 	}
 }
 
+// modifierPatterns use ES2025 modifier groups, (?ims-ims:...), which JSON
+// Schema's dialect admits as it admits any other ECMA-262 syntax. Each is
+// written beside the same pattern with the modifiers taken out, and each input
+// carries the answer the specification gives, written out here rather than
+// asked of the engine: the modifier must decide at least one input of every
+// pattern, or the pattern tests nothing a missing modifier would get wrong.
+var modifierPatterns = []struct {
+	name, pattern, plain string
+	inputs               []string
+	match                []bool
+}{
+	// i scoped to a group: the "c" outside it stays case-sensitive.
+	{"ignore-case", `^(?i:ab)c$`, `^(?:ab)c$`,
+		[]string{"abc", "ABc", "aBc", "ABC", "xbc"},
+		[]bool{true, true, true, false, false}},
+	// i switched back off inside a group that switched it on.
+	{"ignore-case-off", `^(?i:a(?-i:b))$`, `^(?:a(?:b))$`,
+		[]string{"Ab", "ab", "AB", "aB"},
+		[]bool{true, true, false, false}},
+	// s: "." takes a line terminator.
+	{"dot-all", `^(?s:.)$`, `^(?:.)$`,
+		[]string{"\n", "\u2028", "a", "ab"},
+		[]bool{true, true, true, false}},
+	// m: "$" inside the group matches before a line terminator; "^" outside it
+	// still means the start of the input.
+	{"multiline", `^(?m:a$)`, `^(?:a$)`,
+		[]string{"a\nb", "a", "ab", "b\na"},
+		[]bool{true, true, false, false}},
+	// Two flags in one group.
+	{"ignore-case-dot-all", `^(?is:a.)$`, `^(?:a.)$`,
+		[]string{"A\n", "a\n", "Ab", "A"},
+		[]bool{true, true, true, false}},
+	// Under i and u, \w takes the characters whose simple case folding is a
+	// word character: U+017F LATIN SMALL LETTER LONG S and U+212A KELVIN SIGN.
+	{"ignore-case-word", `^(?i:\w)$`, `^(?:\w)$`,
+		[]string{"\u017f", "\u212a", "a", "é", "-"},
+		[]bool{true, true, true, false, false}},
+	// A class is matched by case folding both sides: KELVIN SIGN folds to k.
+	{"ignore-case-class", `^(?i:[a-z]+)$`, `^(?:[a-z]+)$`,
+		[]string{"HeLLo", "hello", "\u212a", "héllo"},
+		[]bool{true, true, true, false}},
+	// A property class too: "a" folds to the same thing as "A", which is Lu.
+	{"ignore-case-property", `^(?i:\p{Lu})$`, `^(?:\p{Lu})$`,
+		[]string{"a", "A", "1"},
+		[]bool{true, true, false}},
+	// A backreference inside the group compares under the group's flags.
+	{"ignore-case-backreference", `^(a)(?i:\1)$`, `^(a)(?:\1)$`,
+		[]string{"aA", "aa", "ab"},
+		[]bool{true, true, false}},
+}
+
+// TestModifierPatternsAreJudgedAsECMA262 puts every modifier pattern in every
+// position a pattern occupies, in every validation mode, and requires the
+// verdict the specification gives. The engine schemagen used to pin had no
+// modifier groups and such a schema was refused; this is what holds the
+// generated code to their meaning now that it is accepted.
+func TestModifierPatternsAreJudgedAsECMA262(t *testing.T) {
+	for _, mp := range modifierPatterns {
+		if len(mp.inputs) != len(mp.match) {
+			t.Fatalf("%s: %d inputs, %d answers", mp.name, len(mp.inputs), len(mp.match))
+		}
+		decided := false
+		for i, in := range mp.inputs {
+			if got := ecmaMatch(t, mp.pattern, in); got != mp.match[i] {
+				t.Fatalf("reference: %q on %q = %v; the specification says %v", mp.pattern, in, got, mp.match[i])
+			}
+			if ecmaMatch(t, mp.plain, in) != mp.match[i] {
+				decided = true
+			}
+		}
+		if !decided {
+			t.Fatalf("%s: %q answers every input as %q does; the modifier decides nothing", mp.name, mp.pattern, mp.plain)
+		}
+	}
+
+	var cases []engineCase
+	for mi, mode := range validationModes {
+		for pi, mp := range modifierPatterns {
+			cases = append(cases, positionCases(fmt.Sprintf("m%dmod%d", mi, pi), mp.pattern, engineConfig(mode),
+				func(pos patternPosition, place func(string) string) []engineDoc {
+					var docs []engineDoc
+					for ii, in := range mp.inputs {
+						verdict := "invalid"
+						if mp.match[ii] == pos.validWhenMatched {
+							verdict = "valid"
+						}
+						docs = append(docs, engineDoc{
+							id:   fmt.Sprintf("%s/%s/%s/%d", mode, mp.name, pos.name, ii),
+							json: place(pos.doc(jsonQuote(t, in))),
+							want: verdict,
+						})
+					}
+					return docs
+				})...)
+		}
+	}
+	got := runEngineCases(t, cases)
+	var wrong []string
+	for _, c := range cases {
+		for _, d := range c.docs {
+			if g := got[d.id]; g.verdict != d.want {
+				wrong = append(wrong, fmt.Sprintf("%s: got %s, want %s (%s) on %s", d.id, g.verdict, d.want, g.msg, d.json))
+			}
+		}
+	}
+	sort.Strings(wrong)
+	if len(wrong) > 0 {
+		t.Errorf("%d verdicts disagree with ECMA-262:\n%s", len(wrong), strings.Join(wrong, "\n"))
+	}
+}
+
 // engineStressDoc writes a stress input to a file, which the program reads in
 // place of an inline document: a million characters do not belong in its
 // source.
