@@ -110,22 +110,37 @@ func (r Root) Validate() error {
 		evaluatedNames := map[string]bool{
 			"a": true,
 		}
-		for k, v := range r.AdditionalProperties {
-			evaluated := false
-			_ = v
-			if evaluatedNames[k] {
-				evaluated = true
-			}
-			if !evaluated {
-				var _uVal string
-				if _uErr := json.Unmarshal(v, &_uVal); _uErr != nil {
-					return jsonValueErrorf("unevaluated property %q: %w", k, _uErr)
+		{
+			var _least string
+			var _failed error
+			for k, v := range r.AdditionalProperties { // refused for the least failing key
+				if _failed != nil && k >= _least {
+					continue
 				}
-				{
-					if matched, _ := ecma262.MatchString("^x", ecmaflags.Unicode, _uVal); !matched {
-						return jsonValueErrorf("unevaluated property %q: value does not match pattern %s", k, "^x")
+				if _err := func() error {
+					evaluated := false
+					_ = v
+					if evaluatedNames[k] {
+						evaluated = true
 					}
+					if !evaluated {
+						var _uVal string
+						if _uErr := json.Unmarshal(v, &_uVal); _uErr != nil {
+							return jsonValueErrorf("unevaluated property %q: %w", k, _uErr)
+						}
+						{
+							if matched, _ := ecma262.MatchString("^x", ecmaflags.Unicode, _uVal); !matched {
+								return jsonValueErrorf("unevaluated property %q: value does not match pattern %s", k, "^x")
+							}
+						}
+					}
+					return nil
+				}(); _err != nil {
+					_least, _failed = k, _err
 				}
+			}
+			if _failed != nil {
+				return _failed
 			}
 		}
 	}

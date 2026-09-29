@@ -1,0 +1,46 @@
+{
+  "type": "object",
+  "properties": {
+    "abcdefghijkl": {
+      "type": "string"
+    }
+  },
+  "patternProperties": {
+    "a": {
+      "minLength": 1
+    },
+    "b": {
+      "minLength": 2
+    },
+    "c": {
+      "minLength": 3
+    },
+    "d": {
+      "minLength": 4
+    },
+    "e": {
+      "minLength": 5
+    },
+    "f": {
+      "minLength": 6
+    },
+    "g": {
+      "minLength": 7
+    },
+    "h": {
+      "minLength": 8
+    },
+    "i": {
+      "minLength": 9
+    },
+    "j": {
+      "minLength": 10
+    },
+    "k": {
+      "minLength": 11
+    },
+    "l": {
+      "minLength": 12
+    }
+  }
+}

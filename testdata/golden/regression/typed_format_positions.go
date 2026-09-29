@@ -180,21 +180,36 @@ func (t TypedFormatPositionsBuckets) Validate() error {
 		ppRegexps := []*ecma262.Regexp{
 			ecma262.MustCompile("^p", ecmaflags.Unicode),
 		}
-		for k, v := range t.PatternProperties {
-			_ = v
-			if ppRegexps[0].MatchString(k) {
-				{
-					// The sub-schema's own type answers for it: the value is
-					// decoded into it, so the decode enforces shape and the
-					// Validate enforces everything beyond it.
-					var _pv TypedFormatPositionsBucketsPattern0
-					if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %q: %w", "^p", k, _uErr)
-					}
-					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %q: %w", "^p", k, _vErr)
-					}
+		{
+			var _least string
+			var _failed error
+			for k, v := range t.PatternProperties { // refused for the least failing key
+				if _failed != nil && k >= _least {
+					continue
 				}
+				if _err := func() error {
+					_ = v
+					if ppRegexps[0].MatchString(k) {
+						{
+							// The sub-schema's own type answers for it: the value is
+							// decoded into it, so the decode enforces shape and the
+							// Validate enforces everything beyond it.
+							var _pv TypedFormatPositionsBucketsPattern0
+							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", k, _uErr)
+							}
+							if _vErr := _pv.Validate(); _vErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^p", k, _vErr)
+							}
+						}
+					}
+					return nil
+				}(); _err != nil {
+					_least, _failed = k, _err
+				}
+			}
+			if _failed != nil {
+				return _failed
 			}
 		}
 	}

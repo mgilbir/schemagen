@@ -52,6 +52,7 @@ func dynamicBranchChecks(s *schema.Schema) ([]DynamicCheck, bool) {
 	if !ok {
 		return nil, false
 	}
+	// maporder: a predicate; it returns the same answer whichever member it stops at.
 	for key := range present {
 		supported, known := dynamicSupportedKeywords[key]
 		if !known {
@@ -300,6 +301,7 @@ func objectConditionalBranch(keyword string, s *schema.Schema) (*ObjectCondition
 	if !ok {
 		return nil, false
 	}
+	// maporder: a predicate; it returns the same answer whichever member it stops at.
 	for key := range present {
 		if !objectConditionalKeywords[key] {
 			return nil, false
@@ -492,6 +494,7 @@ func dynamicRootKeywordsOnly(s *schema.Schema) bool {
 	if !ok {
 		return false
 	}
+	// maporder: a predicate; it returns the same answer whichever member it stops at.
 	for key := range present {
 		if !dynamicRootKeywords[key] {
 			return false

@@ -734,6 +734,7 @@ func init() {
 // document that actually carries a folded key.
 func exactKeywordObject(raw map[string]json.RawMessage, known map[string]bool, order []string) []byte {
 	folded := false
+	// maporder: a predicate; it returns the same answer whichever member it stops at.
 	for key := range raw {
 		if known[key] {
 			continue
@@ -911,6 +912,7 @@ func (s *Schema) UnmarshalJSON(data []byte) error {
 	// A case variant of a keyword is one of those: it is an unrecognised keyword,
 	// so it asserts nothing and stays reachable by pointer, exactly like any
 	// other key the struct has no field for.
+	// maporder: copies members under their own keys, which are distinct, so no order writes a different map.
 	for key, val := range raw {
 		if !knownSchemaKeys[key] {
 			if s.Extensions == nil {
@@ -1071,18 +1073,22 @@ func (s *Schema) ComputeBaseURIs(parentBaseURI *url.URL, documentRoot *Schema) {
 	s.DocumentRoot = currentDocRoot
 
 	// Recurse into all child schemas.
+	// maporder: each member heads its own subtree, and the visit writes only into the subtree it is handed.
 	for _, sub := range s.Properties {
 		sub.ComputeBaseURIs(currentBase, currentDocRoot)
 	}
 	for _, sub := range s.TypeSchemas {
 		sub.ComputeBaseURIs(currentBase, currentDocRoot)
 	}
+	// maporder: each member heads its own subtree, and the visit writes only into the subtree it is handed.
 	for _, sub := range s.PatternProperties {
 		sub.ComputeBaseURIs(currentBase, currentDocRoot)
 	}
+	// maporder: each member heads its own subtree, and the visit writes only into the subtree it is handed.
 	for _, sub := range s.Definitions {
 		sub.ComputeBaseURIs(currentBase, currentDocRoot)
 	}
+	// maporder: each member heads its own subtree, and the visit writes only into the subtree it is handed.
 	for _, sub := range s.Defs {
 		sub.ComputeBaseURIs(currentBase, currentDocRoot)
 	}
@@ -1139,6 +1145,7 @@ func (s *Schema) ComputeBaseURIs(parentBaseURI *url.URL, documentRoot *Schema) {
 	if s.ContentSchema != nil {
 		s.ContentSchema.ComputeBaseURIs(currentBase, currentDocRoot)
 	}
+	// maporder: each member heads its own subtree, and the visit writes only into the subtree it is handed.
 	for _, sub := range s.DependentSchemas {
 		sub.ComputeBaseURIs(currentBase, currentDocRoot)
 	}

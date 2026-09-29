@@ -240,6 +240,7 @@ func foldNumbersToFloat(v any) any {
 		return out
 	case map[string]any:
 		out := make(map[string]any, len(t))
+		// maporder: copies members under their own keys, which are distinct, so no order writes a different map.
 		for k, e := range t {
 			out[k] = foldNumbersToFloat(e)
 		}

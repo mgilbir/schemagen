@@ -149,8 +149,22 @@ func (f ForbiddingSubschemaSpellingsAnyOfNames) MarshalJSON() ([]byte, error) {
 // Validate checks ForbiddingSubschemaSpellingsAnyOfNames against its JSON Schema constraints.
 func (f ForbiddingSubschemaSpellingsAnyOfNames) Validate() error {
 	// propertyNames: validate that all property names satisfy the constraint.
-	for _pnKey := range f._jsonKeys {
-		return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+	{
+		var _least string
+		var _failed error
+		for _pnKey := range f._jsonKeys { // refused for the least failing key
+			if _failed != nil && _pnKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+			}(); _err != nil {
+				_least, _failed = _pnKey, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
+		}
 	}
 	return nil
 }
@@ -944,8 +958,22 @@ func (f ForbiddingSubschemaSpellingsInlineFalseNames) MarshalJSON() ([]byte, err
 // Validate checks ForbiddingSubschemaSpellingsInlineFalseNames against its JSON Schema constraints.
 func (f ForbiddingSubschemaSpellingsInlineFalseNames) Validate() error {
 	// propertyNames: validate that all property names satisfy the constraint.
-	for _pnKey := range f._jsonKeys {
-		return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+	{
+		var _least string
+		var _failed error
+		for _pnKey := range f._jsonKeys { // refused for the least failing key
+			if _failed != nil && _pnKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+			}(); _err != nil {
+				_least, _failed = _pnKey, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
+		}
 	}
 	return nil
 }
@@ -1253,8 +1281,22 @@ func (f ForbiddingSubschemaSpellingsInlineNotNames) MarshalJSON() ([]byte, error
 // Validate checks ForbiddingSubschemaSpellingsInlineNotNames against its JSON Schema constraints.
 func (f ForbiddingSubschemaSpellingsInlineNotNames) Validate() error {
 	// propertyNames: validate that all property names satisfy the constraint.
-	for _pnKey := range f._jsonKeys {
-		return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+	{
+		var _least string
+		var _failed error
+		for _pnKey := range f._jsonKeys { // refused for the least failing key
+			if _failed != nil && _pnKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+			}(); _err != nil {
+				_least, _failed = _pnKey, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
+		}
 	}
 	return nil
 }
@@ -1590,8 +1632,22 @@ func (f ForbiddingSubschemaSpellingsNotNames) MarshalJSON() ([]byte, error) {
 // Validate checks ForbiddingSubschemaSpellingsNotNames against its JSON Schema constraints.
 func (f ForbiddingSubschemaSpellingsNotNames) Validate() error {
 	// propertyNames: validate that all property names satisfy the constraint.
-	for _pnKey := range f._jsonKeys {
-		return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+	{
+		var _least string
+		var _failed error
+		for _pnKey := range f._jsonKeys { // refused for the least failing key
+			if _failed != nil && _pnKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+			}(); _err != nil {
+				_least, _failed = _pnKey, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
+		}
 	}
 	return nil
 }
@@ -1841,14 +1897,29 @@ func (f ForbiddingSubschemaSpellingsNotUnevalProps) Validate() error {
 		evaluatedNames := map[string]bool{
 			"k": true,
 		}
-		for k, v := range f.AdditionalProperties {
-			evaluated := false
-			_ = v
-			if evaluatedNames[k] {
-				evaluated = true
+		{
+			var _least string
+			var _failed error
+			for k, v := range f.AdditionalProperties { // refused for the least failing key
+				if _failed != nil && k >= _least {
+					continue
+				}
+				if _err := func() error {
+					evaluated := false
+					_ = v
+					if evaluatedNames[k] {
+						evaluated = true
+					}
+					if !evaluated {
+						return jsonValueErrorf("unevaluated property %q is not allowed", k)
+					}
+					return nil
+				}(); _err != nil {
+					_least, _failed = k, _err
+				}
 			}
-			if !evaluated {
-				return jsonValueErrorf("unevaluated property %q is not allowed", k)
+			if _failed != nil {
+				return _failed
 			}
 		}
 	}
@@ -1987,8 +2058,22 @@ func (f ForbiddingSubschemaSpellingsNullableInlineNames) Validate() error {
 		return nil
 	}
 	// propertyNames: validate that all property names satisfy the constraint.
-	for _pnKey := range f._jsonKeys {
-		return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+	{
+		var _least string
+		var _failed error
+		for _pnKey := range f._jsonKeys { // refused for the least failing key
+			if _failed != nil && _pnKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+			}(); _err != nil {
+				_least, _failed = _pnKey, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
+		}
 	}
 	return nil
 }
@@ -2061,9 +2146,24 @@ func (f ForbiddingSubschemaSpellingsOkNames) MarshalJSON() ([]byte, error) {
 // Validate checks ForbiddingSubschemaSpellingsOkNames against its JSON Schema constraints.
 func (f ForbiddingSubschemaSpellingsOkNames) Validate() error {
 	// propertyNames: validate that all property names satisfy the constraint.
-	for _pnKey := range f._jsonKeys {
-		if utf8.RuneCountInString(_pnKey) > 3 {
-			return fmt.Errorf("propertyNames: property name %q exceeds maxLength 3", _pnKey)
+	{
+		var _least string
+		var _failed error
+		for _pnKey := range f._jsonKeys { // refused for the least failing key
+			if _failed != nil && _pnKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				if utf8.RuneCountInString(_pnKey) > 3 {
+					return fmt.Errorf("propertyNames: property name %q exceeds maxLength 3", _pnKey)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _pnKey, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
 	return nil
@@ -2211,8 +2311,22 @@ func (f ForbiddingSubschemaSpellingsOneOfNames) MarshalJSON() ([]byte, error) {
 // Validate checks ForbiddingSubschemaSpellingsOneOfNames against its JSON Schema constraints.
 func (f ForbiddingSubschemaSpellingsOneOfNames) Validate() error {
 	// propertyNames: validate that all property names satisfy the constraint.
-	for _pnKey := range f._jsonKeys {
-		return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+	{
+		var _least string
+		var _failed error
+		for _pnKey := range f._jsonKeys { // refused for the least failing key
+			if _failed != nil && _pnKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+			}(); _err != nil {
+				_least, _failed = _pnKey, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
+		}
 	}
 	return nil
 }
@@ -2408,14 +2522,29 @@ func (f ForbiddingSubschemaSpellingsOneOfUnevalProps) Validate() error {
 		evaluatedNames := map[string]bool{
 			"k": true,
 		}
-		for k, v := range f.AdditionalProperties {
-			evaluated := false
-			_ = v
-			if evaluatedNames[k] {
-				evaluated = true
+		{
+			var _least string
+			var _failed error
+			for k, v := range f.AdditionalProperties { // refused for the least failing key
+				if _failed != nil && k >= _least {
+					continue
+				}
+				if _err := func() error {
+					evaluated := false
+					_ = v
+					if evaluatedNames[k] {
+						evaluated = true
+					}
+					if !evaluated {
+						return jsonValueErrorf("unevaluated property %q is not allowed", k)
+					}
+					return nil
+				}(); _err != nil {
+					_least, _failed = k, _err
+				}
 			}
-			if !evaluated {
-				return jsonValueErrorf("unevaluated property %q is not allowed", k)
+			if _failed != nil {
+				return _failed
 			}
 		}
 	}
@@ -2490,8 +2619,22 @@ func (f ForbiddingSubschemaSpellingsRefNotNames) MarshalJSON() ([]byte, error) {
 // Validate checks ForbiddingSubschemaSpellingsRefNotNames against its JSON Schema constraints.
 func (f ForbiddingSubschemaSpellingsRefNotNames) Validate() error {
 	// propertyNames: validate that all property names satisfy the constraint.
-	for _pnKey := range f._jsonKeys {
-		return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+	{
+		var _least string
+		var _failed error
+		for _pnKey := range f._jsonKeys { // refused for the least failing key
+			if _failed != nil && _pnKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+			}(); _err != nil {
+				_least, _failed = _pnKey, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
+		}
 	}
 	return nil
 }

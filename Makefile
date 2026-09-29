@@ -1,4 +1,4 @@
-.PHONY: build test lint lint-alignment clean install fmt vet golden download-test-suite test-suite-drift download-metaschemas test-external fuzz fuzz-seeds cogen validate-seeds
+.PHONY: build test lint lint-alignment clean install fmt vet golden download-test-suite test-suite-drift download-metaschemas test-external test-determinism fuzz fuzz-seeds cogen validate-seeds
 
 BINARY := schemagen
 MODULE := github.com/mgilbir/schemagen
@@ -237,6 +237,18 @@ download-metaschemas:
 # costs another cache's worth of disk when it has.
 test-external: download-test-suite download-metaschemas
 	SCHEMAGEN_RUN_EXTERNAL=1 go test ./tests/... -run TestExternal -v -count=1 -timeout 90m
+
+# The full determinism sweep: the same input must give the same output on every
+# run. `go test ./...` already holds the corpus to that in one process under
+# five configurations, and runs the built binary as separate processes over the
+# scenarios written to drive each known site; this adds every schema of the
+# JSON Schema Test Suite to the first, runs every corpus schema through the
+# binary for the second, and runs each more times. Go iterates a small map in
+# one of only as many orders as it has members, so the extra runs are what
+# catch a site that only a two- or three-member map in some schema reaches.
+# CI runs it; see the determinism job in .github/workflows/ci.yml.
+test-determinism: download-test-suite
+	SCHEMAGEN_DETERMINISM_FULL=1 go test . ./tests -run 'TestCLIOutputIsDeterministicAcrossProcesses|TestGenerationIsDeterministic|TestGeneratedCodeReadsNoMapOrder' -v -count=1 -timeout 60m
 
 # Fuzzing has no natural end: `go test -fuzz` keeps mutating inputs until it
 # finds a crash or something kills it, so a run without -fuzztime never returns

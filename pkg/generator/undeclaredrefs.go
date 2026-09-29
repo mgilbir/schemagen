@@ -125,6 +125,7 @@ func referencedTypeNames(f *File) map[string]bool {
 				walk(v.Index(i))
 			}
 		case reflect.Map:
+			// maporder: the walk fills a set of names, and every node reachable is reached in any order.
 			iter := v.MapRange()
 			for iter.Next() {
 				walk(iter.Value())

@@ -165,6 +165,7 @@ func newGenerateCmd() *cobra.Command {
 			pkgKeyFromConfig := map[string]bool{}
 			outKeyFromConfig := map[string]bool{}
 			if cfg != nil {
+				// maporder: copies members under their own keys, which are distinct, so no order writes a different map.
 				for id, pkg := range cfg.schemaPackages() {
 					schemaPackages[id] = pkg
 					pkgKeyFromConfig[id] = true
@@ -181,6 +182,7 @@ func newGenerateCmd() *cobra.Command {
 				delete(pkgKeyFromConfig, id)
 			}
 			schemaOutputs := make(map[string]string)
+			// maporder: copies members under their own keys, which are distinct, so no order writes a different map.
 			for id, out := range schemaOutputsFromConfig {
 				schemaOutputs[id] = out
 				outKeyFromConfig[id] = true
@@ -395,6 +397,7 @@ func newGenerateCmd() *cobra.Command {
 					}
 				}
 			}
+			// maporder: deletes the nil entries; which are deleted does not depend on the order they are met in.
 			for id, s := range inputByID {
 				if s == nil {
 					delete(inputByID, id)
@@ -653,10 +656,12 @@ func newGenerateCmd() *cobra.Command {
 					if appliedByFile[fileKey] == nil {
 						appliedByFile[fileKey] = make(map[string]map[string]bool)
 					}
+					// maporder: fills a set; the same members end up in it in any order.
 					for typeName, props := range applied {
 						if appliedByFile[fileKey][typeName] == nil {
 							appliedByFile[fileKey][typeName] = make(map[string]bool)
 						}
+						// maporder: fills a set; the same members end up in it in any order.
 						for prop := range props {
 							appliedByFile[fileKey][typeName][prop] = true
 						}
@@ -909,6 +914,7 @@ func warnUnmatchedDocumentKeys(w io.Writer, flag, configField string, entries ma
 		return
 	}
 	warnings := make([]string, 0, len(entries))
+	// maporder: the warnings are sorted before they are printed.
 	for id := range entries {
 		if matched[id] {
 			continue
@@ -931,6 +937,7 @@ func warnUnmatchedDocumentKeys(w io.Writer, flag, configField string, entries ma
 // warnings are sorted for deterministic output.
 func warnUnusedFieldMap(w io.Writer, fieldMap generator.FieldMapFile, applied map[string]map[string]map[string]bool, processedFiles map[string]bool) {
 	var warnings []string
+	// maporder: the warnings are sorted before they are printed.
 	for file, types := range fieldMap {
 		if !processedFiles[file] {
 			// The whole section is dead: warn once for the file rather than
@@ -939,7 +946,9 @@ func warnUnusedFieldMap(w io.Writer, fieldMap generator.FieldMapFile, applied ma
 				"field-map key %q does not match any generated schema file (expected a schema file base name)", file))
 			continue
 		}
+		// maporder: the warnings are sorted before they are printed.
 		for typeName, props := range types {
+			// maporder: the warnings are sorted before they are printed.
 			for prop := range props {
 				if !applied[file][typeName][prop] {
 					warnings = append(warnings, fmt.Sprintf(
@@ -1379,10 +1388,12 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 					if p.appliedByFile[fileKey] == nil {
 						p.appliedByFile[fileKey] = make(map[string]map[string]bool)
 					}
+					// maporder: fills a set; the same members end up in it in any order.
 					for typeName, props := range applied {
 						if p.appliedByFile[fileKey][typeName] == nil {
 							p.appliedByFile[fileKey][typeName] = make(map[string]bool)
 						}
+						// maporder: fills a set; the same members end up in it in any order.
 						for prop := range props {
 							p.appliedByFile[fileKey][typeName][prop] = true
 						}

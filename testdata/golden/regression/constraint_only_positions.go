@@ -544,12 +544,27 @@ func (c ConstraintOnlyPositionsUnevaluated) Validate() error {
 	// evaluated against the document.
 	if c._jsonRawProps != nil {
 		_rbInstance := make(map[string]any, len(c._jsonRawProps))
-		for _rbKey, _rbRaw := range c._jsonRawProps {
-			var _rbVal any
-			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-				return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+		{
+			var _least string
+			var _failed error
+			for _rbKey, _rbRaw := range c._jsonRawProps { // refused for the least failing key
+				if _failed != nil && _rbKey >= _least {
+					continue
+				}
+				if _err := func() error {
+					var _rbVal any
+					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+						return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+					}
+					_rbInstance[_rbKey] = _rbVal
+					return nil
+				}(); _err != nil {
+					_least, _failed = _rbKey, _err
+				}
 			}
-			_rbInstance[_rbKey] = _rbVal
+			if _failed != nil {
+				return _failed
+			}
 		}
 		{
 			_rbNode0 := _schemaNode{
@@ -879,9 +894,24 @@ func (c ConstraintOnlyPositions) Validate() error {
 			return jsonPathf(err, "list[%d]", _i)
 		}
 	}
-	for _k, _val := range c.Map {
-		if err := _val.Validate(); err != nil {
-			return jsonPathf(err, "map[%q]", _k)
+	{
+		var _least string
+		var _failed error
+		for _k, _val := range c.Map { // refused for the least failing key
+			if _failed != nil && _k >= _least {
+				continue
+			}
+			if _err := func() error {
+				if err := _val.Validate(); err != nil {
+					return jsonPathf(err, "map[%q]", _k)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _k, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
 	for _i, _item := range c.Nulls {

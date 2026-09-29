@@ -335,6 +335,7 @@ func oneofHasRequiredFields(data json.RawMessage, fields ...string) bool {
 // by the caller from the map passed in here.
 func jsonExactProperties(raw map[string]json.RawMessage, names ...string) []byte {
 	folded := false
+	{{- /* maporder: a predicate; it answers the same whichever key it stops at. */}}
 	for key := range raw {
 		fold := false
 		for _, name := range names {
@@ -658,6 +659,7 @@ func jsonIntegerMap[E any, T any](m map[string]E, f func(E) T) map[string]T {
 		return nil
 	}
 	out := make(map[string]T, len(m))
+	{{- /* maporder: copies members under their own keys, which are distinct. */}}
 	for k, v := range m {
 		out[k] = f(v)
 	}

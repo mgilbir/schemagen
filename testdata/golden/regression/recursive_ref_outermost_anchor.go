@@ -41,18 +41,33 @@ func (i *Inner) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
+		{
+			var _least string
+			var _failed error
+			for rawKey, rawVal := range raw { // refused for the least failing key
+				if _failed != nil && rawKey >= _least {
+					continue
+				}
+				if _err := func() error {
+					if knownFields[rawKey] {
+						return nil
+					}
+					if i.AdditionalProperties == nil {
+						i.AdditionalProperties = make(map[string]*Inner)
+					}
+					var val *Inner
+					if err := json.Unmarshal(rawVal, &val); err != nil {
+						return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
+					}
+					i.AdditionalProperties[rawKey] = val
+					return nil
+				}(); _err != nil {
+					_least, _failed = rawKey, _err
+				}
 			}
-			if i.AdditionalProperties == nil {
-				i.AdditionalProperties = make(map[string]*Inner)
+			if _failed != nil {
+				return _failed
 			}
-			var val *Inner
-			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
-			}
-			i.AdditionalProperties[rawKey] = val
 		}
 	}
 
@@ -80,12 +95,27 @@ func (i Inner) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range i.AdditionalProperties {
-		raw, err := json.Marshal(v)
-		if err != nil {
-			return nil, fmt.Errorf("marshaling additional property %q: %w", k, err)
+	{
+		var _least string
+		var _failed error
+		for k, v := range i.AdditionalProperties { // refused for the least failing key
+			if _failed != nil && k >= _least {
+				continue
+			}
+			if _err := func() error {
+				raw, err := json.Marshal(v)
+				if err != nil {
+					return fmt.Errorf("marshaling additional property %q: %w", k, err)
+				}
+				obj[k] = raw
+				return nil
+			}(); _err != nil {
+				_least, _failed = k, _err
+			}
 		}
-		obj[k] = raw
+		if _failed != nil {
+			return nil, _failed
+		}
 	}
 	return json.Marshal(obj)
 }
@@ -96,12 +126,27 @@ func (i Inner) Validate() error {
 	if i._nonObject {
 		return nil
 	}
-	for _k0, _e0 := range i.AdditionalProperties {
-		if _e0 == nil {
-			continue // a JSON null left no value behind to check
+	{
+		var _least string
+		var _failed error
+		for _k0, _e0 := range i.AdditionalProperties { // refused for the least failing key
+			if _failed != nil && _k0 >= _least {
+				continue
+			}
+			if _err := func() error {
+				if _e0 == nil {
+					return nil // a JSON null left no value behind to check
+				}
+				if _err := _e0.Validate(); _err != nil {
+					return jsonElemPathf(_err, "[%q]", _k0)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _k0, _err
+			}
 		}
-		if _err := _e0.Validate(); _err != nil {
-			return jsonElemPathf(_err, "[%q]", _k0)
+		if _failed != nil {
+			return _failed
 		}
 	}
 	return nil

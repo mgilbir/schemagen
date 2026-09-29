@@ -99,50 +99,65 @@ func (r Root) Validate() error {
 		ppRegexps := []*ecma262.Regexp{
 			ecma262.MustCompile("^v", ecmaflags.Unicode),
 		}
-		for k, v := range r.PatternProperties {
-			_ = v
-			if ppRegexps[0].MatchString(k) {
-				{
-					b := bytes.TrimSpace(v)
-					var jt string
-					if len(b) == 0 {
-						jt = "unknown"
-					} else {
-						switch b[0] {
-						case '"':
-							jt = "string"
-						case '{':
-							jt = "object"
-						case '[':
-							jt = "array"
-						case 't', 'f':
-							jt = "boolean"
-						case 'n':
-							jt = "null"
-						default:
-							jt = "number"
-							// Draft 6 onward reads the value: 1.0 is an integer, so
-							// the number is parsed rather than scanned. Every arm
-							// below that accepts "number" also accepts "integer", so
-							// widening this classification narrows nothing.
-							var _ppNum float64
-							if json.Unmarshal(b, &_ppNum) == nil &&
-								!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
-								jt = "integer"
+		{
+			var _least string
+			var _failed error
+			for k, v := range r.PatternProperties { // refused for the least failing key
+				if _failed != nil && k >= _least {
+					continue
+				}
+				if _err := func() error {
+					_ = v
+					if ppRegexps[0].MatchString(k) {
+						{
+							b := bytes.TrimSpace(v)
+							var jt string
+							if len(b) == 0 {
+								jt = "unknown"
+							} else {
+								switch b[0] {
+								case '"':
+									jt = "string"
+								case '{':
+									jt = "object"
+								case '[':
+									jt = "array"
+								case 't', 'f':
+									jt = "boolean"
+								case 'n':
+									jt = "null"
+								default:
+									jt = "number"
+									// Draft 6 onward reads the value: 1.0 is an integer, so
+									// the number is parsed rather than scanned. Every arm
+									// below that accepts "number" also accepts "integer", so
+									// widening this classification narrows nothing.
+									var _ppNum float64
+									if json.Unmarshal(b, &_ppNum) == nil &&
+										!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
+										jt = "integer"
+									}
+								}
+							}
+							_ppTypeOK := false
+							if jt == "string" {
+								_ppTypeOK = true
+							}
+							if jt == "null" {
+								_ppTypeOK = true
+							}
+							if !_ppTypeOK {
+								return fmt.Errorf("patternProperties %s: key %q value must be one of: string, null", "^v", k)
 							}
 						}
 					}
-					_ppTypeOK := false
-					if jt == "string" {
-						_ppTypeOK = true
-					}
-					if jt == "null" {
-						_ppTypeOK = true
-					}
-					if !_ppTypeOK {
-						return fmt.Errorf("patternProperties %s: key %q value must be one of: string, null", "^v", k)
-					}
+					return nil
+				}(); _err != nil {
+					_least, _failed = k, _err
 				}
+			}
+			if _failed != nil {
+				return _failed
 			}
 		}
 	}

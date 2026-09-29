@@ -458,9 +458,24 @@ func (r RefSiblingType) Validate() error {
 			return jsonPathf(err, "boundedElem[%d]", _i)
 		}
 	}
-	for _k, _val := range r.BoundedMapv {
-		if err := _val.Validate(); err != nil {
-			return jsonPathf(err, "boundedMapv[%q]", _k)
+	{
+		var _least string
+		var _failed error
+		for _k, _val := range r.BoundedMapv { // refused for the least failing key
+			if _failed != nil && _k >= _least {
+				continue
+			}
+			if _err := func() error {
+				if err := _val.Validate(); err != nil {
+					return jsonPathf(err, "boundedMapv[%q]", _k)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _k, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
 	for _i, _item := range r.Elem {
@@ -468,9 +483,24 @@ func (r RefSiblingType) Validate() error {
 			return jsonPathf(err, "elem[%d]", _i)
 		}
 	}
-	for _k, _val := range r.Mapv {
-		if err := _val.Validate(); err != nil {
-			return jsonPathf(err, "mapv[%q]", _k)
+	{
+		var _least string
+		var _failed error
+		for _k, _val := range r.Mapv { // refused for the least failing key
+			if _failed != nil && _k >= _least {
+				continue
+			}
+			if _err := func() error {
+				if err := _val.Validate(); err != nil {
+					return jsonPathf(err, "mapv[%q]", _k)
+				}
+				return nil
+			}(); _err != nil {
+				_least, _failed = _k, _err
+			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
 	if r.Num != nil {

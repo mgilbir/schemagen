@@ -32,6 +32,7 @@ import (
 func allowing(modelled map[string]bool) map[string]bool {
 	allowed := make(map[string]bool, len(modelled)+len(nonConstrainingKeywords)+len(inertKeywords))
 	for _, set := range []map[string]bool{modelled, nonConstrainingKeywords, inertKeywords} {
+		// maporder: fills a set; the same members end up in it in any order.
 		for key := range set {
 			allowed[key] = true
 		}
@@ -737,6 +738,7 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		members := group.members
 		if len(group.pooled) > 0 {
 			merged := make(map[string]*schema.Schema, len(members)+len(group.pooled))
+			// maporder: copies members under their own keys, which are distinct, so no order writes a different map; memberList renders it in key order.
 			for k, v := range members {
 				merged[k] = v
 			}
@@ -1092,16 +1094,19 @@ func (b *nodeBuilder) strictBanApplies(s *schema.Schema) (ban bool, props, patte
 		return false, nil, nil
 	}
 	seenProp := map[string]bool{}
+	// maporder: fills a set; the same members end up in it in any order.
 	for name := range s.Properties {
 		seenProp[name] = true
 	}
 	seenPattern := map[string]bool{}
+	// maporder: fills a set; the same members end up in it in any order.
 	for name := range s.PatternProperties {
 		seenPattern[name] = true
 	}
 	declared := len(seenProp) > 0 || len(seenPattern) > 0
 	// The node itself is first in the reach and is already accounted for above.
 	for _, node := range b.g.unconditionalReachAt(s, true)[1:] {
+		// maporder: props is sorted before it is returned.
 		for name := range node.Properties {
 			if !seenProp[name] {
 				seenProp[name] = true
@@ -1109,6 +1114,7 @@ func (b *nodeBuilder) strictBanApplies(s *schema.Schema) (ban bool, props, patte
 			}
 			declared = true
 		}
+		// maporder: patterns is sorted before it is returned.
 		for name := range node.PatternProperties {
 			if !seenPattern[name] {
 				seenPattern[name] = true
@@ -1453,6 +1459,7 @@ func (g *Generator) unevaluatedSubschemaIsCheckable(sub *schema.Schema) bool {
 	}
 	// An extension keyword can demand anything at all, so only the inert ones
 	// leave the sub-schema readable -- the same reading eligible() takes.
+	// maporder: a predicate; it returns the same answer whichever member it stops at.
 	for key := range sub.Extensions {
 		if !inertKeywords[key] {
 			return false
@@ -1463,6 +1470,7 @@ func (g *Generator) unevaluatedSubschemaIsCheckable(sub *schema.Schema) bool {
 		return false
 	}
 	constrains := false
+	// maporder: a predicate; it returns the same answer whichever member it stops at.
 	for key := range present {
 		if nonConstrainingKeywords[key] {
 			continue
@@ -1843,6 +1851,7 @@ func statedConstraints(s *schema.Schema) ([]string, bool) {
 	if !ok {
 		return nil, false
 	}
+	// maporder: fills a set; the same members end up in it in any order.
 	for key := range s.Extensions {
 		seen[key] = true
 	}
@@ -1862,6 +1871,7 @@ func statedConstraints(s *schema.Schema) ([]string, bool) {
 	}
 
 	var dropped []string
+	// maporder: dropped is sorted before it is returned.
 	for key := range seen {
 		if nonConstrainingKeywords[key] || inertKeywords[key] {
 			continue

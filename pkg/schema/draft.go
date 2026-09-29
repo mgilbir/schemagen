@@ -175,6 +175,7 @@ func (s *Schema) normalizeNode(d Draft) {
 	// Copy definitions → $defs if $defs is empty.
 	if len(s.Defs) == 0 && len(s.Definitions) > 0 {
 		s.Defs = make(map[string]*Schema, len(s.Definitions))
+		// maporder: copies members under their own keys, which are distinct, so no order writes a different map.
 		for k, v := range s.Definitions {
 			s.Defs[k] = v
 		}
@@ -183,6 +184,7 @@ func (s *Schema) normalizeNode(d Draft) {
 	// Copy $defs → definitions if definitions is empty.
 	if len(s.Definitions) == 0 && len(s.Defs) > 0 {
 		s.Definitions = make(map[string]*Schema, len(s.Defs))
+		// maporder: copies members under their own keys, which are distinct, so no order writes a different map.
 		for k, v := range s.Defs {
 			s.Definitions[k] = v
 		}
@@ -339,8 +341,14 @@ func (s *Schema) normalizeDisallow() {
 
 // normalizeDraft3Required converts Draft 3's per-property "required": true
 // to the parent schema's Required array (Draft 4+ format).
+//
+// The names are appended in property-name order. Required is a list and is read
+// as one -- the runtime evaluator's node literal spells it out as it stands, and
+// checks it in that order -- so it must not be the order a map happened to
+// yield, which changed the generated file from run to run.
 func (s *Schema) normalizeDraft3Required() {
-	for name, prop := range s.Properties {
+	for _, name := range sortedKeys(s.Properties) {
+		prop := s.Properties[name]
 		if prop != nil && prop.Required.IsDraft3Required() {
 			s.Required = append(s.Required, name)
 			prop.Required = nil // clear the sentinel
@@ -378,6 +386,7 @@ func (s *Schema) normalizeDependencies() {
 		return
 	}
 
+	// maporder: each dependency is written under its own key into dependentRequired or dependentSchemas, and the keys are distinct.
 	for key, val := range raw {
 		trimmed := trimJSONWhitespace(val)
 		if len(trimmed) == 0 {
@@ -450,18 +459,22 @@ func (s *Schema) eachChild(fn func(*Schema)) {
 			fn(sub)
 		}
 	}
+	// maporder: each member heads its own subtree, and the visit writes only into the subtree it is handed.
 	for _, sub := range s.Properties {
 		visit(sub)
 	}
 	for _, sub := range s.TypeSchemas {
 		visit(sub)
 	}
+	// maporder: each member heads its own subtree, and the visit writes only into the subtree it is handed.
 	for _, sub := range s.PatternProperties {
 		visit(sub)
 	}
+	// maporder: each member heads its own subtree, and the visit writes only into the subtree it is handed.
 	for _, sub := range s.Defs {
 		visit(sub)
 	}
+	// maporder: each member heads its own subtree, and the visit writes only into the subtree it is handed.
 	for _, sub := range s.Definitions {
 		visit(sub)
 	}
@@ -498,6 +511,7 @@ func (s *Schema) eachChild(fn func(*Schema)) {
 	visit(s.ContentSchema)
 	visit(s.UnevaluatedItems)
 	visit(s.UnevaluatedProperties)
+	// maporder: each member heads its own subtree, and the visit writes only into the subtree it is handed.
 	for _, sub := range s.DependentSchemas {
 		visit(sub)
 	}

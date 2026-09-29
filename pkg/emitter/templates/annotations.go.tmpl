@@ -247,9 +247,11 @@ func _newEval(ok bool) _evalResult {
 }
 
 func (r *_evalResult) absorb(other _evalResult) {
+	{{- /* maporder: fills a set; the same members end up in it in any order. */}}
 	for i := range other.evaluated {
 		r.evaluated[i] = true
 	}
+	{{- /* maporder: fills a set; the same members end up in it in any order. */}}
 	for k := range other.evaluatedProps {
 		r.evaluatedProps[k] = true
 	}

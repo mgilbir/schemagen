@@ -156,12 +156,14 @@ func (g *Generator) accessRulesFor(s *schema.Schema, minDepth int) []AccessRule 
 		seenName := map[string]bool{}
 		seenPattern := map[string]bool{}
 		for _, r := range reach {
+			// maporder: declared is sorted below, before it is read.
 			for name := range r.Properties {
 				if !seenName[name] {
 					seenName[name] = true
 					declared = append(declared, name)
 				}
 			}
+			// maporder: patterns is sorted below, before it is read.
 			for pat := range r.PatternProperties {
 				if !seenPattern[pat] {
 					seenPattern[pat] = true

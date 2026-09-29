@@ -132,6 +132,7 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	{{- end}}
 	{{- end}}
 	{{- if $struct.HasPatternProperties}}
+	{{- /* maporder: copies members under their own keys, which are distinct; json.Marshal writes obj in key order. */}}
 	for k, v := range {{$recv}}.PatternProperties {
 		obj[k] = v
 	}
@@ -154,6 +155,7 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
 			var _zeroObj map[string]json.RawMessage
 			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
+				{{- /* maporder: each iteration reads and writes only its own key of obj. */}}
 				for _k := range {{$recv}}._jsonNulls {
 					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
 						obj[_k] = json.RawMessage("null")
@@ -164,17 +166,25 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	}
 	{{- end}}
 	{{- if $struct.AdditionalProperties}}
+	{{- if isRawMessage $struct.AdditionalProperties.ValueType}}
+	{{- /* maporder: a copy into obj under the same keys, which are distinct, so
+	       no order of the loop writes a different obj. */}}
 	for k, v := range {{$recv}}.AdditionalProperties {
-		{{- if isRawMessage $struct.AdditionalProperties.ValueType}}
 		obj[k] = v
-		{{- else}}
+	}
+	{{- else}}
+	{{- /* A member that fails to marshal is reported for the least key, not for
+	       whichever the randomised map order reached first. */}}
+	{{- $lk := leastKey "k" "v" (printf "%s.AdditionalProperties" $recv) "nil, _failed"}}
+	{{- template "least_key_open" $lk}}
 		raw, err := json.Marshal(v)
 		if err != nil {
-			return nil, fmt.Errorf("marshaling additional property %q: %w", k, err)
+			return fmt.Errorf("marshaling additional property %q: %w", k, err)
 		}
 		obj[k] = raw
-		{{- end}}
-	}
+		return nil
+	{{- template "least_key_close" $lk}}
+	{{- end}}
 	{{- end}}
 	{{- if $struct.WriteOnlyKeys}}
 	// --strict-read-write. The schema marks these "writeOnly", which JSON Schema

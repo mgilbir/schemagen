@@ -155,14 +155,29 @@ func (o OneOfBranchUnevaluatedPropertiesValueOption0) Validate() error {
 		evaluatedNames := map[string]bool{
 			"b": true,
 		}
-		for k, v := range o.AdditionalProperties {
-			evaluated := false
-			_ = v
-			if evaluatedNames[k] {
-				evaluated = true
+		{
+			var _least string
+			var _failed error
+			for k, v := range o.AdditionalProperties { // refused for the least failing key
+				if _failed != nil && k >= _least {
+					continue
+				}
+				if _err := func() error {
+					evaluated := false
+					_ = v
+					if evaluatedNames[k] {
+						evaluated = true
+					}
+					if !evaluated {
+						return jsonValueErrorf("unevaluated property %q is not allowed", k)
+					}
+					return nil
+				}(); _err != nil {
+					_least, _failed = k, _err
+				}
 			}
-			if !evaluated {
-				return jsonValueErrorf("unevaluated property %q is not allowed", k)
+			if _failed != nil {
+				return _failed
 			}
 		}
 	}
@@ -543,12 +558,27 @@ func (o OneOfBranchUnevaluatedProperties) Validate() error {
 	// evaluated against the document.
 	if o._jsonRawProps != nil {
 		_rbInstance := make(map[string]any, len(o._jsonRawProps))
-		for _rbKey, _rbRaw := range o._jsonRawProps {
-			var _rbVal any
-			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-				return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+		{
+			var _least string
+			var _failed error
+			for _rbKey, _rbRaw := range o._jsonRawProps { // refused for the least failing key
+				if _failed != nil && _rbKey >= _least {
+					continue
+				}
+				if _err := func() error {
+					var _rbVal any
+					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+						return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+					}
+					_rbInstance[_rbKey] = _rbVal
+					return nil
+				}(); _err != nil {
+					_least, _failed = _rbKey, _err
+				}
 			}
-			_rbInstance[_rbKey] = _rbVal
+			if _failed != nil {
+				return _failed
+			}
 		}
 		{
 			_rbNode0 := _schemaNode{

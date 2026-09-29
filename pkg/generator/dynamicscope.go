@@ -432,6 +432,7 @@ func (g *Generator) dynamicScopeDecidesTheTarget(s *schema.Schema) bool {
 		return false
 	}
 	reach := g.dynamicallyReachable(s)
+	// maporder: a predicate; it returns the same answer whichever member it stops at; dynamicRefTarget resolves uncounted, so the walk leaves no trace.
 	for node := range reach {
 		if node.RecursiveRef == "" && node.DynamicRef == "" {
 			continue
@@ -531,6 +532,7 @@ func (g *Generator) dynamicReach(s *schema.Schema) (map[*schema.Schema]bool, []*
 // roots answer to it -- the same rule findDynamicAnchorDeclarations applies.
 func countDynamicAnchorDeclarations(reach map[*schema.Schema]bool, name string) int {
 	count := 0
+	// maporder: a count.
 	for node := range reach {
 		if name == "" {
 			if node.DocumentRoot == node && node.RecursiveAnchor != nil && *node.RecursiveAnchor {

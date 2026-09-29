@@ -31,12 +31,24 @@ type canonicalInstanceResolver struct {
 
 func newCanonicalInstanceResolver(inner schema.SchemaResolver, docs map[string]*schema.Schema) *canonicalInstanceResolver {
 	byID := make(map[string]*schema.Schema, len(docs)*2)
+	// Two passes, so that a key spelled exactly always wins over another key's
+	// trimmed alias: "a#" trims to "a", and a run holding both "a" and "a#"
+	// would otherwise map "a" to whichever of the two the map yielded last.
+	// maporder: copies members under their own keys, which are distinct, so no order writes a different map.
 	for id, s := range docs {
 		if id == "" || s == nil {
 			continue
 		}
 		byID[id] = s
-		byID[strings.TrimSuffix(id, "#")] = s
+	}
+	// maporder: an alias is written only where no key holds it; two ids trim to one alias only when one of them is the alias itself, which the pass above already wrote.
+	for id, s := range docs {
+		if id == "" || s == nil {
+			continue
+		}
+		if alias := strings.TrimSuffix(id, "#"); byID[alias] == nil {
+			byID[alias] = s
+		}
 	}
 	return &canonicalInstanceResolver{inner: inner, byID: byID}
 }

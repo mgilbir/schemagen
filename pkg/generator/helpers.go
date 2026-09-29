@@ -187,7 +187,9 @@ func (h *HelperSet) CloseOverCalls() {
 	// verdict behind the path that reaches the value it was raised on, and a
 	// generated file names _evalNode without ever naming the constructor that
 	// answer is built with.
-	if h.Integer || h.DateTime || h.IPAddr || h.NullCheck || h.DecodePath || h.Annotations {
+	// jsonNumber, the --exact-numbers shadow, refuses a string through
+	// jsonValueErrorf as jsonInteger does, so it closes over the same block.
+	if h.Integer || h.Number || h.DateTime || h.IPAddr || h.NullCheck || h.DecodePath || h.Annotations {
 		h.PathJoin = true
 	}
 }

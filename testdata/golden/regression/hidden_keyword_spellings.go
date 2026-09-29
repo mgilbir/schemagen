@@ -113,12 +113,27 @@ func (a AnyOfSummary) Validate() error {
 	// evaluated against the document.
 	if a._jsonRawProps != nil {
 		_rbInstance := make(map[string]any, len(a._jsonRawProps))
-		for _rbKey, _rbRaw := range a._jsonRawProps {
-			var _rbVal any
-			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-				return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+		{
+			var _least string
+			var _failed error
+			for _rbKey, _rbRaw := range a._jsonRawProps { // refused for the least failing key
+				if _failed != nil && _rbKey >= _least {
+					continue
+				}
+				if _err := func() error {
+					var _rbVal any
+					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+						return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+					}
+					_rbInstance[_rbKey] = _rbVal
+					return nil
+				}(); _err != nil {
+					_least, _failed = _rbKey, _err
+				}
 			}
-			_rbInstance[_rbKey] = _rbVal
+			if _failed != nil {
+				return _failed
+			}
 		}
 		{
 			_rbNode0 := _schemaNode{
@@ -249,12 +264,27 @@ func (a AnyOfSummaryFalse) Validate() error {
 	// evaluated against the document.
 	if a._jsonRawProps != nil {
 		_rbInstance := make(map[string]any, len(a._jsonRawProps))
-		for _rbKey, _rbRaw := range a._jsonRawProps {
-			var _rbVal any
-			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-				return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+		{
+			var _least string
+			var _failed error
+			for _rbKey, _rbRaw := range a._jsonRawProps { // refused for the least failing key
+				if _failed != nil && _rbKey >= _least {
+					continue
+				}
+				if _err := func() error {
+					var _rbVal any
+					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+						return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+					}
+					_rbInstance[_rbKey] = _rbVal
+					return nil
+				}(); _err != nil {
+					_least, _failed = _rbKey, _err
+				}
 			}
-			_rbInstance[_rbKey] = _rbVal
+			if _failed != nil {
+				return _failed
+			}
 		}
 		{
 			_rbNode0 := _schemaNode{
@@ -584,21 +614,36 @@ func (h HiddenKeywordSpellingsPatternConstNull) Validate() error {
 		ppRegexps := []*ecma262.Regexp{
 			ecma262.MustCompile("^a", ecmaflags.Unicode),
 		}
-		for k, v := range h.PatternProperties {
-			_ = v
-			if ppRegexps[0].MatchString(k) {
-				{
-					// The sub-schema's own type answers for it: the value is
-					// decoded into it, so the decode enforces shape and the
-					// Validate enforces everything beyond it.
-					var _pv HiddenKeywordSpellingsPatternConstNullPattern0
-					if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %q: %w", "^a", k, _uErr)
-					}
-					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %q: %w", "^a", k, _vErr)
-					}
+		{
+			var _least string
+			var _failed error
+			for k, v := range h.PatternProperties { // refused for the least failing key
+				if _failed != nil && k >= _least {
+					continue
 				}
+				if _err := func() error {
+					_ = v
+					if ppRegexps[0].MatchString(k) {
+						{
+							// The sub-schema's own type answers for it: the value is
+							// decoded into it, so the decode enforces shape and the
+							// Validate enforces everything beyond it.
+							var _pv HiddenKeywordSpellingsPatternConstNullPattern0
+							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^a", k, _uErr)
+							}
+							if _vErr := _pv.Validate(); _vErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^a", k, _vErr)
+							}
+						}
+					}
+					return nil
+				}(); _err != nil {
+					_least, _failed = k, _err
+				}
+			}
+			if _failed != nil {
+				return _failed
 			}
 		}
 	}
@@ -724,21 +769,36 @@ func (h HiddenKeywordSpellingsPatternConstString) Validate() error {
 		ppRegexps := []*ecma262.Regexp{
 			ecma262.MustCompile("^b", ecmaflags.Unicode),
 		}
-		for k, v := range h.PatternProperties {
-			_ = v
-			if ppRegexps[0].MatchString(k) {
-				{
-					// The sub-schema's own type answers for it: the value is
-					// decoded into it, so the decode enforces shape and the
-					// Validate enforces everything beyond it.
-					var _pv HiddenKeywordSpellingsPatternConstStringPattern0
-					if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %q: %w", "^b", k, _uErr)
-					}
-					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %q: %w", "^b", k, _vErr)
-					}
+		{
+			var _least string
+			var _failed error
+			for k, v := range h.PatternProperties { // refused for the least failing key
+				if _failed != nil && k >= _least {
+					continue
 				}
+				if _err := func() error {
+					_ = v
+					if ppRegexps[0].MatchString(k) {
+						{
+							// The sub-schema's own type answers for it: the value is
+							// decoded into it, so the decode enforces shape and the
+							// Validate enforces everything beyond it.
+							var _pv HiddenKeywordSpellingsPatternConstStringPattern0
+							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^b", k, _uErr)
+							}
+							if _vErr := _pv.Validate(); _vErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^b", k, _vErr)
+							}
+						}
+					}
+					return nil
+				}(); _err != nil {
+					_least, _failed = k, _err
+				}
+			}
+			if _failed != nil {
+				return _failed
 			}
 		}
 	}
