@@ -946,18 +946,21 @@ func (c ContentPostureDraft7) Validate() error {
 	for _idx, _elem := range c.Tuple {
 		_ = _elem
 		if _idx == 0 {
-			var _typed ContentPostureDraft7TupleItem0
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return jsonWrapf(_mErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return jsonWrapf(_uErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return jsonWrapf(_vErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
+			if _tr := _evalNode(&_etContentPostureDraft7TupleItem0, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 		}
 	}
 	return nil
+}
+
+// _etContentPostureDraft7TupleItem0 is the schema of ContentPostureDraft7TupleItem0, compiled for judging an element held as
+// decoded JSON against it.
+var _etContentPostureDraft7TupleItem0 = _schemaNode{
+	ContentEncoding: _strPtr("base64"),
+	Type:            []string{"string"},
 }

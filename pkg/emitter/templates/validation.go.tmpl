@@ -2107,6 +2107,25 @@ declares a field for it at all.
 				_containsCount++
 			}
 		}
+		{{- else if .Def.Node}}
+		{{- /* Each element judged as it is held, by the sub-schema compiled for the
+		       evaluator (see ElementNode); it was marshalled and decoded into the
+		       sub-schema's type. An element with no verdict leaves the count
+		       unknown. */}}
+		_cArr := {{$expr}}
+		for _ci := range _cArr {
+			_cTv, _cTvErr := jsonTreeView(any(_cArr[_ci]))
+			if _cTvErr != nil {
+				continue
+			}
+			_cr := _evalNode(&{{.Def.Node.Var}}, _cTv)
+			if _cr.undecided != nil {
+				return {{$errf}}("{{$path}}: %w", {{$args}}_evalError(_cr))
+			}
+			if _cr.ok {
+				_containsCount++
+			}
+		}
 		{{- else if .Def.TypeName}}
 		{{- /*
 		A sub-schema richer than the checks below can express. An element
@@ -2331,6 +2350,21 @@ declares a field for it at all.
 {{- if .IsFalse}}
 		if {{$.Cond}} {
 			return {{$errf}}("{{$path}}[%d]: value is not allowed (schema is false)", {{$args}}_idx)
+		}
+{{- else if .Node}}
+		{{- /* Judged as it is held, by the position's schema compiled for the
+		       evaluator (see ElementNode): the element is an any, decoded whole or
+		       built in Go, and was marshalled and decoded into the position's type
+		       to be judged. */}}
+		{{- $wrapf := pathWrapf $path}}
+		if {{$.Cond}} {
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return {{$wrapf}}(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("{{$path}}[%d]: ", {{$args}}_idx))
+			}
+			if _tr := _evalNode(&{{.Node.Var}}, _tv); !_tr.ok {
+				return {{$wrapf}}(_evalError(_tr), fmt.Sprintf("{{$path}}[%d]: ", {{$args}}_idx))
+			}
 		}
 {{- else if .TypeName}}
 		{{- $wrapf := pathWrapf $path}}

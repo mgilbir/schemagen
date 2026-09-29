@@ -42,6 +42,15 @@ func (n Never) MarshalJSON() ([]byte, error) {
 // Raw returns a copy of the value's bytes.
 func (n Never) Raw() json.RawMessage { return append(json.RawMessage(nil), n._raw...) }
 
+// jsonIdentity is n's identity as JSON: that of the bytes MarshalJSON
+// writes back. See jsonID.
+func (n *Never) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	if len(n._raw) == 0 {
+		return jsonIDNull(_m)
+	}
+	return jsonIDRawIn(n._raw, _m)
+}
+
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
 func (n Never) IsZero() bool { return len(n._raw) == 0 }
@@ -882,24 +891,22 @@ func (r RefToFalseSchema) Validate() error {
 			_elem = _lz.jsonLevel()
 		}
 		if _idx == 0 {
-			var _typed Never
-			var _uErr error
-			if _isLazy {
-				_uErr = jsonDecodeLazy(_lz, &_typed, (*Never).decodeJSONAt)
-			} else {
-				_raw, _mErr := json.Marshal(_elem)
-				if _mErr != nil {
-					return jsonWrapf(_mErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
-				}
-				_uErr = jsonDecodeHeld(nil, _raw, &_typed, (*Never).decodeJSONAt)
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
-			if _uErr != nil {
-				return jsonWrapf(_uErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return jsonWrapf(_vErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
+			if _tr := _evalNode(&_etNever, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 		}
 	}
 	return nil
+}
+
+// _etNever is the schema of Never, compiled for judging an element held as
+// decoded JSON against it.
+var _etNever = _schemaNode{
+	AllOf: []_schemaNode{
+		_schemaNode{Boolean: _boolPtr(false)},
+	},
 }

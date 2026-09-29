@@ -231,6 +231,7 @@ func (e *Emitter) Emit(f *generator.File) ([]byte, error) {
 		ValidationCapability: f.ValidationCapability,
 		UnresolvedRefs:       f.UnresolvedRefs,
 		UndeclaredRefTypes:   f.UndeclaredRefTypes,
+		ElementNodes:         f.ElementNodes,
 	}
 
 	var buf bytes.Buffer
@@ -531,6 +532,8 @@ type fileData struct {
 	// UndeclaredRefTypes renders the DOES NOT COMPILE half of that banner. See
 	// generator.File.UndeclaredRefTypes.
 	UndeclaredRefTypes []generator.UndeclaredRefType
+	// ElementNodes are declared after the types. See generator.ElementNode.
+	ElementNodes []*generator.ElementNode
 }
 
 func (d fileData) HasValidationCapability() bool {

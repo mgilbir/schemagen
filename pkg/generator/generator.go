@@ -16,13 +16,17 @@ import (
 
 // Generator converts a parsed Schema into IR types.
 type Generator struct {
-	config       Config
-	output       *File
-	names        *nameRegistry   // every identifier the package declares; see names.go
-	generating   map[string]bool // track types currently being generated (recursion guard)
-	rootTypeName string          // Go type name for the root schema
-	rootID       string          // $id of the root schema (for detecting self-references)
-	baseURI      *url.URL        // the root's $id, parsed (for detecting self-references)
+	config     Config
+	output     *File
+	names      *nameRegistry   // every identifier the package declares; see names.go
+	generating map[string]bool // track types currently being generated (recursion guard)
+	// elementNodes are the compiled schemas of the types an element held as
+	// decoded JSON is judged against, by type name; nil where the evaluator
+	// declined. See elementNode.
+	elementNodes map[string]*ElementNode
+	rootTypeName string   // Go type name for the root schema
+	rootID       string   // $id of the root schema (for detecting self-references)
+	baseURI      *url.URL // the root's $id, parsed (for detecting self-references)
 
 	// index is where every reference is resolved: the resource index of the
 	// documents this generator has been handed and has reached, keyed by
@@ -4165,10 +4169,13 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 				addlItemsTypeName != "" || containsDef != nil || unevalItems != nil {
 				inferredGoType = &ArrayType{ItemType: &PrimitiveType{Name: "any"}}
 			}
+			itemsNode, addlItemsNode := g.inferredArrayNodes(s, itemsTypeName, addlItemsTypeName)
 			g.appendDef(&InferredAliasDef{
 				Name:                    name,
 				Doc:                     g.docFor(name, s),
 				StrictReadWrite:         g.config.StrictReadWrite,
+				ItemsNode:               itemsNode,
+				AdditionalItemsNode:     addlItemsNode,
 				InferredGoType:          inferredGoType,
 				InferredJSONType:        primaryType,
 				Validations:             rules,
@@ -6460,10 +6467,13 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			if !g.aliasUnderlyingIs(validateAsConvertible, inferredGoType) {
 				validateAsConvertible = ""
 			}
+			itemsNode, addlItemsNode := g.inferredArrayNodes(arraySchema, itemsTypeName, addlItemsTypeName)
 			g.appendDef(&InferredAliasDef{
 				Name:                    name,
 				Doc:                     g.docFor(name, s),
 				StrictReadWrite:         g.config.StrictReadWrite,
+				ItemsNode:               itemsNode,
+				AdditionalItemsNode:     addlItemsNode,
 				InferredGoType:          inferredGoType,
 				InferredJSONType:        primaryType,
 				Validations:             rules,
@@ -19504,6 +19514,14 @@ func (g *Generator) extractNestedItemsDef(s *schema.Schema) *NestedItemsDef {
 // JSON-type arms for the reason the element position asks it first: a slot
 // reduced to its declared type drops every other keyword the slot states.
 func (g *Generator) inferredTupleItemFromSchema(sub *schema.Schema, posName string) InferredTupleItem {
+	it := g.inferredTupleItemCheck(sub, posName)
+	if it.TypeName != "" {
+		it.Node = g.elementNode(it.TypeName, sub)
+	}
+	return it
+}
+
+func (g *Generator) inferredTupleItemCheck(sub *schema.Schema, posName string) InferredTupleItem {
 	if g.schemaForbidsEveryValue(sub) {
 		return InferredTupleItem{IsFalse: true}
 	}
@@ -20070,6 +20088,7 @@ func (g *Generator) extractContainsDef(s *schema.Schema, parentName string) (*Co
 	if !containsChecksCarryTheWholeSchema(containsSch) {
 		if name := g.inferredItemTypeName(containsSch, nil, parentName+"Contains"); name != "" {
 			def.TypeName = name
+			def.Node = g.elementNode(name, containsSch)
 			return def, minC, maxC
 		}
 	}
@@ -22720,6 +22739,9 @@ func (g *Generator) tupleTailSchema(s *schema.Schema) *schema.Schema {
 func (g *Generator) tupleItemDefFor(posSch *schema.Schema, posName string) (TupleItemDef, bool) {
 	def, ok := g.tupleItemCheckFor(posSch, posName)
 	def.StrictReadWrite = g.config.StrictReadWrite
+	if def.TypeName != "" {
+		def.Node = g.elementNode(def.TypeName, posSch)
+	}
 	return def, ok
 }
 

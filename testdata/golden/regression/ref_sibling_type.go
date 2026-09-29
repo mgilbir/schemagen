@@ -728,16 +728,12 @@ func (r RefSiblingType) Validate() error {
 	for _idx, _elem := range r.BoundedSlot {
 		_ = _elem
 		if _idx == 0 {
-			var _typed RefSiblingTypeBoundedSlotItem0
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return jsonWrapf(_mErr, fmt.Sprintf("boundedSlot: items[%d]: ", _idx))
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("boundedSlot: items[%d]: ", _idx))
 			}
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return jsonWrapf(_uErr, fmt.Sprintf("boundedSlot: items[%d]: ", _idx))
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return jsonWrapf(_vErr, fmt.Sprintf("boundedSlot: items[%d]: ", _idx))
+			if _tr := _evalNode(&_etRefSiblingTypeBoundedSlotItem0, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("boundedSlot: items[%d]: ", _idx))
 			}
 		}
 	}
@@ -745,18 +741,34 @@ func (r RefSiblingType) Validate() error {
 	for _idx, _elem := range r.Slot {
 		_ = _elem
 		if _idx == 0 {
-			var _typed RefSiblingTypeSlotItem0
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return jsonWrapf(_mErr, fmt.Sprintf("slot: items[%d]: ", _idx))
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("slot: items[%d]: ", _idx))
 			}
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return jsonWrapf(_uErr, fmt.Sprintf("slot: items[%d]: ", _idx))
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return jsonWrapf(_vErr, fmt.Sprintf("slot: items[%d]: ", _idx))
+			if _tr := _evalNode(&_etRefSiblingTypeSlotItem0, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("slot: items[%d]: ", _idx))
 			}
 		}
 	}
 	return nil
+}
+
+// _etRefSiblingTypeBoundedSlotItem0 is the schema of RefSiblingTypeBoundedSlotItem0, compiled for judging an element held as
+// decoded JSON against it.
+var _etRefSiblingTypeBoundedSlotItem0 = _schemaNode{
+	AllOf: []_schemaNode{
+		_schemaNode{
+			MinLength: _intPtr(3),
+		},
+	},
+	Type: []string{"string"},
+}
+
+// _etRefSiblingTypeSlotItem0 is the schema of RefSiblingTypeSlotItem0, compiled for judging an element held as
+// decoded JSON against it.
+var _etRefSiblingTypeSlotItem0 = _schemaNode{
+	AllOf: []_schemaNode{
+		_schemaNode{},
+	},
+	Type: []string{"string"},
 }

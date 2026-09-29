@@ -61,6 +61,7 @@ var inertFields = map[string]string{
 	"ParentName":              "a Go type identifier",
 	"AccessRulesVar":          "a Go package-variable identifier the generator's name registry mints",
 	"SchemaVar":               "a Go package-variable identifier the generator's name registry mints",
+	"Var":                     "ElementNode.Var: a Go package-variable identifier the generator's name registry mints",
 	"EncodeKeysVar":           "a Go package-variable identifier the generator's name registry mints",
 	"StripRulesVar":           "a Go package-variable identifier the generator's name registry mints",
 	"AllowedVar":              "a Go package-variable identifier the generator's name registry mints",

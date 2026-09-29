@@ -41,6 +41,9 @@ import (
 {{range .TypeDefs}}
 {{template "typedef" .}}
 {{end}}
+{{- range .ElementNodes}}
+{{template "element_node" .}}
+{{end}}
 {{- if .HasValidationCapability}}
 {{template "validation_capability" .}}
 {{- end}}

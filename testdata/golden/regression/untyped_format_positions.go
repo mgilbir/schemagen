@@ -968,6 +968,18 @@ func (u UntypedFormatPositionsTupleItem0) MarshalJSON() ([]byte, error) {
 	}
 	return json.Marshal(u._value)
 }
+
+// jsonIdentity is u's identity as JSON: that of what MarshalJSON writes.
+// See jsonID.
+func (u *UntypedFormatPositionsTupleItem0) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	if u._isRaw {
+		if len(u._raw) == 0 {
+			return jsonIDNull(_m)
+		}
+		return jsonIDRawIn(u._raw, _m)
+	}
+	return jsonIdentifyAt(&u._value, _m)
+}
 func (u UntypedFormatPositionsTupleItem0) StringValue() string { return u._value }
 func (u UntypedFormatPositionsTupleItem0) IsString() bool      { return !u._isRaw }
 func (u UntypedFormatPositionsTupleItem0) Raw() json.RawMessage {
@@ -1595,16 +1607,12 @@ func (u UntypedFormatPositions) Validate() error {
 	for _idx, _elem := range u.Tuple {
 		_ = _elem
 		if _idx == 0 {
-			var _typed UntypedFormatPositionsTupleItem0
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return jsonWrapf(_mErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return jsonWrapf(_uErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return jsonWrapf(_vErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
+			if _tr := _evalNode(&_etUntypedFormatPositionsTupleItem0, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 		}
 		if _idx == 1 {
@@ -1616,3 +1624,7 @@ func (u UntypedFormatPositions) Validate() error {
 	}
 	return nil
 }
+
+// _etUntypedFormatPositionsTupleItem0 is the schema of UntypedFormatPositionsTupleItem0, compiled for judging an element held as
+// decoded JSON against it.
+var _etUntypedFormatPositionsTupleItem0 = _schemaNode{}

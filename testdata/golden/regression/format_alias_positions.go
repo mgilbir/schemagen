@@ -433,31 +433,43 @@ func (f FormatAliasPositions) Validate() error {
 	for _idx, _elem := range f.Tuple {
 		_ = _elem
 		if _idx == 0 {
-			var _typed Stamp
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return jsonWrapf(_mErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return jsonWrapf(_uErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return jsonWrapf(_vErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
+			if _tr := _evalNode(&_etStamp, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 		}
 		if _idx == 1 {
-			var _typed Addr
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return jsonWrapf(_mErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return jsonWrapf(_uErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return jsonWrapf(_vErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
+			if _tr := _evalNode(&_etAddr, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 		}
 	}
 	return nil
+}
+
+// _etStamp is the schema of Stamp, compiled for judging an element held as
+// decoded JSON against it.
+var _etStamp = _schemaNode{
+	AllOf: []_schemaNode{
+		_schemaNode{
+			Type: []string{"string"},
+		},
+	},
+}
+
+// _etAddr is the schema of Addr, compiled for judging an element held as
+// decoded JSON against it.
+var _etAddr = _schemaNode{
+	AllOf: []_schemaNode{
+		_schemaNode{
+			Type: []string{"string"},
+		},
+	},
 }

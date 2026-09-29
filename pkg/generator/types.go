@@ -1958,6 +1958,10 @@ type TupleItemDef struct {
 	// wherever Validate decodes it (see jsonLazyItemsOr), and the position is
 	// decoded from its span of the document rather than from its re-encoding.
 	Decoder string
+
+	// Node is TypeName's schema compiled for the evaluator, which judges the
+	// element as it is held. See ElementNode.
+	Node *ElementNode
 }
 
 // tupleHasHeld reports whether any position of a tuple is decoded in place.
@@ -2346,6 +2350,8 @@ type InferredAliasDef struct {
 	ItemsFalse           bool                // items: false — reject any non-empty array
 	ItemsType            string              // items as single schema with simple JSON type (e.g., "integer", "string")
 	ItemsTypeName        string              // items as single schema referencing a named Go type (call Validate())
+	ItemsNode            *ElementNode        // ItemsTypeName's schema compiled for the evaluator; see ElementNode
+	AdditionalItemsNode  *ElementNode        // AdditionalItemsTypeName's, likewise
 	ItemsChecks          []ContainsCheck     // per-element validation checks from items sub-schema (multipleOf, minimum, etc.)
 	ItemsNested          *NestedItemsDef     // per-element nested array item validation from an items sub-schema
 	TupleItems           []InferredTupleItem // per-position schemas (prefixItems / items-as-array)
@@ -2418,6 +2424,10 @@ type ContainsDef struct {
 	// every digit rather than folded through float64, so the reduction has
 	// the digits to reduce. See markRawElementContains.
 	RawElements bool
+
+	// Node is TypeName's schema compiled for the evaluator, which judges each
+	// element as it is held. See ElementNode.
+	Node *ElementNode
 }
 
 // ContainsCheck describes one validation check applied to each element
@@ -2485,6 +2495,8 @@ type InferredTupleItem struct {
 	IsFalse  bool   // boolean false schema — reject any value at this position
 	JSONType string // simple JSON type constraint (e.g., "integer", "string")
 	TypeName string // named Go type for $ref-based items (unmarshal + Validate())
+	// Node is TypeName's schema compiled for the evaluator. See ElementNode.
+	Node *ElementNode
 }
 
 // HasItemValidation returns true if the InferredAliasDef has any item-level validation.
@@ -2870,6 +2882,25 @@ type File struct {
 	// the package does not build. Empty when every degraded ref landed
 	// somewhere `any` fits. See UndeclaredRefType and issue #240.
 	UndeclaredRefTypes []UndeclaredRefType
+
+	// ElementNodes are the schemas of the types an element held as decoded JSON
+	// is judged against -- a tuple position, a contains, an inferred array's
+	// items -- compiled for the runtime evaluator, which judges the element as
+	// it is held rather than decoding it into the type. See ElementNode.
+	ElementNodes []*ElementNode
+}
+
+// ElementNode is the schema of a type, compiled for the runtime evaluator: what
+// an element held as decoded JSON -- an any, which may have been decoded whole
+// or built in Go -- is judged against, where it used to be marshalled and
+// decoded into the type to be judged by the type's Validate. Var is the
+// package variable the root node is declared as, and Nodes the nodes hoisted
+// out of it, as AnnotationSchemaDef's are.
+type ElementNode struct {
+	TypeName string
+	Var      string
+	Literal  string
+	Nodes    []RuntimeNodeVar
 }
 
 // Import represents a Go import.

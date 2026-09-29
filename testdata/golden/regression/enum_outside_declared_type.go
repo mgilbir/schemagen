@@ -3299,16 +3299,12 @@ func (e EnumOutsideDeclaredType) Validate() error {
 	for _idx, _elem := range e.EnumPartialSlot {
 		_ = _elem
 		if _idx == 0 {
-			var _typed EnumOutsideDeclaredTypeEnumPartialSlotItem0
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return jsonWrapf(_mErr, fmt.Sprintf("enumPartialSlot: items[%d]: ", _idx))
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("enumPartialSlot: items[%d]: ", _idx))
 			}
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return jsonWrapf(_uErr, fmt.Sprintf("enumPartialSlot: items[%d]: ", _idx))
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return jsonWrapf(_vErr, fmt.Sprintf("enumPartialSlot: items[%d]: ", _idx))
+			if _tr := _evalNode(&_etEnumOutsideDeclaredTypeEnumPartialSlotItem0, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("enumPartialSlot: items[%d]: ", _idx))
 			}
 		}
 	}
@@ -3321,4 +3317,11 @@ func (e EnumOutsideDeclaredType) Validate() error {
 		}
 	}
 	return nil
+}
+
+// _etEnumOutsideDeclaredTypeEnumPartialSlotItem0 is the schema of EnumOutsideDeclaredTypeEnumPartialSlotItem0, compiled for judging an element held as
+// decoded JSON against it.
+var _etEnumOutsideDeclaredTypeEnumPartialSlotItem0 = _schemaNode{
+	Enum: []string{"\"a\"", "5"},
+	Type: []string{"string"},
 }

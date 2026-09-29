@@ -818,6 +818,15 @@ func (i InlineUntypedPositionsSlotItem0) Raw() json.RawMessage {
 	return append(json.RawMessage(nil), i._raw...)
 }
 
+// jsonIdentity is i's identity as JSON: that of the bytes MarshalJSON
+// writes back. See jsonID.
+func (i *InlineUntypedPositionsSlotItem0) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	if len(i._raw) == 0 {
+		return jsonIDNull(_m)
+	}
+	return jsonIDRawIn(i._raw, _m)
+}
+
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
 func (i InlineUntypedPositionsSlotItem0) IsZero() bool { return len(i._raw) == 0 }
@@ -1324,24 +1333,20 @@ func (i InlineUntypedPositions) Validate() error {
 			_elem = _lz.jsonLevel()
 		}
 		if _idx == 0 {
-			var _typed InlineUntypedPositionsSlotItem0
-			var _uErr error
-			if _isLazy {
-				_uErr = jsonDecodeLazy(_lz, &_typed, (*InlineUntypedPositionsSlotItem0).decodeJSONAt)
-			} else {
-				_raw, _mErr := json.Marshal(_elem)
-				if _mErr != nil {
-					return jsonWrapf(_mErr, fmt.Sprintf("slot: items[%d]: ", _idx))
-				}
-				_uErr = jsonDecodeHeld(nil, _raw, &_typed, (*InlineUntypedPositionsSlotItem0).decodeJSONAt)
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("slot: items[%d]: ", _idx))
 			}
-			if _uErr != nil {
-				return jsonWrapf(_uErr, fmt.Sprintf("slot: items[%d]: ", _idx))
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return jsonWrapf(_vErr, fmt.Sprintf("slot: items[%d]: ", _idx))
+			if _tr := _evalNode(&_etInlineUntypedPositionsSlotItem0, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("slot: items[%d]: ", _idx))
 			}
 		}
 	}
 	return nil
+}
+
+// _etInlineUntypedPositionsSlotItem0 is the schema of InlineUntypedPositionsSlotItem0, compiled for judging an element held as
+// decoded JSON against it.
+var _etInlineUntypedPositionsSlotItem0 = _schemaNode{
+	Minimum: _floatPtr(5),
 }

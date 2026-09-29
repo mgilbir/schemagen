@@ -68,7 +68,10 @@ func ({{$recv}} {{.Name}}) Raw() json.RawMessage { return append(json.RawMessage
 // which is the value's bytes with the writeOnly locations stripped by reading
 // them back -- so it is read off that. See jsonID.
 func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
-	_b, _err := {{$recv}}.MarshalJSON()
+	if len({{$recv}}._raw) == 0 {
+		return jsonIDNull(_m)
+	}
+	_t, _err := jsonTreeRaw({{$recv}}._raw, false)
 	if _err != nil {
 		return jsonID{}, _err
 	}
@@ -141,4 +144,36 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	}
 	return nil
 }
+{{- end}}
+
+{{/*
+element_node declares an ElementNode: the schema of a type, compiled for the
+runtime evaluator, which judges an element held as decoded JSON against it --
+as it is held, where the element used to be marshalled and decoded into the
+type. The hoisted nodes are assembled in init() for the reason an
+AnnotationSchemaDef's are.
+*/}}
+{{define "element_node"}}
+{{- if .Nodes}}
+// {{.Var}} is the schema of {{.TypeName}}, compiled for judging an element held as
+// decoded JSON against it, and the nodes below it are the parts of that schema
+// something inside it refers back to.
+var (
+	{{.Var}} _schemaNode
+{{- range .Nodes}}
+	{{.Name}} _schemaNode
+{{- end}}
+)
+
+func init() {
+{{- range .Nodes}}
+	{{.Name}} = {{.Literal}}
+{{- end}}
+	{{$.Var}} = {{$.Literal}}
+}
+{{- else}}
+// {{.Var}} is the schema of {{.TypeName}}, compiled for judging an element held as
+// decoded JSON against it.
+var {{.Var}} = {{.Literal}}
+{{- end}}
 {{- end}}

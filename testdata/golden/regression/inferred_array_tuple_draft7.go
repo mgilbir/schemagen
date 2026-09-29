@@ -106,6 +106,26 @@ func (n NeedsA) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, erro
 	return _b, nil
 }
 
+// jsonIdentity is n's identity as JSON, read off its members by the rules
+// appendJSON writes them by. See jsonID.
+func (n *NeedsA) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	_o := jsonIDObj{m: _m}
+	for _key, _member := range n.AdditionalProperties {
+		_o.held(_key, _member)
+	}
+	return _o.id(n.jsonIdentityMember, _m)
+}
+
+// jsonIdentityMember reads the member of n numbered idx, as
+// appendMemberJSON writes it. key is the member's key, which names the
+// additionalProperties value to read.
+func (n *NeedsA) jsonIdentityMember(_idx int, _key string, _m *jsonValidation) (jsonID, error) {
+	_ = _key
+	switch _idx {
+	}
+	return jsonIDNull(_m)
+}
+
 // Validate checks NeedsA against its JSON Schema constraints.
 func (n NeedsA) Validate() error {
 	// Required properties must be present in the source JSON. _jsonKeys is
@@ -221,6 +241,26 @@ func (i InferredArrayTupleDraft7OneItem) appendMemberJSON(_idx int, _key string,
 	return _b, nil
 }
 
+// jsonIdentity is i's identity as JSON, read off its members by the rules
+// appendJSON writes them by. See jsonID.
+func (i *InferredArrayTupleDraft7OneItem) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	_o := jsonIDObj{m: _m}
+	for _key, _member := range i.AdditionalProperties {
+		_o.held(_key, _member)
+	}
+	return _o.id(i.jsonIdentityMember, _m)
+}
+
+// jsonIdentityMember reads the member of i numbered idx, as
+// appendMemberJSON writes it. key is the member's key, which names the
+// additionalProperties value to read.
+func (i *InferredArrayTupleDraft7OneItem) jsonIdentityMember(_idx int, _key string, _m *jsonValidation) (jsonID, error) {
+	_ = _key
+	switch _idx {
+	}
+	return jsonIDNull(_m)
+}
+
 // Validate checks InferredArrayTupleDraft7OneItem against its JSON Schema constraints.
 func (i InferredArrayTupleDraft7OneItem) Validate() error {
 	// Required properties must be present in the source JSON. _jsonKeys is
@@ -303,16 +343,12 @@ func (i InferredArrayTupleDraft7One) Validate() error {
 	}
 	// Item-level validation for inferred array.
 	for _i, _elem := range i._value {
-		_raw, _mErr := json.Marshal(_elem)
-		if _mErr != nil {
-			return fmt.Errorf("items[%d]: %w", _i, _mErr)
+		_tv, _tvErr := jsonTreeView(_elem)
+		if _tvErr != nil {
+			return fmt.Errorf("items[%d]: %w", _i, jsonMarshalError(&_elem, _tvErr))
 		}
-		var _typed InferredArrayTupleDraft7OneItem
-		if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-			return fmt.Errorf("items[%d]: %w", _i, _uErr)
-		}
-		if _vErr := _typed.Validate(); _vErr != nil {
-			return fmt.Errorf("items[%d]: %w", _i, _vErr)
+		if _tr := _evalNode(&_etInferredArrayTupleDraft7OneItem, _tv); !_tr.ok {
+			return fmt.Errorf("items[%d]: %w", _i, _evalError(_tr))
 		}
 	}
 	return nil
@@ -384,16 +420,12 @@ func (i InferredArrayTupleDraft7Ref) Validate() error {
 	}
 	// Item-level validation for inferred array.
 	for _i, _elem := range i._value {
-		_raw, _mErr := json.Marshal(_elem)
-		if _mErr != nil {
-			return fmt.Errorf("items[%d]: %w", _i, _mErr)
+		_tv, _tvErr := jsonTreeView(_elem)
+		if _tvErr != nil {
+			return fmt.Errorf("items[%d]: %w", _i, jsonMarshalError(&_elem, _tvErr))
 		}
-		var _typed NeedsA
-		if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-			return fmt.Errorf("items[%d]: %w", _i, _uErr)
-		}
-		if _vErr := _typed.Validate(); _vErr != nil {
-			return fmt.Errorf("items[%d]: %w", _i, _vErr)
+		if _tr := _evalNode(&_etNeedsA, _tv); !_tr.ok {
+			return fmt.Errorf("items[%d]: %w", _i, _evalError(_tr))
 		}
 	}
 	return nil
@@ -496,6 +528,26 @@ func (i InferredArrayTupleDraft7TupItem0) appendMemberJSON(_idx int, _key string
 	switch _idx {
 	}
 	return _b, nil
+}
+
+// jsonIdentity is i's identity as JSON, read off its members by the rules
+// appendJSON writes them by. See jsonID.
+func (i *InferredArrayTupleDraft7TupItem0) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	_o := jsonIDObj{m: _m}
+	for _key, _member := range i.AdditionalProperties {
+		_o.held(_key, _member)
+	}
+	return _o.id(i.jsonIdentityMember, _m)
+}
+
+// jsonIdentityMember reads the member of i numbered idx, as
+// appendMemberJSON writes it. key is the member's key, which names the
+// additionalProperties value to read.
+func (i *InferredArrayTupleDraft7TupItem0) jsonIdentityMember(_idx int, _key string, _m *jsonValidation) (jsonID, error) {
+	_ = _key
+	switch _idx {
+	}
+	return jsonIDNull(_m)
 }
 
 // Validate checks InferredArrayTupleDraft7TupItem0 against its JSON Schema constraints.
@@ -613,6 +665,26 @@ func (i InferredArrayTupleDraft7TupRest) appendMemberJSON(_idx int, _key string,
 	return _b, nil
 }
 
+// jsonIdentity is i's identity as JSON, read off its members by the rules
+// appendJSON writes them by. See jsonID.
+func (i *InferredArrayTupleDraft7TupRest) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	_o := jsonIDObj{m: _m}
+	for _key, _member := range i.AdditionalProperties {
+		_o.held(_key, _member)
+	}
+	return _o.id(i.jsonIdentityMember, _m)
+}
+
+// jsonIdentityMember reads the member of i numbered idx, as
+// appendMemberJSON writes it. key is the member's key, which names the
+// additionalProperties value to read.
+func (i *InferredArrayTupleDraft7TupRest) jsonIdentityMember(_idx int, _key string, _m *jsonValidation) (jsonID, error) {
+	_ = _key
+	switch _idx {
+	}
+	return jsonIDNull(_m)
+}
+
 // Validate checks InferredArrayTupleDraft7TupRest against its JSON Schema constraints.
 func (i InferredArrayTupleDraft7TupRest) Validate() error {
 	// Required properties must be present in the source JSON. _jsonKeys is
@@ -696,30 +768,22 @@ func (i InferredArrayTupleDraft7Tup) Validate() error {
 	// Item-level validation for inferred array.
 	{
 		if len(i._value) > 0 {
-			_raw, _mErr := json.Marshal(i._value[0])
-			if _mErr != nil {
-				return fmt.Errorf("items[0]: %w", _mErr)
+			_tv, _tvErr := jsonTreeView(i._value[0])
+			if _tvErr != nil {
+				return fmt.Errorf("items[0]: %w", jsonMarshalError(&i._value[0], _tvErr))
 			}
-			var _typed InferredArrayTupleDraft7TupItem0
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return fmt.Errorf("items[0]: %w", _uErr)
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return fmt.Errorf("items[0]: %w", _vErr)
+			if _tr := _evalNode(&_etInferredArrayTupleDraft7TupItem0, _tv); !_tr.ok {
+				return fmt.Errorf("items[0]: %w", _evalError(_tr))
 			}
 		}
 	}
 	for _i := 1; _i < len(i._value); _i++ {
-		_raw, _mErr := json.Marshal(i._value[_i])
-		if _mErr != nil {
-			return fmt.Errorf("additionalItems[%d]: %w", _i, _mErr)
+		_tv, _tvErr := jsonTreeView(i._value[_i])
+		if _tvErr != nil {
+			return fmt.Errorf("additionalItems[%d]: %w", _i, jsonMarshalError(&i._value[_i], _tvErr))
 		}
-		var _typed InferredArrayTupleDraft7TupRest
-		if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-			return fmt.Errorf("additionalItems[%d]: %w", _i, _uErr)
-		}
-		if _vErr := _typed.Validate(); _vErr != nil {
-			return fmt.Errorf("additionalItems[%d]: %w", _i, _vErr)
+		if _tr := _evalNode(&_etInferredArrayTupleDraft7TupRest, _tv); !_tr.ok {
+			return fmt.Errorf("additionalItems[%d]: %w", _i, _evalError(_tr))
 		}
 	}
 	return nil
@@ -936,4 +1000,32 @@ func (i InferredArrayTupleDraft7) Validate() error {
 		}
 	}
 	return nil
+}
+
+// _etInferredArrayTupleDraft7OneItem is the schema of InferredArrayTupleDraft7OneItem, compiled for judging an element held as
+// decoded JSON against it.
+var _etInferredArrayTupleDraft7OneItem = _schemaNode{
+	Required: []string{"a"},
+	Type:     []string{"object"},
+}
+
+// _etNeedsA is the schema of NeedsA, compiled for judging an element held as
+// decoded JSON against it.
+var _etNeedsA = _schemaNode{
+	Required: []string{"a"},
+	Type:     []string{"object"},
+}
+
+// _etInferredArrayTupleDraft7TupItem0 is the schema of InferredArrayTupleDraft7TupItem0, compiled for judging an element held as
+// decoded JSON against it.
+var _etInferredArrayTupleDraft7TupItem0 = _schemaNode{
+	Required: []string{"a"},
+	Type:     []string{"object"},
+}
+
+// _etInferredArrayTupleDraft7TupRest is the schema of InferredArrayTupleDraft7TupRest, compiled for judging an element held as
+// decoded JSON against it.
+var _etInferredArrayTupleDraft7TupRest = _schemaNode{
+	Required: []string{"b"},
+	Type:     []string{"object"},
 }

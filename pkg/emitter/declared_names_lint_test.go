@@ -31,6 +31,7 @@ var declaredNameActions = map[string]string{
 	"{{.GetterName}}":          "OneOfVariant.GetterName, claimed in the parent's member scope",
 	"{{.AccessRulesVar}}":      "claimed by claimCarriedIdents",
 	"{{.SchemaVar}}":           "claimed by claimCarriedIdents",
+	"{{.Var}}":                 "ElementNode.Var, claimed by elementNode",
 	"{{.EncodeKeysVar}}":       "claimed by resolveEncodePlans",
 	"{{.StripRulesVar}}":       "claimed by resolveEncodePlans",
 	"{{$allowedVar}}":          "EnumDef.AllowedVar, claimed where the raw enum is built",

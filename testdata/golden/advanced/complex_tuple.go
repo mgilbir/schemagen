@@ -222,6 +222,46 @@ func (e EventRecordItem2) appendMemberJSON(_idx int, _key string, _b []byte) ([]
 	return _b, nil
 }
 
+// jsonIdentity is e's identity as JSON, read off its members by the rules
+// appendJSON writes them by. See jsonID.
+func (e *EventRecordItem2) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	_o := jsonIDObj{m: _m}
+	{
+		if !jsonOmitEmptyAt(&e.Code) {
+			_id, _err := (func(_p **int64, _m *jsonValidation) (jsonID, error) {
+				return jsonIDPtr[*int64, int64](*_p, _m, jsonIdentifyAt[int64])
+			})(&e.Code, _m)
+			if _err != nil {
+				return jsonID{}, _err
+			}
+			_o.computed("code", _id)
+		}
+	}
+	{
+		{
+			_id, _err := (jsonIdentifyAt[EventRecordItem2Level])(&e.Level, _m)
+			if _err != nil {
+				return jsonID{}, _err
+			}
+			_o.computed("level", _id)
+		}
+	}
+	for _key, _member := range e.AdditionalProperties {
+		_o.held(_key, _member)
+	}
+	return _o.id(e.jsonIdentityMember, _m)
+}
+
+// jsonIdentityMember reads the member of e numbered idx, as
+// appendMemberJSON writes it. key is the member's key, which names the
+// additionalProperties value to read.
+func (e *EventRecordItem2) jsonIdentityMember(_idx int, _key string, _m *jsonValidation) (jsonID, error) {
+	_ = _key
+	switch _idx {
+	}
+	return jsonIDNull(_m)
+}
+
 // Validate checks EventRecordItem2 against its JSON Schema constraints.
 func (e EventRecordItem2) Validate() error {
 	// Required properties must be present in the source JSON. _jsonKeys is
@@ -296,48 +336,30 @@ func (e EventRecord) Validate() error {
 			_elem = _lz.jsonLevel()
 		}
 		if _idx == 0 {
-			var _typed EventRecordItem0
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return jsonWrapf(_mErr, fmt.Sprintf("items[%d]: ", _idx))
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("items[%d]: ", _idx))
 			}
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return jsonWrapf(_uErr, fmt.Sprintf("items[%d]: ", _idx))
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return jsonWrapf(_vErr, fmt.Sprintf("items[%d]: ", _idx))
+			if _tr := _evalNode(&_etEventRecordItem0, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("items[%d]: ", _idx))
 			}
 		}
 		if _idx == 1 {
-			var _typed Timestamp
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return jsonWrapf(_mErr, fmt.Sprintf("items[%d]: ", _idx))
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("items[%d]: ", _idx))
 			}
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return jsonWrapf(_uErr, fmt.Sprintf("items[%d]: ", _idx))
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return jsonWrapf(_vErr, fmt.Sprintf("items[%d]: ", _idx))
+			if _tr := _evalNode(&_etTimestamp, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("items[%d]: ", _idx))
 			}
 		}
 		if _idx == 2 {
-			var _typed EventRecordItem2
-			var _uErr error
-			if _isLazy {
-				_uErr = jsonDecodeLazy(_lz, &_typed, (*EventRecordItem2).decodeJSONAt)
-			} else {
-				_raw, _mErr := json.Marshal(_elem)
-				if _mErr != nil {
-					return jsonWrapf(_mErr, fmt.Sprintf("items[%d]: ", _idx))
-				}
-				_uErr = jsonDecodeHeld(nil, _raw, &_typed, (*EventRecordItem2).decodeJSONAt)
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("items[%d]: ", _idx))
 			}
-			if _uErr != nil {
-				return jsonWrapf(_uErr, fmt.Sprintf("items[%d]: ", _idx))
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return jsonWrapf(_vErr, fmt.Sprintf("items[%d]: ", _idx))
+			if _tr := _evalNode(&_etEventRecordItem2, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("items[%d]: ", _idx))
 			}
 		}
 	}
@@ -373,4 +395,40 @@ func (e EventRecord) Validate() error {
 		}
 	}
 	return nil
+}
+
+// _etEventRecordItem0 is the schema of EventRecordItem0, compiled for judging an element held as
+// decoded JSON against it.
+var _etEventRecordItem0 = _schemaNode{
+	MaxLength: _intPtr(100),
+	MinLength: _intPtr(1),
+	Type:      []string{"string"},
+}
+
+// _etTimestamp is the schema of Timestamp, compiled for judging an element held as
+// decoded JSON against it.
+var _etTimestamp = _schemaNode{
+	AllOf: []_schemaNode{
+		_schemaNode{
+			Type: []string{"string"},
+		},
+	},
+}
+
+// _etEventRecordItem2 is the schema of EventRecordItem2, compiled for judging an element held as
+// decoded JSON against it.
+var _etEventRecordItem2 = _schemaNode{
+	Properties: []_schemaMember{
+		{Key: "code", Node: _schemaNode{
+			Maximum: _floatPtr(599),
+			Minimum: _floatPtr(100),
+			Type:    []string{"integer"},
+		}},
+		{Key: "level", Node: _schemaNode{
+			Enum: []string{"\"info\"", "\"warn\"", "\"error\""},
+			Type: []string{"string"},
+		}},
+	},
+	Required: []string{"level"},
+	Type:     []string{"object"},
 }

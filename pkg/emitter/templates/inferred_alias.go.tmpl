@@ -461,7 +461,20 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		{{- end}}
 	}
 	{{- end}}
-	{{- if .ItemsTypeName}}
+	{{- if .ItemsNode}}
+	{{- /* Each element judged as it is held, by the items schema compiled for
+	       the evaluator (see ElementNode), rather than marshalled and decoded
+	       into the items type. */}}
+	for _i, _elem := range {{$recv}}._value {
+		_tv, _tvErr := jsonTreeView(_elem)
+		if _tvErr != nil {
+			return fmt.Errorf("items[%d]: %w", _i, jsonMarshalError(&_elem, _tvErr))
+		}
+		if _tr := _evalNode(&{{.ItemsNode.Var}}, _tv); !_tr.ok {
+			return fmt.Errorf("items[%d]: %w", _i, _evalError(_tr))
+		}
+	}
+	{{- else if .ItemsTypeName}}
 	for _i, _elem := range {{$recv}}._value {
 		_raw, _mErr := json.Marshal(_elem)
 		if _mErr != nil {
@@ -621,6 +634,17 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			}
 			{{- end}}
 		}
+		{{- else if $item.Node}}
+		if len({{$recv}}._value) > {{$idx}} {
+			{{- /* Judged as it is held; see ElementNode. */}}
+			_tv, _tvErr := jsonTreeView({{$recv}}._value[{{$idx}}])
+			if _tvErr != nil {
+				return fmt.Errorf("items[{{$idx}}]: %w", jsonMarshalError(&{{$recv}}._value[{{$idx}}], _tvErr))
+			}
+			if _tr := _evalNode(&{{$item.Node.Var}}, _tv); !_tr.ok {
+				return fmt.Errorf("items[{{$idx}}]: %w", _evalError(_tr))
+			}
+		}
 		{{- else if $item.TypeName}}
 		if len({{$recv}}._value) > {{$idx}} {
 			_raw, _mErr := json.Marshal({{$recv}}._value[{{$idx}}])
@@ -644,7 +668,18 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		return fmt.Errorf("additionalItems: %d extra items are not allowed", len({{$recv}}._value) - {{len .TupleItems}})
 	}
 	{{- end}}
-	{{- if .AdditionalItemsTypeName}}
+	{{- if .AdditionalItemsNode}}
+	{{- /* The tail judged as it is held; see ElementNode, and the typed arm below. */}}
+	for _i := {{len .TupleItems}}; _i < len({{$recv}}._value); _i++ {
+		_tv, _tvErr := jsonTreeView({{$recv}}._value[_i])
+		if _tvErr != nil {
+			return fmt.Errorf("additionalItems[%d]: %w", _i, jsonMarshalError(&{{$recv}}._value[_i], _tvErr))
+		}
+		if _tr := _evalNode(&{{.AdditionalItemsNode.Var}}, _tv); !_tr.ok {
+			return fmt.Errorf("additionalItems[%d]: %w", _i, _evalError(_tr))
+		}
+	}
+	{{- else if .AdditionalItemsTypeName}}
 	{{- /*
 	The tail's own generated type answers for everything its sub-schema states.
 	AdditionalItemsType below can only say which JSON type the tail declares, so
@@ -835,6 +870,17 @@ func ({{$recv}} {{.Name}}) Validate() error {
 					if _cErr == nil && _cOK {
 						_evaluatedByContains = true
 					}
+				}
+				{{- else if .Contains.Node}}
+				{{- /* The same test the cardinality check makes, asked of one item,
+				       as it is held; see ElementNode. */}}
+				if _cTv, _cTvErr := jsonTreeView(_uiElem); _cTvErr == nil {
+					_cr := _evalNode(&{{.Contains.Node.Var}}, _cTv)
+					if _cr.undecided != nil {
+						// Whether contains evaluated this item has no answer.
+						return fmt.Errorf("contains[%d]: %w", _ui, _evalError(_cr))
+					}
+					_evaluatedByContains = _cr.ok
 				}
 				{{- else if .Contains.TypeName}}
 				{{- /*

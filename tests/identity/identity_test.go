@@ -398,31 +398,7 @@ func TestValidateWritesNothing(t *testing.T) {
 	}
 	t.Parallel()
 	root, boms := cycloneDXModule(t, map[string]string{"covdrv/main.go": validateCoverageDriver})
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
-	bin := filepath.Join(root, "covdrv.bin")
-	build := testgo.Command(ctx, root, "build", "-mod=mod", "-cover", "-covermode=atomic", "-coverpkg=./...", "-o", bin, "./covdrv")
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("building the driver with coverage: %v\n%s", err, out)
-	}
-	counters := filepath.Join(root, "counters")
-	if err := os.MkdirAll(counters, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	run := exec.CommandContext(ctx, bin, append([]string{counters}, boms...)...)
-	run.Env = append(os.Environ(), "GOCOVERDIR="+counters)
-	if out, err := run.CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != fmt.Sprintf("validated %d", len(boms)) {
-		t.Fatalf("driver: %v\n%s", err, out)
-	}
-	profile := filepath.Join(root, "profile.txt")
-	textfmt := testgo.Command(ctx, root, "tool", "covdata", "textfmt", "-i="+counters, "-o="+profile)
-	if out, err := textfmt.CombinedOutput(); err != nil {
-		t.Fatalf("reading the counters: %v\n%s", err, out)
-	}
-	writes, executed, err := executedWrites(profile, filepath.Join(root, "cdx"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	writes, executed := validateUnderCoverage(t, root, "cdx", boms, fmt.Sprintf("validated %d", len(boms)))
 	// A floor, as in the identity test: counters that recorded nothing would
 	// find nothing.
 	if executed < 1000 {
@@ -434,6 +410,157 @@ func TestValidateWritesNothing(t *testing.T) {
 	}
 }
 
+// validateUnderCoverage builds root's ./covdrv with coverage over the whole
+// module, runs it with args after the counters directory -- the driver clears
+// the counters once it has decoded what it validates -- checks it printed want,
+// and returns the statements of package dir that ran and write a value out,
+// and how many of that package's blocks ran.
+func validateUnderCoverage(t *testing.T, root, dir string, args []string, want string) ([]string, int) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	bin := filepath.Join(root, "covdrv.bin")
+	build := testgo.Command(ctx, root, "build", "-mod=mod", "-cover", "-covermode=atomic", "-coverpkg=./...", "-o", bin, "./covdrv")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("building the driver with coverage: %v\n%s", err, out)
+	}
+	counters := filepath.Join(root, "counters")
+	if err := os.MkdirAll(counters, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	run := exec.CommandContext(ctx, bin, append([]string{counters}, args...)...)
+	run.Env = append(os.Environ(), "GOCOVERDIR="+counters)
+	if out, err := run.CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != want {
+		t.Fatalf("driver: %v\n%s", err, out)
+	}
+	profile := filepath.Join(root, "profile.txt")
+	textfmt := testgo.Command(ctx, root, "tool", "covdata", "textfmt", "-i="+counters, "-o="+profile)
+	if out, err := textfmt.CombinedOutput(); err != nil {
+		t.Fatalf("reading the counters: %v\n%s", err, out)
+	}
+	// The module is named after dir and so is the package in it: a coverage
+	// profile names the package's files by its import path.
+	writes, executed, err := executedWrites(profile, filepath.Join(root, dir), "/"+dir+"/"+dir+"/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return writes, executed
+}
+
+// TestHeldElementsAreJudgedWithoutWriting is TestValidateWritesNothing for the
+// elements held as decoded JSON whose sub-schema has a type of its own -- a
+// tuple position, a contains, an inferred array's items, a tuple's tail. They
+// were marshalled and decoded into the type to be judged; now they are judged
+// as they are held, by the type's schema compiled for the evaluator (see
+// ElementNode). The values are decoded ones and ones built in Go -- an element
+// holding a value of the generated type itself, a pointer to one, an int64 --
+// and each is held to the verdict the schema gives it.
+func TestHeldElementsAreJudgedWithoutWriting(t *testing.T) {
+	if testing.Short() {
+		t.Skip("generates, compiles and runs a package with coverage")
+	}
+	t.Parallel()
+	out := t.TempDir()
+	schemaPath := filepath.Join(out, "held.json")
+	if err := os.WriteFile(schemaPath, []byte(heldElementsSchema), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runSchemagen(t, schemagenBinary(t), "generate", schemaPath, "-o", filepath.Join(out, "held"), "-p", "held", "--root-name", "held.json=Root")
+	if err := writeTestGoMod(out, "ex.test/held"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(out, "covdrv"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(out, "covdrv", "main.go"), []byte(heldElementsDriver), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writes, executed := validateUnderCoverage(t, out, "held", nil, "PASS")
+	if executed < 50 {
+		t.Fatalf("only %d blocks of the generated package ran during Validate; the counters are not reading it", executed)
+	}
+	if len(writes) > 0 {
+		t.Errorf("Validate wrote values out to judge held elements, %d places:\n\t%s", len(writes), strings.Join(writes, "\n\t"))
+	}
+}
+
+const heldElementsSchema = `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+ "$defs":{"P":{"type":"object","properties":{"a":{"type":"integer","minimum":1},"k":{"type":"array","items":{"$ref":"#/$defs/P"}}},"required":["a"]},
+          "Loose":{"items":{"$ref":"#/$defs/P"},"minItems":1}},
+ "type":"object",
+ "properties":{
+   "tup":{"type":"array","prefixItems":[{"$ref":"#/$defs/P"},{"type":"string"}],"items":{"$ref":"#/$defs/P"}},
+   "has":{"type":"array","contains":{"$ref":"#/$defs/P"}},
+   "loose":{"$ref":"#/$defs/Loose"},
+   "tail":{"type":"array","prefixItems":[{"type":"string"}],"items":{"type":"object","required":["a"],"properties":{"a":{"const":2}}}}
+ }}`
+
+const heldElementsDriver = `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"runtime/coverage"
+
+	"ex.test/held/held"
+)
+
+func main() {
+	docs := []struct {
+		doc   string
+		valid bool
+	}{
+		{` + "`" + `{"tup":[{"a":1,"k":[{"a":2}]},"x",{"a":3}],"has":[1,{"a":1}],"loose":[{"a":1}],"tail":["s",{"a":2}]}` + "`" + `, true},
+		{` + "`" + `{"tup":[{"a":0},"x"]}` + "`" + `, false},
+		{` + "`" + `{"tup":[{"a":1,"k":[{"a":-1}]}]}` + "`" + `, false},
+		{` + "`" + `{"has":[1,"x",{"b":1}]}` + "`" + `, false},
+		{` + "`" + `{"loose":[{"a":1},{}]}` + "`" + `, false},
+		{` + "`" + `{"tail":["s",{"a":3}]}` + "`" + `, false},
+		{` + "`" + `{"tup":[{"a":1},"x",{"a":1.5}]}` + "`" + `, false},
+	}
+	var decoded []held.Root
+	for _, d := range docs {
+		var r held.Root
+		if err := json.Unmarshal([]byte(d.doc), &r); err != nil {
+			fmt.Println("decode:", d.doc, err)
+			os.Exit(1)
+		}
+		decoded = append(decoded, r)
+	}
+	built := []struct {
+		r     held.Root
+		valid bool
+	}{
+		{held.Root{Tup: []any{held.P{A: 1, K: []held.P{{A: 2}}}, "x", &held.P{A: 3}}, Has: []any{int64(1), held.P{A: 1}}, Tail: []any{"s", map[string]any{"a": int64(2)}}}, true},
+		{held.Root{Tup: []any{held.P{A: 0}, "x"}}, false},
+		{held.Root{Tup: []any{map[string]any{"a": int64(1), "k": []any{held.P{A: -1}}}}}, false},
+		{held.Root{Tail: []any{"s", held.P{A: 2}}}, true},
+		{held.Root{Tail: []any{"s", map[string]any{"a": 3}}}, false},
+		{held.Root{Tup: []any{&held.P{A: 1}, "x", float32(1.5)}}, false},
+	}
+	if err := coverage.ClearCounters(); err != nil {
+		panic(err)
+	}
+	for i, r := range decoded {
+		if err := r.Validate(); (err == nil) != docs[i].valid {
+			fmt.Println("decoded:", docs[i].doc, "valid:", docs[i].valid, "Validate:", err)
+			os.Exit(1)
+		}
+	}
+	for i, b := range built {
+		if err := b.r.Validate(); (err == nil) != b.valid {
+			fmt.Println("built:", i, "valid:", b.valid, "Validate:", err)
+			os.Exit(1)
+		}
+	}
+	if err := coverage.WriteCountersDir(os.Args[1]); err != nil {
+		panic(err)
+	}
+	fmt.Println("PASS")
+}
+`
+
 // encodingCall is every way generated code writes a value out: encoding/json,
 // a MarshalJSON, the generated encoder, and the reduction to canonical text,
 // which writes strings through encoding/json.
@@ -442,7 +569,7 @@ var encodingCall = regexp.MustCompile(`json\.Marshal\(|json\.MarshalIndent\(|jso
 // executedWrites reads a coverage profile and reports every block of the
 // package in dir that ran and writes a value out, and how many of its blocks
 // ran at all.
-func executedWrites(profile, dir string) ([]string, int, error) {
+func executedWrites(profile, dir, marker string) ([]string, int, error) {
 	data, err := os.ReadFile(profile)
 	if err != nil {
 		return nil, 0, err
@@ -460,7 +587,7 @@ func executedWrites(profile, dir string) ([]string, int, error) {
 			continue
 		}
 		file, span, ok := strings.Cut(fields[0], ":")
-		if !ok || !strings.Contains(file, "/cdx/cdx/") {
+		if !ok || !strings.Contains(file, marker) {
 			continue
 		}
 		executed++

@@ -873,6 +873,15 @@ func (c ConstraintOnlyPositionsTupleItem0) Raw() json.RawMessage {
 	return append(json.RawMessage(nil), c._raw...)
 }
 
+// jsonIdentity is c's identity as JSON: that of the bytes MarshalJSON
+// writes back. See jsonID.
+func (c *ConstraintOnlyPositionsTupleItem0) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	if len(c._raw) == 0 {
+		return jsonIDNull(_m)
+	}
+	return jsonIDRawIn(c._raw, _m)
+}
+
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
 func (c ConstraintOnlyPositionsTupleItem0) IsZero() bool { return len(c._raw) == 0 }
@@ -1282,24 +1291,22 @@ func (c ConstraintOnlyPositions) Validate() error {
 			_elem = _lz.jsonLevel()
 		}
 		if _idx == 0 {
-			var _typed ConstraintOnlyPositionsTupleItem0
-			var _uErr error
-			if _isLazy {
-				_uErr = jsonDecodeLazy(_lz, &_typed, (*ConstraintOnlyPositionsTupleItem0).decodeJSONAt)
-			} else {
-				_raw, _mErr := json.Marshal(_elem)
-				if _mErr != nil {
-					return jsonWrapf(_mErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
-				}
-				_uErr = jsonDecodeHeld(nil, _raw, &_typed, (*ConstraintOnlyPositionsTupleItem0).decodeJSONAt)
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
-			if _uErr != nil {
-				return jsonWrapf(_uErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return jsonWrapf(_vErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
+			if _tr := _evalNode(&_etConstraintOnlyPositionsTupleItem0, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 		}
 	}
 	return nil
+}
+
+// _etConstraintOnlyPositionsTupleItem0 is the schema of ConstraintOnlyPositionsTupleItem0, compiled for judging an element held as
+// decoded JSON against it.
+var _etConstraintOnlyPositionsTupleItem0 = _schemaNode{
+	Not: _node(_schemaNode{
+		Type: []string{"string"},
+	}),
 }

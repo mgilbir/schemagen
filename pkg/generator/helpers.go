@@ -350,7 +350,7 @@ func HelpersReferencedBy(src string) HelperSet {
 		// left over. Missing one would leave the field set with nothing reading
 		// it, which does not compile: the node field is typed by the pattern
 		// block, which the arms are what need.
-		if strings.Contains(src, "Pattern: "+patternVarPrefix) || strings.Contains(src, "PatternProperties:") {
+		if nodeFieldPattern.MatchString(src) || nodeFieldPatternProperties.MatchString(src) {
 			set.AnnotationsPattern = true
 		}
 		// "format" and the content vocabulary are read the same way, and are the
@@ -369,7 +369,7 @@ func HelpersReferencedBy(src string) HelperSet {
 				set.FormatHostname = true
 			}
 		}
-		if strings.Contains(src, "ContentEncoding: _strPtr(") || strings.Contains(src, "ContentMediaType: _strPtr(") {
+		if nodeFieldContent.MatchString(src) {
 			set.AnnotationsContent = true
 			set.Content = true
 		}
@@ -380,7 +380,7 @@ func HelpersReferencedBy(src string) HelperSet {
 		// without the others -- a recursive schema with no dynamic reference in
 		// it names only the first -- and a missed one is a file that names a
 		// type the helpers do not declare, which does not compile.
-		if strings.Contains(src, "Ref: &_rt") || strings.Contains(src, "DynamicRef:") || strings.Contains(src, "DynamicAnchors:") {
+		if nodeFieldRef.MatchString(src) || nodeFieldDynamic.MatchString(src) {
 			set.AnnotationsDynamic = true
 		}
 	}
@@ -400,7 +400,7 @@ func HelpersReferencedBy(src string) HelperSet {
 		// ExceptPatterns list emitted and nothing reading it -- a member a
 		// pattern claims then read as additional. Each is now typed by the
 		// pattern block, so a miss no longer compiles.
-		if strings.Contains(src, "Kind: _accessPattern") || strings.Contains(src, "ExceptPatterns:") {
+		if accessFieldPattern.MatchString(src) {
 			set.AccessPattern = true
 		}
 	}
@@ -450,7 +450,8 @@ func HelpersReferencedBy(src string) HelperSet {
 	// contains that states only a type. (jsonKindError is the decode block's.)
 	if strings.Contains(src, "jsonID") || strings.Contains(src, "jsonIdentif") || strings.Contains(src, "jsonValidation") ||
 		strings.Contains(src, "jsonKindAt(") || strings.Contains(src, "jsonKindAny(") || strings.Contains(src, "jsonFloatOf(") || strings.Contains(src, "jsonMarshalError(") ||
-		strings.Contains(src, "jsonMarshalText(") || strings.Contains(src, "jsonConstOf(") || strings.Contains(src, "jsonMatchesConst") {
+		strings.Contains(src, "jsonMarshalText(") || strings.Contains(src, "jsonConstOf(") || strings.Contains(src, "jsonMatchesConst") ||
+		strings.Contains(src, "jsonTreeView(") {
 		set.Identity = true
 	}
 	// jsonNullRule and checkJSONNullsAt come as one block, and the walker's name
@@ -484,6 +485,22 @@ func HelpersReferencedBy(src string) HelperSet {
 	return set
 }
 
+// The node and rule literal fields the signals above read. A literal field is
+// matched as its key, a colon and any run of white space: gofmt aligns the
+// values of a composite literal's keys into a column, so the space after a
+// key's colon is one space or several depending on its neighbours, and a
+// match written with one space missed every key gofmt had padded. A reference
+// is matched by the & of a hoisted node, whose name is "_rt..." for a
+// runtime-evaluated type and "_et..." for an element schema (see elementNode).
+var (
+	nodeFieldPattern           = regexp.MustCompile(`\bPattern:\s+` + patternVarPrefix)
+	nodeFieldPatternProperties = regexp.MustCompile(`\bPatternProperties:\s`)
+	nodeFieldContent           = regexp.MustCompile(`\bContent(Encoding|MediaType):\s+_strPtr\(`)
+	nodeFieldRef               = regexp.MustCompile(`\bRef:\s+&_`)
+	nodeFieldDynamic           = regexp.MustCompile(`\bDynamic(Ref|Anchors):\s`)
+	accessFieldPattern         = regexp.MustCompile(`\bKind:\s+_accessPattern|\bExceptPatterns:\s`)
+)
+
 // hostnameHelperCalls names every function the hostname helper block declares
 // that generated code calls directly.
 var hostnameHelperCalls = []string{
@@ -509,7 +526,7 @@ var hostnameHelpers = func() map[string]bool {
 // annotationNodeFormat matches the "format" argument a compiled _schemaNode
 // carries. The literal is written by nodeBuilder.literal with %q, so the value
 // is a Go-quoted string and strconv.Unquote is what reads it back.
-var annotationNodeFormat = regexp.MustCompile(`Format: _strPtr\((` + "`" + `[^` + "`" + `]*` + "`" + `|"(?:[^"\\]|\\.)*")\)`)
+var annotationNodeFormat = regexp.MustCompile(`\bFormat:\s+_strPtr\((` + "`" + `[^` + "`" + `]*` + "`" + `|"(?:[^"\\]|\\.)*")\)`)
 
 // annotationFormatNames returns the format arguments the compiled nodes in src
 // name, deduplicated and in sorted order.

@@ -194,6 +194,7 @@ var nameSiteAllowances = map[string]string{
 	"resolveEncodePlans: NamedType{Name: d.Name}":             "the encode plan of an alias already in the file, written over the alias itself: the name it was declared under",
 	"aliasEncodes: NamedType{Name: ad.MarshalAs}":             "the type an alias's MarshalJSON already delegates to; looked up, never declared",
 	"identityReach: NamedType{Name: d.MarshalAs}":             "the type an alias's MarshalJSON already delegates to; looked up, never declared",
+	"identityReach: NamedType{Name: n.TypeName}":              "the type an element node was compiled from, named by the registry when its position was built; looked up, never declared",
 	"resolveIdentityPlans: NamedType{Name: d.MarshalAs}":      "the type an alias's MarshalJSON already delegates to, named when the delegate was settled",
 	"resolveIdentityPlans: NamedType{Name: d.Name}":           "the identity of an alias already in the file, read over the alias itself: the name it was declared under",
 	"resolveDecodePlans: NamedType{Name: d.Name}":             "the decode plan of an alias already in the file, written over the alias itself: the name it was declared under",

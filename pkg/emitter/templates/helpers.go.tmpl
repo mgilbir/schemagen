@@ -3920,6 +3920,84 @@ func jsonTreeAny(v any, m *jsonValidation) (any, error) {
 	return jsonTreeReflect(rv, m)
 }
 
+// jsonTreeView is v as the runtime evaluator reads a value: v itself where it is
+// already what a decode into an any produces -- or a value read lazily from a
+// document, which the evaluator reads a level at a time -- and its tree (see
+// jsonTreeAny) wherever it, or anything it holds, is some other Go value: an
+// element built in Go, a value of this package's types. A container is copied
+// only where something in it is read as a tree.
+func jsonTreeView(v any) (any, error) {
+	switch x := v.(type) {
+	case nil, string, bool, float64, json.Number:
+		return v, nil
+	{{- if .Decode}}
+	case jsonLazy:
+		return v, nil
+	{{- end}}
+	case []any:
+		var out []any
+		for i := range x {
+			t, err := jsonTreeView(x[i])
+			if err != nil {
+				return nil, err
+			}
+			if out == nil && !jsonTreeSame(t, x[i]) {
+				out = make([]any, len(x))
+				copy(out, x[:i])
+			}
+			if out != nil {
+				out[i] = t
+			}
+		}
+		if out == nil {
+			return x, nil
+		}
+		return out, nil
+	case map[string]any:
+		var out map[string]any
+		{{- /* maporder: replaces members under their own keys, and copies the map on the first; which member is first changes only when the copy is taken, not what it holds. */}}
+		for k, e := range x {
+			t, err := jsonTreeView(e)
+			if err != nil {
+				return nil, err
+			}
+			if !jsonTreeSame(t, e) {
+				if out == nil {
+					out = make(map[string]any, len(x))
+					{{- /* maporder: copies the map, member for member. */}}
+					for k2, e2 := range x {
+						out[k2] = e2
+					}
+				}
+				out[k] = t
+			}
+		}
+		if out == nil {
+			return x, nil
+		}
+		return out, nil
+	}
+	return jsonTreeAny(v, nil)
+}
+
+// jsonTreeSame reports whether jsonTreeView handed back v itself: a container
+// by its identity, where == would compare what it holds or panic.
+func jsonTreeSame(t, v any) bool {
+	switch x := v.(type) {
+	case []any:
+		y, ok := t.([]any)
+		return ok && len(x) == len(y) && (len(x) == 0 || &x[0] == &y[0])
+	case map[string]any:
+		y, ok := t.(map[string]any)
+		return ok && reflect.ValueOf(x).UnsafePointer() == reflect.ValueOf(y).UnsafePointer()
+	}
+	switch t.(type) {
+	case []any, map[string]any:
+		return false
+	}
+	return t == v
+}
+
 // jsonTreeOfIdentifier reads the tree of a value of this package's.
 func jsonTreeOfIdentifier(x jsonIdentifier, m *jsonValidation) (any, error) {
 	if !m.reading() {

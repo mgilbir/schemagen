@@ -308,6 +308,13 @@ func (g *Generator) identityReach() map[string]bool {
 			}
 		}
 	}
+	// The type an element held as decoded JSON is judged against (see
+	// ElementNode) is the type a caller building the value in Go puts there, and
+	// the evaluator reads such an element as a tree -- by the type's identity
+	// functions, reading trees.
+	for _, n := range g.output.ElementNodes {
+		visit(&NamedType{Name: n.TypeName})
+	}
 	for _, td := range g.output.TypeDefs {
 		switch d := td.(type) {
 		case *StructDef:

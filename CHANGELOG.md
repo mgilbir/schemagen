@@ -357,6 +357,16 @@
   example BOMs the CycloneDX 1.6 specification ships takes
   a third of the time and a quarter of the allocations it did, and writes
   nothing out.
+- An element held as decoded JSON whose sub-schema has a type of its own -- a
+  tuple position of a `[]any`, an element `contains` counts, an inferred
+  array's items and tail -- is judged as it is held, by that schema compiled for
+  the runtime evaluator, rather than marshalled and decoded into the type. An
+  element built in Go, of the generated type or any other Go value, is read the
+  same way without being written out. Verdicts are unchanged across the JSON
+  Schema Test Suite in all seven configurations the differential runs; the
+  messages at those positions are the evaluator's (`value is not of type
+  integer` where the typed check said `expected integer, got string`). A
+  schema the evaluator declines keeps the typed judgement.
 - `uniqueItems`, `const` and `enum` compare values as JSON wherever they are
   held. Where an element held a `json.Number` or raw JSON, or a `const` was an
   object, the comparison was of the text a value marshalled to: `1.0` and `1`

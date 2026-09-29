@@ -106,6 +106,26 @@ func (i InferredArrayRootItem) appendMemberJSON(_idx int, _key string, _b []byte
 	return _b, nil
 }
 
+// jsonIdentity is i's identity as JSON, read off its members by the rules
+// appendJSON writes them by. See jsonID.
+func (i *InferredArrayRootItem) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	_o := jsonIDObj{m: _m}
+	for _key, _member := range i.AdditionalProperties {
+		_o.held(_key, _member)
+	}
+	return _o.id(i.jsonIdentityMember, _m)
+}
+
+// jsonIdentityMember reads the member of i numbered idx, as
+// appendMemberJSON writes it. key is the member's key, which names the
+// additionalProperties value to read.
+func (i *InferredArrayRootItem) jsonIdentityMember(_idx int, _key string, _m *jsonValidation) (jsonID, error) {
+	_ = _key
+	switch _idx {
+	}
+	return jsonIDNull(_m)
+}
+
 // Validate checks InferredArrayRootItem against its JSON Schema constraints.
 func (i InferredArrayRootItem) Validate() error {
 	// Required properties must be present in the source JSON. _jsonKeys is
@@ -189,17 +209,20 @@ func (i InferredArrayRoot) Validate() error {
 	}
 	// Item-level validation for inferred array.
 	for _i, _elem := range i._value {
-		_raw, _mErr := json.Marshal(_elem)
-		if _mErr != nil {
-			return fmt.Errorf("items[%d]: %w", _i, _mErr)
+		_tv, _tvErr := jsonTreeView(_elem)
+		if _tvErr != nil {
+			return fmt.Errorf("items[%d]: %w", _i, jsonMarshalError(&_elem, _tvErr))
 		}
-		var _typed InferredArrayRootItem
-		if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-			return fmt.Errorf("items[%d]: %w", _i, _uErr)
-		}
-		if _vErr := _typed.Validate(); _vErr != nil {
-			return fmt.Errorf("items[%d]: %w", _i, _vErr)
+		if _tr := _evalNode(&_etInferredArrayRootItem, _tv); !_tr.ok {
+			return fmt.Errorf("items[%d]: %w", _i, _evalError(_tr))
 		}
 	}
 	return nil
+}
+
+// _etInferredArrayRootItem is the schema of InferredArrayRootItem, compiled for judging an element held as
+// decoded JSON against it.
+var _etInferredArrayRootItem = _schemaNode{
+	Required: []string{"a"},
+	Type:     []string{"object"},
 }

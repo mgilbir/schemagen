@@ -1002,18 +1002,28 @@ func (a AllOfInlinePositions) Validate() error {
 	for _idx, _elem := range a.Tuple {
 		_ = _elem
 		if _idx == 0 {
-			var _typed AllOfInlinePositionsTupleItem0
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return jsonWrapf(_mErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return jsonWrapf(_uErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return jsonWrapf(_vErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
+			if _tr := _evalNode(&_etAllOfInlinePositionsTupleItem0, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 		}
 	}
 	return nil
+}
+
+// _etAllOfInlinePositionsTupleItem0 is the schema of AllOfInlinePositionsTupleItem0, compiled for judging an element held as
+// decoded JSON against it.
+var _etAllOfInlinePositionsTupleItem0 = _schemaNode{
+	AllOf: []_schemaNode{
+		_schemaNode{
+			AllOf: []_schemaNode{
+				_schemaNode{
+					Type: []string{"string"},
+				},
+			},
+		},
+	},
 }

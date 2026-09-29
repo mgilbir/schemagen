@@ -263,6 +263,8 @@ var helperIdentifiers = []string{
 	"jsonTreeEqual",
 	"jsonTreeNumber",
 	"jsonTreeAny",
+	"jsonTreeView",
+	"jsonTreeSame",
 	"jsonTreeOfIdentifier",
 	"jsonTreeReflect",
 	"jsonTreeMarshaled",

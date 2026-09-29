@@ -172,7 +172,7 @@ var typeDefSites = map[typeDefSite]expectation{
 		Count: 2, Kind: kindReference,
 		Why: "the $ref and $dynamicRef branches of an allOf, named from the reference; the arm also declines a node in flight outright",
 	},
-	{"inferredTupleItemFromSchema", "goName", "resolved"}: {
+	{"inferredTupleItemCheck", "goName", "resolved"}: {
 		Count: 1, Kind: kindReference,
 		Why: "an inferred tuple slot behind a $ref, named from the reference",
 	},
