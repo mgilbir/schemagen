@@ -122,7 +122,7 @@ func TestIdentityIsJSONEquality(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	src, needed, err := em.EmitHelpers("idsem", generator.HelperSet{Identity: true, Decode: true})
+	src, needed, err := em.EmitHelpers("idsem", generator.HelperSet{IdentityValue: true, IdentityKind: true, IdentityAny: true, Decode: true})
 	if err != nil || !needed {
 		t.Fatalf("emitting the identity helpers: needed %v, %v", needed, err)
 	}
@@ -149,6 +149,7 @@ import (
 	"encoding/json"
 	"math"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 )
@@ -299,6 +300,83 @@ func TestALazyValueIsReadAsDecoded(t *testing.T) {
 	}
 	if jsonFirstDuplicate(a, ids, jsonIdentifyAt[any]) >= 0 {
 		t.Errorf("distinct elements reported as duplicates")
+	}
+}
+
+// The decoded-JSON reader (jsonIDJSON, jsonTreeJSON) is what the evaluator and
+// the dynamic checks compare by, without the walker; it must read every decoded
+// value -- whole, with json.Number, and lazily, a level at a time -- exactly as
+// the walker does, or a const read one way would be refused a value read the
+// other.
+func TestADecodedValueIsReadAsTheWalkerReadsIt(t *testing.T) {
+	docs := []string{
+		"null", "true", "0", "-0.0", "1e2", "12345678901234567890", "\"a\\u00e9\"",
+		"[]", "{}", "[1, 1.0, \"x\", [null], {\"b\":2,\"a\":1}]",
+		" {\"a\":[12345678901234567890, 1.0, \"\\ud800\", {\"k\":1,\"k\":2}],\"b\":{},\"c\":[[[]]]} ",
+	}
+	for _, doc := range docs {
+		var whole, exact any
+		if err := json.Unmarshal([]byte(doc), &whole); err != nil {
+			t.Fatal(err)
+		}
+		dec := json.NewDecoder(strings.NewReader(doc))
+		dec.UseNumber()
+		if err := dec.Decode(&exact); err != nil {
+			t.Fatal(err)
+		}
+		d, sp, err := jsonOpenDoc([]byte(doc))
+		if err != nil {
+			t.Fatal(err)
+		}
+		d.keep(sp)
+		d.finish(nil)
+		lazy := jsonLazy{d, sp}
+		for name, v := range map[string]any{"whole": whole, "exact": exact, "lazy": lazy, "levelled": jsonTop(lazy)} {
+			got, err := jsonIDJSON(v)
+			if err != nil {
+				t.Fatalf("%s %s: %v", doc, name, err)
+			}
+			want, err := jsonIDAny(v, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != want {
+				t.Errorf("%s %s: the decoded-JSON reader's identity is not the walker's", doc, name)
+			}
+			tree, err := jsonTreeJSON(v)
+			if err != nil {
+				t.Fatalf("%s %s: %v", doc, name, err)
+			}
+			wantTree, err := jsonTreeAny(v, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !jsonTreeEqual(tree, wantTree) || !jsonTreeEqual(wantTree, tree) {
+				t.Errorf("%s %s: tree %v is not the walker's %v", doc, name, tree, wantTree)
+			}
+			// Read as a float64, as the evaluator reads a decoded value, but for
+			// the value decoded with its numbers exact.
+			if ok, err := jsonMatchesJSON(v, jsonConstOf(name != "exact", doc)); err != nil || !ok {
+				t.Errorf("%s %s: not a match for its own text (%v)", doc, name, err)
+			}
+		}
+	}
+	var arr []any
+	if err := json.Unmarshal([]byte("[{\"a\":1,\"b\":[2]}, \"x\", {\"b\":[2.0],\"a\":1e0}]"), &arr); err != nil {
+		t.Fatal(err)
+	}
+	if dup, err := jsonFirstDuplicateJSON(arr); err != nil || dup != 2 {
+		t.Errorf("the duplicate is at 2; found %d (%v)", dup, err)
+	}
+	if dup, err := jsonFirstDuplicateJSON(arr[:2]); err != nil || dup != -1 {
+		t.Errorf("no duplicate in two distinct elements; found %d (%v)", dup, err)
+	}
+	// A value that is not decoded JSON is refused, not guessed at.
+	if _, err := jsonIDJSON(struct{ A int }{1}); err == nil {
+		t.Errorf("a Go struct was read as decoded JSON")
+	}
+	if _, err := jsonMatchesJSON([]any{int64(1)}, jsonConstOf(false, "[1]")); err == nil {
+		t.Errorf("an int64 inside a decoded array was read as decoded JSON")
 	}
 }
 

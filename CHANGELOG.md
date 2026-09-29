@@ -360,7 +360,11 @@
   same way, on the value read as a tree: the `writeOnly` locations
   `--strict-read-write` strips from below a struct's members and from a value
   held whole, the nulls a document wrote that are written back, and a member
-  left out for writing what its Go zero writes.
+  left out for writing what its Go zero writes. The helpers that read
+  identities are emitted in six blocks, and a package carries only the ones
+  its code calls: the runtime evaluator and the dynamic checks, which compare
+  decoded documents, take none of the reader of Go values, and a schema
+  stating no `const`, `enum` or `uniqueItems` for the evaluator takes nothing.
 - An element held as decoded JSON whose sub-schema has a type of its own -- a
   tuple position of a `[]any`, an element `contains` counts, an inferred
   array's items and tail -- is judged as it is held, by that schema compiled for

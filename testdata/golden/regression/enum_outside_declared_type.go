@@ -575,7 +575,7 @@ type EnumOutsideDeclaredTypeArrayEnum json.RawMessage
 
 // The members as the schema wrote them, read at package initialisation: the
 // identity every JSON value equal to each shares, and its tree, which is what
-// Validate compares the instance with. See jsonMatchesConst.
+// Validate compares the instance with. See jsonMatchesConstRaw.
 var enumOutsideDeclaredTypeArrayEnumAllowedJSON = jsonConstOf(false,
 	"[1]",
 )
@@ -610,7 +610,7 @@ func (e EnumOutsideDeclaredTypeArrayEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks EnumOutsideDeclaredTypeArrayEnum against its JSON Schema constraints.
 func (e EnumOutsideDeclaredTypeArrayEnum) Validate() error {
-	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// Compared as JSON (see jsonMatchesConstRaw): whitespace, member order and
 	// number spelling are not what an enum is decided on. It used to reduce the
 	// value to canonical text, re-encoding every string and key in it, to decide.
 	_ok, _okErr := jsonMatchesConstRaw(e, enumOutsideDeclaredTypeArrayEnumAllowedJSON)
@@ -1793,7 +1793,7 @@ type EnumOutsideDeclaredTypeObjectEnum json.RawMessage
 
 // The members as the schema wrote them, read at package initialisation: the
 // identity every JSON value equal to each shares, and its tree, which is what
-// Validate compares the instance with. See jsonMatchesConst.
+// Validate compares the instance with. See jsonMatchesConstRaw.
 var enumOutsideDeclaredTypeObjectEnumAllowedJSON = jsonConstOf(false,
 	"{\"k\":1}",
 )
@@ -1828,7 +1828,7 @@ func (e EnumOutsideDeclaredTypeObjectEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks EnumOutsideDeclaredTypeObjectEnum against its JSON Schema constraints.
 func (e EnumOutsideDeclaredTypeObjectEnum) Validate() error {
-	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// Compared as JSON (see jsonMatchesConstRaw): whitespace, member order and
 	// number spelling are not what an enum is decided on. It used to reduce the
 	// value to canonical text, re-encoding every string and key in it, to decide.
 	_ok, _okErr := jsonMatchesConstRaw(e, enumOutsideDeclaredTypeObjectEnumAllowedJSON)
@@ -1880,7 +1880,7 @@ type EnumOutsideDeclaredTypeUnionEnum json.RawMessage
 
 // The members as the schema wrote them, read at package initialisation: the
 // identity every JSON value equal to each shares, and its tree, which is what
-// Validate compares the instance with. See jsonMatchesConst.
+// Validate compares the instance with. See jsonMatchesConstRaw.
 var enumOutsideDeclaredTypeUnionEnumAllowedJSON = jsonConstOf(false,
 	"\"a\"",
 	"5",
@@ -1916,7 +1916,7 @@ func (e EnumOutsideDeclaredTypeUnionEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks EnumOutsideDeclaredTypeUnionEnum against its JSON Schema constraints.
 func (e EnumOutsideDeclaredTypeUnionEnum) Validate() error {
-	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// Compared as JSON (see jsonMatchesConstRaw): whitespace, member order and
 	// number spelling are not what an enum is decided on. It used to reduce the
 	// value to canonical text, re-encoding every string and key in it, to decide.
 	_ok, _okErr := jsonMatchesConstRaw(e, enumOutsideDeclaredTypeUnionEnumAllowedJSON)
@@ -1934,7 +1934,7 @@ type EnumOutsideDeclaredTypeUntypedEnum json.RawMessage
 
 // The members as the schema wrote them, read at package initialisation: the
 // identity every JSON value equal to each shares, and its tree, which is what
-// Validate compares the instance with. See jsonMatchesConst.
+// Validate compares the instance with. See jsonMatchesConstRaw.
 var enumOutsideDeclaredTypeUntypedEnumAllowedJSON = jsonConstOf(false,
 	"\"a\"",
 	"5",
@@ -1970,7 +1970,7 @@ func (e EnumOutsideDeclaredTypeUntypedEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks EnumOutsideDeclaredTypeUntypedEnum against its JSON Schema constraints.
 func (e EnumOutsideDeclaredTypeUntypedEnum) Validate() error {
-	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// Compared as JSON (see jsonMatchesConstRaw): whitespace, member order and
 	// number spelling are not what an enum is decided on. It used to reduce the
 	// value to canonical text, re-encoding every string and key in it, to decide.
 	_ok, _okErr := jsonMatchesConstRaw(e, enumOutsideDeclaredTypeUntypedEnumAllowedJSON)

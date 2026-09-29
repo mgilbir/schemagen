@@ -1331,11 +1331,14 @@ func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, cfg generator.Config) er
 	if err := os.WriteFile(filepath.Join(tmpDir, "fixture.json"), dataJSON, 0o644); err != nil {
 		return fmt.Errorf("write fixture: %w", err)
 	}
-	// Where the package reads identities, every value the document decodes
-	// into is held to TestIdentityIsWhatMarshalJSONWrites's rule as well: its
-	// identity is that of what MarshalJSON writes for it.
+	// Where the package reads the identities of its values -- it carries the
+	// walker over Go values, which every jsonIdentity method is written against
+	// -- every value the document decodes into is held to
+	// TestIdentityIsWhatMarshalJSONWrites's rule as well: its identity is that
+	// of what MarshalJSON writes for it. A package carrying only the blocks that
+	// read raw or decoded JSON has no value that reads its own.
 	checkIdentity := false
-	if helpers, err := os.ReadFile(filepath.Join(tmpDir, "schemagen_helpers.go")); err == nil && strings.Contains(string(helpers), "func jsonIDRaw(") {
+	if helpers, err := os.ReadFile(filepath.Join(tmpDir, "schemagen_helpers.go")); err == nil && strings.Contains(string(helpers), "type jsonIdentifier interface") {
 		checkIdentity = true
 		if err := os.WriteFile(filepath.Join(tmpDir, "identity_check.go"), []byte(identityCheckSource("main")), 0o644); err != nil {
 			return fmt.Errorf("write identity check: %w", err)

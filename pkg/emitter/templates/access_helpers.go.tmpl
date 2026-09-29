@@ -450,7 +450,7 @@ func _accessStripWriteOnly(data []byte, rules []_accessRule) ([]byte, error) {
 	}
 	return out, nil
 }
-{{- if .Identity}}
+{{- if .IdentityValue}}
 
 // _accessStripTree is _accessStripWriteOnly over a tree (see jsonValidation):
 // the members the rules reach are taken out of it, by the same steps in the same

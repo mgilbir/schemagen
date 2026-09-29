@@ -370,26 +370,42 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	add(helpers.Canonical, "bytes")
 	add(helpers.Canonical, "strconv")
 	add(helpers.Canonical, "strings")
-	// The identity of a value: two seeded hashes, the Go kind a value this
-	// package does not write itself is read by, the spelling of its numbers, the
-	// base64 encoding/json writes a []byte as, and the time.Time whose
-	// MarshalJSON it reads as a string.
-	add(helpers.Identity, "bytes")
-	add(helpers.Identity, "sync")
-	add(helpers.Identity, "encoding/base64")
-	add(helpers.Identity, "encoding/json")
-	add(helpers.Identity, "errors")
-	add(helpers.Identity, "hash/maphash")
-	add(helpers.Identity, "math")
-	add(helpers.Identity, "reflect")
-	add(helpers.Identity, "sort")
-	add(helpers.Identity, "strconv")
-	add(helpers.Identity, "time")
-	add(helpers.Identity, "unicode/utf8")
+	// The identity of a value, block by block. The core: two seeded hashes, the
+	// spelling of numbers, strings read as UTF-8, and a raw JSON reader that
+	// sorts an object's members to find a key written twice.
+	add(helpers.IdentityCore, "encoding/json")
+	add(helpers.IdentityCore, "errors")
+	add(helpers.IdentityCore, "hash/maphash")
+	add(helpers.IdentityCore, "math")
+	add(helpers.IdentityCore, "sort")
+	add(helpers.IdentityCore, "strconv")
+	add(helpers.IdentityCore, "unicode/utf8")
+	// A const read once per process, and decoded to confirm a match.
+	add(helpers.IdentityConst, "bytes")
+	add(helpers.IdentityConst, "encoding/json")
+	add(helpers.IdentityConst, "strconv")
+	add(helpers.IdentityConst, "sync")
+	// A decoded value, and the refusal of one that is not.
+	add(helpers.IdentityAny, "encoding/json")
+	add(helpers.IdentityAny, "fmt")
 	// A document keeps the identities of the values read lazily from it, which
 	// a value judged from several goroutines at once shares.
-	add(helpers.Identity && helpers.Decode, "sync")
-	add(helpers.Identity && helpers.Decode, "sync/atomic")
+	add(helpers.IdentityLazy, "errors")
+	add(helpers.IdentityLazy, "sync")
+	add(helpers.IdentityLazy, "sync/atomic")
+	// Any Go value: the Go kind a value this package does not write itself is
+	// read by, the base64 encoding/json writes a []byte as, and the time.Time
+	// whose MarshalJSON it reads as a string.
+	add(helpers.IdentityValue, "encoding/base64")
+	add(helpers.IdentityValue, "encoding/json")
+	add(helpers.IdentityValue, "errors")
+	add(helpers.IdentityValue, "math")
+	add(helpers.IdentityValue, "reflect")
+	add(helpers.IdentityValue, "strconv")
+	add(helpers.IdentityValue, "time")
+	add(helpers.IdentityKind, "encoding/json")
+	add(helpers.IdentityKind, "math")
+	add(helpers.IdentityKind, "strconv")
 	// The exact-number comparisons read the literal as decimal digits: strconv
 	// for the exponent, math/big for the one question -- does this divide that
 	// -- that digit arithmetic alone does not answer. Neither is needed by the

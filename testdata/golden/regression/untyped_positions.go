@@ -151,7 +151,7 @@ type UntypedPositionsChoices json.RawMessage
 
 // The members as the schema wrote them, read at package initialisation: the
 // identity every JSON value equal to each shares, and its tree, which is what
-// Validate compares the instance with. See jsonMatchesConst.
+// Validate compares the instance with. See jsonMatchesConstRaw.
 var untypedPositionsChoicesAllowedJSON = jsonConstOf(false,
 	"1",
 	"\"two\"",
@@ -188,7 +188,7 @@ func (u UntypedPositionsChoices) MarshalJSON() ([]byte, error) {
 
 // Validate checks UntypedPositionsChoices against its JSON Schema constraints.
 func (u UntypedPositionsChoices) Validate() error {
-	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// Compared as JSON (see jsonMatchesConstRaw): whitespace, member order and
 	// number spelling are not what an enum is decided on. It used to reduce the
 	// value to canonical text, re-encoding every string and key in it, to decide.
 	_ok, _okErr := jsonMatchesConstRaw(u, untypedPositionsChoicesAllowedJSON)
@@ -206,7 +206,7 @@ type UntypedPositionsConstant json.RawMessage
 
 // The members as the schema wrote them, read at package initialisation: the
 // identity every JSON value equal to each shares, and its tree, which is what
-// Validate compares the instance with. See jsonMatchesConst.
+// Validate compares the instance with. See jsonMatchesConstRaw.
 var untypedPositionsConstantAllowedJSON = jsonConstOf(false,
 	"{\"k\":1.0}",
 )
@@ -241,7 +241,7 @@ func (u UntypedPositionsConstant) MarshalJSON() ([]byte, error) {
 
 // Validate checks UntypedPositionsConstant against its JSON Schema constraints.
 func (u UntypedPositionsConstant) Validate() error {
-	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// Compared as JSON (see jsonMatchesConstRaw): whitespace, member order and
 	// number spelling are not what an enum is decided on. It used to reduce the
 	// value to canonical text, re-encoding every string and key in it, to decide.
 	_ok, _okErr := jsonMatchesConstRaw(u, untypedPositionsConstantAllowedJSON)

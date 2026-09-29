@@ -86,13 +86,37 @@ type HelperSet struct {
 	// no whole-document enum or const emits none of it.
 	Canonical bool
 
-	// Identity is jsonID and what computes one: the identity of a JSON value
-	// that uniqueItems, const and enum compare values by, read off the value as
-	// it is held rather than off an encoding of it, and jsonValidation, what one
-	// Validate shares with the values below it so that an identity is computed
-	// once however deeply arrays nest. It closes over Canonical, which confirms
-	// the one equality an identity cannot answer for certain.
-	Identity bool
+	// The identity of a JSON value (jsonID) -- what uniqueItems, const and enum
+	// compare values by, read off the value as it is held rather than off an
+	// encoding of it -- and the tree a match is confirmed on. It is code in the
+	// user's package, compile time and binary size, so it is split along its own
+	// calls into six blocks, and a package takes the blocks its generated code
+	// calls and the ones those call (see identityBlocks and CloseOverCalls):
+	//
+	//   - IdentityCore: jsonID itself, the identities of JSON's scalars, and the
+	//     reader of raw JSON's.
+	//   - IdentityConst: a const or an enum read once into its members'
+	//     identities and trees, and a raw value decided against one.
+	//   - IdentityAny: a value held as decoded JSON, which is all the runtime
+	//     evaluator and the dynamic checks compare.
+	//   - IdentityLazy: a value read lazily from a document, whose objects' and
+	//     arrays' identities the document keeps.
+	//   - IdentityValue: any Go value, by the rules it is written by -- this
+	//     package's types by their own jsonIdentity, everything else by its Go
+	//     kind through reflect -- and jsonValidation, what one Validate shares
+	//     with the values below it.
+	//   - IdentityKind: the kind of a value, for a keyword about one kind.
+	IdentityCore  bool
+	IdentityConst bool
+	IdentityAny   bool
+	IdentityLazy  bool
+	IdentityValue bool
+	IdentityKind  bool
+
+	// AnnotationsEquality compiles in the evaluator's const, enum and
+	// uniqueItems arms, and the node fields they read, which are its only use of
+	// the identity blocks. Read off the node literals, as AnnotationsPattern is.
+	AnnotationsEquality bool
 
 	NullCheck bool // jsonNullRule and the recursive walker that applies one
 	Format    bool // schemagenFormat* -- one function per asserted format
@@ -170,7 +194,7 @@ type HelperSet struct {
 func (h HelperSet) Empty() bool {
 	return !h.OneOf && !h.OneOfDiscriminator && !h.Dynamic && !h.DynamicConst &&
 		!h.Annotations && !h.Integer && !h.Number && !h.NumberCompare && !h.DateTime &&
-		!h.Canonical && !h.Identity && !h.NullCheck &&
+		!h.Canonical && !h.anyIdentity() && !h.NullCheck &&
 		!h.Format && !h.FormatHostname && !h.Content && !h.Access && !h.Decode &&
 		!h.PathJoin && !h.DecodePath && !h.IPAddr && len(h.Patterns) == 0 && !h.Quote && !h.Undecided
 }
@@ -192,7 +216,13 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.DateTime = h.DateTime || other.DateTime
 	h.IPAddr = h.IPAddr || other.IPAddr
 	h.Canonical = h.Canonical || other.Canonical
-	h.Identity = h.Identity || other.Identity
+	h.IdentityCore = h.IdentityCore || other.IdentityCore
+	h.IdentityConst = h.IdentityConst || other.IdentityConst
+	h.IdentityAny = h.IdentityAny || other.IdentityAny
+	h.IdentityLazy = h.IdentityLazy || other.IdentityLazy
+	h.IdentityValue = h.IdentityValue || other.IdentityValue
+	h.IdentityKind = h.IdentityKind || other.IdentityKind
+	h.AnnotationsEquality = h.AnnotationsEquality || other.AnnotationsEquality
 	h.NullCheck = h.NullCheck || other.NullCheck
 	h.Format = h.Format || other.Format
 	h.Content = h.Content || other.Content
@@ -232,20 +262,36 @@ func (h *HelperSet) CloseOverCalls() {
 	// decode reads a member's refusal for the schema's words through the
 	// decode-path block. Those are settled first, since the path-join block is
 	// what both of them build their messages with.
-	// The runtime evaluator and the object-level const compare values by
-	// identity; and an identity is confirmed, where it has to be certain,
-	// through the JSON-equality reduction.
-	if h.Annotations || h.DynamicConst {
-		h.Identity = true
-	}
-	if h.Identity {
-		h.Canonical = true
-	}
 	if h.NullCheck || h.OneOf || h.OneOfDiscriminator || h.Access {
 		h.Decode = true
 	}
 	if h.Decode {
 		h.DecodePath = true
+	}
+	// The identity blocks, from the callers down; each edge is a call the block
+	// makes (TestIdentityBlocksAreMinimal holds them to the source). The
+	// evaluator's equality arms and the object-level const compare decoded
+	// values; a value's kind is read, for a value that is not decoded JSON, off
+	// its tree; the walker confirms a match on trees and reads a lazily read
+	// value as the document keeps it; and a const, and the number reader under
+	// every identity, read literals as the JSON-equality reduction does.
+	if h.AnnotationsEquality || h.DynamicConst {
+		h.IdentityAny = true
+	}
+	if h.IdentityKind {
+		h.IdentityValue = true
+	}
+	if (h.IdentityValue || h.IdentityAny) && h.Decode {
+		h.IdentityLazy = true
+	}
+	if h.IdentityValue || h.IdentityAny {
+		h.IdentityConst = true
+	}
+	if h.IdentityConst || h.IdentityLazy {
+		h.IdentityCore = true
+	}
+	if h.IdentityCore {
+		h.Canonical = true
 	}
 	if h.Integer || h.Number || h.DateTime || h.IPAddr || h.NullCheck || h.DecodePath || h.Annotations {
 		h.PathJoin = true
@@ -329,9 +375,13 @@ func HelpersReferencedBy(src string) HelperSet {
 		set.DecodePath = true
 	}
 	// The _dyn* family is matched by its prefix and pulled in whole, rather than
-	// by a list of names that has to be kept in step with the templates by hand.
+	// by a list of names that has to be kept in step with the templates by hand
+	// -- all but _dynConstOK, a block of its own because it is the one that
+	// compares values, and so the one that takes the identity blocks with it.
 	if strings.Contains(src, "_dyn") {
 		set.Dynamic = true
+	}
+	if strings.Contains(src, "_dynConstOK(") {
 		set.DynamicConst = true
 	}
 	// The annotation evaluator calls the _dyn* predicates, so it pulls both in.
@@ -372,6 +422,12 @@ func HelpersReferencedBy(src string) HelperSet {
 		if nodeFieldContent.MatchString(src) {
 			set.AnnotationsContent = true
 			set.Content = true
+		}
+		// const, enum and uniqueItems are the evaluator's only comparisons of
+		// values, and so its only use of the identity blocks; read the same way,
+		// off the three fields a node stating one carries.
+		if nodeFieldEquality.MatchString(src) {
+			set.AnnotationsEquality = true
 		}
 		// The recursive and dynamic arms are read the same way, off the three
 		// fields only a file needing them can carry: a node pointing at another
@@ -443,16 +499,12 @@ func HelpersReferencedBy(src string) HelperSet {
 	if strings.Contains(src, "_jsonCanonical(") || strings.Contains(src, "_jsonCanonicalTexts(") {
 		set.Canonical = true
 	}
-	// The identity block. Every site that compares values names one of these:
-	// the type an identity is, the context a Validate shares, or a function that
-	// computes one; and a site that reads a value's kind names jsonKindAt or
-	// jsonKindAny and jsonFloatOf, possibly with none of the others -- a
-	// contains that states only a type. (jsonKindError is the decode block's.)
-	if strings.Contains(src, "jsonID") || strings.Contains(src, "jsonIdentif") || strings.Contains(src, "jsonValidation") ||
-		strings.Contains(src, "jsonKindAt(") || strings.Contains(src, "jsonKindAny(") || strings.Contains(src, "jsonFloatOf(") || strings.Contains(src, "jsonMarshalError(") ||
-		strings.Contains(src, "jsonMarshalText(") || strings.Contains(src, "jsonConstOf(") || strings.Contains(src, "jsonMatchesConst") ||
-		strings.Contains(src, "jsonTreeView(") {
-		set.Identity = true
+	// The identity blocks. A file naming anything a block declares takes the
+	// block, and CloseOverCalls the blocks it calls.
+	for _, b := range identityBlocks {
+		if b.names.MatchString(src) {
+			b.set(&set)
+		}
 	}
 	// jsonNullRule and checkJSONNullsAt come as one block, and the walker's name
 	// appears at every call site, so one substring pulls both in. The rule type
@@ -498,8 +550,75 @@ var (
 	nodeFieldContent           = regexp.MustCompile(`\bContent(Encoding|MediaType):\s+_strPtr\(`)
 	nodeFieldRef               = regexp.MustCompile(`\bRef:\s+&_`)
 	nodeFieldDynamic           = regexp.MustCompile(`\bDynamic(Ref|Anchors):\s`)
+	nodeFieldEquality          = regexp.MustCompile(`\bConst:\s+_strPtr\(|\bEnum:\s+\[\]string\{|\bUniqueItems:\s+true\b`)
 	accessFieldPattern         = regexp.MustCompile(`\bKind:\s+_accessPattern|\bExceptPatterns:\s`)
 )
+
+// identityBlock is one block of the identity helpers: the template it is
+// emitted from, the flag that emits it, and every name it declares at the top
+// level of the package.
+type identityBlock struct {
+	template string
+	set      func(*HelperSet)
+	decls    []string
+	names    *regexp.Regexp
+}
+
+// identityBlocks lists the identity helpers' blocks. A generated file naming
+// anything a block declares takes that block, and CloseOverCalls the blocks it
+// calls. Every name is listed, not only the ones generated code names today, so
+// a template that starts naming one directly pulls its block in with no change
+// here; the emitter's tests hold each list to what its template declares, so
+// the two cannot drift.
+var identityBlocks = []identityBlock{
+	newIdentityBlock("identity_core_helpers", func(h *HelperSet) { h.IdentityCore = true },
+		"jsonID", "jsonIDSeeds", "jsonIDNullKind", "jsonIDTrueKind", "jsonIDFalseKind", "jsonIDStringKind",
+		"jsonIDNumberKind", "jsonIDLiteralKind", "jsonIDArrayKind", "jsonIDObjectKind", "jsonIDMemberKind",
+		"jsonIDMix", "jsonPutUint64", "jsonIDOfKind", "jsonIDBool", "jsonIDText", "jsonIDBytes", "jsonIDString",
+		"jsonIDNumber", "jsonNumberDigits", "jsonAppendDigits", "jsonIDInt", "jsonIDUint", "jsonIDFloat",
+		"jsonIDNumberLiteral", "jsonIsNumberLiteral", "jsonIDArray", "jsonIDMemberOf", "jsonIDObjectOf", "jsonIDIn", "jsonValidString",
+		"jsonIDRaw", "jsonIDRawMessage", "jsonIDRawAsDecoded", "jsonIDReadAll", "jsonIDReader", "jsonIDMaxDepth",
+		"jsonIDMember", "jsonIDMembers", "jsonIDKeyAgain"),
+	newIdentityBlock("identity_const_helpers", func(h *HelperSet) { h.IdentityConst = true },
+		"jsonConst", "jsonConsts", "jsonConstOf", "jsonMatchesConstRaw", "jsonTreeRaw", "jsonTreeEqual", "jsonTreeNumber"),
+	newIdentityBlock("identity_any_helpers", func(h *HelperSet) { h.IdentityAny = true },
+		"jsonIDJSON", "jsonNotJSON", "jsonTreeJSON", "jsonTreeJSONIn", "jsonMatchesJSON", "jsonFirstDuplicateJSON"),
+	newIdentityBlock("identity_lazy_helpers", func(h *HelperSet) { h.IdentityLazy = true },
+		"jsonIDCache"),
+	newIdentityBlock("identity_value_helpers", func(h *HelperSet) { h.IdentityValue = true },
+		"jsonIDTime", "jsonIDObject", "jsonIDObj", "jsonIDObjMember", "jsonIDObjComputed", "jsonIDObjRaw",
+		"jsonIDObjDeferred", "jsonIDMemberFunc", "jsonTreeWritten", "jsonTreeWrittenNumber", "jsonIdentifier",
+		"jsonValidation", "jsonIDNull", "jsonIDRawIn", "jsonIDNumberIn", "jsonArrayKey", "jsonIdentify",
+		"jsonIDPtr", "jsonIDSlice", "jsonIDSliceKept", "jsonIDMap", "jsonIDsOf", "jsonFirstDuplicate",
+		"jsonSameValue", "jsonTreeOf", "jsonMatchesConst", "jsonMatchesConstAt", "jsonTreeAny", "jsonTreeView",
+		"jsonTreeSame", "jsonTreeOfIdentifier", "jsonTreeReflect", "jsonTreeMarshaled", "jsonMarshalError",
+		"jsonMarshalText", "jsonIdentifyAt", "jsonIDAny", "jsonIDAnySlice", "jsonIDAnyMap", "jsonTextMarshaler",
+		"jsonIdentifierType", "jsonMarshalerType", "jsonTextMarshalerType", "jsonNumberType", "jsonRawMessageType",
+		"jsonTimeType", "jsonIDReflect", "jsonIDMarshaled", "jsonOmitEmptyAt", "jsonOmitZeroAt"),
+	newIdentityBlock("identity_kind_helpers", func(h *HelperSet) { h.IdentityKind = true },
+		"jsonKindAt", "jsonKindAny", "jsonFloatOf", "jsonKindNumber", "jsonKindRaw"),
+}
+
+func newIdentityBlock(template string, set func(*HelperSet), decls ...string) identityBlock {
+	return identityBlock{template: template, set: set, decls: decls,
+		names: regexp.MustCompile(`\b(?:` + strings.Join(decls, "|") + `)\b`)}
+}
+
+// IdentityBlockDecls returns, for each block of the identity helpers, the
+// template it is emitted from and the names it declares -- the table the
+// emitter's tests check the templates and the emitted files against.
+func IdentityBlockDecls() map[string][]string {
+	out := make(map[string][]string, len(identityBlocks))
+	for _, b := range identityBlocks {
+		out[b.template] = append([]string(nil), b.decls...)
+	}
+	return out
+}
+
+// anyIdentity reports whether any identity block is set.
+func (h HelperSet) anyIdentity() bool {
+	return h.IdentityCore || h.IdentityConst || h.IdentityAny || h.IdentityLazy || h.IdentityValue || h.IdentityKind
+}
 
 // hostnameHelperCalls names every function the hostname helper block declares
 // that generated code calls directly.

@@ -62,7 +62,7 @@ type Raw json.RawMessage
 
 // The members as the schema wrote them, read at package initialisation: the
 // identity every JSON value equal to each shares, and its tree, which is what
-// Validate compares the instance with. See jsonMatchesConst.
+// Validate compares the instance with. See jsonMatchesConstRaw.
 var rawAllowedJSON = jsonConstOf(false,
 	"\"a\"",
 	"1",
@@ -99,7 +99,7 @@ func (r Raw) MarshalJSON() ([]byte, error) {
 
 // Validate checks Raw against its JSON Schema constraints.
 func (r Raw) Validate() error {
-	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// Compared as JSON (see jsonMatchesConstRaw): whitespace, member order and
 	// number spelling are not what an enum is decided on. It used to reduce the
 	// value to canonical text, re-encoding every string and key in it, to decide.
 	_ok, _okErr := jsonMatchesConstRaw(r, rawAllowedJSON)
@@ -218,7 +218,7 @@ type WrappedRaw json.RawMessage
 
 // The members as the schema wrote them, read at package initialisation: the
 // identity every JSON value equal to each shares, and its tree, which is what
-// Validate compares the instance with. See jsonMatchesConst.
+// Validate compares the instance with. See jsonMatchesConstRaw.
 var wrappedRawAllowedJSON = jsonConstOf(false,
 	"\"a\"",
 	"1",
@@ -255,7 +255,7 @@ func (w WrappedRaw) MarshalJSON() ([]byte, error) {
 
 // Validate checks WrappedRaw against its JSON Schema constraints.
 func (w WrappedRaw) Validate() error {
-	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// Compared as JSON (see jsonMatchesConstRaw): whitespace, member order and
 	// number spelling are not what an enum is decided on. It used to reduce the
 	// value to canonical text, re-encoding every string and key in it, to decide.
 	_ok, _okErr := jsonMatchesConstRaw(w, wrappedRawAllowedJSON)

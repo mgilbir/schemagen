@@ -11,7 +11,7 @@ type Pair json.RawMessage
 
 // The members as the schema wrote them, read at package initialisation: the
 // identity every JSON value equal to each shares, and its tree, which is what
-// Validate compares the instance with. See jsonMatchesConst.
+// Validate compares the instance with. See jsonMatchesConstRaw.
 var pairAllowedJSON = jsonConstOf(false,
 	"{\"k\":1}",
 	"{\"k\":2}",
@@ -47,7 +47,7 @@ func (p Pair) MarshalJSON() ([]byte, error) {
 
 // Validate checks Pair against its JSON Schema constraints.
 func (p Pair) Validate() error {
-	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// Compared as JSON (see jsonMatchesConstRaw): whitespace, member order and
 	// number spelling are not what an enum is decided on. It used to reduce the
 	// value to canonical text, re-encoding every string and key in it, to decide.
 	_ok, _okErr := jsonMatchesConstRaw(p, pairAllowedJSON)
@@ -901,7 +901,7 @@ type AllOfObjectEnumStandalone json.RawMessage
 
 // The members as the schema wrote them, read at package initialisation: the
 // identity every JSON value equal to each shares, and its tree, which is what
-// Validate compares the instance with. See jsonMatchesConst.
+// Validate compares the instance with. See jsonMatchesConstRaw.
 var allOfObjectEnumStandaloneAllowedJSON = jsonConstOf(false,
 	"{\"k\":1}",
 	"{\"k\":2}",
@@ -937,7 +937,7 @@ func (a AllOfObjectEnumStandalone) MarshalJSON() ([]byte, error) {
 
 // Validate checks AllOfObjectEnumStandalone against its JSON Schema constraints.
 func (a AllOfObjectEnumStandalone) Validate() error {
-	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// Compared as JSON (see jsonMatchesConstRaw): whitespace, member order and
 	// number spelling are not what an enum is decided on. It used to reduce the
 	// value to canonical text, re-encoding every string and key in it, to decide.
 	_ok, _okErr := jsonMatchesConstRaw(a, allOfObjectEnumStandaloneAllowedJSON)

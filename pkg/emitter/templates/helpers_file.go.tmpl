@@ -60,8 +60,23 @@ import (
 {{- if .Helpers.Canonical}}
 {{template "canonical_helpers"}}
 {{- end}}
-{{- if .Helpers.Identity}}
-{{template "identity_helpers" .Helpers}}
+{{- if .Helpers.IdentityCore}}
+{{template "identity_core_helpers" .Helpers}}
+{{- end}}
+{{- if .Helpers.IdentityConst}}
+{{template "identity_const_helpers" .Helpers}}
+{{- end}}
+{{- if .Helpers.IdentityAny}}
+{{template "identity_any_helpers" .Helpers}}
+{{- end}}
+{{- if .Helpers.IdentityLazy}}
+{{template "identity_lazy_helpers" .Helpers}}
+{{- end}}
+{{- if .Helpers.IdentityValue}}
+{{template "identity_value_helpers" .Helpers}}
+{{- end}}
+{{- if .Helpers.IdentityKind}}
+{{template "identity_kind_helpers" .Helpers}}
 {{- end}}
 {{- if .Helpers.NullCheck}}
 {{template "nullcheck_helpers"}}

@@ -394,7 +394,7 @@ type AnnRawEnum json.RawMessage
 
 // The members as the schema wrote them, read at package initialisation: the
 // identity every JSON value equal to each shares, and its tree, which is what
-// Validate compares the instance with. See jsonMatchesConst.
+// Validate compares the instance with. See jsonMatchesConstRaw.
 var annRawEnumAllowedJSON = jsonConstOf(false,
 	"\"mixed\"",
 	"7",
@@ -430,7 +430,7 @@ func (a AnnRawEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks AnnRawEnum against its JSON Schema constraints.
 func (a AnnRawEnum) Validate() error {
-	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// Compared as JSON (see jsonMatchesConstRaw): whitespace, member order and
 	// number spelling are not what an enum is decided on. It used to reduce the
 	// value to canonical text, re-encoding every string and key in it, to decide.
 	_ok, _okErr := jsonMatchesConstRaw(a, annRawEnumAllowedJSON)
@@ -1088,7 +1088,7 @@ type DepRawEnum json.RawMessage
 
 // The members as the schema wrote them, read at package initialisation: the
 // identity every JSON value equal to each shares, and its tree, which is what
-// Validate compares the instance with. See jsonMatchesConst.
+// Validate compares the instance with. See jsonMatchesConstRaw.
 var depRawEnumAllowedJSON = jsonConstOf(false,
 	"\"either\"",
 	"9",
@@ -1124,7 +1124,7 @@ func (d DepRawEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks DepRawEnum against its JSON Schema constraints.
 func (d DepRawEnum) Validate() error {
-	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// Compared as JSON (see jsonMatchesConstRaw): whitespace, member order and
 	// number spelling are not what an enum is decided on. It used to reduce the
 	// value to canonical text, re-encoding every string and key in it, to decide.
 	_ok, _okErr := jsonMatchesConstRaw(d, depRawEnumAllowedJSON)
