@@ -15,19 +15,35 @@ type OneOfBooleanAndConstRoot struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces o with the value the document holds. See
+// decodeJSONAt.
 func (o *OneOfBooleanAndConstRoot) UnmarshalJSON(data []byte) error {
-	o._raw = append(o._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(o.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever o held.
+func (o *OneOfBooleanAndConstRoot) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*o = OneOfBooleanAndConstRoot{}
+	o._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (o OneOfBooleanAndConstRoot) MarshalJSON() ([]byte, error) {
 	if len(o._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return o._raw, nil
+	return append([]byte(nil), o._raw...), nil
 }
 
-func (o OneOfBooleanAndConstRoot) Raw() json.RawMessage { return o._raw }
+// Raw returns a copy of the value's bytes.
+func (o OneOfBooleanAndConstRoot) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), o._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.

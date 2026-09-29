@@ -299,6 +299,39 @@
   under `--schema-package` an alias over another package's alias over `any` or a
   pointer, which did not compile, now does. Under `--omit-empty=false` a union
   whose zero is written as `null` is omitted where the schema forbids `null`.
+- Decoding costs time and memory in proportion to the document, however deeply
+  it nests. Each level of a recursive type decoded its whole subtree again:
+  `{"c":{"c":...}}` 8,000 levels deep took six seconds, a 24 KB document with an
+  `if`/`then` beside the members kept 70 MB of copies alive, and a refusal at the
+  deepest level took time exponential in the depth -- a 200-byte document did not
+  finish. Every generated type now decodes the value it is handed in place, over
+  one indexed copy of the document, and reports a refusal without decoding
+  anything a second time.
+- A decoded value no longer shares memory with the buffer it was decoded from,
+  or with a copy of it taken before a later decode. A heterogeneous `enum` kept
+  the caller's slice as its value -- under a `json.Decoder` over a stream, 133 of
+  400 decoded values changed -- and the raw-JSON wrappers wrote each decode over
+  the array they already held. `Raw()`, `MarshalJSON()` and `BigInt()` return
+  copies rather than the value's own bytes.
+- A type's `UnmarshalJSON` called directly with bytes that are not JSON refuses
+  them with `encoding/json`'s own words. The raw-JSON wrappers, the inferred
+  wrappers and the heterogeneous enums accepted them and wrote them back out.
+
+### Changed
+
+- Decoding into a value replaces it. Every generated `UnmarshalJSON` starts from
+  the zero value, so a value decoded twice is the second document and nothing of
+  the first: `{"a":"x","extra":1}` and then `{}` into one struct used to validate
+  as "a: required property is missing" while marshalling as `{"a":"x"}`. This is
+  a deliberate difference from `encoding/json`, whose own decode merges. See the
+  README's "Decoding: replaced, owned, and linear".
+- A property written twice in an object a generated type decodes means its last
+  value, as it does where pkg/schema reads a schema: the earlier occurrence is
+  not decoded at all. It used to be decoded too, and one that did not decode
+  refused the document with a message that named no property. A map or a slice
+  of scalars is still decoded whole by `encoding/json`, whose rule inside it is
+  the same for the value and refuses an earlier occurrence that does not
+  decode.
 
 ## 0.1.3
 

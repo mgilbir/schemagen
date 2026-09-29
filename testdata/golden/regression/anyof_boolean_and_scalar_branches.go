@@ -16,19 +16,35 @@ type AnyOfBooleanAndScalarBranchesBareObjectBranch struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces a with the value the document holds. See
+// decodeJSONAt.
 func (a *AnyOfBooleanAndScalarBranchesBareObjectBranch) UnmarshalJSON(data []byte) error {
-	a._raw = append(a._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(a.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever a held.
+func (a *AnyOfBooleanAndScalarBranchesBareObjectBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*a = AnyOfBooleanAndScalarBranchesBareObjectBranch{}
+	a._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (a AnyOfBooleanAndScalarBranchesBareObjectBranch) MarshalJSON() ([]byte, error) {
 	if len(a._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return a._raw, nil
+	return append([]byte(nil), a._raw...), nil
 }
 
-func (a AnyOfBooleanAndScalarBranchesBareObjectBranch) Raw() json.RawMessage { return a._raw }
+// Raw returns a copy of the value's bytes.
+func (a AnyOfBooleanAndScalarBranchesBareObjectBranch) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), a._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -83,19 +99,35 @@ type AnyOfBooleanAndScalarBranchesConstBranch struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces a with the value the document holds. See
+// decodeJSONAt.
 func (a *AnyOfBooleanAndScalarBranchesConstBranch) UnmarshalJSON(data []byte) error {
-	a._raw = append(a._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(a.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever a held.
+func (a *AnyOfBooleanAndScalarBranchesConstBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*a = AnyOfBooleanAndScalarBranchesConstBranch{}
+	a._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (a AnyOfBooleanAndScalarBranchesConstBranch) MarshalJSON() ([]byte, error) {
 	if len(a._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return a._raw, nil
+	return append([]byte(nil), a._raw...), nil
 }
 
-func (a AnyOfBooleanAndScalarBranchesConstBranch) Raw() json.RawMessage { return a._raw }
+// Raw returns a copy of the value's bytes.
+func (a AnyOfBooleanAndScalarBranchesConstBranch) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), a._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -148,73 +180,88 @@ type AnyOfBooleanAndScalarBranchesFalseBranch struct {
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
 }
 
+// UnmarshalJSON replaces a with the value the document holds. See
+// decodeJSONAt.
 func (a *AnyOfBooleanAndScalarBranchesFalseBranch) UnmarshalJSON(data []byte) error {
-	a.AdditionalProperties = nil
-	a._jsonRawProps = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(a.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into a, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever a held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (a *AnyOfBooleanAndScalarBranchesFalseBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*a = AnyOfBooleanAndScalarBranchesFalseBranch{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"k",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[AnyOfBooleanAndScalarBranchesFalseBranch](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias AnyOfBooleanAndScalarBranchesFalseBranch
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(a),
+	if _v, _ok := _raw["k"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&a.K, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "k")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "k", decode: jsonDecodeValue[*string]},
-		})
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"k",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	// The members a Validate check reads back as JSON. Each is a view of the
+	// document's own copy rather than a copy of its own: at every depth of a
+	// recursive document these hold the member below, and a copy each was the
+	// whole subtree held once per level. See jsonDoc.keep.
+	if _d.data[_sp.start] == '{' {
+		a._jsonRawProps = make(map[string]json.RawMessage, len(_raw))
+		for _k, _v := range _raw {
+			a._jsonRawProps[_k] = _d.keep(_v)
 		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"k",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
+	}
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "k":
+			continue
 		}
-		a._jsonRawProps = raw
-		knownFields := map[string]bool{
-			"k": true,
+		if a.AdditionalProperties == nil {
+			a.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if a.AdditionalProperties == nil {
-				a.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			a.AdditionalProperties[rawKey] = rawVal
-		}
+		a.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -302,19 +349,35 @@ type AnyOfBooleanAndScalarBranchesMixed struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces a with the value the document holds. See
+// decodeJSONAt.
 func (a *AnyOfBooleanAndScalarBranchesMixed) UnmarshalJSON(data []byte) error {
-	a._raw = append(a._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(a.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever a held.
+func (a *AnyOfBooleanAndScalarBranchesMixed) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*a = AnyOfBooleanAndScalarBranchesMixed{}
+	a._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (a AnyOfBooleanAndScalarBranchesMixed) MarshalJSON() ([]byte, error) {
 	if len(a._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return a._raw, nil
+	return append([]byte(nil), a._raw...), nil
 }
 
-func (a AnyOfBooleanAndScalarBranchesMixed) Raw() json.RawMessage { return a._raw }
+// Raw returns a copy of the value's bytes.
+func (a AnyOfBooleanAndScalarBranchesMixed) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), a._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -369,19 +432,35 @@ type AnyOfBooleanAndScalarBranchesNotBranch struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces a with the value the document holds. See
+// decodeJSONAt.
 func (a *AnyOfBooleanAndScalarBranchesNotBranch) UnmarshalJSON(data []byte) error {
-	a._raw = append(a._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(a.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever a held.
+func (a *AnyOfBooleanAndScalarBranchesNotBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*a = AnyOfBooleanAndScalarBranchesNotBranch{}
+	a._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (a AnyOfBooleanAndScalarBranchesNotBranch) MarshalJSON() ([]byte, error) {
 	if len(a._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return a._raw, nil
+	return append([]byte(nil), a._raw...), nil
 }
 
-func (a AnyOfBooleanAndScalarBranchesNotBranch) Raw() json.RawMessage { return a._raw }
+// Raw returns a copy of the value's bytes.
+func (a AnyOfBooleanAndScalarBranchesNotBranch) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), a._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -438,82 +517,100 @@ type AnyOfBooleanAndScalarBranchesObjectsOnly struct {
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
 }
 
+// UnmarshalJSON replaces a with the value the document holds. See
+// decodeJSONAt.
 func (a *AnyOfBooleanAndScalarBranchesObjectsOnly) UnmarshalJSON(data []byte) error {
-	a.AdditionalProperties = nil
-	a._jsonKeys = nil
-	a._jsonRawProps = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(a.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into a, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever a held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (a *AnyOfBooleanAndScalarBranchesObjectsOnly) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*a = AnyOfBooleanAndScalarBranchesObjectsOnly{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"j",
-			"k",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[AnyOfBooleanAndScalarBranchesObjectsOnly](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias AnyOfBooleanAndScalarBranchesObjectsOnly
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(a),
+	if _v, _ok := _raw["j"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&a.J, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "j")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "j", decode: jsonDecodeValue[*string]},
-			{name: "k", decode: jsonDecodeValue[*string]},
-		})
+	if _v, _ok := _raw["k"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&a.K, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "k")
+		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"j",
+		"k",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"j",
-			"k",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
+	}
+	a._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		a._jsonKeys[_k] = true
+	}
+	// The members a Validate check reads back as JSON. Each is a view of the
+	// document's own copy rather than a copy of its own: at every depth of a
+	// recursive document these hold the member below, and a copy each was the
+	// whole subtree held once per level. See jsonDoc.keep.
+	if _d.data[_sp.start] == '{' {
+		a._jsonRawProps = make(map[string]json.RawMessage, len(_raw))
+		for _k, _v := range _raw {
+			a._jsonRawProps[_k] = _d.keep(_v)
 		}
-		a._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			a._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "j", "k":
+			continue
 		}
-		a._jsonRawProps = raw
-		knownFields := map[string]bool{
-			"j": true,
-			"k": true,
+		if a.AdditionalProperties == nil {
+			a.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if a.AdditionalProperties == nil {
-				a.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			a.AdditionalProperties[rawKey] = rawVal
-		}
+		a.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -650,19 +747,35 @@ type AnyOfBooleanAndScalarBranchesTrueBranch struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces a with the value the document holds. See
+// decodeJSONAt.
 func (a *AnyOfBooleanAndScalarBranchesTrueBranch) UnmarshalJSON(data []byte) error {
-	a._raw = append(a._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(a.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever a held.
+func (a *AnyOfBooleanAndScalarBranchesTrueBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*a = AnyOfBooleanAndScalarBranchesTrueBranch{}
+	a._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (a AnyOfBooleanAndScalarBranchesTrueBranch) MarshalJSON() ([]byte, error) {
 	if len(a._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return a._raw, nil
+	return append([]byte(nil), a._raw...), nil
 }
 
-func (a AnyOfBooleanAndScalarBranchesTrueBranch) Raw() json.RawMessage { return a._raw }
+// Raw returns a copy of the value's bytes.
+func (a AnyOfBooleanAndScalarBranchesTrueBranch) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), a._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -720,98 +833,132 @@ type AnyOfBooleanAndScalarBranches struct {
 	TrueBranch           AnyOfBooleanAndScalarBranchesTrueBranch       `json:"trueBranch,omitzero"`
 }
 
+// UnmarshalJSON replaces a with the value the document holds. See
+// decodeJSONAt.
 func (a *AnyOfBooleanAndScalarBranches) UnmarshalJSON(data []byte) error {
-	a.AdditionalProperties = nil
-	a._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(a.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into a, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever a held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (a *AnyOfBooleanAndScalarBranches) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*a = AnyOfBooleanAndScalarBranches{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"bareObjectBranch",
-			"constBranch",
-			"falseBranch",
-			"mixed",
-			"notBranch",
-			"objectsOnly",
-			"trueBranch",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[AnyOfBooleanAndScalarBranches](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias AnyOfBooleanAndScalarBranches
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(a),
+	if _v, _ok := _raw["bareObjectBranch"]; _ok {
+		if _err := func(_p *AnyOfBooleanAndScalarBranchesBareObjectBranch, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*AnyOfBooleanAndScalarBranchesBareObjectBranch).decodeJSONAt(_p, _d, _s))
+		}(&a.BareObjectBranch, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "bareObjectBranch")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "bareObjectBranch", decode: jsonDecodeValue[AnyOfBooleanAndScalarBranchesBareObjectBranch]},
-			{name: "constBranch", decode: jsonDecodeValue[AnyOfBooleanAndScalarBranchesConstBranch]},
-			{name: "falseBranch", decode: jsonDecodeValue[*AnyOfBooleanAndScalarBranchesFalseBranch]},
-			{name: "mixed", decode: jsonDecodeValue[AnyOfBooleanAndScalarBranchesMixed]},
-			{name: "notBranch", decode: jsonDecodeValue[AnyOfBooleanAndScalarBranchesNotBranch]},
-			{name: "objectsOnly", decode: jsonDecodeValue[*AnyOfBooleanAndScalarBranchesObjectsOnly]},
-			{name: "trueBranch", decode: jsonDecodeValue[AnyOfBooleanAndScalarBranchesTrueBranch]},
-		})
+	if _v, _ok := _raw["constBranch"]; _ok {
+		if _err := func(_p *AnyOfBooleanAndScalarBranchesConstBranch, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*AnyOfBooleanAndScalarBranchesConstBranch).decodeJSONAt(_p, _d, _s))
+		}(&a.ConstBranch, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constBranch")
+		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	if _v, _ok := _raw["falseBranch"]; _ok {
+		if _err := func(_p **AnyOfBooleanAndScalarBranchesFalseBranch, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **AnyOfBooleanAndScalarBranchesFalseBranch, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*AnyOfBooleanAndScalarBranchesFalseBranch, AnyOfBooleanAndScalarBranchesFalseBranch](_p, _d, _s, (*AnyOfBooleanAndScalarBranchesFalseBranch).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&a.FalseBranch, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "falseBranch")
 		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"bareObjectBranch",
-			"constBranch",
-			"falseBranch",
-			"mixed",
-			"objectsOnly",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
+	}
+	if _v, _ok := _raw["mixed"]; _ok {
+		if _err := func(_p *AnyOfBooleanAndScalarBranchesMixed, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*AnyOfBooleanAndScalarBranchesMixed).decodeJSONAt(_p, _d, _s))
+		}(&a.Mixed, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "mixed")
 		}
-		a._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			a._jsonKeys[_k] = true
+	}
+	if _v, _ok := _raw["notBranch"]; _ok {
+		if _err := func(_p *AnyOfBooleanAndScalarBranchesNotBranch, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*AnyOfBooleanAndScalarBranchesNotBranch).decodeJSONAt(_p, _d, _s))
+		}(&a.NotBranch, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "notBranch")
 		}
-		knownFields := map[string]bool{
-			"bareObjectBranch": true,
-			"constBranch":      true,
-			"falseBranch":      true,
-			"mixed":            true,
-			"notBranch":        true,
-			"objectsOnly":      true,
-			"trueBranch":       true,
+	}
+	if _v, _ok := _raw["objectsOnly"]; _ok {
+		if _err := func(_p **AnyOfBooleanAndScalarBranchesObjectsOnly, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **AnyOfBooleanAndScalarBranchesObjectsOnly, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*AnyOfBooleanAndScalarBranchesObjectsOnly, AnyOfBooleanAndScalarBranchesObjectsOnly](_p, _d, _s, (*AnyOfBooleanAndScalarBranchesObjectsOnly).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&a.ObjectsOnly, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "objectsOnly")
 		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if a.AdditionalProperties == nil {
-				a.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			a.AdditionalProperties[rawKey] = rawVal
+	}
+	if _v, _ok := _raw["trueBranch"]; _ok {
+		if _err := func(_p *AnyOfBooleanAndScalarBranchesTrueBranch, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*AnyOfBooleanAndScalarBranchesTrueBranch).decodeJSONAt(_p, _d, _s))
+		}(&a.TrueBranch, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "trueBranch")
 		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"bareObjectBranch",
+		"constBranch",
+		"falseBranch",
+		"mixed",
+		"objectsOnly",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	a._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		a._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "bareObjectBranch", "constBranch", "falseBranch", "mixed", "notBranch", "objectsOnly", "trueBranch":
+			continue
+		}
+		if a.AdditionalProperties == nil {
+			a.AdditionalProperties = make(map[string]json.RawMessage)
+		}
+		a.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil

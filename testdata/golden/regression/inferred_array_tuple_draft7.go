@@ -12,41 +12,58 @@ type NeedsA struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NeedsA) UnmarshalJSON(data []byte) error {
-	n.AdditionalProperties = nil
-	n._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into n, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever n held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (n *NeedsA) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NeedsA{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias NeedsA
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(n),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[NeedsA](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	n._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		n._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if n.AdditionalProperties == nil {
+			n.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		n._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			n._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if n.AdditionalProperties == nil {
-				n.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			n.AdditionalProperties[rawKey] = rawVal
-		}
+		n.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -93,41 +110,58 @@ type InferredArrayTupleDraft7OneItem struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InferredArrayTupleDraft7OneItem) UnmarshalJSON(data []byte) error {
-	i.AdditionalProperties = nil
-	i._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into i, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever i held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (i *InferredArrayTupleDraft7OneItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InferredArrayTupleDraft7OneItem{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias InferredArrayTupleDraft7OneItem
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(i),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[InferredArrayTupleDraft7OneItem](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	i._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		i._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if i.AdditionalProperties == nil {
+			i.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		i._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			i._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if i.AdditionalProperties == nil {
-				i.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			i.AdditionalProperties[rawKey] = rawVal
-		}
+		i.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -177,9 +211,10 @@ type InferredArrayTupleDraft7One struct {
 }
 
 func (i *InferredArrayTupleDraft7One) UnmarshalJSON(data []byte) error {
+	*i = InferredArrayTupleDraft7One{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		i._raw = append(i._raw[:0], data...)
+		i._raw = append(json.RawMessage(nil), data...)
 		i._isRaw = true
 		return nil
 	}
@@ -188,8 +223,15 @@ func (i *InferredArrayTupleDraft7One) UnmarshalJSON(data []byte) error {
 		i._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	i._raw = append(i._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	i._raw = append(json.RawMessage(nil), data...)
 	i._isRaw = true
 	return nil
 }
@@ -198,7 +240,9 @@ func (i InferredArrayTupleDraft7One) MarshalJSON() ([]byte, error) {
 		if len(i._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return i._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), i._raw...), nil
 	}
 	return json.Marshal(i._value)
 }
@@ -206,7 +250,7 @@ func (i InferredArrayTupleDraft7One) Slice() []any  { return i._value }
 func (i InferredArrayTupleDraft7One) IsArray() bool { return !i._isRaw }
 func (i InferredArrayTupleDraft7One) Raw() json.RawMessage {
 	if i._isRaw {
-		return i._raw
+		return append(json.RawMessage(nil), i._raw...)
 	}
 	_b, _ := json.Marshal(i._value)
 	return _b
@@ -248,9 +292,10 @@ type InferredArrayTupleDraft7Ref struct {
 }
 
 func (i *InferredArrayTupleDraft7Ref) UnmarshalJSON(data []byte) error {
+	*i = InferredArrayTupleDraft7Ref{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		i._raw = append(i._raw[:0], data...)
+		i._raw = append(json.RawMessage(nil), data...)
 		i._isRaw = true
 		return nil
 	}
@@ -259,8 +304,15 @@ func (i *InferredArrayTupleDraft7Ref) UnmarshalJSON(data []byte) error {
 		i._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	i._raw = append(i._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	i._raw = append(json.RawMessage(nil), data...)
 	i._isRaw = true
 	return nil
 }
@@ -269,7 +321,9 @@ func (i InferredArrayTupleDraft7Ref) MarshalJSON() ([]byte, error) {
 		if len(i._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return i._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), i._raw...), nil
 	}
 	return json.Marshal(i._value)
 }
@@ -277,7 +331,7 @@ func (i InferredArrayTupleDraft7Ref) Slice() []any  { return i._value }
 func (i InferredArrayTupleDraft7Ref) IsArray() bool { return !i._isRaw }
 func (i InferredArrayTupleDraft7Ref) Raw() json.RawMessage {
 	if i._isRaw {
-		return i._raw
+		return append(json.RawMessage(nil), i._raw...)
 	}
 	_b, _ := json.Marshal(i._value)
 	return _b
@@ -316,41 +370,58 @@ type InferredArrayTupleDraft7TupItem0 struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InferredArrayTupleDraft7TupItem0) UnmarshalJSON(data []byte) error {
-	i.AdditionalProperties = nil
-	i._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into i, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever i held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (i *InferredArrayTupleDraft7TupItem0) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InferredArrayTupleDraft7TupItem0{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias InferredArrayTupleDraft7TupItem0
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(i),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[InferredArrayTupleDraft7TupItem0](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	i._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		i._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if i.AdditionalProperties == nil {
+			i.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		i._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			i._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if i.AdditionalProperties == nil {
-				i.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			i.AdditionalProperties[rawKey] = rawVal
-		}
+		i.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -397,41 +468,58 @@ type InferredArrayTupleDraft7TupRest struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InferredArrayTupleDraft7TupRest) UnmarshalJSON(data []byte) error {
-	i.AdditionalProperties = nil
-	i._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into i, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever i held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (i *InferredArrayTupleDraft7TupRest) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InferredArrayTupleDraft7TupRest{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias InferredArrayTupleDraft7TupRest
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(i),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[InferredArrayTupleDraft7TupRest](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	i._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		i._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if i.AdditionalProperties == nil {
+			i.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		i._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			i._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if i.AdditionalProperties == nil {
-				i.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			i.AdditionalProperties[rawKey] = rawVal
-		}
+		i.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -481,9 +569,10 @@ type InferredArrayTupleDraft7Tup struct {
 }
 
 func (i *InferredArrayTupleDraft7Tup) UnmarshalJSON(data []byte) error {
+	*i = InferredArrayTupleDraft7Tup{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		i._raw = append(i._raw[:0], data...)
+		i._raw = append(json.RawMessage(nil), data...)
 		i._isRaw = true
 		return nil
 	}
@@ -492,8 +581,15 @@ func (i *InferredArrayTupleDraft7Tup) UnmarshalJSON(data []byte) error {
 		i._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	i._raw = append(i._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	i._raw = append(json.RawMessage(nil), data...)
 	i._isRaw = true
 	return nil
 }
@@ -502,7 +598,9 @@ func (i InferredArrayTupleDraft7Tup) MarshalJSON() ([]byte, error) {
 		if len(i._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return i._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), i._raw...), nil
 	}
 	return json.Marshal(i._value)
 }
@@ -510,7 +608,7 @@ func (i InferredArrayTupleDraft7Tup) Slice() []any  { return i._value }
 func (i InferredArrayTupleDraft7Tup) IsArray() bool { return !i._isRaw }
 func (i InferredArrayTupleDraft7Tup) Raw() json.RawMessage {
 	if i._isRaw {
-		return i._raw
+		return append(json.RawMessage(nil), i._raw...)
 	}
 	_b, _ := json.Marshal(i._value)
 	return _b
@@ -568,83 +666,97 @@ type InferredArrayTupleDraft7 struct {
 	_jsonNulls           map[string]bool              // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InferredArrayTupleDraft7) UnmarshalJSON(data []byte) error {
-	i.AdditionalProperties = nil
-	i._jsonNulls = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into i, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever i held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (i *InferredArrayTupleDraft7) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InferredArrayTupleDraft7{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"one",
-			"ref",
-			"tup",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[InferredArrayTupleDraft7](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias InferredArrayTupleDraft7
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(i),
+	if _v, _ok := _raw["one"]; _ok {
+		if _err := func(_p **InferredArrayTupleDraft7One, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*InferredArrayTupleDraft7One](_p, _d, _s, jsonDecodeValue[*InferredArrayTupleDraft7One])
+		}(&i.One, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "one")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "one", decode: jsonDecodeValue[*InferredArrayTupleDraft7One]},
-			{name: "ref", decode: jsonDecodeValue[*InferredArrayTupleDraft7Ref]},
-			{name: "tup", decode: jsonDecodeValue[*InferredArrayTupleDraft7Tup]},
-		})
+	if _v, _ok := _raw["ref"]; _ok {
+		if _err := func(_p **InferredArrayTupleDraft7Ref, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*InferredArrayTupleDraft7Ref](_p, _d, _s, jsonDecodeValue[*InferredArrayTupleDraft7Ref])
+		}(&i.Ref, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "ref")
+		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	if _v, _ok := _raw["tup"]; _ok {
+		if _err := func(_p **InferredArrayTupleDraft7Tup, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*InferredArrayTupleDraft7Tup](_p, _d, _s, jsonDecodeValue[*InferredArrayTupleDraft7Tup])
+		}(&i.Tup, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "tup")
 		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"one",
-			"ref",
-			"tup",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if i._jsonNulls == nil {
-					i._jsonNulls = make(map[string]bool, 1)
-				}
-				i._jsonNulls[_nullKey] = true
+	}
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"one",
+		"ref",
+		"tup",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if i._jsonNulls == nil {
+				i._jsonNulls = make(map[string]bool, 1)
 			}
+			i._jsonNulls[_nullKey] = true
 		}
-		knownFields := map[string]bool{
-			"one": true,
-			"ref": true,
-			"tup": true,
+	}
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "one", "ref", "tup":
+			continue
 		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if i.AdditionalProperties == nil {
-				i.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			i.AdditionalProperties[rawKey] = rawVal
+		if i.AdditionalProperties == nil {
+			i.AdditionalProperties = make(map[string]json.RawMessage)
 		}
+		i.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil

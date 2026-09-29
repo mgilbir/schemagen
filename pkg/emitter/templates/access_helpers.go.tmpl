@@ -265,12 +265,17 @@ func _accessSortedKeys(obj map[string]json.RawMessage) []string {
 
 // _accessRefuseReadOnly is the decoder's half: a document that sets any location
 // the schema marked readOnly is refused outright.
-func _accessRefuseReadOnly(data []byte, rules []_accessRule) error {
+//
+// It walks the value in place (see jsonDoc), so each step costs the members of
+// the level it reads rather than a decode of everything below it: the value is
+// a struct's whole object, reached at every level of a recursive document, and
+// decoding it once per level for this was quadratic in the depth.
+func _accessRefuseReadOnly(d *jsonDoc, sp jsonSpan, rules []_accessRule) error {
 	for _, rule := range rules {
 		if !rule.ReadOnly {
 			continue
 		}
-		_, at, err := _accessApply(json.RawMessage(data), rule.Path, "", false)
+		at, err := _accessFind(d, sp, rule.Path, "")
 		if err != nil {
 			return err
 		}
@@ -279,6 +284,95 @@ func _accessRefuseReadOnly(data []byte, rules []_accessRule) error {
 		}
 	}
 	return nil
+}
+
+// _accessFind is _accessApply's search without the strip, over a document in
+// place: where the member a path ends at is first found, or "" if nowhere. The
+// order is _accessApply's -- members by key, a key written twice by its last
+// value, elements by index -- so both halves find the same member, and a key no
+// pattern match could be decided for is reported the way _accessApply reports
+// it.
+func _accessFind(d *jsonDoc, sp jsonSpan, path []_accessStep, prefix string) (string, error) {
+	if len(path) == 0 {
+		return "", nil
+	}
+	step := path[0]
+	switch step.Kind {
+	case _accessProperty, _accessPattern, _accessOther:
+		if d.data[sp.start] != '{' {
+			return "", nil
+		}
+		members := make(map[string]jsonSpan)
+		it := d.iter(sp)
+		for {
+			key, vsp, ok := it.member()
+			if !ok {
+				break
+			}
+			members[key] = vsp
+		}
+		keys := make([]string, 0, len(members))
+		for key := range members {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		found := ""
+		for _, key := range keys {
+			matched, err := _accessKeyMatches(step, key)
+			if err != nil {
+				return "", fmt.Errorf("%s: %w", _schemagenQuote(key), err)
+			}
+			if !matched {
+				continue
+			}
+			at := _schemagenClipText(key)
+			if prefix != "" {
+				at = prefix + "." + at
+			}
+			if len(path) == 1 {
+				if found == "" {
+					found = at
+				}
+				continue
+			}
+			deeper, err := _accessFind(d, members[key], path[1:], at)
+			if err != nil {
+				return "", err
+			}
+			if deeper != "" && found == "" {
+				found = deeper
+			}
+		}
+		return found, nil
+	case _accessItems, _accessTuple:
+		if d.data[sp.start] != '[' {
+			return "", nil
+		}
+		found := ""
+		it := d.iter(sp)
+		for i := 0; ; i++ {
+			esp, ok := it.elem()
+			if !ok {
+				break
+			}
+			if step.Kind == _accessTuple && i != step.Index {
+				continue
+			}
+			if step.Kind == _accessItems && i < step.Index {
+				continue
+			}
+			at := fmt.Sprintf("%s[%d]", prefix, i)
+			deeper, err := _accessFind(d, esp, path[1:], at)
+			if err != nil {
+				return "", err
+			}
+			if deeper != "" && found == "" {
+				found = deeper
+			}
+		}
+		return found, nil
+	}
+	return "", nil
 }
 
 // _accessStripWriteOnly is the encoder's half: every location the schema marked

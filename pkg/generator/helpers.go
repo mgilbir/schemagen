@@ -102,12 +102,12 @@ type HelperSet struct {
 	// package whose rules match no key by pattern should not acquire it.
 	AccessPattern bool
 
-	// ExactProperties is jsonExactProperties, which every struct decode that can
-	// fill a member from a JSON key goes through. It is not conditional on
-	// anything the schema says: encoding/json's case-insensitive key matching is
-	// a property of the decoder, so a schema declaring one lower-case property is
-	// exposed to it exactly as much as one declaring fifty. See issue #245.
-	ExactProperties bool
+	// Decode is jsonDoc and the helpers around it: the in-place decode every
+	// struct, raw-JSON wrapper and container alias reads its value through, in
+	// one pass over one indexed document however deeply the types nest.
+	// Conditional like every other block here -- a package of nothing but
+	// scalars and enums decodes through encoding/json alone.
+	Decode bool
 
 	// PathJoin is jsonPathError and the two constructors and two joiners around
 	// it: the rule by which a nested validation message is put behind the path
@@ -163,7 +163,7 @@ func (h HelperSet) Empty() bool {
 	return !h.OneOf && !h.OneOfDiscriminator && !h.Dynamic && !h.DynamicConst &&
 		!h.Annotations && !h.Integer && !h.Number && !h.NumberCompare && !h.DateTime &&
 		!h.Canonical && !h.NullCheck &&
-		!h.Format && !h.FormatHostname && !h.Content && !h.Access && !h.ExactProperties &&
+		!h.Format && !h.FormatHostname && !h.Content && !h.Access && !h.Decode &&
 		!h.PathJoin && !h.DecodePath && !h.IPAddr && len(h.Patterns) == 0 && !h.Quote && !h.Undecided
 }
 
@@ -190,7 +190,7 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.FormatHostname = h.FormatHostname || other.FormatHostname
 	h.Access = h.Access || other.Access
 	h.AccessPattern = h.AccessPattern || other.AccessPattern
-	h.ExactProperties = h.ExactProperties || other.ExactProperties
+	h.Decode = h.Decode || other.Decode
 	h.PathJoin = h.PathJoin || other.PathJoin
 	h.DecodePath = h.DecodePath || other.DecodePath
 	h.Patterns = mergeSortedUnique(h.Patterns, other.Patterns)
@@ -217,6 +217,18 @@ func (h *HelperSet) CloseOverCalls() {
 	// answer is built with.
 	// jsonNumber, the --exact-numbers shadow, refuses a string through
 	// jsonValueErrorf as jsonInteger does, so it closes over the same block.
+	//
+	// The null walker, the union's key readers and --strict-read-write's
+	// walker all read a document in place, through jsonDoc; and the in-place
+	// decode reads a member's refusal for the schema's words through the
+	// decode-path block. Those are settled first, since the path-join block is
+	// what both of them build their messages with.
+	if h.NullCheck || h.OneOf || h.OneOfDiscriminator || h.Access {
+		h.Decode = true
+	}
+	if h.Decode {
+		h.DecodePath = true
+	}
 	if h.Integer || h.Number || h.DateTime || h.IPAddr || h.NullCheck || h.DecodePath || h.Annotations {
 		h.PathJoin = true
 	}
@@ -270,18 +282,22 @@ func HelpersReferencedBy(src string) HelperSet {
 	if strings.Contains(src, "oneofDiscriminatorValue(") {
 		set.OneOfDiscriminator = true
 	}
-	// The exact-property decode. One function, called from every UnmarshalJSON
-	// whose struct has a member a JSON key can fill.
-	if strings.Contains(src, "jsonExactProperties(") {
-		set.ExactProperties = true
+	// The in-place decode. Every type that decodes in place names the
+	// document type in its method, and every one that opens a document names
+	// the function that opens it; the second can appear without the first --
+	// a scalar alias whose null rule reaches inside it -- so both are matched.
+	if strings.Contains(src, "*jsonDoc") || strings.Contains(src, "jsonOpenDoc(") {
+		set.Decode = true
 	}
-	// The path-join block. Five names reach it -- the three constructors a
+	// The path-join block. Six names reach it -- the four constructors a
 	// message states what precedes it with, and the two joiners that read what
 	// they recorded -- and a file can carry any one without the others: a leaf
 	// alias only ever builds, and a struct whose members are all named only ever
-	// joins. All five are matched for that reason.
+	// joins. All six are matched for that reason. jsonValueWrapf is matched
+	// without its parenthesis, since a union at the top of a value assigns it
+	// rather than calling it.
 	if strings.Contains(src, "jsonValueErrorf(") || strings.Contains(src, "jsonElemErrorf(") ||
-		strings.Contains(src, "jsonStepErrorf(") ||
+		strings.Contains(src, "jsonStepErrorf(") || strings.Contains(src, "jsonValueWrapf") ||
 		strings.Contains(src, "jsonPathf(") || strings.Contains(src, "jsonElemPathf(") {
 		set.PathJoin = true
 	}

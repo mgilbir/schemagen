@@ -1,19 +1,27 @@
-{{/*
-decodemembers renders the call that traces a failed decode back to the member at
-fault. The list is built from the struct's own members and their shadows; see
-StructDef.DecodeMembers and jsonDecodeMemberError.
-*/}}
-{{define "decodemembers"}}jsonDecodeMemberError(data, err, []jsonMemberDecode{
-	{{- range .DecodeMembers}}
-	{name: {{printf "%q" .JSONName}}, decode: {{.Decoder}}},
-	{{- end}}
-}){{end}}
-
 {{define "unmarshal"}}
 {{- $struct := . -}}
 {{- $recv := receiverName .Name -}}
 
+// UnmarshalJSON replaces {{$recv}} with the value the document holds. See
+// decodeJSONAt.
 func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish({{$recv}}.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into {{$recv}}, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever {{$recv}} held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*{{$recv}} = {{$struct.Name}}{}
 	{{- if $struct.StrictReadWrite}}
 	{{- /* --strict-read-write's refusal is decided over the document's own bytes
 	       and applied once the value is whole, rather than returned from the
@@ -29,34 +37,11 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	       ask. That was issue #219's middle group -- `patternProperties ^k: key
 	       "k1": ro: read-only property may not be set` came back from Validate().
 
-	       See _decodeIgnoringReadOnly and _accessRefuseReadOnly. */}}
-	var _roErr error
+	       The refusal is recorded on the document rather than returned (see
+	       jsonDoc.finish), so a nested type that raises one goes on decoding and
+	       so does everything around it. See _decodeIgnoringReadOnly and
+	       _accessRefuseReadOnly. */}}
 	_bodyErr := func() error {
-	{{- end}}
-	{{- /* Reset synthesized state first so reusing a value across Unmarshal
-	       calls does not resurrect overflow maps, presence tracking, or the
-	       sticky non-object flag from a previous document. */}}
-	{{- if $struct.AdditionalProperties}}
-	{{$recv}}.AdditionalProperties = nil
-	{{- end}}
-	{{- if $struct.HasPatternProperties}}
-	{{$recv}}.PatternProperties = nil
-	{{- end}}
-	{{- if $struct.NeedsJSONKeys}}
-	{{$recv}}._jsonKeys = nil
-	{{- end}}
-	{{- if $struct.NeedsRawProps}}
-	{{$recv}}._jsonRawProps = nil
-	{{- end}}
-	{{- if $struct.NeedsJSONNulls}}
-	{{$recv}}._jsonNulls = nil
-	{{- end}}
-	{{- if $struct.AcceptNonObject}}
-	{{$recv}}._nonObject = false
-	{{$recv}}._rawNonObject = nil
-	{{- end}}
-	{{- range $struct.OneOfs}}
-	{{$recv}}.{{.FieldName}} = nil
 	{{- end}}
 	{{- if $struct.NeedsNullCheck}}
 	{{- /* A sentence about this value, with no name of its own in it: the
@@ -65,7 +50,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	       map value reporting `null is not allowed for type T` -- a type the
 	       caller never wrote and cannot find, in place of the position they can.
 	       Issues #276 and #282. */}}
-	if string(data) == "null" {
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
 	{{- end}}
@@ -74,7 +59,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	// "type" admits no object at all, so no document reaches them. Refused here
 	// rather than left to the constraints: an object decodes into the fields and
 	// never reaches the non-object block, which is where the type is checked.
-	if len(data) > 0 && data[0] == '{' {
+	if _d.data[_sp.start] == '{' {
 		return jsonValueErrorf("object is not allowed")
 	}
 	{{- end}}
@@ -82,13 +67,9 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	// The schema admits a document that is not an object, so object constraints
 	// are type-conditional. Non-object JSON data is accepted here and judged by
 	// Validate; raw bytes are preserved for roundtrip.
-	{{- if $struct.NeedsNullCheck}}
-	if len(data) == 0 || (data[0] != '{' && string(data) != "null") {
-	{{- else}}
-	if len(data) == 0 || data[0] != '{' {
-	{{- end}}
+	if _d.data[_sp.start] != '{' {
 		{{$recv}}._nonObject = true
-		{{$recv}}._rawNonObject = append({{$recv}}._rawNonObject[:0], data...)
+		{{$recv}}._rawNonObject = _d.keep(_sp)
 		return nil
 	}
 	{{- end}}
@@ -97,199 +78,115 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	       into first -- and attempting one would refuse every scalar the schema
 	       allows before a branch was tried. See OneOfIsWholeValue. */}}
 	{{- else}}
-	{{- if $struct.NeedsExactPropertyDecode}}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			{{- range $struct.DecodeJSONNames}}
-			{{printf "%q" .}},
-			{{- end}}
-		); _exact != nil {
-			_decodeData = _exact
+	{{- /* A null decodes into no member at all, as it did through
+	       encoding/json, and leaves the record of the document's keys empty
+	       rather than absent: a value decoded from a null was decoded from
+	       JSON, and its required members are missing. */}}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[{{$struct.Name}}](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	{{- end}}
-	type Alias {{$struct.Name}}
-	{{- /* The shadows are declared pointers first and raw bytes last, which is
-	       the order they cost least in: a json.RawMessage is three words with
-	       its pointer in the first, so a bare pointer written after one is
-	       scanned through sixteen bytes of length and capacity to be reached.
-	       encoding/json matches a member by its tag, so which loop comes first
-	       decides nothing else. */}}
-	aux := &struct {
-		*Alias
-		{{- range $struct.Fields}}
-		{{- if and .LeafDecode (not .ManualJSON)}}
-		{{- /* Shadows the promoted field of the same name: an outer field wins
-		       over an embedded one, so encoding/json fills this instead and the
-		       declared int64, json.Number or time.Time is never the decode
-		       destination. See jsonInteger, jsonNumber and jsonDateTime. */}}
-		{{.Name}} *{{goType .LeafDecode.ShadowType}} `json:"{{jsonTagName .JSONName}}"`
-		{{- end}}
-		{{- end}}
-		{{- range $struct.OneOfs}}
-		{{- if and .IsProperty (not .ManualJSON)}}
-		{{.FieldName}} json.RawMessage `json:"{{jsonTagName .JSONName}}"`
-		{{- end}}
-		{{- end}}
-	}{
-		Alias: (*Alias)({{$recv}}),
-	}
-
-	if err := json.Unmarshal({{if $struct.NeedsExactPropertyDecode}}_decodeData{{else}}data{{end}}, aux); err != nil {
-		{{- if $struct.StrictReadWrite}}
-		// A refusal arriving from a nested type is held rather than returned.
-		// encoding/json records an Unmarshaler's error and goes on filling the
-		// rest of the value, so what is in hand here is complete; returning at
-		// once would leave the presence maps unset and a Validate check reading
-		// this value would under-enforce.
-		if !_isReadOnlyRefusal(err) {
-			{{- /* Traced back to the member at fault exactly as under the default
-			       configuration. A guard was written here for the case where a
-			       member put to its own decode raises this flag's refusal and the
-			       decode that failed did not, and it is gone: nothing could make
-			       it fire. The refusal reaches the caller through _roErr, which
-			       is returned ahead of this closure's answer whatever that answer
-			       is, so the branch could only ever have changed a message the
-			       caller was never shown. */}}
-			{{- if $struct.DecodeMembers}}
-			return {{template "decodemembers" $struct}}
-			{{- else}}
-			return jsonDecodeRefusal(err)
-			{{- end}}
-		}
-		if _roErr == nil {
-			_roErr = err
-		}
-		{{- else}}
-		{{- if $struct.DecodeMembers}}
-		return {{template "decodemembers" $struct}}
-		{{- else}}
-		{{- /* A struct with no member to trace to still has a refusal worded
-		       from the Go value encoding/json was filling, and the shadow it
-		       names is this function's own `type Alias`. */}}
-		return jsonDecodeRefusal(err)
-		{{- end}}
-		{{- end}}
-	}
-	{{- end}}
-	{{- if $struct.HasLeafDecodes}}
-	{{- if $struct.HasIntegerLeafDecodes}}
-
-	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
-	// above are what let encoding/json see it. Each outer pointer is nil when
-	// the property was absent or null, both of which leave the field as it was.
-	{{- end}}
-	{{- if $struct.HasNumberLeafDecodes}}
-
-	// A number held exactly is a json.Number, which is a string underneath and
-	// would take a JSON string for a number; the shadows above are what refuse
-	// one. Each outer pointer is nil when the property was absent or null, both
-	// of which leave the field as it was.
-	{{- end}}
-	{{- if $struct.HasDateTimeLeafDecodes}}
-
-	// A date-time may be spelled with a lower case "t" or "z", which RFC 3339
-	// permits and time.Time's parse layout refuses; the shadows above are what
-	// let encoding/json see one. Each outer pointer is nil when the property was
-	// absent or null, both of which leave the field as it was.
-	{{- end}}
+	{{- /* Each declared member is decoded by its own type, in the order the
+	       schema declares them, and the first that refuses is the refusal: its
+	       position is known, so the message names it (see jsonPathError), and a
+	       document with two faults fails the same way every time. Issue #282. */}}
 	{{- range $struct.Fields}}
-	{{- if and .LeafDecode (not .ManualJSON)}}
-	if aux.{{.Name}} != nil {
-		_iv := *aux.{{.Name}}
-		{{$recv}}.{{.Name}} = {{.LeafDecode.Convert}}
+	{{- if and (not .ManualJSON) .JSONName}}
+	if _v, _ok := _raw[{{printf "%q" .JSONName}}]; _ok {
+		{{- if .LeafDecode}}
+		{{- if .LeafDecode.Integers}}
+		// A number written 1.0 is the integer 1 from draft 6 on; the shadow is
+		// what lets it through. A null leaves the field as it is.
+		{{- end}}
+		{{- if .LeafDecode.Numbers}}
+		// A number held exactly is a json.Number, which is a string underneath
+		// and would take a JSON string for a number; the shadow is what refuses
+		// one. A null leaves the field as it is.
+		{{- end}}
+		{{- if .LeafDecode.DateTimes}}
+		// A date-time may be spelled with a lower case "t" or "z", which RFC
+		// 3339 permits and time.Time's parse layout refuses; the shadow is what
+		// lets one through. A null leaves the field as it is.
+		{{- end}}
+		if !_d.isNull(_v) {
+			var _iv {{goType .LeafDecode.ShadowType}}
+			if _err := {{.MemberDecoder}}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", {{printf "%q" .JSONName}})
+			}
+			{{$recv}}.{{.Name}} = {{.LeafDecode.Convert}}
+		}
+		{{- else}}
+		if _err := {{.MemberDecoder}}(&{{$recv}}.{{.Name}}, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", {{printf "%q" .JSONName}})
+		}
+		{{- end}}
 	}
-	{{- end}}
 	{{- end}}
 	{{- end}}
 	{{- if hasManualFields $struct.Fields}}
 
-	// Extract fields with JSON names that cannot be represented in struct tags.
-	{
-		{{- if $struct.NeedsExactPropertyDecode}}
-		if _rawErr != nil {
-			return _rawErr
+	// Fields with JSON names that cannot be represented in struct tags. They are
+	// decoded after every tagged member, which is the order they have always
+	// been refused in.
+	{{- range $struct.Fields}}
+	{{- if .ManualJSON}}
+	if _v, _ok := _raw[{{printf "%q" .JSONName}}]; _ok {
+		{{- if .LeafDecode}}
+		{{- if .LeafDecode.Integers}}
+		// Decoded through the shadow for the reason the tagged members are: a
+		// property name that cannot go in a struct tag is decoded by hand, but
+		// its integers are the same integers.
+		{{- end}}
+		{{- if .LeafDecode.Numbers}}
+		// Decoded through the shadow for the reason the tagged members are: a
+		// property name that cannot go in a struct tag is decoded by hand, but
+		// its numbers are the same numbers.
+		{{- end}}
+		{{- if .LeafDecode.DateTimes}}
+		// Decoded through the shadow for the reason the tagged members are: a
+		// property name that cannot go in a struct tag is decoded by hand, but
+		// its date-times are the same date-times.
+		{{- end}}
+		var _iv {{goType .LeafDecode.ShadowType}}
+		if _err := {{.ValueDecoder}}(&_iv, _d, _v); _err != nil {
+			return jsonPathf(jsonDecodeRefusal(_err), "%s", {{printf "%q" .JSONName}})
 		}
+		{{$recv}}.{{.Name}} = {{.LeafDecode.Convert}}
 		{{- else}}
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		{{- /* Named by the property the document wrote rather than by the Go
+		       field it lands in: this block exists precisely because that name
+		       cannot be spelled in a struct tag, and `unmarshaling Root.AB1`
+		       is a name the caller has no way to find. Issue #282. */}}
+		if _err := {{.ValueDecoder}}(&{{$recv}}.{{.Name}}, _d, _v); _err != nil {
+			return jsonPathf(jsonDecodeRefusal(_err), "%s", {{printf "%q" .JSONName}})
 		}
-		{{- end}}
-		{{- range $struct.Fields}}
-		{{- if .ManualJSON}}
-		if _member, ok := raw[{{printf "%q" .JSONName}}]; ok {
-			{{- if .LeafDecode}}
-			{{- if .LeafDecode.Integers}}
-			// Decoded through the shadow for the reason the aux fields above are:
-			// a property name that cannot go in a struct tag is decoded by hand,
-			// but its integers are the same integers.
-			{{- end}}
-			{{- if .LeafDecode.Numbers}}
-			// Decoded through the shadow for the reason the aux fields above are:
-			// a property name that cannot go in a struct tag is decoded by hand,
-			// but its numbers are the same numbers.
-			{{- end}}
-			{{- if .LeafDecode.DateTimes}}
-			// Decoded through the shadow for the reason the aux fields above are:
-			// a property name that cannot go in a struct tag is decoded by hand,
-			// but its date-times are the same date-times.
-			{{- end}}
-			var _iv {{goType .LeafDecode.ShadowType}}
-			if err := json.Unmarshal(_member, &_iv); err != nil {
-				return jsonPathf(jsonDecodeRefusal(err), "%s", {{printf "%q" .JSONName}})
-			}
-			{{$recv}}.{{.Name}} = {{.LeafDecode.Convert}}
-			{{- else}}
-			{{- /* Named by the property the document wrote rather than by the Go
-			       field it lands in: this block exists precisely because that name
-			       cannot be spelled in a struct tag, and `unmarshaling Root.AB1`
-			       is a name the caller has no way to find. Issue #282. */}}
-			if err := json.Unmarshal(_member, &{{$recv}}.{{.Name}}); err != nil {
-				return jsonPathf(jsonDecodeRefusal(err), "%s", {{printf "%q" .JSONName}})
-			}
-			{{- end}}
-		}
-		{{- end}}
 		{{- end}}
 	}
+	{{- end}}
+	{{- end}}
+	{{- end}}
 	{{- end}}
 	{{- range $oof := $struct.OneOfs}}
 
 	{
 		{{- if $oof.IsProperty}}
-		{{- if $oof.ManualJSON}}
-		// The property name cannot go in a struct tag, so the union's member is
-		// looked up by hand rather than through the aux struct above.
-		var oneofData json.RawMessage
-		{
-			{{- if $struct.NeedsExactPropertyDecode}}
-			if _rawErr != nil {
-				return _rawErr
-			}
-			{{- else}}
-			var raw map[string]json.RawMessage
-			if err := json.Unmarshal(data, &raw); err != nil {
-				return err
-			}
-			{{- end}}
-			oneofData = raw[{{printf "%q" $oof.JSONName}}]
-		}
-		{{- else}}
-		oneofData := aux.{{$oof.FieldName}}
-		{{- end}}
+		_ov, _has := _raw[{{printf "%q" $oof.JSONName}}]
 		// Every refusal this union raises is a sentence about the value the union
 		// holds, and the property that reaches it goes in front of that sentence
 		// by the rule every other message is joined by (see jsonPathError).
@@ -301,29 +198,40 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		oneofErrf := func(format string, args ...any) error {
 			return jsonPathf(jsonValueErrorf(format, args...), "%s", {{printf "%q" $oof.JSONName}})
 		}
+		// oneofWrapf is oneofErrf for a sentence that ends with a branch's own
+		// refusal, which is kept as a step of the message rather than written
+		// into it (see jsonValueWrapf): at every level of a recursive document
+		// that refuses at the bottom, each union puts its words in front of the
+		// words of the one below it.
+		oneofWrapf := func(err error, prefix string) error {
+			return jsonPathf(jsonValueWrapf(err, prefix), "%s", {{printf "%q" $oof.JSONName}})
+		}
 		{{- else}}
-		// Top-level oneOf: the entire JSON object is the variant data.
-		oneofData := json.RawMessage(data)
+		// Top-level oneOf: the entire JSON value is the variant data.
+		_ov, _has := _sp, true
 		// The union is the whole of this value, so it has no name of its own to
 		// report under and its refusals are sentences about the value; whatever
 		// contains it puts the path in front. Issue #289.
 		oneofErrf := func(format string, args ...any) error {
 			return jsonValueErrorf(format, args...)
 		}
+		// oneofWrapf is oneofErrf for a sentence that ends with a branch's own
+		// refusal; see the property spelling above.
+		oneofWrapf := jsonValueWrapf
 		{{- end}}
 		{{- if $oof.RejectNull}}
 		// The schema behind this union excludes a JSON null, and the loop below
 		// steps over one rather than judging it -- which at the top level, where
 		// the union is the whole value and no parent check runs first, is an
 		// acceptance. See OneOfDef.RejectNull.
-		if string(oneofData) == "null" {
+		if _has && _d.isNull(_ov) {
 			return oneofErrf("null is not allowed")
 		}
 		{{- end}}
-		if len(oneofData) > 0 && string(oneofData) != "null" {
+		if _has && !_d.isNull(_ov) {
 			{{- if $oof.HasDiscriminator}}
 			// Discriminator-based dispatch on "{{$oof.DiscriminatorField}}"
-			discVal, discErr := oneofDiscriminatorValue(oneofData, {{printf "%q" $oof.DiscriminatorField}})
+			discVal, discErr := oneofDiscriminatorValue(_d, _ov, {{printf "%q" $oof.DiscriminatorField}})
 			if discErr != nil {
 				return oneofErrf("%w", discErr)
 			}
@@ -334,13 +242,13 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 				var candidate {{goType $v.Type}}
 				{{- if $v.LeafDecode}}
 				var _iv {{goType $v.LeafDecode.ShadowType}}
-				if err := json.Unmarshal(oneofData, &_iv); err != nil {
-					return oneofErrf("variant {{$v.FieldName}}: %w", err)
+				if err := {{$v.Decoder}}(&_iv, _d, _ov); err != nil {
+					return oneofWrapf(err, "variant {{$v.FieldName}}: ")
 				}
 				candidate = {{$v.LeafDecode.Convert}}
 				{{- else}}
-				if err := json.Unmarshal(oneofData, &candidate); err != nil {
-					return oneofErrf("variant {{$v.FieldName}}: %w", err)
+				if err := {{$v.Decoder}}(&candidate, _d, _ov); err != nil {
+					return oneofWrapf(err, "variant {{$v.FieldName}}: ")
 				}
 				{{- end}}
 				{{$recv}}.{{$oof.FieldName}} = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: candidate}
@@ -374,13 +282,27 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			var oneofOpaque int
 			var oneofStrictSel {{$oof.InterfaceName}}
 			var oneofStrictErr error
+			{{- range $i, $v := $oof.Variants}}
+			{{- if $v.Validatable}}
+			// The candidate this branch decoded, held for the tally below. Its
+			// Validate is asked only if more than one branch matched, which is
+			// the only case the tally is read in: asked here, it was run over
+			// the whole of the value at every level of a recursive document.
+			var _vc{{$i}} {{goType $v.Type}}
+			var _vcOK{{$i}} bool
 			{{- end}}
+			{{- end}}
+			{{- end}}
+			// Every branch below is a trial, and one that holds the value's
+			// members as raw JSON takes views of the document rather than
+			// copies of them; see jsonDoc.copyOf.
+			_d.trial++
 			{{- range $i, $v := $oof.Variants}}
 
 			// Try variant: {{$v.FieldName}}
 			{
 				{{- if $v.RequiredFields}}
-				if oneofHasRequiredFields(oneofData, {{requiredFieldsList $v.RequiredFields}}) {
+				if oneofHasRequiredFields(_d, _ov, {{requiredFieldsList $v.RequiredFields}}) {
 				{{- end}}
 					var candidate {{goType $v.Type}}
 					{{- if $v.LeafDecode}}
@@ -389,13 +311,19 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 					// of the file does -- otherwise a document this branch
 					// accepts is reported as matching no branch at all.
 					var _iv {{goType $v.LeafDecode.ShadowType}}
-					_ivErr := json.Unmarshal(oneofData, &_iv)
+					{{- if $struct.StrictReadWrite}}
+					_ivErr := jsonAttempt(_d, func() error { return {{$v.Decoder}}(&_iv, _d, _ov) })
+					{{- else}}
+					_ivErr := {{$v.Decoder}}(&_iv, _d, _ov)
+					{{- end}}
 					if _ivErr == nil {
 						candidate = {{$v.LeafDecode.Convert}}
 					}
 					if err := _ivErr; err == nil {
+					{{- else if $struct.StrictReadWrite}}
+					if err := jsonAttempt(_d, func() error { return {{$v.Decoder}}(&candidate, _d, _ov) }); err == nil {
 					{{- else}}
-					if err := json.Unmarshal(oneofData, &candidate); err == nil {
+					if err := {{$v.Decoder}}(&candidate, _d, _ov); err == nil {
 					{{- end}}
 						{{- if $v.Checks}}
 						// The branch's own constraints decide the match too: decoding
@@ -412,6 +340,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 						if _matched, _mErr := {{patternVar .Value}}.matches(string(candidate)); _mErr != nil {
 							// With no verdict on this branch there is no
 							// telling which one the document selects.
+							_d.trial--
 							return oneofErrf("oneOf: %w", _mErr)
 						} else if !_matched {
 							oneofOK = false
@@ -483,28 +412,12 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 						{{- if $v.Validatable}}
 						{{- if $v.Type.IsPointer}}
 						if candidate != nil {
-							if _vErr := candidate.Validate(); _vErr == nil {
-								oneofStrict++
-								oneofStrictSel = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: candidate}
-							} else if _schemagenUndecided(_vErr) {
-								// No verdict on this branch, so no telling
-								// which one the document selects.
-								return oneofErrf("variant {{$v.FieldName}}: %w", _vErr)
-							} else {
-								oneofStrictErr = fmt.Errorf("variant {{$v.FieldName}}: %w", _vErr)
-							}
+							_vc{{$i}}, _vcOK{{$i}} = candidate, true
 						} else {
 							oneofOpaque++
 						}
 						{{- else}}
-						if _vErr := candidate.Validate(); _vErr == nil {
-							oneofStrict++
-							oneofStrictSel = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: candidate}
-						} else if _schemagenUndecided(_vErr) {
-							return oneofErrf("variant {{$v.FieldName}}: %w", _vErr)
-						} else {
-							oneofStrictErr = fmt.Errorf("variant {{$v.FieldName}}: %w", _vErr)
-						}
+						_vc{{$i}}, _vcOK{{$i}} = candidate, true
 						{{- end}}
 						{{- else if $v.FullyChecked}}
 						// Nothing this branch says is left for a Validate to
@@ -520,6 +433,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 						{{- end}}
 						{{- end}}
 					} else if _schemagenUndecided(err) {
+						_d.trial--
 						return oneofErrf("variant {{$v.FieldName}}: %w", err)
 					} else {
 						oneofLastErr = err
@@ -529,6 +443,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 				{{- end}}
 			}
 			{{- end}}
+			_d.trial--
 
 			if oneofMatched == 0 {
 				{{- if $oof.HasVariantChecks}}
@@ -544,10 +459,26 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 				if oneofLastErr == nil {
 					return oneofErrf("no matching oneOf variant")
 				}
-				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
+				return oneofWrapf(oneofLastErr, "no matching oneOf variant: ")
 			}
 			{{- if $oof.HasValidatableVariants}}
 			if oneofMatched > 1 && oneofOpaque == 0 {
+				{{- range $i, $v := $oof.Variants}}
+				{{- if $v.Validatable}}
+				if _vcOK{{$i}} {
+					if _vErr := _vc{{$i}}.Validate(); _vErr == nil {
+						oneofStrict++
+						oneofStrictSel = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: _vc{{$i}}}
+					} else if _schemagenUndecided(_vErr) {
+						// No verdict on this branch, so no telling which one
+						// the document selects.
+						return oneofErrf("variant {{$v.FieldName}}: %w", _vErr)
+					} else {
+						oneofStrictErr = jsonValueWrapf(_vErr, "variant {{$v.FieldName}}: ")
+					}
+				}
+				{{- end}}
+				{{- end}}
 				// Several branches decoded and every one can be judged, so the
 				// branches' own constraints settle which of them the value
 				// really satisfies. Ambiguity is already a rejection here, so
@@ -561,7 +492,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 				case oneofStrictErr != nil:
 					// Not ambiguity but a value no branch accepts: report the
 					// branch's own reason rather than a count.
-					return oneofErrf("no matching oneOf variant: %w", oneofStrictErr)
+					return oneofWrapf(oneofStrictErr, "no matching oneOf variant: ")
 				}
 			}
 			{{- end}}
@@ -573,201 +504,187 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	}
 	{{- end}}
 
-	{{- if or $struct.AdditionalProperties $struct.HasPatternProperties $struct.HasRequiredFields $struct.NeedsJSONKeys $struct.NeedsRawProps $struct.HasNullChecks $struct.NeedsJSONNulls $struct.ReadOnlyKeys}}
-	{
-		{{- if $struct.NeedsExactPropertyDecode}}
-		if _rawErr != nil {
-			return _rawErr
-		}
-		{{- else}}
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
-		}
-		{{- end}}
-		{{- if $struct.ReadOnlyKeys}}
-		// --strict-read-write. The schema marks these "readOnly", which JSON
-		// Schema section 9.4 says an owning authority is expected to ignore or
-		// reject when an application sets them; this configuration rejects.
-		//
-		// A rejection here rather than in Validate is the whole of the
-		// distinction. readOnly is an annotation in every draft that defines it
-		// and constrains no document, so a Validate that refused one of these
-		// would be answering a question the schema did not ask. Refusing to
-		// *decode* is this program declining to accept input, which is the
-		// caller's decision and is what the flag asked for.
+	{{- if not $struct.OneOfIsWholeValue}}
+	{{- if $struct.ReadOnlyKeys}}
+	// --strict-read-write. The schema marks these "readOnly", which JSON
+	// Schema section 9.4 says an owning authority is expected to ignore or
+	// reject when an application sets them; this configuration rejects.
+	//
+	// A rejection here rather than in Validate is the whole of the
+	// distinction. readOnly is an annotation in every draft that defines it
+	// and constrains no document, so a Validate that refused one of these
+	// would be answering a question the schema did not ask. Refusing to
+	// *decode* is this program declining to accept input, which is the
+	// caller's decision and is what the flag asked for.
+	if _d.refusal == nil {
 		for _, _roKey := range []string{
 			{{- range $struct.ReadOnlyKeys}}
 			{{printf "%q" .}},
 			{{- end}}
 		} {
-			if _, ok := raw[_roKey]; ok {
-				if _roErr == nil {
-					_roErr = &_readOnlyRefusal{Path: _roKey}
-				}
+			if _, ok := _raw[_roKey]; ok {
+				_d.refusal = &_readOnlyRefusal{Path: _roKey}
 				break
 			}
 		}
-		{{- end}}
-		{{- if $struct.FlatNullNames}}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			{{- range $struct.FlatNullNames}}
-			{{printf "%q" .}},
-			{{- end}}
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
-		}
-		{{- end}}
-		{{- range $struct.NestedNullChecks}}
-		if _v, ok := raw[{{printf "%q" .JSONName}}]; ok {
-			if err := checkJSONNullsAt(_v, {{template "nullrule" .}}); err != nil {
-				return jsonPathf(err, "%s", {{printf "%q" .JSONName}})
-			}
-		}
-		{{- end}}
-		{{- if $struct.NeedsJSONKeys}}
-		{{$recv}}._jsonKeys = make(map[string]bool, len(raw))
-		{{- /* maporder: fills a set; the same members end up in it in any order. */}}
-		for _k := range raw {
-			{{$recv}}._jsonKeys[_k] = true
-		}
-		{{- end}}
-		{{- if $struct.NeedsRawProps}}
-		{{$recv}}._jsonRawProps = raw
-		{{- end}}
-		{{- if $struct.NeedsJSONNulls}}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			{{- range $struct.NullPresenceKeys}}
-			{{printf "%q" .}},
-			{{- end}}
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if {{$recv}}._jsonNulls == nil {
-					{{$recv}}._jsonNulls = make(map[string]bool, 1)
-				}
-				{{$recv}}._jsonNulls[_nullKey] = true
-			}
-		}
-		{{- end}}
-		{{- if or $struct.AdditionalProperties $struct.HasPatternProperties}}
-		knownFields := map[string]bool{
-			{{- if $struct.HasOwnPropertyNames}}
-			{{- /* Only parent-level properties are "known" for additionalProperties routing.
-			       Properties merged from allOf sub-schemas are NOT known — they must be
-			       routed to additionalProperties per the JSON Schema spec (section 10.2). */}}
-			{{- range $struct.OwnPropertyNames}}
-			{{printf "%q" .}}: true,
-			{{- end}}
-			{{- else}}
-			{{- range $struct.Fields}}
-			{{printf "%q" .JSONName}}: true,
-			{{- end}}
-			{{- end}}
-			{{- range $struct.OneOfs}}
-			{{- if .IsProperty}}
-			{{printf "%q" .JSONName}}: true,
-			{{- end}}
-			{{- end}}
-		}
-		{{- /* Where a member can be refused -- a null the schema forbids, a value
-		       that does not decode, a key no pattern match could be decided for
-		       -- in least-key terms rather than map order: the refusal is for
-		       the least key, not for whichever member the randomised map order
-		       reached first. See least_key_open. Where nothing can be refused
-		       the loop only files each member under its own key, and stays a
-		       plain loop. */}}
-		{{- $refuses := or $struct.OverflowNullCheck (and $struct.AdditionalProperties (not (isRawMessage $struct.AdditionalProperties.ValueType))) $struct.HasPatternProperties}}
-		{{- $lk := leastKey "rawKey" "rawVal" "raw" "_failed"}}
-		{{- if $refuses}}
-		{{- template "least_key_open" $lk}}
-		{{- else}}
-		{{- /* maporder: files each member under its own key, which are distinct, and refuses none. */}}
-		for rawKey, rawVal := range raw {
-		{{- end}}
-			if knownFields[rawKey] {
-				{{if $refuses}}return nil{{else}}continue{{end}}
-			}
-			{{- if $struct.HasPatternProperties}}
-			{{- /* Which bucket a member is filed in is itself a pattern match,
-			       so a key no match could be decided for has nowhere to go:
-			       the decode reports it rather than guessing. */}}
-			matchesPattern := false
-			{{- range $struct.PatternProperties}}
-			if !matchesPattern {
-				_ppMatched, _ppErr := {{patternVar .Pattern}}.matches(rawKey)
-				if _ppErr != nil {
-					return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-				}
-				matchesPattern = _ppMatched
-			}
-			{{- end}}
-			if matchesPattern {
-				if {{$recv}}.PatternProperties == nil {
-					{{$recv}}.PatternProperties = make(map[string]json.RawMessage)
-				}
-				{{$recv}}.PatternProperties[rawKey] = rawVal
-				{{if $refuses}}return nil{{else}}continue{{end}}
-			}
-			{{- end}}
-			{{- with $struct.OverflowNullCheck}}
-			{{- /* A schema-valued additionalProperties governs every key that
-			       reaches here, and the hand-written decode below cannot see a
-			       null: json.Unmarshal of `null` into a string leaves "" and
-			       reports no error at all. */}}
-			{{- if .Nested}}
-			if err := checkJSONNullsAt(rawVal, {{template "nullrule" .}}); err != nil {
-				return jsonElemPathf(err, "[%s]", _schemagenQuote(rawKey))
-			}
-			{{- else}}
-			if string(rawVal) == "null" {
-				return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%s]", _schemagenQuote(rawKey))
-			}
-			{{- end}}
-			{{- end}}
-			{{- if $struct.AdditionalProperties}}
-			if {{$recv}}.AdditionalProperties == nil {
-				{{$recv}}.AdditionalProperties = make(map[string]{{goType $struct.AdditionalProperties.ValueType}})
-			}
-			{{- if isRawMessage $struct.AdditionalProperties.ValueType}}
-			{{$recv}}.AdditionalProperties[rawKey] = rawVal
-			{{- else if $struct.AdditionalProperties.LeafDecode}}
-			var _iv {{goType $struct.AdditionalProperties.LeafDecode.ShadowType}}
-			if err := json.Unmarshal(rawVal, &_iv); err != nil {
-				return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
-			}
-			{{$recv}}.AdditionalProperties[rawKey] = {{$struct.AdditionalProperties.LeafDecode.Convert}}
-			{{- else}}
-			var val {{goType $struct.AdditionalProperties.ValueType}}
-			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
-			}
-			{{$recv}}.AdditionalProperties[rawKey] = val
-			{{- end}}
-			{{- end}}
-		{{- if $refuses}}
-			return nil
-		{{- template "least_key_close" $lk}}
-		{{- else}}
-		}
-		{{- end}}
-		{{- end}}
 	}
 	{{- end}}
-	{{- /* _jsonKeys for dependentSchemas and optional validation is populated in the raw block above */}}
+	{{- if $struct.FlatNullNames}}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		{{- range $struct.FlatNullNames}}
+		{{printf "%q" .}},
+		{{- end}}
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	{{- end}}
+	{{- range $struct.NestedNullChecks}}
+	if _v, ok := _raw[{{printf "%q" .JSONName}}]; ok {
+		if err := checkJSONNullsAt(_d, _v, {{template "nullrule" .}}); err != nil {
+			return jsonPathf(err, "%s", {{printf "%q" .JSONName}})
+		}
+	}
+	{{- end}}
+	{{- if $struct.NeedsJSONKeys}}
+	{{$recv}}._jsonKeys = make(map[string]bool, len(_raw))
+	{{- /* maporder: fills a set; the same members end up in it in any order. */}}
+	for _k := range _raw {
+		{{$recv}}._jsonKeys[_k] = true
+	}
+	{{- end}}
+	{{- if $struct.NeedsRawProps}}
+	// The members a Validate check reads back as JSON. Each is a view of the
+	// document's own copy rather than a copy of its own: at every depth of a
+	// recursive document these hold the member below, and a copy each was the
+	// whole subtree held once per level. See jsonDoc.keep.
+	if _d.data[_sp.start] == '{' {
+		{{$recv}}._jsonRawProps = make(map[string]json.RawMessage, len(_raw))
+		{{- /* maporder: files each member under its own key, which are distinct. */}}
+		for _k, _v := range _raw {
+			{{$recv}}._jsonRawProps[_k] = _d.keep(_v)
+		}
+	}
+	{{- end}}
+	{{- if $struct.NeedsJSONNulls}}
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		{{- range $struct.NullPresenceKeys}}
+		{{printf "%q" .}},
+		{{- end}}
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if {{$recv}}._jsonNulls == nil {
+				{{$recv}}._jsonNulls = make(map[string]bool, 1)
+			}
+			{{$recv}}._jsonNulls[_nullKey] = true
+		}
+	}
+	{{- end}}
+	{{- if or $struct.AdditionalProperties $struct.HasPatternProperties}}
+	{{- /* Where a member can be refused -- a null the schema forbids, a value
+	       that does not decode, a key no pattern match could be decided for
+	       -- in least-key terms rather than map order: the refusal is for
+	       the least key, not for whichever member the randomised map order
+	       reached first. See least_key_open. Where nothing can be refused
+	       the loop only files each member under its own key, and stays a
+	       plain loop. */}}
+	{{- $refuses := or $struct.OverflowNullCheck (and $struct.AdditionalProperties (not (isRawMessage $struct.AdditionalProperties.ValueType))) $struct.HasPatternProperties}}
+	{{- $lk := leastKey "rawKey" "rawVal" "_raw" "_failed"}}
+	{{- if $refuses}}
+	{{- template "least_key_open" $lk}}
+	{{- else}}
+	{{- /* maporder: files each member under its own key, which are distinct, and refuses none. */}}
+	for rawKey, rawVal := range _raw {
+	{{- end}}
+		{{- /* Only parent-level properties are "known" for additionalProperties
+		       routing when the struct tracks them: properties merged from allOf
+		       sub-schemas are NOT known -- they must be routed to
+		       additionalProperties per the JSON Schema spec (section 10.2). */}}
+		{{- $known := $struct.KnownPropertyNames}}
+		{{- if $known}}
+		switch rawKey {
+		case {{requiredFieldsList $known}}:
+			{{if $refuses}}return nil{{else}}continue{{end}}
+		}
+		{{- end}}
+		{{- if $struct.HasPatternProperties}}
+		{{- /* Which bucket a member is filed in is itself a pattern match,
+		       so a key no match could be decided for has nowhere to go:
+		       the decode reports it rather than guessing. */}}
+		matchesPattern := false
+		{{- range $struct.PatternProperties}}
+		if !matchesPattern {
+			_ppMatched, _ppErr := {{patternVar .Pattern}}.matches(rawKey)
+			if _ppErr != nil {
+				return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
+			}
+			matchesPattern = _ppMatched
+		}
+		{{- end}}
+		if matchesPattern {
+			if {{$recv}}.PatternProperties == nil {
+				{{$recv}}.PatternProperties = make(map[string]json.RawMessage)
+			}
+			{{$recv}}.PatternProperties[rawKey] = _d.copyOf(rawVal)
+			{{if $refuses}}return nil{{else}}continue{{end}}
+		}
+		{{- end}}
+		{{- with $struct.OverflowNullCheck}}
+		{{- /* A schema-valued additionalProperties governs every key that
+		       reaches here, and the hand-written decode below cannot see a
+		       null: json.Unmarshal of `null` into a string leaves "" and
+		       reports no error at all. */}}
+		{{- if .Nested}}
+		if err := checkJSONNullsAt(_d, rawVal, {{template "nullrule" .}}); err != nil {
+			return jsonElemPathf(err, "[%s]", _schemagenQuote(rawKey))
+		}
+		{{- else}}
+		if _d.isNull(rawVal) {
+			return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%s]", _schemagenQuote(rawKey))
+		}
+		{{- end}}
+		{{- end}}
+		{{- if $struct.AdditionalProperties}}
+		if {{$recv}}.AdditionalProperties == nil {
+			{{$recv}}.AdditionalProperties = make(map[string]{{goType $struct.AdditionalProperties.ValueType}})
+		}
+		{{- if isRawMessage $struct.AdditionalProperties.ValueType}}
+		{{$recv}}.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		{{- else if $struct.AdditionalProperties.LeafDecode}}
+		var _iv {{goType $struct.AdditionalProperties.LeafDecode.ShadowType}}
+		if err := {{$struct.AdditionalProperties.ValueDecoder}}(&_iv, _d, rawVal); err != nil {
+			return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
+		}
+		{{$recv}}.AdditionalProperties[rawKey] = {{$struct.AdditionalProperties.LeafDecode.Convert}}
+		{{- else}}
+		var val {{goType $struct.AdditionalProperties.ValueType}}
+		if err := {{$struct.AdditionalProperties.ValueDecoder}}(&val, _d, rawVal); err != nil {
+			return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
+		}
+		{{$recv}}.AdditionalProperties[rawKey] = val
+		{{- end}}
+		{{- end}}
+	{{- if $refuses}}
+		return nil
+	{{- template "least_key_close" $lk}}
+	{{- else}}
+	}
+	{{- end}}
+	{{- end}}
+	{{- end}}
 
 	return nil
 	{{- if $struct.StrictReadWrite}}
@@ -776,15 +693,12 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	// The locations below this struct's own members, which no Go field answers
 	// for: a tuple slot, a contains element, a patternProperties value. See
 	// _accessRefuseReadOnly.
-	if _roErr == nil {
-		if _err := _accessRefuseReadOnly(data, {{$struct.AccessRulesVar}}); _err != nil {
-			_roErr = _err
+	if _d.refusal == nil {
+		if _err := _accessRefuseReadOnly(_d, _sp, {{$struct.AccessRulesVar}}); _err != nil {
+			_d.refusal = _err
 		}
 	}
 	{{- end}}
-	if _roErr != nil {
-		return _roErr
-	}
 	return _bodyErr
 	{{- end}}
 }

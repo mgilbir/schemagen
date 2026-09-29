@@ -10,6 +10,11 @@
      the refusal is decided by its schema -- the two are independent, and every
      combination has to carry it. */}}
 {{define "enum_null_guard"}}
+	{{- /* The value is replaced rather than merged into, as every generated
+	       type's is: a document refused below leaves the zero value, not the
+	       member an earlier one decoded to. */}}
+	var _zero {{.Name}}
+	*{{receiverName .Name}} = _zero
 {{- if .NeedsNullCheck}}
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
@@ -127,16 +132,32 @@ var {{$allowedVar}} = _jsonCanonicalTexts([]string{
 {{- end}}
 })
 
+// UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
+//
+// encoding/json's contract for an Unmarshaler is that it copies what it keeps,
+// and this one kept the caller's slice: a caller that reused its read buffer --
+// a json.Decoder over a stream does, for every document -- rewrote a value it had
+// already decoded, which then validated as whatever the next document held
+// there. A value that is not JSON at all is refused in encoding/json's words;
+// encoding/json never hands one over, so only a direct caller reaches that.
 func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
-	*{{$recv}} = {{.Name}}(data)
+	*{{$recv}} = nil
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	*{{$recv}} = {{.Name}}(append([]byte(nil), data...))
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it, in a buffer of
+// its own: the value's bytes, handed out, are bytes a caller can rewrite it
+// through.
 func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 	if len({{$recv}}) == 0 {
 		return []byte("null"), nil
 	}
-	return json.RawMessage({{$recv}}).MarshalJSON()
+	return append([]byte(nil), {{$recv}}...), nil
 }
 
 // Validate checks {{.Name}} against its JSON Schema constraints.

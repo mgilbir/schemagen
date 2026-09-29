@@ -118,24 +118,31 @@ var codeFuncs = map[string]string{
 // codeFields hold Go code or literals the generator built, each from minted
 // identifiers and strconv-quoted schema text.
 var codeFields = map[string]string{
-	"Expr":           "a Go expression built from minted identifiers",
-	"Cond":           "a Go condition built from minted identifiers and ints",
-	"Args":           "index variables the generator picks",
-	"Convert":        "a conversion the generator picks",
-	"Decoder":        "a decode function name from a fixed table",
-	"UnmarshalAs":    "a Go type expression",
-	"MarshalAs":      "a Go type expression",
-	"ValidateAs":     "a Go type expression",
-	"ValueType":      "a Go type expression",
-	"DefaultLiteral": "a Go composite literal; generator.defaultLiteral quotes every string",
-	"ZeroLiteral":    "a Go zero value for a minted type",
-	"NodeLiteral":    "an evaluator node literal; generator quotes every string",
-	"Literal":        "a Go literal; generator quotes every string",
-	"Indent":         "whitespace",
-	"Vars":           "a leastKeyCtx's key and value variables; see TestLeastKeyArgumentsAreCode",
-	"Container":      "a leastKeyCtx's map expression; see TestLeastKeyArgumentsAreCode",
-	"Key":            "a leastKeyCtx's key variable; see TestLeastKeyArgumentsAreCode",
-	"Ret":            "a leastKeyCtx's return operands; see TestLeastKeyArgumentsAreCode",
+	"Expr":    "a Go expression built from minted identifiers",
+	"Cond":    "a Go condition built from minted identifiers and ints",
+	"Args":    "index variables the generator picks",
+	"Convert": "a conversion the generator picks",
+	// The decode plans generator/decodeplan.go composes: helper names, method
+	// expressions and function literals over GoTypeName()s. Nothing from the
+	// schema but minted type names reaches them.
+	"Decoder":            "a decode plan: a jsonAt expression built from helper names and minted type names",
+	"MemberDecoder":      "a decode plan, as Decoder",
+	"ValueDecoder":       "a decode plan, as Decoder",
+	"UnderlyingDecoder":  "a decode plan, as Decoder",
+	"UnmarshalAsDecoder": "a decode plan, as Decoder",
+	"UnmarshalAs":        "a Go type expression",
+	"MarshalAs":          "a Go type expression",
+	"ValidateAs":         "a Go type expression",
+	"ValueType":          "a Go type expression",
+	"DefaultLiteral":     "a Go composite literal; generator.defaultLiteral quotes every string",
+	"ZeroLiteral":        "a Go zero value for a minted type",
+	"NodeLiteral":        "an evaluator node literal; generator quotes every string",
+	"Literal":            "a Go literal; generator quotes every string",
+	"Indent":             "whitespace",
+	"Vars":               "a leastKeyCtx's key and value variables; see TestLeastKeyArgumentsAreCode",
+	"Container":          "a leastKeyCtx's map expression; see TestLeastKeyArgumentsAreCode",
+	"Key":                "a leastKeyCtx's key variable; see TestLeastKeyArgumentsAreCode",
+	"Ret":                "a leastKeyCtx's return operands; see TestLeastKeyArgumentsAreCode",
 }
 
 // formatFields are fields typed formatText (see TestFormatFieldsAreTyped), so

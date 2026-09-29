@@ -25,14 +25,16 @@ func ExtractRootTypeNameFromCode(code string) string {
 		}
 	}
 
-	// Fallback: find the last struct with JSON-tagged fields.
+	// Fallback: find the last struct with JSON-tagged fields. Only a
+	// declaration at the top level of the file is a candidate: a decoder
+	// declares `type Alias T` inside its own body, which no caller can name.
 	var lastType string
 	var currentType string
 	var hasJSONTag bool
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "type ") && strings.Contains(trimmed, " struct {") {
+		if strings.HasPrefix(line, "type ") && strings.Contains(trimmed, " struct {") {
 			parts := strings.Fields(trimmed)
 			if len(parts) >= 2 {
 				currentType = parts[1]
@@ -54,7 +56,7 @@ func ExtractRootTypeNameFromCode(code string) string {
 		// Fallback: just find the last struct
 		for _, line := range lines {
 			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "type ") && strings.Contains(trimmed, " struct {") {
+			if strings.HasPrefix(line, "type ") && strings.Contains(trimmed, " struct {") {
 				parts := strings.Fields(trimmed)
 				if len(parts) >= 2 {
 					lastType = parts[1]
@@ -68,7 +70,7 @@ func ExtractRootTypeNameFromCode(code string) string {
 		var lastAlias string
 		for _, line := range lines {
 			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "type ") && !strings.Contains(trimmed, " struct {") && !strings.Contains(trimmed, " interface {") {
+			if strings.HasPrefix(line, "type ") && !strings.Contains(trimmed, " struct {") && !strings.Contains(trimmed, " interface {") {
 				parts := strings.Fields(trimmed)
 				if len(parts) >= 3 {
 					lastAlias = parts[1]

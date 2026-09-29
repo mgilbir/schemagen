@@ -12,19 +12,33 @@ type Never struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *Never) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *Never) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = Never{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n Never) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n Never) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n Never) Raw() json.RawMessage { return append(json.RawMessage(nil), n._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -48,19 +62,33 @@ type RefToFalseRoot struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *RefToFalseRoot) UnmarshalJSON(data []byte) error {
-	r._raw = append(r._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever r held.
+func (r *RefToFalseRoot) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*r = RefToFalseRoot{}
+	r._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (r RefToFalseRoot) MarshalJSON() ([]byte, error) {
 	if len(r._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return r._raw, nil
+	return append([]byte(nil), r._raw...), nil
 }
 
-func (r RefToFalseRoot) Raw() json.RawMessage { return r._raw }
+// Raw returns a copy of the value's bytes.
+func (r RefToFalseRoot) Raw() json.RawMessage { return append(json.RawMessage(nil), r._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.

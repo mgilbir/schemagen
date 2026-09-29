@@ -13,19 +13,33 @@ type ArrayConst struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces a with the value the document holds. See
+// decodeJSONAt.
 func (a *ArrayConst) UnmarshalJSON(data []byte) error {
-	a._raw = append(a._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(a.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever a held.
+func (a *ArrayConst) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*a = ArrayConst{}
+	a._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (a ArrayConst) MarshalJSON() ([]byte, error) {
 	if len(a._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return a._raw, nil
+	return append([]byte(nil), a._raw...), nil
 }
 
-func (a ArrayConst) Raw() json.RawMessage { return a._raw }
+// Raw returns a copy of the value's bytes.
+func (a ArrayConst) Raw() json.RawMessage { return append(json.RawMessage(nil), a._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -49,19 +63,33 @@ type BoolConst struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces b with the value the document holds. See
+// decodeJSONAt.
 func (b *BoolConst) UnmarshalJSON(data []byte) error {
-	b._raw = append(b._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(b.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever b held.
+func (b *BoolConst) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*b = BoolConst{}
+	b._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (b BoolConst) MarshalJSON() ([]byte, error) {
 	if len(b._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return b._raw, nil
+	return append([]byte(nil), b._raw...), nil
 }
 
-func (b BoolConst) Raw() json.RawMessage { return b._raw }
+// Raw returns a copy of the value's bytes.
+func (b BoolConst) Raw() json.RawMessage { return append(json.RawMessage(nil), b._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -85,41 +113,58 @@ type ForbiddenWhenK struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddenWhenK) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	f._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *ForbiddenWhenK) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddenWhenK{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias ForbiddenWhenK
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(f),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ForbiddenWhenK](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	f._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		f._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if f.AdditionalProperties == nil {
+			f.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		f._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			f._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
-		}
+		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -159,19 +204,33 @@ type NeverString struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NeverString) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NeverString) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NeverString{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NeverString) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NeverString) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NeverString) Raw() json.RawMessage { return append(json.RawMessage(nil), n._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -195,41 +254,58 @@ type NoNameAllowed struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NoNameAllowed) UnmarshalJSON(data []byte) error {
-	n.AdditionalProperties = nil
-	n._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into n, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever n held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (n *NoNameAllowed) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NoNameAllowed{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias NoNameAllowed
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(n),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[NoNameAllowed](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	n._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		n._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if n.AdditionalProperties == nil {
+			n.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		n._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			n._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if n.AdditionalProperties == nil {
-				n.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			n.AdditionalProperties[rawKey] = rawVal
-		}
+		n.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -283,19 +359,33 @@ type NullConst struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullConst) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NullConst) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullConst{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NullConst) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NullConst) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NullConst) Raw() json.RawMessage { return append(json.RawMessage(nil), n._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -319,19 +409,33 @@ type NumberConst struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NumberConst) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NumberConst) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NumberConst{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NumberConst) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NumberConst) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NumberConst) Raw() json.RawMessage { return append(json.RawMessage(nil), n._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -355,19 +459,33 @@ type ObjectConst struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces o with the value the document holds. See
+// decodeJSONAt.
 func (o *ObjectConst) UnmarshalJSON(data []byte) error {
-	o._raw = append(o._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(o.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever o held.
+func (o *ObjectConst) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*o = ObjectConst{}
+	o._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (o ObjectConst) MarshalJSON() ([]byte, error) {
 	if len(o._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return o._raw, nil
+	return append([]byte(nil), o._raw...), nil
 }
 
-func (o ObjectConst) Raw() json.RawMessage { return o._raw }
+// Raw returns a copy of the value's bytes.
+func (o ObjectConst) Raw() json.RawMessage { return append(json.RawMessage(nil), o._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -400,6 +518,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (o *OnlyA) UnmarshalJSON(data []byte) error {
+	var _zero OnlyA
+	*o = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -426,16 +546,32 @@ var enumOutsideDeclaredTypeArrayEnumAllowedJSON = _jsonCanonicalTexts([]string{
 	"[1]",
 })
 
+// UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
+//
+// encoding/json's contract for an Unmarshaler is that it copies what it keeps,
+// and this one kept the caller's slice: a caller that reused its read buffer --
+// a json.Decoder over a stream does, for every document -- rewrote a value it had
+// already decoded, which then validated as whatever the next document held
+// there. A value that is not JSON at all is refused in encoding/json's words;
+// encoding/json never hands one over, so only a direct caller reaches that.
 func (e *EnumOutsideDeclaredTypeArrayEnum) UnmarshalJSON(data []byte) error {
-	*e = EnumOutsideDeclaredTypeArrayEnum(data)
+	*e = nil
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	*e = EnumOutsideDeclaredTypeArrayEnum(append([]byte(nil), data...))
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it, in a buffer of
+// its own: the value's bytes, handed out, are bytes a caller can rewrite it
+// through.
 func (e EnumOutsideDeclaredTypeArrayEnum) MarshalJSON() ([]byte, error) {
 	if len(e) == 0 {
 		return []byte("null"), nil
 	}
-	return json.RawMessage(e).MarshalJSON()
+	return append([]byte(nil), e...), nil
 }
 
 // Validate checks EnumOutsideDeclaredTypeArrayEnum against its JSON Schema constraints.
@@ -460,19 +596,35 @@ type EnumOutsideDeclaredTypeConstOutsideAllOf struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces e with the value the document holds. See
+// decodeJSONAt.
 func (e *EnumOutsideDeclaredTypeConstOutsideAllOf) UnmarshalJSON(data []byte) error {
-	e._raw = append(e._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(e.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever e held.
+func (e *EnumOutsideDeclaredTypeConstOutsideAllOf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*e = EnumOutsideDeclaredTypeConstOutsideAllOf{}
+	e._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (e EnumOutsideDeclaredTypeConstOutsideAllOf) MarshalJSON() ([]byte, error) {
 	if len(e._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return e._raw, nil
+	return append([]byte(nil), e._raw...), nil
 }
 
-func (e EnumOutsideDeclaredTypeConstOutsideAllOf) Raw() json.RawMessage { return e._raw }
+// Raw returns a copy of the value's bytes.
+func (e EnumOutsideDeclaredTypeConstOutsideAllOf) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), e._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -496,19 +648,35 @@ type EnumOutsideDeclaredTypeConstOutsideAnyOf struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces e with the value the document holds. See
+// decodeJSONAt.
 func (e *EnumOutsideDeclaredTypeConstOutsideAnyOf) UnmarshalJSON(data []byte) error {
-	e._raw = append(e._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(e.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever e held.
+func (e *EnumOutsideDeclaredTypeConstOutsideAnyOf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*e = EnumOutsideDeclaredTypeConstOutsideAnyOf{}
+	e._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (e EnumOutsideDeclaredTypeConstOutsideAnyOf) MarshalJSON() ([]byte, error) {
 	if len(e._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return e._raw, nil
+	return append([]byte(nil), e._raw...), nil
 }
 
-func (e EnumOutsideDeclaredTypeConstOutsideAnyOf) Raw() json.RawMessage { return e._raw }
+// Raw returns a copy of the value's bytes.
+func (e EnumOutsideDeclaredTypeConstOutsideAnyOf) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), e._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -532,19 +700,35 @@ type EnumOutsideDeclaredTypeConstOutsideItemsItem struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces e with the value the document holds. See
+// decodeJSONAt.
 func (e *EnumOutsideDeclaredTypeConstOutsideItemsItem) UnmarshalJSON(data []byte) error {
-	e._raw = append(e._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(e.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever e held.
+func (e *EnumOutsideDeclaredTypeConstOutsideItemsItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*e = EnumOutsideDeclaredTypeConstOutsideItemsItem{}
+	e._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (e EnumOutsideDeclaredTypeConstOutsideItemsItem) MarshalJSON() ([]byte, error) {
 	if len(e._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return e._raw, nil
+	return append([]byte(nil), e._raw...), nil
 }
 
-func (e EnumOutsideDeclaredTypeConstOutsideItemsItem) Raw() json.RawMessage { return e._raw }
+// Raw returns a copy of the value's bytes.
+func (e EnumOutsideDeclaredTypeConstOutsideItemsItem) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), e._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -571,19 +755,35 @@ type EnumOutsideDeclaredTypeConstOutsideOneOf struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces e with the value the document holds. See
+// decodeJSONAt.
 func (e *EnumOutsideDeclaredTypeConstOutsideOneOf) UnmarshalJSON(data []byte) error {
-	e._raw = append(e._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(e.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever e held.
+func (e *EnumOutsideDeclaredTypeConstOutsideOneOf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*e = EnumOutsideDeclaredTypeConstOutsideOneOf{}
+	e._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (e EnumOutsideDeclaredTypeConstOutsideOneOf) MarshalJSON() ([]byte, error) {
 	if len(e._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return e._raw, nil
+	return append([]byte(nil), e._raw...), nil
 }
 
-func (e EnumOutsideDeclaredTypeConstOutsideOneOf) Raw() json.RawMessage { return e._raw }
+// Raw returns a copy of the value's bytes.
+func (e EnumOutsideDeclaredTypeConstOutsideOneOf) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), e._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -627,66 +827,83 @@ type EnumOutsideDeclaredTypeConstOutsidePattern struct {
 	PatternProperties    map[string]json.RawMessage `json:"-"`
 }
 
+// UnmarshalJSON replaces e with the value the document holds. See
+// decodeJSONAt.
 func (e *EnumOutsideDeclaredTypeConstOutsidePattern) UnmarshalJSON(data []byte) error {
-	e.AdditionalProperties = nil
-	e.PatternProperties = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(e.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into e, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever e held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (e *EnumOutsideDeclaredTypeConstOutsidePattern) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*e = EnumOutsideDeclaredTypeConstOutsidePattern{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias EnumOutsideDeclaredTypeConstOutsidePattern
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(e),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[EnumOutsideDeclaredTypeConstOutsidePattern](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
-		}
-		knownFields := map[string]bool{}
-		{
-			var _least string
-			var _failed error
-			for rawKey, rawVal := range raw { // refused for the least failing key
-				if _failed != nil && rawKey >= _least {
-					continue
+		var _least string
+		var _failed error
+		for rawKey, rawVal := range _raw { // refused for the least failing key
+			if _failed != nil && rawKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				matchesPattern := false
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_5cd67a1734052155.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
+					}
+					matchesPattern = _ppMatched
 				}
-				if _err := func() error {
-					if knownFields[rawKey] {
-						return nil
+				if matchesPattern {
+					if e.PatternProperties == nil {
+						e.PatternProperties = make(map[string]json.RawMessage)
 					}
-					matchesPattern := false
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_5cd67a1734052155.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
-					}
-					if matchesPattern {
-						if e.PatternProperties == nil {
-							e.PatternProperties = make(map[string]json.RawMessage)
-						}
-						e.PatternProperties[rawKey] = rawVal
-						return nil
-					}
-					if e.AdditionalProperties == nil {
-						e.AdditionalProperties = make(map[string]json.RawMessage)
-					}
-					e.AdditionalProperties[rawKey] = rawVal
+					e.PatternProperties[rawKey] = _d.copyOf(rawVal)
 					return nil
-				}(); _err != nil {
-					_least, _failed = rawKey, _err
 				}
+				if e.AdditionalProperties == nil {
+					e.AdditionalProperties = make(map[string]json.RawMessage)
+				}
+				e.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+				return nil
+			}(); _err != nil {
+				_least, _failed = rawKey, _err
 			}
-			if _failed != nil {
-				return _failed
-			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
 
@@ -760,80 +977,84 @@ type EnumOutsideDeclaredTypeConstOutsideUnevalProps struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
+// UnmarshalJSON replaces e with the value the document holds. See
+// decodeJSONAt.
 func (e *EnumOutsideDeclaredTypeConstOutsideUnevalProps) UnmarshalJSON(data []byte) error {
-	e.AdditionalProperties = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(e.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into e, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever e held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (e *EnumOutsideDeclaredTypeConstOutsideUnevalProps) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*e = EnumOutsideDeclaredTypeConstOutsideUnevalProps{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"a",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[EnumOutsideDeclaredTypeConstOutsideUnevalProps](_d, _sp))
 	}
-	type Alias EnumOutsideDeclaredTypeConstOutsideUnevalProps
-	aux := &struct {
-		*Alias
-		A **jsonInteger `json:"a"`
-	}{
-		Alias: (*Alias)(e),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "a", decode: jsonDecodeValue[*jsonInteger]},
-		})
-	}
-
-	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
-	// above are what let encoding/json see it. Each outer pointer is nil when
-	// the property was absent or null, both of which leave the field as it was.
-	if aux.A != nil {
-		_iv := *aux.A
-		e.A = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"a",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
+			_raw[_k] = _v
 		}
-		knownFields := map[string]bool{
-			"a": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
+	}
+	if _v, _ok := _raw["a"]; _ok {
+		// A number written 1.0 is the integer 1 from draft 6 on; the shadow is
+		// what lets it through. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv *jsonInteger
+			if _err := func(_p **jsonInteger, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[*jsonInteger](_p, _d, _s, jsonDecodeValue[*jsonInteger])
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "a")
 			}
-			if e.AdditionalProperties == nil {
-				e.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			e.AdditionalProperties[rawKey] = rawVal
+			e.A = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"a",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "a":
+			continue
+		}
+		if e.AdditionalProperties == nil {
+			e.AdditionalProperties = make(map[string]json.RawMessage)
+		}
+		e.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -900,19 +1121,35 @@ type EnumOutsideDeclaredTypeConstOutsideValuesValue struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces e with the value the document holds. See
+// decodeJSONAt.
 func (e *EnumOutsideDeclaredTypeConstOutsideValuesValue) UnmarshalJSON(data []byte) error {
-	e._raw = append(e._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(e.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever e held.
+func (e *EnumOutsideDeclaredTypeConstOutsideValuesValue) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*e = EnumOutsideDeclaredTypeConstOutsideValuesValue{}
+	e._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (e EnumOutsideDeclaredTypeConstOutsideValuesValue) MarshalJSON() ([]byte, error) {
 	if len(e._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return e._raw, nil
+	return append([]byte(nil), e._raw...), nil
 }
 
-func (e EnumOutsideDeclaredTypeConstOutsideValuesValue) Raw() json.RawMessage { return e._raw }
+// Raw returns a copy of the value's bytes.
+func (e EnumOutsideDeclaredTypeConstOutsideValuesValue) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), e._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -936,19 +1173,35 @@ type EnumOutsideDeclaredTypeEnumAllOutsideProp struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces e with the value the document holds. See
+// decodeJSONAt.
 func (e *EnumOutsideDeclaredTypeEnumAllOutsideProp) UnmarshalJSON(data []byte) error {
-	e._raw = append(e._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(e.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever e held.
+func (e *EnumOutsideDeclaredTypeEnumAllOutsideProp) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*e = EnumOutsideDeclaredTypeEnumAllOutsideProp{}
+	e._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (e EnumOutsideDeclaredTypeEnumAllOutsideProp) MarshalJSON() ([]byte, error) {
 	if len(e._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return e._raw, nil
+	return append([]byte(nil), e._raw...), nil
 }
 
-func (e EnumOutsideDeclaredTypeEnumAllOutsideProp) Raw() json.RawMessage { return e._raw }
+// Raw returns a copy of the value's bytes.
+func (e EnumOutsideDeclaredTypeEnumAllOutsideProp) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), e._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -972,19 +1225,35 @@ type EnumOutsideDeclaredTypeEnumOutsideProp struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces e with the value the document holds. See
+// decodeJSONAt.
 func (e *EnumOutsideDeclaredTypeEnumOutsideProp) UnmarshalJSON(data []byte) error {
-	e._raw = append(e._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(e.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever e held.
+func (e *EnumOutsideDeclaredTypeEnumOutsideProp) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*e = EnumOutsideDeclaredTypeEnumOutsideProp{}
+	e._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (e EnumOutsideDeclaredTypeEnumOutsideProp) MarshalJSON() ([]byte, error) {
 	if len(e._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return e._raw, nil
+	return append([]byte(nil), e._raw...), nil
 }
 
-func (e EnumOutsideDeclaredTypeEnumOutsideProp) Raw() json.RawMessage { return e._raw }
+// Raw returns a copy of the value's bytes.
+func (e EnumOutsideDeclaredTypeEnumOutsideProp) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), e._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1033,6 +1302,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (e *EnumOutsideDeclaredTypeEnumPartialPatternPattern0) UnmarshalJSON(data []byte) error {
+	var _zero EnumOutsideDeclaredTypeEnumPartialPatternPattern0
+	*e = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -1055,66 +1326,83 @@ type EnumOutsideDeclaredTypeEnumPartialPattern struct {
 	PatternProperties    map[string]json.RawMessage `json:"-"`
 }
 
+// UnmarshalJSON replaces e with the value the document holds. See
+// decodeJSONAt.
 func (e *EnumOutsideDeclaredTypeEnumPartialPattern) UnmarshalJSON(data []byte) error {
-	e.AdditionalProperties = nil
-	e.PatternProperties = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(e.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into e, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever e held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (e *EnumOutsideDeclaredTypeEnumPartialPattern) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*e = EnumOutsideDeclaredTypeEnumPartialPattern{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias EnumOutsideDeclaredTypeEnumPartialPattern
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(e),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[EnumOutsideDeclaredTypeEnumPartialPattern](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
-		}
-		knownFields := map[string]bool{}
-		{
-			var _least string
-			var _failed error
-			for rawKey, rawVal := range raw { // refused for the least failing key
-				if _failed != nil && rawKey >= _least {
-					continue
+		var _least string
+		var _failed error
+		for rawKey, rawVal := range _raw { // refused for the least failing key
+			if _failed != nil && rawKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				matchesPattern := false
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_5cd67a1734052155.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
+					}
+					matchesPattern = _ppMatched
 				}
-				if _err := func() error {
-					if knownFields[rawKey] {
-						return nil
+				if matchesPattern {
+					if e.PatternProperties == nil {
+						e.PatternProperties = make(map[string]json.RawMessage)
 					}
-					matchesPattern := false
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_5cd67a1734052155.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
-					}
-					if matchesPattern {
-						if e.PatternProperties == nil {
-							e.PatternProperties = make(map[string]json.RawMessage)
-						}
-						e.PatternProperties[rawKey] = rawVal
-						return nil
-					}
-					if e.AdditionalProperties == nil {
-						e.AdditionalProperties = make(map[string]json.RawMessage)
-					}
-					e.AdditionalProperties[rawKey] = rawVal
+					e.PatternProperties[rawKey] = _d.copyOf(rawVal)
 					return nil
-				}(); _err != nil {
-					_least, _failed = rawKey, _err
 				}
+				if e.AdditionalProperties == nil {
+					e.AdditionalProperties = make(map[string]json.RawMessage)
+				}
+				e.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+				return nil
+			}(); _err != nil {
+				_least, _failed = rawKey, _err
 			}
-			if _failed != nil {
-				return _failed
-			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
 
@@ -1237,6 +1525,8 @@ const (
 // type is an int64 to encoding/json, which takes only the first spelling, and
 // the enum would reject a document its own schema admits.
 func (e *EnumOutsideDeclaredTypeFracInInteger) UnmarshalJSON(data []byte) error {
+	var _zero EnumOutsideDeclaredTypeFracInInteger
+	*e = _zero
 	var _iv jsonInteger
 	if _err := _iv.UnmarshalJSON(data); _err != nil {
 		return _err
@@ -1267,6 +1557,8 @@ const (
 // type is an int64 to encoding/json, which takes only the first spelling, and
 // the enum would reject a document its own schema admits.
 func (e *EnumOutsideDeclaredTypeIntegerEnum) UnmarshalJSON(data []byte) error {
+	var _zero EnumOutsideDeclaredTypeIntegerEnum
+	*e = _zero
 	var _iv jsonInteger
 	if _err := _iv.UnmarshalJSON(data); _err != nil {
 		return _err
@@ -1293,19 +1585,35 @@ type EnumOutsideDeclaredTypeNotConstOutside struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces e with the value the document holds. See
+// decodeJSONAt.
 func (e *EnumOutsideDeclaredTypeNotConstOutside) UnmarshalJSON(data []byte) error {
-	e._raw = append(e._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(e.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever e held.
+func (e *EnumOutsideDeclaredTypeNotConstOutside) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*e = EnumOutsideDeclaredTypeNotConstOutside{}
+	e._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (e EnumOutsideDeclaredTypeNotConstOutside) MarshalJSON() ([]byte, error) {
 	if len(e._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return e._raw, nil
+	return append([]byte(nil), e._raw...), nil
 }
 
-func (e EnumOutsideDeclaredTypeNotConstOutside) Raw() json.RawMessage { return e._raw }
+// Raw returns a copy of the value's bytes.
+func (e EnumOutsideDeclaredTypeNotConstOutside) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), e._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1381,16 +1689,32 @@ var enumOutsideDeclaredTypeObjectEnumAllowedJSON = _jsonCanonicalTexts([]string{
 	"{\"k\":1}",
 })
 
+// UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
+//
+// encoding/json's contract for an Unmarshaler is that it copies what it keeps,
+// and this one kept the caller's slice: a caller that reused its read buffer --
+// a json.Decoder over a stream does, for every document -- rewrote a value it had
+// already decoded, which then validated as whatever the next document held
+// there. A value that is not JSON at all is refused in encoding/json's words;
+// encoding/json never hands one over, so only a direct caller reaches that.
 func (e *EnumOutsideDeclaredTypeObjectEnum) UnmarshalJSON(data []byte) error {
-	*e = EnumOutsideDeclaredTypeObjectEnum(data)
+	*e = nil
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	*e = EnumOutsideDeclaredTypeObjectEnum(append([]byte(nil), data...))
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it, in a buffer of
+// its own: the value's bytes, handed out, are bytes a caller can rewrite it
+// through.
 func (e EnumOutsideDeclaredTypeObjectEnum) MarshalJSON() ([]byte, error) {
 	if len(e) == 0 {
 		return []byte("null"), nil
 	}
-	return json.RawMessage(e).MarshalJSON()
+	return append([]byte(nil), e...), nil
 }
 
 // Validate checks EnumOutsideDeclaredTypeObjectEnum against its JSON Schema constraints.
@@ -1454,16 +1778,32 @@ var enumOutsideDeclaredTypeUnionEnumAllowedJSON = _jsonCanonicalTexts([]string{
 	"5",
 })
 
+// UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
+//
+// encoding/json's contract for an Unmarshaler is that it copies what it keeps,
+// and this one kept the caller's slice: a caller that reused its read buffer --
+// a json.Decoder over a stream does, for every document -- rewrote a value it had
+// already decoded, which then validated as whatever the next document held
+// there. A value that is not JSON at all is refused in encoding/json's words;
+// encoding/json never hands one over, so only a direct caller reaches that.
 func (e *EnumOutsideDeclaredTypeUnionEnum) UnmarshalJSON(data []byte) error {
-	*e = EnumOutsideDeclaredTypeUnionEnum(data)
+	*e = nil
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	*e = EnumOutsideDeclaredTypeUnionEnum(append([]byte(nil), data...))
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it, in a buffer of
+// its own: the value's bytes, handed out, are bytes a caller can rewrite it
+// through.
 func (e EnumOutsideDeclaredTypeUnionEnum) MarshalJSON() ([]byte, error) {
 	if len(e) == 0 {
 		return []byte("null"), nil
 	}
-	return json.RawMessage(e).MarshalJSON()
+	return append([]byte(nil), e...), nil
 }
 
 // Validate checks EnumOutsideDeclaredTypeUnionEnum against its JSON Schema constraints.
@@ -1493,16 +1833,32 @@ var enumOutsideDeclaredTypeUntypedEnumAllowedJSON = _jsonCanonicalTexts([]string
 	"5",
 })
 
+// UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
+//
+// encoding/json's contract for an Unmarshaler is that it copies what it keeps,
+// and this one kept the caller's slice: a caller that reused its read buffer --
+// a json.Decoder over a stream does, for every document -- rewrote a value it had
+// already decoded, which then validated as whatever the next document held
+// there. A value that is not JSON at all is refused in encoding/json's words;
+// encoding/json never hands one over, so only a direct caller reaches that.
 func (e *EnumOutsideDeclaredTypeUntypedEnum) UnmarshalJSON(data []byte) error {
-	*e = EnumOutsideDeclaredTypeUntypedEnum(data)
+	*e = nil
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	*e = EnumOutsideDeclaredTypeUntypedEnum(append([]byte(nil), data...))
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it, in a buffer of
+// its own: the value's bytes, handed out, are bytes a caller can rewrite it
+// through.
 func (e EnumOutsideDeclaredTypeUntypedEnum) MarshalJSON() ([]byte, error) {
 	if len(e) == 0 {
 		return []byte("null"), nil
 	}
-	return json.RawMessage(e).MarshalJSON()
+	return append([]byte(nil), e...), nil
 }
 
 // Validate checks EnumOutsideDeclaredTypeUntypedEnum against its JSON Schema constraints.
@@ -1536,6 +1892,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (e *EnumOutsideDeclaredTypeEnumPartialSlotItem0) UnmarshalJSON(data []byte) error {
+	var _zero EnumOutsideDeclaredTypeEnumPartialSlotItem0
+	*e = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -1601,273 +1959,455 @@ type EnumOutsideDeclaredType struct {
 	UntypedEnum             EnumOutsideDeclaredTypeUntypedEnum                        `json:"untypedEnum,omitempty"`
 }
 
+// UnmarshalJSON replaces e with the value the document holds. See
+// decodeJSONAt.
 func (e *EnumOutsideDeclaredType) UnmarshalJSON(data []byte) error {
-	e.AdditionalProperties = nil
-	e._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(e.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into e, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever e held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (e *EnumOutsideDeclaredType) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*e = EnumOutsideDeclaredType{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"arrayEnum",
-			"arrayOutsideConst",
-			"boolEnum",
-			"boolOutsideConst",
-			"constOutsideAllOf",
-			"constOutsideAnyOf",
-			"constOutsideContains",
-			"constOutsideDependent",
-			"constOutsideItems",
-			"constOutsideNames",
-			"constOutsideOneOf",
-			"constOutsidePattern",
-			"constOutsideProp",
-			"constOutsideRef",
-			"constOutsideSlot",
-			"constOutsideUnevalItems",
-			"constOutsideUnevalProps",
-			"constOutsideValues",
-			"enumAllOutsideProp",
-			"enumOutsideProp",
-			"enumPartialItems",
-			"enumPartialPattern",
-			"enumPartialProp",
-			"enumPartialRef",
-			"enumPartialSlot",
-			"enumPartialValues",
-			"fracInInteger",
-			"fracOutsideInteger",
-			"integerEnum",
-			"integerFloatSpelling",
-			"notConstOutside",
-			"nullOutsideConst",
-			"nullableEnum",
-			"numberEnum",
-			"numberOutsideConst",
-			"objectEnum",
-			"objectOutsideConst",
-			"okItems",
-			"typedConst",
-			"typedEnum",
-			"unionEnum",
-			"untypedEnum",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[EnumOutsideDeclaredType](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias EnumOutsideDeclaredType
-	aux := &struct {
-		*Alias
-		FracOutsideInteger   **jsonInteger `json:"fracOutsideInteger"`
-		IntegerFloatSpelling **jsonInteger `json:"integerFloatSpelling"`
-	}{
-		Alias: (*Alias)(e),
+	if _v, _ok := _raw["arrayEnum"]; _ok {
+		if _err := func(_p *EnumOutsideDeclaredTypeArrayEnum, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[EnumOutsideDeclaredTypeArrayEnum](_p, _d, _s, jsonDecodeValue[EnumOutsideDeclaredTypeArrayEnum])
+		}(&e.ArrayEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "arrayEnum")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "arrayEnum", decode: jsonDecodeValue[EnumOutsideDeclaredTypeArrayEnum]},
-			{name: "arrayOutsideConst", decode: jsonDecodeValue[ArrayConst]},
-			{name: "boolEnum", decode: jsonDecodeValue[*bool]},
-			{name: "boolOutsideConst", decode: jsonDecodeValue[BoolConst]},
-			{name: "constOutsideAllOf", decode: jsonDecodeValue[EnumOutsideDeclaredTypeConstOutsideAllOf]},
-			{name: "constOutsideAnyOf", decode: jsonDecodeValue[EnumOutsideDeclaredTypeConstOutsideAnyOf]},
-			{name: "constOutsideContains", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "constOutsideDependent", decode: jsonDecodeValue[*ForbiddenWhenK]},
-			{name: "constOutsideItems", decode: jsonDecodeItems(jsonDecodeValue[EnumOutsideDeclaredTypeConstOutsideItemsItem])},
-			{name: "constOutsideNames", decode: jsonDecodeValue[*NoNameAllowed]},
-			{name: "constOutsideOneOf", decode: jsonDecodeValue[EnumOutsideDeclaredTypeConstOutsideOneOf]},
-			{name: "constOutsidePattern", decode: jsonDecodeValue[*EnumOutsideDeclaredTypeConstOutsidePattern]},
-			{name: "constOutsideProp", decode: jsonDecodeValue[*string]},
-			{name: "constOutsideRef", decode: jsonDecodeValue[NeverString]},
-			{name: "constOutsideSlot", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "constOutsideUnevalItems", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "constOutsideUnevalProps", decode: jsonDecodeValue[*EnumOutsideDeclaredTypeConstOutsideUnevalProps]},
-			{name: "constOutsideValues", decode: jsonDecodeValues(jsonDecodeValue[EnumOutsideDeclaredTypeConstOutsideValuesValue])},
-			{name: "enumAllOutsideProp", decode: jsonDecodeValue[EnumOutsideDeclaredTypeEnumAllOutsideProp]},
-			{name: "enumOutsideProp", decode: jsonDecodeValue[EnumOutsideDeclaredTypeEnumOutsideProp]},
-			{name: "enumPartialItems", decode: jsonDecodeItems(jsonDecodeValue[EnumOutsideDeclaredTypeEnumPartialItemsItem])},
-			{name: "enumPartialPattern", decode: jsonDecodeValue[*EnumOutsideDeclaredTypeEnumPartialPattern]},
-			{name: "enumPartialProp", decode: jsonDecodeValue[*EnumOutsideDeclaredTypeEnumPartialProp]},
-			{name: "enumPartialRef", decode: jsonDecodeValue[*OnlyA]},
-			{name: "enumPartialSlot", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "enumPartialValues", decode: jsonDecodeValues(jsonDecodeValue[EnumOutsideDeclaredTypeEnumPartialValuesValue])},
-			{name: "fracInInteger", decode: jsonDecodeValue[*EnumOutsideDeclaredTypeFracInInteger]},
-			{name: "fracOutsideInteger", decode: jsonDecodeValue[*jsonInteger]},
-			{name: "integerEnum", decode: jsonDecodeValue[*EnumOutsideDeclaredTypeIntegerEnum]},
-			{name: "integerFloatSpelling", decode: jsonDecodeValue[*jsonInteger]},
-			{name: "notConstOutside", decode: jsonDecodeValue[EnumOutsideDeclaredTypeNotConstOutside]},
-			{name: "nullOutsideConst", decode: jsonDecodeValue[NullConst]},
-			{name: "nullableEnum", decode: jsonDecodeValue[EnumOutsideDeclaredTypeNullableEnum]},
-			{name: "numberEnum", decode: jsonDecodeValue[*EnumOutsideDeclaredTypeNumberEnum]},
-			{name: "numberOutsideConst", decode: jsonDecodeValue[NumberConst]},
-			{name: "objectEnum", decode: jsonDecodeValue[EnumOutsideDeclaredTypeObjectEnum]},
-			{name: "objectOutsideConst", decode: jsonDecodeValue[ObjectConst]},
-			{name: "okItems", decode: jsonDecodeItems(jsonDecodeValue[EnumOutsideDeclaredTypeOkItemsItem])},
-			{name: "typedConst", decode: jsonDecodeValue[*string]},
-			{name: "typedEnum", decode: jsonDecodeValue[*EnumOutsideDeclaredTypeTypedEnum]},
-			{name: "unionEnum", decode: jsonDecodeValue[EnumOutsideDeclaredTypeUnionEnum]},
-			{name: "untypedEnum", decode: jsonDecodeValue[EnumOutsideDeclaredTypeUntypedEnum]},
-		})
+	if _v, _ok := _raw["arrayOutsideConst"]; _ok {
+		if _err := func(_p *ArrayConst, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*ArrayConst).decodeJSONAt(_p, _d, _s))
+		}(&e.ArrayOutsideConst, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "arrayOutsideConst")
+		}
 	}
-
-	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
-	// above are what let encoding/json see it. Each outer pointer is nil when
-	// the property was absent or null, both of which leave the field as it was.
-	if aux.FracOutsideInteger != nil {
-		_iv := *aux.FracOutsideInteger
-		e.FracOutsideInteger = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
+	if _v, _ok := _raw["boolEnum"]; _ok {
+		if _err := func(_p **bool, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*bool](_p, _d, _s, jsonDecodeValue[*bool])
+		}(&e.BoolEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "boolEnum")
+		}
 	}
-	if aux.IntegerFloatSpelling != nil {
-		_iv := *aux.IntegerFloatSpelling
-		e.IntegerFloatSpelling = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
+	if _v, _ok := _raw["boolOutsideConst"]; _ok {
+		if _err := func(_p *BoolConst, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*BoolConst).decodeJSONAt(_p, _d, _s))
+		}(&e.BoolOutsideConst, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "boolOutsideConst")
+		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	if _v, _ok := _raw["constOutsideAllOf"]; _ok {
+		if _err := func(_p *EnumOutsideDeclaredTypeConstOutsideAllOf, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*EnumOutsideDeclaredTypeConstOutsideAllOf).decodeJSONAt(_p, _d, _s))
+		}(&e.ConstOutsideAllOf, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constOutsideAllOf")
 		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"arrayEnum",
-			"arrayOutsideConst",
-			"boolEnum",
-			"boolOutsideConst",
-			"constOutsideAllOf",
-			"constOutsideAnyOf",
-			"constOutsideContains",
-			"constOutsideDependent",
-			"constOutsideNames",
-			"constOutsideOneOf",
-			"constOutsidePattern",
-			"constOutsideProp",
-			"constOutsideRef",
-			"constOutsideSlot",
-			"constOutsideUnevalItems",
-			"constOutsideUnevalProps",
-			"enumAllOutsideProp",
-			"enumOutsideProp",
-			"enumPartialPattern",
-			"enumPartialProp",
-			"enumPartialRef",
-			"enumPartialSlot",
-			"fracInInteger",
-			"fracOutsideInteger",
-			"integerEnum",
-			"integerFloatSpelling",
-			"nullOutsideConst",
-			"nullableEnum",
-			"numberEnum",
-			"numberOutsideConst",
-			"objectEnum",
-			"objectOutsideConst",
-			"typedConst",
-			"typedEnum",
-			"unionEnum",
-			"untypedEnum",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	}
+	if _v, _ok := _raw["constOutsideAnyOf"]; _ok {
+		if _err := func(_p *EnumOutsideDeclaredTypeConstOutsideAnyOf, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*EnumOutsideDeclaredTypeConstOutsideAnyOf).decodeJSONAt(_p, _d, _s))
+		}(&e.ConstOutsideAnyOf, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constOutsideAnyOf")
+		}
+	}
+	if _v, _ok := _raw["constOutsideContains"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&e.ConstOutsideContains, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constOutsideContains")
+		}
+	}
+	if _v, _ok := _raw["constOutsideDependent"]; _ok {
+		if _err := func(_p **ForbiddenWhenK, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **ForbiddenWhenK, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*ForbiddenWhenK, ForbiddenWhenK](_p, _d, _s, (*ForbiddenWhenK).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&e.ConstOutsideDependent, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constOutsideDependent")
+		}
+	}
+	if _v, _ok := _raw["constOutsideItems"]; _ok {
+		if _err := func(_p *[]EnumOutsideDeclaredTypeConstOutsideItemsItem, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeSlice[EnumOutsideDeclaredTypeConstOutsideItemsItem](_p, _d, _s, func(_p *EnumOutsideDeclaredTypeConstOutsideItemsItem, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*EnumOutsideDeclaredTypeConstOutsideItemsItem).decodeJSONAt(_p, _d, _s))
+			})
+		}(&e.ConstOutsideItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constOutsideItems")
+		}
+	}
+	if _v, _ok := _raw["constOutsideNames"]; _ok {
+		if _err := func(_p **NoNameAllowed, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **NoNameAllowed, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*NoNameAllowed, NoNameAllowed](_p, _d, _s, (*NoNameAllowed).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&e.ConstOutsideNames, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constOutsideNames")
+		}
+	}
+	if _v, _ok := _raw["constOutsideOneOf"]; _ok {
+		if _err := func(_p *EnumOutsideDeclaredTypeConstOutsideOneOf, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*EnumOutsideDeclaredTypeConstOutsideOneOf).decodeJSONAt(_p, _d, _s))
+		}(&e.ConstOutsideOneOf, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constOutsideOneOf")
+		}
+	}
+	if _v, _ok := _raw["constOutsidePattern"]; _ok {
+		if _err := func(_p **EnumOutsideDeclaredTypeConstOutsidePattern, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **EnumOutsideDeclaredTypeConstOutsidePattern, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*EnumOutsideDeclaredTypeConstOutsidePattern, EnumOutsideDeclaredTypeConstOutsidePattern](_p, _d, _s, (*EnumOutsideDeclaredTypeConstOutsidePattern).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&e.ConstOutsidePattern, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constOutsidePattern")
+		}
+	}
+	if _v, _ok := _raw["constOutsideProp"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&e.ConstOutsideProp, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constOutsideProp")
+		}
+	}
+	if _v, _ok := _raw["constOutsideRef"]; _ok {
+		if _err := func(_p *NeverString, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*NeverString).decodeJSONAt(_p, _d, _s))
+		}(&e.ConstOutsideRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constOutsideRef")
+		}
+	}
+	if _v, _ok := _raw["constOutsideSlot"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&e.ConstOutsideSlot, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constOutsideSlot")
+		}
+	}
+	if _v, _ok := _raw["constOutsideUnevalItems"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&e.ConstOutsideUnevalItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constOutsideUnevalItems")
+		}
+	}
+	if _v, _ok := _raw["constOutsideUnevalProps"]; _ok {
+		if _err := func(_p **EnumOutsideDeclaredTypeConstOutsideUnevalProps, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **EnumOutsideDeclaredTypeConstOutsideUnevalProps, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*EnumOutsideDeclaredTypeConstOutsideUnevalProps, EnumOutsideDeclaredTypeConstOutsideUnevalProps](_p, _d, _s, (*EnumOutsideDeclaredTypeConstOutsideUnevalProps).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&e.ConstOutsideUnevalProps, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constOutsideUnevalProps")
+		}
+	}
+	if _v, _ok := _raw["constOutsideValues"]; _ok {
+		if _err := func(_p *map[string]EnumOutsideDeclaredTypeConstOutsideValuesValue, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeMap[EnumOutsideDeclaredTypeConstOutsideValuesValue](_p, _d, _s, func(_p *EnumOutsideDeclaredTypeConstOutsideValuesValue, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*EnumOutsideDeclaredTypeConstOutsideValuesValue).decodeJSONAt(_p, _d, _s))
+			})
+		}(&e.ConstOutsideValues, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constOutsideValues")
+		}
+	}
+	if _v, _ok := _raw["enumAllOutsideProp"]; _ok {
+		if _err := func(_p *EnumOutsideDeclaredTypeEnumAllOutsideProp, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*EnumOutsideDeclaredTypeEnumAllOutsideProp).decodeJSONAt(_p, _d, _s))
+		}(&e.EnumAllOutsideProp, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "enumAllOutsideProp")
+		}
+	}
+	if _v, _ok := _raw["enumOutsideProp"]; _ok {
+		if _err := func(_p *EnumOutsideDeclaredTypeEnumOutsideProp, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*EnumOutsideDeclaredTypeEnumOutsideProp).decodeJSONAt(_p, _d, _s))
+		}(&e.EnumOutsideProp, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "enumOutsideProp")
+		}
+	}
+	if _v, _ok := _raw["enumPartialItems"]; _ok {
+		if _err := func(_p *[]EnumOutsideDeclaredTypeEnumPartialItemsItem, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]EnumOutsideDeclaredTypeEnumPartialItemsItem](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[EnumOutsideDeclaredTypeEnumPartialItemsItem]))
+		}(&e.EnumPartialItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "enumPartialItems")
+		}
+	}
+	if _v, _ok := _raw["enumPartialPattern"]; _ok {
+		if _err := func(_p **EnumOutsideDeclaredTypeEnumPartialPattern, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **EnumOutsideDeclaredTypeEnumPartialPattern, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*EnumOutsideDeclaredTypeEnumPartialPattern, EnumOutsideDeclaredTypeEnumPartialPattern](_p, _d, _s, (*EnumOutsideDeclaredTypeEnumPartialPattern).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&e.EnumPartialPattern, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "enumPartialPattern")
+		}
+	}
+	if _v, _ok := _raw["enumPartialProp"]; _ok {
+		if _err := func(_p **EnumOutsideDeclaredTypeEnumPartialProp, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*EnumOutsideDeclaredTypeEnumPartialProp](_p, _d, _s, jsonDecodeValue[*EnumOutsideDeclaredTypeEnumPartialProp])
+		}(&e.EnumPartialProp, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "enumPartialProp")
+		}
+	}
+	if _v, _ok := _raw["enumPartialRef"]; _ok {
+		if _err := func(_p **OnlyA, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*OnlyA](_p, _d, _s, jsonDecodeValue[*OnlyA])
+		}(&e.EnumPartialRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "enumPartialRef")
+		}
+	}
+	if _v, _ok := _raw["enumPartialSlot"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&e.EnumPartialSlot, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "enumPartialSlot")
+		}
+	}
+	if _v, _ok := _raw["enumPartialValues"]; _ok {
+		if _err := func(_p *map[string]EnumOutsideDeclaredTypeEnumPartialValuesValue, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[map[string]EnumOutsideDeclaredTypeEnumPartialValuesValue](_p, _d, _s, jsonDecodeValues(jsonDecodeValue[EnumOutsideDeclaredTypeEnumPartialValuesValue]))
+		}(&e.EnumPartialValues, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "enumPartialValues")
+		}
+	}
+	if _v, _ok := _raw["fracInInteger"]; _ok {
+		if _err := func(_p **EnumOutsideDeclaredTypeFracInInteger, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*EnumOutsideDeclaredTypeFracInInteger](_p, _d, _s, jsonDecodeValue[*EnumOutsideDeclaredTypeFracInInteger])
+		}(&e.FracInInteger, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "fracInInteger")
+		}
+	}
+	if _v, _ok := _raw["fracOutsideInteger"]; _ok {
+		// A number written 1.0 is the integer 1 from draft 6 on; the shadow is
+		// what lets it through. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv *jsonInteger
+			if _err := func(_p **jsonInteger, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[*jsonInteger](_p, _d, _s, jsonDecodeValue[*jsonInteger])
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "fracOutsideInteger")
 			}
+			e.FracOutsideInteger = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 		}
-		if _v, ok := raw["constOutsideItems"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "constOutsideItems")
+	}
+	if _v, _ok := _raw["integerEnum"]; _ok {
+		if _err := func(_p **EnumOutsideDeclaredTypeIntegerEnum, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*EnumOutsideDeclaredTypeIntegerEnum](_p, _d, _s, jsonDecodeValue[*EnumOutsideDeclaredTypeIntegerEnum])
+		}(&e.IntegerEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "integerEnum")
+		}
+	}
+	if _v, _ok := _raw["integerFloatSpelling"]; _ok {
+		// A number written 1.0 is the integer 1 from draft 6 on; the shadow is
+		// what lets it through. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv *jsonInteger
+			if _err := func(_p **jsonInteger, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[*jsonInteger](_p, _d, _s, jsonDecodeValue[*jsonInteger])
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "integerFloatSpelling")
 			}
+			e.IntegerFloatSpelling = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
 		}
-		if _v, ok := raw["constOutsideValues"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "constOutsideValues")
-			}
+	}
+	if _v, _ok := _raw["notConstOutside"]; _ok {
+		if _err := func(_p *EnumOutsideDeclaredTypeNotConstOutside, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*EnumOutsideDeclaredTypeNotConstOutside).decodeJSONAt(_p, _d, _s))
+		}(&e.NotConstOutside, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "notConstOutside")
 		}
-		if _v, ok := raw["enumPartialItems"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "enumPartialItems")
-			}
+	}
+	if _v, _ok := _raw["nullOutsideConst"]; _ok {
+		if _err := func(_p *NullConst, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*NullConst).decodeJSONAt(_p, _d, _s))
+		}(&e.NullOutsideConst, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "nullOutsideConst")
 		}
-		if _v, ok := raw["enumPartialValues"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "enumPartialValues")
-			}
+	}
+	if _v, _ok := _raw["nullableEnum"]; _ok {
+		if _err := func(_p *EnumOutsideDeclaredTypeNullableEnum, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[EnumOutsideDeclaredTypeNullableEnum](_p, _d, _s, jsonDecodeValue[EnumOutsideDeclaredTypeNullableEnum])
+		}(&e.NullableEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "nullableEnum")
 		}
-		if _v, ok := raw["okItems"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "okItems")
-			}
+	}
+	if _v, _ok := _raw["numberEnum"]; _ok {
+		if _err := func(_p **EnumOutsideDeclaredTypeNumberEnum, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*EnumOutsideDeclaredTypeNumberEnum](_p, _d, _s, jsonDecodeValue[*EnumOutsideDeclaredTypeNumberEnum])
+		}(&e.NumberEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "numberEnum")
 		}
-		e._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			e._jsonKeys[_k] = true
+	}
+	if _v, _ok := _raw["numberOutsideConst"]; _ok {
+		if _err := func(_p *NumberConst, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*NumberConst).decodeJSONAt(_p, _d, _s))
+		}(&e.NumberOutsideConst, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "numberOutsideConst")
 		}
-		knownFields := map[string]bool{
-			"arrayEnum":               true,
-			"arrayOutsideConst":       true,
-			"boolEnum":                true,
-			"boolOutsideConst":        true,
-			"constOutsideAllOf":       true,
-			"constOutsideAnyOf":       true,
-			"constOutsideContains":    true,
-			"constOutsideDependent":   true,
-			"constOutsideItems":       true,
-			"constOutsideNames":       true,
-			"constOutsideOneOf":       true,
-			"constOutsidePattern":     true,
-			"constOutsideProp":        true,
-			"constOutsideRef":         true,
-			"constOutsideSlot":        true,
-			"constOutsideUnevalItems": true,
-			"constOutsideUnevalProps": true,
-			"constOutsideValues":      true,
-			"enumAllOutsideProp":      true,
-			"enumOutsideProp":         true,
-			"enumPartialItems":        true,
-			"enumPartialPattern":      true,
-			"enumPartialProp":         true,
-			"enumPartialRef":          true,
-			"enumPartialSlot":         true,
-			"enumPartialValues":       true,
-			"fracInInteger":           true,
-			"fracOutsideInteger":      true,
-			"integerEnum":             true,
-			"integerFloatSpelling":    true,
-			"notConstOutside":         true,
-			"nullOutsideConst":        true,
-			"nullableEnum":            true,
-			"numberEnum":              true,
-			"numberOutsideConst":      true,
-			"objectEnum":              true,
-			"objectOutsideConst":      true,
-			"okItems":                 true,
-			"typedConst":              true,
-			"typedEnum":               true,
-			"unionEnum":               true,
-			"untypedEnum":             true,
+	}
+	if _v, _ok := _raw["objectEnum"]; _ok {
+		if _err := func(_p *EnumOutsideDeclaredTypeObjectEnum, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[EnumOutsideDeclaredTypeObjectEnum](_p, _d, _s, jsonDecodeValue[EnumOutsideDeclaredTypeObjectEnum])
+		}(&e.ObjectEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "objectEnum")
 		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if e.AdditionalProperties == nil {
-				e.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			e.AdditionalProperties[rawKey] = rawVal
+	}
+	if _v, _ok := _raw["objectOutsideConst"]; _ok {
+		if _err := func(_p *ObjectConst, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*ObjectConst).decodeJSONAt(_p, _d, _s))
+		}(&e.ObjectOutsideConst, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "objectOutsideConst")
 		}
+	}
+	if _v, _ok := _raw["okItems"]; _ok {
+		if _err := func(_p *[]EnumOutsideDeclaredTypeOkItemsItem, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]EnumOutsideDeclaredTypeOkItemsItem](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[EnumOutsideDeclaredTypeOkItemsItem]))
+		}(&e.OkItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "okItems")
+		}
+	}
+	if _v, _ok := _raw["typedConst"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&e.TypedConst, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "typedConst")
+		}
+	}
+	if _v, _ok := _raw["typedEnum"]; _ok {
+		if _err := func(_p **EnumOutsideDeclaredTypeTypedEnum, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*EnumOutsideDeclaredTypeTypedEnum](_p, _d, _s, jsonDecodeValue[*EnumOutsideDeclaredTypeTypedEnum])
+		}(&e.TypedEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "typedEnum")
+		}
+	}
+	if _v, _ok := _raw["unionEnum"]; _ok {
+		if _err := func(_p *EnumOutsideDeclaredTypeUnionEnum, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[EnumOutsideDeclaredTypeUnionEnum](_p, _d, _s, jsonDecodeValue[EnumOutsideDeclaredTypeUnionEnum])
+		}(&e.UnionEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "unionEnum")
+		}
+	}
+	if _v, _ok := _raw["untypedEnum"]; _ok {
+		if _err := func(_p *EnumOutsideDeclaredTypeUntypedEnum, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[EnumOutsideDeclaredTypeUntypedEnum](_p, _d, _s, jsonDecodeValue[EnumOutsideDeclaredTypeUntypedEnum])
+		}(&e.UntypedEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "untypedEnum")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"arrayEnum",
+		"arrayOutsideConst",
+		"boolEnum",
+		"boolOutsideConst",
+		"constOutsideAllOf",
+		"constOutsideAnyOf",
+		"constOutsideContains",
+		"constOutsideDependent",
+		"constOutsideNames",
+		"constOutsideOneOf",
+		"constOutsidePattern",
+		"constOutsideProp",
+		"constOutsideRef",
+		"constOutsideSlot",
+		"constOutsideUnevalItems",
+		"constOutsideUnevalProps",
+		"enumAllOutsideProp",
+		"enumOutsideProp",
+		"enumPartialPattern",
+		"enumPartialProp",
+		"enumPartialRef",
+		"enumPartialSlot",
+		"fracInInteger",
+		"fracOutsideInteger",
+		"integerEnum",
+		"integerFloatSpelling",
+		"nullOutsideConst",
+		"nullableEnum",
+		"numberEnum",
+		"numberOutsideConst",
+		"objectEnum",
+		"objectOutsideConst",
+		"typedConst",
+		"typedEnum",
+		"unionEnum",
+		"untypedEnum",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	if _v, ok := _raw["constOutsideItems"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "constOutsideItems")
+		}
+	}
+	if _v, ok := _raw["constOutsideValues"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "constOutsideValues")
+		}
+	}
+	if _v, ok := _raw["enumPartialItems"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "enumPartialItems")
+		}
+	}
+	if _v, ok := _raw["enumPartialValues"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "enumPartialValues")
+		}
+	}
+	if _v, ok := _raw["okItems"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "okItems")
+		}
+	}
+	e._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		e._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "arrayEnum", "arrayOutsideConst", "boolEnum", "boolOutsideConst", "constOutsideAllOf", "constOutsideAnyOf", "constOutsideContains", "constOutsideDependent", "constOutsideItems", "constOutsideNames", "constOutsideOneOf", "constOutsidePattern", "constOutsideProp", "constOutsideRef", "constOutsideSlot", "constOutsideUnevalItems", "constOutsideUnevalProps", "constOutsideValues", "enumAllOutsideProp", "enumOutsideProp", "enumPartialItems", "enumPartialPattern", "enumPartialProp", "enumPartialRef", "enumPartialSlot", "enumPartialValues", "fracInInteger", "fracOutsideInteger", "integerEnum", "integerFloatSpelling", "notConstOutside", "nullOutsideConst", "nullableEnum", "numberEnum", "numberOutsideConst", "objectEnum", "objectOutsideConst", "okItems", "typedConst", "typedEnum", "unionEnum", "untypedEnum":
+			continue
+		}
+		if e.AdditionalProperties == nil {
+			e.AdditionalProperties = make(map[string]json.RawMessage)
+		}
+		e.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil

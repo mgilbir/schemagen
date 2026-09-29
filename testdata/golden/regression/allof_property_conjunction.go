@@ -16,9 +16,10 @@ type CapBranchViaRef struct {
 }
 
 func (c *CapBranchViaRef) UnmarshalJSON(data []byte) error {
+	*c = CapBranchViaRef{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		c._raw = append(c._raw[:0], data...)
+		c._raw = append(json.RawMessage(nil), data...)
 		c._isRaw = true
 		return nil
 	}
@@ -27,8 +28,15 @@ func (c *CapBranchViaRef) UnmarshalJSON(data []byte) error {
 		c._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	c._raw = append(c._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	c._raw = append(json.RawMessage(nil), data...)
 	c._isRaw = true
 	return nil
 }
@@ -37,7 +45,9 @@ func (c CapBranchViaRef) MarshalJSON() ([]byte, error) {
 		if len(c._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return c._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), c._raw...), nil
 	}
 	return json.Marshal(c._value)
 }
@@ -45,7 +55,7 @@ func (c CapBranchViaRef) StringValue() string { return c._value }
 func (c CapBranchViaRef) IsString() bool      { return !c._isRaw }
 func (c CapBranchViaRef) Raw() json.RawMessage {
 	if c._isRaw {
-		return c._raw
+		return append(json.RawMessage(nil), c._raw...)
 	}
 	_b, _ := json.Marshal(c._value)
 	return _b
@@ -76,91 +86,97 @@ type CapBranch struct {
 	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
+// UnmarshalJSON replaces c with the value the document holds. See
+// decodeJSONAt.
 func (c *CapBranch) UnmarshalJSON(data []byte) error {
-	c.AdditionalProperties = nil
-	c._jsonNulls = nil
-	c._nonObject = false
-	c._rawNonObject = nil
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(c.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into c, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever c held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (c *CapBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*c = CapBranch{}
 	// The schema admits a document that is not an object, so object constraints
 	// are type-conditional. Non-object JSON data is accepted here and judged by
 	// Validate; raw bytes are preserved for roundtrip.
-	if len(data) == 0 || data[0] != '{' {
+	if _d.data[_sp.start] != '{' {
 		c._nonObject = true
-		c._rawNonObject = append(c._rawNonObject[:0], data...)
+		c._rawNonObject = _d.keep(_sp)
 		return nil
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"viaRef",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[CapBranch](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias CapBranch
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(c),
+	if _v, _ok := _raw["viaRef"]; _ok {
+		if _err := func(_p **CapBranchViaRef, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*CapBranchViaRef](_p, _d, _s, jsonDecodeValue[*CapBranchViaRef])
+		}(&c.ViaRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "viaRef")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "viaRef", decode: jsonDecodeValue[*CapBranchViaRef]},
-		})
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"viaRef",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if c._jsonNulls == nil {
+				c._jsonNulls = make(map[string]bool, 1)
+			}
+			c._jsonNulls[_nullKey] = true
+		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "viaRef":
+			continue
 		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"viaRef",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if c._jsonNulls == nil {
-					c._jsonNulls = make(map[string]bool, 1)
-				}
-				c._jsonNulls[_nullKey] = true
-			}
+		if c.AdditionalProperties == nil {
+			c.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		knownFields := map[string]bool{
-			"viaRef": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if c.AdditionalProperties == nil {
-				c.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			c.AdditionalProperties[rawKey] = rawVal
-		}
+		c.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
 }
 func (c CapBranch) MarshalJSON() ([]byte, error) {
-	// Non-object data was silently accepted — return the original raw bytes.
+	// Non-object data was silently accepted — return the original raw bytes,
+	// in a buffer of their own: the value's bytes, handed out, are bytes a
+	// caller can rewrite the value through.
 	if c._nonObject {
 		if len(c._rawNonObject) > 0 {
-			return c._rawNonObject, nil
+			return append([]byte(nil), c._rawNonObject...), nil
 		}
 		return []byte("null"), nil
 	}
@@ -237,6 +253,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfPropertyConjunctionConstAgainstEnum) UnmarshalJSON(data []byte) error {
+	var _zero AllOfPropertyConjunctionConstAgainstEnum
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -257,6 +275,8 @@ func (a AllOfPropertyConjunctionConstAgainstEnum) Validate() error {
 type AllOfPropertyConjunctionDeclared string
 
 func (a *AllOfPropertyConjunctionDeclared) UnmarshalJSON(data []byte) error {
+	var _zero AllOfPropertyConjunctionDeclared
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -286,6 +306,8 @@ func (a AllOfPropertyConjunctionDeclared) Validate() error {
 type AllOfPropertyConjunctionDocumented string
 
 func (a *AllOfPropertyConjunctionDocumented) UnmarshalJSON(data []byte) error {
+	var _zero AllOfPropertyConjunctionDocumented
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -309,6 +331,8 @@ func (a AllOfPropertyConjunctionDocumented) Validate() error {
 type AllOfPropertyConjunctionDocumentedWriteOnly string
 
 func (a *AllOfPropertyConjunctionDocumentedWriteOnly) UnmarshalJSON(data []byte) error {
+	var _zero AllOfPropertyConjunctionDocumentedWriteOnly
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -341,6 +365,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfPropertyConjunctionEnumBranchNarrower) UnmarshalJSON(data []byte) error {
+	var _zero AllOfPropertyConjunctionEnumBranchNarrower
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -372,6 +398,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfPropertyConjunctionEnumRootNarrower) UnmarshalJSON(data []byte) error {
+	var _zero AllOfPropertyConjunctionEnumRootNarrower
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -392,6 +420,8 @@ func (a AllOfPropertyConjunctionEnumRootNarrower) Validate() error {
 type AllOfPropertyConjunctionHighBound int64
 
 func (a *AllOfPropertyConjunctionHighBound) UnmarshalJSON(data []byte) error {
+	var _zero AllOfPropertyConjunctionHighBound
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -429,6 +459,8 @@ func (a AllOfPropertyConjunctionHighBound) Validate() error {
 type AllOfPropertyConjunctionHighBoundRootTighter int64
 
 func (a *AllOfPropertyConjunctionHighBoundRootTighter) UnmarshalJSON(data []byte) error {
+	var _zero AllOfPropertyConjunctionHighBoundRootTighter
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -466,6 +498,8 @@ func (a AllOfPropertyConjunctionHighBoundRootTighter) Validate() error {
 type AllOfPropertyConjunctionLenRootTighter string
 
 func (a *AllOfPropertyConjunctionLenRootTighter) UnmarshalJSON(data []byte) error {
+	var _zero AllOfPropertyConjunctionLenRootTighter
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -484,6 +518,8 @@ func (a AllOfPropertyConjunctionLenRootTighter) Validate() error {
 type AllOfPropertyConjunctionLowBound int64
 
 func (a *AllOfPropertyConjunctionLowBound) UnmarshalJSON(data []byte) error {
+	var _zero AllOfPropertyConjunctionLowBound
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -521,6 +557,8 @@ func (a AllOfPropertyConjunctionLowBound) Validate() error {
 type AllOfPropertyConjunctionLowBoundRootTighter int64
 
 func (a *AllOfPropertyConjunctionLowBoundRootTighter) UnmarshalJSON(data []byte) error {
+	var _zero AllOfPropertyConjunctionLowBoundRootTighter
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -558,6 +596,8 @@ func (a AllOfPropertyConjunctionLowBoundRootTighter) Validate() error {
 type AllOfPropertyConjunctionNestedA string
 
 func (a *AllOfPropertyConjunctionNestedA) UnmarshalJSON(data []byte) error {
+	var _zero AllOfPropertyConjunctionNestedA
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -583,89 +623,96 @@ type AllOfPropertyConjunctionNested struct {
 	B                    int64                           `json:"b"`
 }
 
+// UnmarshalJSON replaces a with the value the document holds. See
+// decodeJSONAt.
 func (a *AllOfPropertyConjunctionNested) UnmarshalJSON(data []byte) error {
-	a.AdditionalProperties = nil
-	a._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(a.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into a, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever a held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (a *AllOfPropertyConjunctionNested) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*a = AllOfPropertyConjunctionNested{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"a",
-			"b",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[AllOfPropertyConjunctionNested](_d, _sp))
 	}
-	type Alias AllOfPropertyConjunctionNested
-	aux := &struct {
-		*Alias
-		B *jsonInteger `json:"b"`
-	}{
-		Alias: (*Alias)(a),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "a", decode: jsonDecodeValue[AllOfPropertyConjunctionNestedA]},
-			{name: "b", decode: jsonDecodeValue[jsonInteger]},
-		})
-	}
-
-	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
-	// above are what let encoding/json see it. Each outer pointer is nil when
-	// the property was absent or null, both of which leave the field as it was.
-	if aux.B != nil {
-		_iv := *aux.B
-		a.B = int64(_iv)
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"a",
-			"b",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
+			_raw[_k] = _v
 		}
-		a._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			a._jsonKeys[_k] = true
+	}
+	if _v, _ok := _raw["a"]; _ok {
+		if _err := func(_p *AllOfPropertyConjunctionNestedA, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[AllOfPropertyConjunctionNestedA](_p, _d, _s, jsonDecodeValue[AllOfPropertyConjunctionNestedA])
+		}(&a.A, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "a")
 		}
-		knownFields := map[string]bool{
-			"a": true,
-			"b": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
+	}
+	if _v, _ok := _raw["b"]; _ok {
+		// A number written 1.0 is the integer 1 from draft 6 on; the shadow is
+		// what lets it through. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv jsonInteger
+			if _err := func(_p *jsonInteger, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[jsonInteger](_p, _d, _s, jsonDecodeValue[jsonInteger])
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "b")
 			}
-			if a.AdditionalProperties == nil {
-				a.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			a.AdditionalProperties[rawKey] = rawVal
+			a.B = int64(_iv)
 		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"a",
+		"b",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	a._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		a._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "a", "b":
+			continue
+		}
+		if a.AdditionalProperties == nil {
+			a.AdditionalProperties = make(map[string]json.RawMessage)
+		}
+		a.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -713,6 +760,8 @@ func (a AllOfPropertyConjunctionNested) Validate() error {
 type AllOfPropertyConjunctionNumberMeetsInteger int64
 
 func (a *AllOfPropertyConjunctionNumberMeetsInteger) UnmarshalJSON(data []byte) error {
+	var _zero AllOfPropertyConjunctionNumberMeetsInteger
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -758,6 +807,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfPropertyConjunctionNumberSpelling) UnmarshalJSON(data []byte) error {
+	var _zero AllOfPropertyConjunctionNumberSpelling
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -778,6 +829,8 @@ func (a AllOfPropertyConjunctionNumberSpelling) Validate() error {
 type AllOfPropertyConjunctionPatternFirstWins string
 
 func (a *AllOfPropertyConjunctionPatternFirstWins) UnmarshalJSON(data []byte) error {
+	var _zero AllOfPropertyConjunctionPatternFirstWins
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -798,6 +851,8 @@ func (a AllOfPropertyConjunctionPatternFirstWins) Validate() error {
 type AllOfPropertyConjunctionReversed string
 
 func (a *AllOfPropertyConjunctionReversed) UnmarshalJSON(data []byte) error {
+	var _zero AllOfPropertyConjunctionReversed
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -819,6 +874,8 @@ func (a AllOfPropertyConjunctionReversed) Validate() error {
 type AllOfPropertyConjunctionTwice string
 
 func (a *AllOfPropertyConjunctionTwice) UnmarshalJSON(data []byte) error {
+	var _zero AllOfPropertyConjunctionTwice
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -840,6 +897,8 @@ func (a AllOfPropertyConjunctionTwice) Validate() error {
 type AllOfPropertyConjunctionTypeBranchNarrower int64
 
 func (a *AllOfPropertyConjunctionTypeBranchNarrower) UnmarshalJSON(data []byte) error {
+	var _zero AllOfPropertyConjunctionTypeBranchNarrower
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -874,6 +933,8 @@ func (a AllOfPropertyConjunctionTypeBranchNarrower) Validate() error {
 type AllOfPropertyConjunctionTypeRootNarrower int64
 
 func (a *AllOfPropertyConjunctionTypeRootNarrower) UnmarshalJSON(data []byte) error {
+	var _zero AllOfPropertyConjunctionTypeRootNarrower
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -908,6 +969,8 @@ func (a AllOfPropertyConjunctionTypeRootNarrower) Validate() error {
 type AllOfPropertyConjunctionViaRef string
 
 func (a *AllOfPropertyConjunctionViaRef) UnmarshalJSON(data []byte) error {
+	var _zero AllOfPropertyConjunctionViaRef
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -962,156 +1025,244 @@ type AllOfPropertyConjunction struct {
 	_jsonKeys            map[string]bool                               // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces a with the value the document holds. See
+// decodeJSONAt.
 func (a *AllOfPropertyConjunction) UnmarshalJSON(data []byte) error {
-	a.AdditionalProperties = nil
-	a._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(a.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into a, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever a held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (a *AllOfPropertyConjunction) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*a = AllOfPropertyConjunction{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"branchOnly",
-			"constAgainstEnum",
-			"declared",
-			"documented",
-			"documentedWriteOnly",
-			"enumBranchNarrower",
-			"enumRootNarrower",
-			"highBound",
-			"highBoundRootTighter",
-			"lenRootTighter",
-			"lowBound",
-			"lowBoundRootTighter",
-			"nested",
-			"numberMeetsInteger",
-			"numberSpelling",
-			"patternFirstWins",
-			"reversed",
-			"twice",
-			"typeBranchNarrower",
-			"typeRootNarrower",
-			"viaRef",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[AllOfPropertyConjunction](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias AllOfPropertyConjunction
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(a),
+	if _v, _ok := _raw["branchOnly"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&a.BranchOnly, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "branchOnly")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "branchOnly", decode: jsonDecodeValue[*string]},
-			{name: "constAgainstEnum", decode: jsonDecodeValue[*AllOfPropertyConjunctionConstAgainstEnum]},
-			{name: "declared", decode: jsonDecodeValue[*AllOfPropertyConjunctionDeclared]},
-			{name: "documented", decode: jsonDecodeValue[*AllOfPropertyConjunctionDocumented]},
-			{name: "documentedWriteOnly", decode: jsonDecodeValue[*AllOfPropertyConjunctionDocumentedWriteOnly]},
-			{name: "enumBranchNarrower", decode: jsonDecodeValue[*AllOfPropertyConjunctionEnumBranchNarrower]},
-			{name: "enumRootNarrower", decode: jsonDecodeValue[*AllOfPropertyConjunctionEnumRootNarrower]},
-			{name: "highBound", decode: jsonDecodeValue[*AllOfPropertyConjunctionHighBound]},
-			{name: "highBoundRootTighter", decode: jsonDecodeValue[*AllOfPropertyConjunctionHighBoundRootTighter]},
-			{name: "lenRootTighter", decode: jsonDecodeValue[*AllOfPropertyConjunctionLenRootTighter]},
-			{name: "lowBound", decode: jsonDecodeValue[*AllOfPropertyConjunctionLowBound]},
-			{name: "lowBoundRootTighter", decode: jsonDecodeValue[*AllOfPropertyConjunctionLowBoundRootTighter]},
-			{name: "nested", decode: jsonDecodeValue[*AllOfPropertyConjunctionNested]},
-			{name: "numberMeetsInteger", decode: jsonDecodeValue[*AllOfPropertyConjunctionNumberMeetsInteger]},
-			{name: "numberSpelling", decode: jsonDecodeValue[*AllOfPropertyConjunctionNumberSpelling]},
-			{name: "patternFirstWins", decode: jsonDecodeValue[*AllOfPropertyConjunctionPatternFirstWins]},
-			{name: "reversed", decode: jsonDecodeValue[*AllOfPropertyConjunctionReversed]},
-			{name: "twice", decode: jsonDecodeValue[*AllOfPropertyConjunctionTwice]},
-			{name: "typeBranchNarrower", decode: jsonDecodeValue[*AllOfPropertyConjunctionTypeBranchNarrower]},
-			{name: "typeRootNarrower", decode: jsonDecodeValue[*AllOfPropertyConjunctionTypeRootNarrower]},
-			{name: "viaRef", decode: jsonDecodeValue[*AllOfPropertyConjunctionViaRef]},
-		})
+	if _v, _ok := _raw["constAgainstEnum"]; _ok {
+		if _err := func(_p **AllOfPropertyConjunctionConstAgainstEnum, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfPropertyConjunctionConstAgainstEnum](_p, _d, _s, jsonDecodeValue[*AllOfPropertyConjunctionConstAgainstEnum])
+		}(&a.ConstAgainstEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constAgainstEnum")
+		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	if _v, _ok := _raw["declared"]; _ok {
+		if _err := func(_p **AllOfPropertyConjunctionDeclared, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfPropertyConjunctionDeclared](_p, _d, _s, jsonDecodeValue[*AllOfPropertyConjunctionDeclared])
+		}(&a.Declared, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "declared")
 		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"branchOnly",
-			"constAgainstEnum",
-			"declared",
-			"documented",
-			"documentedWriteOnly",
-			"enumBranchNarrower",
-			"enumRootNarrower",
-			"highBound",
-			"highBoundRootTighter",
-			"lenRootTighter",
-			"lowBound",
-			"lowBoundRootTighter",
-			"nested",
-			"numberMeetsInteger",
-			"numberSpelling",
-			"patternFirstWins",
-			"reversed",
-			"twice",
-			"typeBranchNarrower",
-			"typeRootNarrower",
-			"viaRef",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
+	}
+	if _v, _ok := _raw["documented"]; _ok {
+		if _err := func(_p **AllOfPropertyConjunctionDocumented, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfPropertyConjunctionDocumented](_p, _d, _s, jsonDecodeValue[*AllOfPropertyConjunctionDocumented])
+		}(&a.Documented, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "documented")
 		}
-		a._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			a._jsonKeys[_k] = true
+	}
+	if _v, _ok := _raw["documentedWriteOnly"]; _ok {
+		if _err := func(_p **AllOfPropertyConjunctionDocumentedWriteOnly, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfPropertyConjunctionDocumentedWriteOnly](_p, _d, _s, jsonDecodeValue[*AllOfPropertyConjunctionDocumentedWriteOnly])
+		}(&a.DocumentedWriteOnly, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "documentedWriteOnly")
 		}
-		knownFields := map[string]bool{
-			"branchOnly":           true,
-			"constAgainstEnum":     true,
-			"declared":             true,
-			"documented":           true,
-			"documentedWriteOnly":  true,
-			"enumBranchNarrower":   true,
-			"enumRootNarrower":     true,
-			"highBound":            true,
-			"highBoundRootTighter": true,
-			"lenRootTighter":       true,
-			"lowBound":             true,
-			"lowBoundRootTighter":  true,
-			"nested":               true,
-			"numberMeetsInteger":   true,
-			"numberSpelling":       true,
-			"patternFirstWins":     true,
-			"reversed":             true,
-			"twice":                true,
-			"typeBranchNarrower":   true,
-			"typeRootNarrower":     true,
-			"viaRef":               true,
+	}
+	if _v, _ok := _raw["enumBranchNarrower"]; _ok {
+		if _err := func(_p **AllOfPropertyConjunctionEnumBranchNarrower, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfPropertyConjunctionEnumBranchNarrower](_p, _d, _s, jsonDecodeValue[*AllOfPropertyConjunctionEnumBranchNarrower])
+		}(&a.EnumBranchNarrower, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "enumBranchNarrower")
 		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if a.AdditionalProperties == nil {
-				a.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			a.AdditionalProperties[rawKey] = rawVal
+	}
+	if _v, _ok := _raw["enumRootNarrower"]; _ok {
+		if _err := func(_p **AllOfPropertyConjunctionEnumRootNarrower, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfPropertyConjunctionEnumRootNarrower](_p, _d, _s, jsonDecodeValue[*AllOfPropertyConjunctionEnumRootNarrower])
+		}(&a.EnumRootNarrower, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "enumRootNarrower")
 		}
+	}
+	if _v, _ok := _raw["highBound"]; _ok {
+		if _err := func(_p **AllOfPropertyConjunctionHighBound, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfPropertyConjunctionHighBound](_p, _d, _s, jsonDecodeValue[*AllOfPropertyConjunctionHighBound])
+		}(&a.HighBound, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "highBound")
+		}
+	}
+	if _v, _ok := _raw["highBoundRootTighter"]; _ok {
+		if _err := func(_p **AllOfPropertyConjunctionHighBoundRootTighter, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfPropertyConjunctionHighBoundRootTighter](_p, _d, _s, jsonDecodeValue[*AllOfPropertyConjunctionHighBoundRootTighter])
+		}(&a.HighBoundRootTighter, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "highBoundRootTighter")
+		}
+	}
+	if _v, _ok := _raw["lenRootTighter"]; _ok {
+		if _err := func(_p **AllOfPropertyConjunctionLenRootTighter, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfPropertyConjunctionLenRootTighter](_p, _d, _s, jsonDecodeValue[*AllOfPropertyConjunctionLenRootTighter])
+		}(&a.LenRootTighter, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "lenRootTighter")
+		}
+	}
+	if _v, _ok := _raw["lowBound"]; _ok {
+		if _err := func(_p **AllOfPropertyConjunctionLowBound, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfPropertyConjunctionLowBound](_p, _d, _s, jsonDecodeValue[*AllOfPropertyConjunctionLowBound])
+		}(&a.LowBound, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "lowBound")
+		}
+	}
+	if _v, _ok := _raw["lowBoundRootTighter"]; _ok {
+		if _err := func(_p **AllOfPropertyConjunctionLowBoundRootTighter, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfPropertyConjunctionLowBoundRootTighter](_p, _d, _s, jsonDecodeValue[*AllOfPropertyConjunctionLowBoundRootTighter])
+		}(&a.LowBoundRootTighter, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "lowBoundRootTighter")
+		}
+	}
+	if _v, _ok := _raw["nested"]; _ok {
+		if _err := func(_p **AllOfPropertyConjunctionNested, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **AllOfPropertyConjunctionNested, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*AllOfPropertyConjunctionNested, AllOfPropertyConjunctionNested](_p, _d, _s, (*AllOfPropertyConjunctionNested).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&a.Nested, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "nested")
+		}
+	}
+	if _v, _ok := _raw["numberMeetsInteger"]; _ok {
+		if _err := func(_p **AllOfPropertyConjunctionNumberMeetsInteger, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfPropertyConjunctionNumberMeetsInteger](_p, _d, _s, jsonDecodeValue[*AllOfPropertyConjunctionNumberMeetsInteger])
+		}(&a.NumberMeetsInteger, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "numberMeetsInteger")
+		}
+	}
+	if _v, _ok := _raw["numberSpelling"]; _ok {
+		if _err := func(_p **AllOfPropertyConjunctionNumberSpelling, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfPropertyConjunctionNumberSpelling](_p, _d, _s, jsonDecodeValue[*AllOfPropertyConjunctionNumberSpelling])
+		}(&a.NumberSpelling, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "numberSpelling")
+		}
+	}
+	if _v, _ok := _raw["patternFirstWins"]; _ok {
+		if _err := func(_p **AllOfPropertyConjunctionPatternFirstWins, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfPropertyConjunctionPatternFirstWins](_p, _d, _s, jsonDecodeValue[*AllOfPropertyConjunctionPatternFirstWins])
+		}(&a.PatternFirstWins, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "patternFirstWins")
+		}
+	}
+	if _v, _ok := _raw["reversed"]; _ok {
+		if _err := func(_p **AllOfPropertyConjunctionReversed, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfPropertyConjunctionReversed](_p, _d, _s, jsonDecodeValue[*AllOfPropertyConjunctionReversed])
+		}(&a.Reversed, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "reversed")
+		}
+	}
+	if _v, _ok := _raw["twice"]; _ok {
+		if _err := func(_p **AllOfPropertyConjunctionTwice, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfPropertyConjunctionTwice](_p, _d, _s, jsonDecodeValue[*AllOfPropertyConjunctionTwice])
+		}(&a.Twice, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "twice")
+		}
+	}
+	if _v, _ok := _raw["typeBranchNarrower"]; _ok {
+		if _err := func(_p **AllOfPropertyConjunctionTypeBranchNarrower, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfPropertyConjunctionTypeBranchNarrower](_p, _d, _s, jsonDecodeValue[*AllOfPropertyConjunctionTypeBranchNarrower])
+		}(&a.TypeBranchNarrower, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "typeBranchNarrower")
+		}
+	}
+	if _v, _ok := _raw["typeRootNarrower"]; _ok {
+		if _err := func(_p **AllOfPropertyConjunctionTypeRootNarrower, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfPropertyConjunctionTypeRootNarrower](_p, _d, _s, jsonDecodeValue[*AllOfPropertyConjunctionTypeRootNarrower])
+		}(&a.TypeRootNarrower, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "typeRootNarrower")
+		}
+	}
+	if _v, _ok := _raw["viaRef"]; _ok {
+		if _err := func(_p **AllOfPropertyConjunctionViaRef, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfPropertyConjunctionViaRef](_p, _d, _s, jsonDecodeValue[*AllOfPropertyConjunctionViaRef])
+		}(&a.ViaRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "viaRef")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"branchOnly",
+		"constAgainstEnum",
+		"declared",
+		"documented",
+		"documentedWriteOnly",
+		"enumBranchNarrower",
+		"enumRootNarrower",
+		"highBound",
+		"highBoundRootTighter",
+		"lenRootTighter",
+		"lowBound",
+		"lowBoundRootTighter",
+		"nested",
+		"numberMeetsInteger",
+		"numberSpelling",
+		"patternFirstWins",
+		"reversed",
+		"twice",
+		"typeBranchNarrower",
+		"typeRootNarrower",
+		"viaRef",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	a._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		a._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "branchOnly", "constAgainstEnum", "declared", "documented", "documentedWriteOnly", "enumBranchNarrower", "enumRootNarrower", "highBound", "highBoundRootTighter", "lenRootTighter", "lowBound", "lowBoundRootTighter", "nested", "numberMeetsInteger", "numberSpelling", "patternFirstWins", "reversed", "twice", "typeBranchNarrower", "typeRootNarrower", "viaRef":
+			continue
+		}
+		if a.AdditionalProperties == nil {
+			a.AdditionalProperties = make(map[string]json.RawMessage)
+		}
+		a.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil

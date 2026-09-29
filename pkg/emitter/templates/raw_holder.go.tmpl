@@ -1,0 +1,46 @@
+{{/*
+raw_holder_methods is the JSON half of every wrapper that holds its value as the
+bytes the document wrote and judges it afterwards: the multi-type and
+schema-valued "type" wrapper, the bare "not", the applicator-only schema, and
+the schema held as data. The annotation wrapper writes its own where
+--strict-read-write gives it rules to apply on the way in and out.
+
+What it holds is the document's own copy (see jsonDoc.keep), which every value
+that document decoded into shares, so no method hands out the slice itself:
+MarshalJSON and Raw hand out copies. Before, the bytes were appended over
+whatever the wrapper already held -- a copy of the value made earlier still
+shared that array, and was rewritten by the next decode -- and MarshalJSON and
+Raw returned the wrapper's own slice, through which a caller could rewrite the
+value.
+*/}}
+{{define "raw_holder_methods"}}
+{{- $recv := receiverName .Name -}}
+
+// UnmarshalJSON replaces {{$recv}} with the value the document holds. See
+// decodeJSONAt.
+func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish({{$recv}}.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever {{$recv}} held.
+func ({{$recv}} *{{.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*{{$recv}} = {{.Name}}{}
+	{{$recv}}._raw = _d.keep(_sp)
+	return nil
+}
+
+// MarshalJSON writes the value back as the document wrote it.
+func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
+	if len({{$recv}}._raw) == 0 {
+		return []byte("null"), nil
+	}
+	return append([]byte(nil), {{$recv}}._raw...), nil
+}
+
+// Raw returns a copy of the value's bytes.
+func ({{$recv}} {{.Name}}) Raw() json.RawMessage { return append(json.RawMessage(nil), {{$recv}}._raw...) }
+{{- end}}

@@ -10,12 +10,30 @@ import (
 
 type ContainsInt []any
 
+// UnmarshalJSON replaces c with the value the document holds.
 func (c *ContainsInt) UnmarshalJSON(data []byte) error {
-	if string(data) == "null" {
+	var _zero ContainsInt
+	*c = _zero
+	if jsonIsNullDocument(data) {
 		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias ContainsInt
 	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(c)))
+}
+
+// decodeJSONAt decodes the value at _sp into c, in place. The value is
+// replaced rather than merged into: a slice is decoded into an array of its
+// own rather than over the one c held, which a copy of the value made
+// earlier still shares, and a map loses the members an earlier document gave
+// it.
+func (c *ContainsInt) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	var _zero ContainsInt
+	*c = _zero
+	if _d.isNull(_sp) {
+		return jsonValueErrorf("null is not allowed")
+	}
+	type Alias ContainsInt
+	return jsonDecodeRefusal(jsonAtJSON[Alias]((*Alias)(c), _d, _sp))
 }
 
 // Validate checks ContainsInt against its JSON Schema constraints.
@@ -51,9 +69,10 @@ type HasInteger struct {
 }
 
 func (h *HasInteger) UnmarshalJSON(data []byte) error {
+	*h = HasInteger{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		h._raw = append(h._raw[:0], data...)
+		h._raw = append(json.RawMessage(nil), data...)
 		h._isRaw = true
 		return nil
 	}
@@ -62,8 +81,15 @@ func (h *HasInteger) UnmarshalJSON(data []byte) error {
 		h._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	h._raw = append(h._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	h._raw = append(json.RawMessage(nil), data...)
 	h._isRaw = true
 	return nil
 }
@@ -72,7 +98,9 @@ func (h HasInteger) MarshalJSON() ([]byte, error) {
 		if len(h._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return h._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), h._raw...), nil
 	}
 	return json.Marshal(h._value)
 }
@@ -80,7 +108,7 @@ func (h HasInteger) Slice() []any  { return h._value }
 func (h HasInteger) IsArray() bool { return !h._isRaw }
 func (h HasInteger) Raw() json.RawMessage {
 	if h._isRaw {
-		return h._raw
+		return append(json.RawMessage(nil), h._raw...)
 	}
 	_b, _ := json.Marshal(h._value)
 	return _b
@@ -122,12 +150,30 @@ func (h HasInteger) Validate() error {
 
 type OwnPrefix []any
 
+// UnmarshalJSON replaces o with the value the document holds.
 func (o *OwnPrefix) UnmarshalJSON(data []byte) error {
-	if string(data) == "null" {
+	var _zero OwnPrefix
+	*o = _zero
+	if jsonIsNullDocument(data) {
 		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias OwnPrefix
 	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(o)))
+}
+
+// decodeJSONAt decodes the value at _sp into o, in place. The value is
+// replaced rather than merged into: a slice is decoded into an array of its
+// own rather than over the one o held, which a copy of the value made
+// earlier still shares, and a map loses the members an earlier document gave
+// it.
+func (o *OwnPrefix) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	var _zero OwnPrefix
+	*o = _zero
+	if _d.isNull(_sp) {
+		return jsonValueErrorf("null is not allowed")
+	}
+	type Alias OwnPrefix
+	return jsonDecodeRefusal(jsonAtJSON[Alias]((*Alias)(o), _d, _sp))
 }
 
 // Validate checks OwnPrefix against its JSON Schema constraints.
@@ -146,12 +192,30 @@ func (o OwnPrefix) Validate() error {
 
 type PrefixStr []any
 
+// UnmarshalJSON replaces p with the value the document holds.
 func (p *PrefixStr) UnmarshalJSON(data []byte) error {
-	if string(data) == "null" {
+	var _zero PrefixStr
+	*p = _zero
+	if jsonIsNullDocument(data) {
 		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias PrefixStr
 	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(p)))
+}
+
+// decodeJSONAt decodes the value at _sp into p, in place. The value is
+// replaced rather than merged into: a slice is decoded into an array of its
+// own rather than over the one p held, which a copy of the value made
+// earlier still shares, and a map loses the members an earlier document gave
+// it.
+func (p *PrefixStr) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	var _zero PrefixStr
+	*p = _zero
+	if _d.isNull(_sp) {
+		return jsonValueErrorf("null is not allowed")
+	}
+	type Alias PrefixStr
+	return jsonDecodeRefusal(jsonAtJSON[Alias]((*Alias)(p), _d, _sp))
 }
 
 // Validate checks PrefixStr against its JSON Schema constraints.
@@ -170,12 +234,30 @@ func (p PrefixStr) Validate() error {
 
 type RefToContains []any
 
+// UnmarshalJSON replaces r with the value the document holds.
 func (r *RefToContains) UnmarshalJSON(data []byte) error {
-	if string(data) == "null" {
+	var _zero RefToContains
+	*r = _zero
+	if jsonIsNullDocument(data) {
 		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias RefToContains
 	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(r)))
+}
+
+// decodeJSONAt decodes the value at _sp into r, in place. The value is
+// replaced rather than merged into: a slice is decoded into an array of its
+// own rather than over the one r held, which a copy of the value made
+// earlier still shares, and a map loses the members an earlier document gave
+// it.
+func (r *RefToContains) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	var _zero RefToContains
+	*r = _zero
+	if _d.isNull(_sp) {
+		return jsonValueErrorf("null is not allowed")
+	}
+	type Alias RefToContains
+	return jsonDecodeRefusal(jsonAtJSON[Alias]((*Alias)(r), _d, _sp))
 }
 
 // Validate checks RefToContains against its JSON Schema constraints.
@@ -205,12 +287,30 @@ func (r RefToContains) Validate() error {
 
 type TwoBranches []any
 
+// UnmarshalJSON replaces t with the value the document holds.
 func (t *TwoBranches) UnmarshalJSON(data []byte) error {
-	if string(data) == "null" {
+	var _zero TwoBranches
+	*t = _zero
+	if jsonIsNullDocument(data) {
 		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias TwoBranches
 	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(t)))
+}
+
+// decodeJSONAt decodes the value at _sp into t, in place. The value is
+// replaced rather than merged into: a slice is decoded into an array of its
+// own rather than over the one t held, which a copy of the value made
+// earlier still shares, and a map loses the members an earlier document gave
+// it.
+func (t *TwoBranches) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	var _zero TwoBranches
+	*t = _zero
+	if _d.isNull(_sp) {
+		return jsonValueErrorf("null is not allowed")
+	}
+	type Alias TwoBranches
+	return jsonDecodeRefusal(jsonAtJSON[Alias]((*Alias)(t), _d, _sp))
 }
 
 // Validate checks TwoBranches against its JSON Schema constraints.
@@ -228,92 +328,114 @@ type AllOfBranchArrayKeywords struct {
 	ViaRef               RefToContains              `json:"viaRef,omitzero"`
 }
 
+// UnmarshalJSON replaces a with the value the document holds. See
+// decodeJSONAt.
 func (a *AllOfBranchArrayKeywords) UnmarshalJSON(data []byte) error {
-	a.AdditionalProperties = nil
-	a._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(a.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into a, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever a held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (a *AllOfBranchArrayKeywords) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*a = AllOfBranchArrayKeywords{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"contains",
-			"ownPrefix",
-			"prefix",
-			"twoBranches",
-			"viaRef",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[AllOfBranchArrayKeywords](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias AllOfBranchArrayKeywords
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(a),
+	if _v, _ok := _raw["contains"]; _ok {
+		if _err := func(_p *ContainsInt, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*ContainsInt).decodeJSONAt(_p, _d, _s))
+		}(&a.Contains, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "contains")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "contains", decode: jsonDecodeValue[ContainsInt]},
-			{name: "ownPrefix", decode: jsonDecodeValue[OwnPrefix]},
-			{name: "prefix", decode: jsonDecodeValue[PrefixStr]},
-			{name: "twoBranches", decode: jsonDecodeValue[TwoBranches]},
-			{name: "viaRef", decode: jsonDecodeValue[RefToContains]},
-		})
+	if _v, _ok := _raw["ownPrefix"]; _ok {
+		if _err := func(_p *OwnPrefix, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*OwnPrefix).decodeJSONAt(_p, _d, _s))
+		}(&a.OwnPrefix, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "ownPrefix")
+		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	if _v, _ok := _raw["prefix"]; _ok {
+		if _err := func(_p *PrefixStr, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*PrefixStr).decodeJSONAt(_p, _d, _s))
+		}(&a.Prefix, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "prefix")
 		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"contains",
-			"ownPrefix",
-			"prefix",
-			"twoBranches",
-			"viaRef",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
+	}
+	if _v, _ok := _raw["twoBranches"]; _ok {
+		if _err := func(_p *TwoBranches, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*TwoBranches).decodeJSONAt(_p, _d, _s))
+		}(&a.TwoBranches, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "twoBranches")
 		}
-		a._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			a._jsonKeys[_k] = true
+	}
+	if _v, _ok := _raw["viaRef"]; _ok {
+		if _err := func(_p *RefToContains, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*RefToContains).decodeJSONAt(_p, _d, _s))
+		}(&a.ViaRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "viaRef")
 		}
-		knownFields := map[string]bool{
-			"contains":    true,
-			"ownPrefix":   true,
-			"prefix":      true,
-			"twoBranches": true,
-			"viaRef":      true,
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"contains",
+		"ownPrefix",
+		"prefix",
+		"twoBranches",
+		"viaRef",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if a.AdditionalProperties == nil {
-				a.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			a.AdditionalProperties[rawKey] = rawVal
+	}
+	a._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		a._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "contains", "ownPrefix", "prefix", "twoBranches", "viaRef":
+			continue
 		}
+		if a.AdditionalProperties == nil {
+			a.AdditionalProperties = make(map[string]json.RawMessage)
+		}
+		a.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil

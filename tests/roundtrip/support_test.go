@@ -6,6 +6,7 @@ import "github.com/mgilbir/schemagen/tests/internal/testsupport"
 // under the names its tests were written against when they were one package.
 // See tests/internal/testsupport.
 var (
+	backquote                    = testsupport.Backquote
 	generateFromSchema           = testsupport.GenerateFromSchema
 	generateFromSchemaWithConfig = testsupport.GenerateFromSchemaWithConfig
 	generateRoundTripMain        = testsupport.GenerateRoundTripMain

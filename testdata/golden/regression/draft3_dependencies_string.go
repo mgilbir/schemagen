@@ -14,57 +14,74 @@ type Draft3dependenciesString struct {
 	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
+// UnmarshalJSON replaces d with the value the document holds. See
+// decodeJSONAt.
 func (d *Draft3dependenciesString) UnmarshalJSON(data []byte) error {
-	d.AdditionalProperties = nil
-	d._jsonKeys = nil
-	d._nonObject = false
-	d._rawNonObject = nil
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(d.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into d, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever d held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (d *Draft3dependenciesString) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*d = Draft3dependenciesString{}
 	// The schema admits a document that is not an object, so object constraints
 	// are type-conditional. Non-object JSON data is accepted here and judged by
 	// Validate; raw bytes are preserved for roundtrip.
-	if len(data) == 0 || data[0] != '{' {
+	if _d.data[_sp.start] != '{' {
 		d._nonObject = true
-		d._rawNonObject = append(d._rawNonObject[:0], data...)
+		d._rawNonObject = _d.keep(_sp)
 		return nil
 	}
-	type Alias Draft3dependenciesString
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(d),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[Draft3dependenciesString](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	d._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		d._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if d.AdditionalProperties == nil {
+			d.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		d._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			d._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if d.AdditionalProperties == nil {
-				d.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			d.AdditionalProperties[rawKey] = rawVal
-		}
+		d.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
 }
 func (d Draft3dependenciesString) MarshalJSON() ([]byte, error) {
-	// Non-object data was silently accepted — return the original raw bytes.
+	// Non-object data was silently accepted — return the original raw bytes,
+	// in a buffer of their own: the value's bytes, handed out, are bytes a
+	// caller can rewrite the value through.
 	if d._nonObject {
 		if len(d._rawNonObject) > 0 {
-			return d._rawNonObject, nil
+			return append([]byte(nil), d._rawNonObject...), nil
 		}
 		return []byte("null"), nil
 	}

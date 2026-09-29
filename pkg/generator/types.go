@@ -788,6 +788,42 @@ func (d *StructDef) OneOfIsWholeValue() bool {
 		!d.HasNullChecks()
 }
 
+// KnownPropertyNames lists the JSON names the overflow routing in UnmarshalJSON
+// treats as the struct's own, and so does not file under additionalProperties
+// or patternProperties: the properties declared directly on this schema where
+// the struct tracks them (see OwnPropertyNames; the ones an allOf merged in are
+// routed as the spec routes them, section 10.2), every declared field's name
+// otherwise, and the name of every union that sits on a property.
+//
+// Each name appears once, in the order first given: the list is emitted as the
+// cases of one switch, and Go refuses a switch that names a case twice.
+func (d *StructDef) KnownPropertyNames() []string {
+	var names []string
+	seen := make(map[string]bool)
+	add := func(name string) {
+		if seen[name] {
+			return
+		}
+		seen[name] = true
+		names = append(names, name)
+	}
+	if d.HasOwnPropertyNames() {
+		for _, name := range d.OwnPropertyNames {
+			add(name)
+		}
+	} else {
+		for i := range d.Fields {
+			add(d.Fields[i].JSONName)
+		}
+	}
+	for i := range d.OneOfs {
+		if d.OneOfs[i].IsProperty() {
+			add(d.OneOfs[i].JSONName)
+		}
+	}
+	return names
+}
+
 // hasWholeValueOneOf reports whether a oneOf on this struct stands for the whole
 // value rather than for one property. MarshalJSON then writes the selected
 // variant as the document, and a value with none selected -- the zero value --
@@ -833,127 +869,6 @@ func (d *StructDef) hasLeafDecode(want func(*LeafDecodeDef) bool) bool {
 // so the unmarshal template can introduce the block once.
 func (d *StructDef) HasLeafDecodes() bool {
 	return d.hasLeafDecode(func(*LeafDecodeDef) bool { return true })
-}
-
-// DecodeJSONNames lists the JSON property names the opening struct decode in
-// UnmarshalJSON is allowed to fill a member from: every field carrying a real
-// struct tag, and every oneOf that sits on a property of its own. A field held
-// back for hand decoding is tagged `json:"-"` and is not one of them, and
-// neither is a oneOf standing for the whole value -- both are read out of the
-// document's own keys further down, by name and exactly.
-//
-// The list is what NeedsExactPropertyDecode narrows the decode to. Order follows
-// declaration order, and a name repeated by two members appears once: the list is
-// emitted as the argument of a single call.
-func (d *StructDef) DecodeJSONNames() []string {
-	var names []string
-	seen := make(map[string]bool, len(d.Fields)+len(d.OneOfs))
-	add := func(name string) {
-		if name == "" || seen[name] {
-			return
-		}
-		seen[name] = true
-		names = append(names, name)
-	}
-	for i := range d.Fields {
-		if d.Fields[i].ManualJSON {
-			continue
-		}
-		add(d.Fields[i].JSONName)
-	}
-	for i := range d.OneOfs {
-		if d.OneOfs[i].ManualJSON {
-			continue
-		}
-		add(d.OneOfs[i].JSONName)
-	}
-	return names
-}
-
-// DecodeMemberDef is one member the opening struct decode fills, together with
-// the Go expression that decodes a value at that member's position on its own.
-// See StructDef.DecodeMembers.
-type DecodeMemberDef struct {
-	JSONName string
-	// Decoder is a func([]byte) error built out of the emitted jsonDecode*
-	// helpers, and is what the member's position would have been decoded by had
-	// it been decoded alone.
-	Decoder string
-}
-
-// DecodeMembers lists the members of the opening struct decode, so that a decode
-// which failed can be traced back to the position at fault.
-//
-// encoding/json reports a refusal in the words of the Go value it was filling: a
-// field path through the `type Alias T` shadow that decode goes through, with no
-// array index in it at all, or -- where the member's own type refused -- whatever
-// that type said, with nothing in front of it. Neither is a path into the
-// caller's document. Issue #282.
-//
-// So the members are described once here and put to their own decode again, one
-// at a time, after a decode has already failed. Each decoder is built from the
-// position's own Go type, and from its shadow where it has one: a member whose
-// decode goes through jsonInteger has to be probed through jsonInteger too, or a
-// number written 1.0 would be reported as the fault in a document whose fault is
-// somewhere else entirely.
-//
-// A member held back for hand decoding is not one of them, for the reason it is
-// not one of DecodeJSONNames: it is tagged `json:"-"`, the opening decode never
-// sees it, and the block that does read it wraps its own refusal. Neither is a
-// oneOf, whose property is decoded into a json.RawMessage that nothing refuses,
-// and whose branch loop reports for itself.
-func (d *StructDef) DecodeMembers() []DecodeMemberDef {
-	var members []DecodeMemberDef
-	for i := range d.Fields {
-		f := &d.Fields[i]
-		if f.ManualJSON || f.JSONName == "" {
-			continue
-		}
-		t := f.Type
-		if f.LeafDecode != nil {
-			t = f.LeafDecode.ShadowType
-		}
-		members = append(members, DecodeMemberDef{
-			JSONName: f.JSONName,
-			Decoder:  decodeMemberExpr(t),
-		})
-	}
-	return members
-}
-
-// decodeMemberExpr is the decode of one position, written over the emitted
-// helpers.
-//
-// A slice and a map are opened up rather than decoded whole, because the whole
-// is where the index and the key go missing: decoding into a []T reports the
-// element's refusal with nothing saying which element it was. Everything else --
-// a scalar, a named type, a pointer to either -- is decoded as itself.
-//
-// A pointer is deliberately not descended through. encoding/json fills a
-// settable pointer with nil for a JSON null without consulting the type's own
-// UnmarshalJSON at all, so a probe that dropped the pointer would refuse a null
-// the real decode accepts, and name a member that is not at fault.
-func decodeMemberExpr(t GoType) string {
-	switch v := t.(type) {
-	case *ArrayType:
-		return "jsonDecodeItems(" + decodeMemberExpr(v.ItemType) + ")"
-	case *MapType:
-		return "jsonDecodeValues(" + decodeMemberExpr(v.ValueType) + ")"
-	}
-	return "jsonDecodeValue[" + t.GoTypeName() + "]"
-}
-
-// NeedsExactPropertyDecode reports whether UnmarshalJSON has to hand its opening
-// struct decode an object cut down to the properties the schema declares, rather
-// than the document itself.
-//
-// JSON Schema property names are case-sensitive, and encoding/json's are not: a
-// key matching no field exactly is matched again case-insensitively, so "NAME"
-// filled the member declared for "name". See jsonExactProperties, and issue #245.
-// A struct with nothing for that to happen to -- no tagged member at all -- keeps
-// the decode it had.
-func (d *StructDef) NeedsExactPropertyDecode() bool {
-	return len(d.DecodeJSONNames()) > 0
 }
 
 // HasDependentSchemaBranches reports whether any dependentSchemas entry carries
@@ -1103,6 +1018,9 @@ type AdditionalPropertiesDef struct {
 	// decoder is stricter than the RFC 3339 it names. The per-key decode goes
 	// through it.
 	LeafDecode *LeafDecodeDef
+	// ValueDecoder is the decode of one value, as a jsonAt[T] expression over
+	// ValueType or its shadow. See decodeplan.go.
+	ValueDecoder string
 }
 
 // UnevaluatedPropertiesDef describes an unevaluatedProperties constraint on a struct.
@@ -1685,6 +1603,14 @@ type FieldDef struct {
 	// could fill, or a time.Time whose decoder refuses spellings RFC 3339
 	// permits. See LeafDecodeDef.
 	LeafDecode *LeafDecodeDef
+	// MemberDecoder and ValueDecoder are the decode of this field's position,
+	// written as a Go expression of type jsonAt[T] over the field's type, or
+	// over its shadow where LeafDecode is set; see decodeplan.go. MemberDecoder
+	// is the decode a tagged member takes, which names the element or key at
+	// fault inside the member; ValueDecoder is encoding/json's own reading,
+	// which the hand-decoded member of a ManualJSON field takes.
+	MemberDecoder string
+	ValueDecoder  string
 	// ConditionalOnly marks a field whose every describing schema arrived
 	// through an if/then/else consequence that is applied in full elsewhere. The
 	// branch still supplies the Go type -- that is what the merge is for -- but
@@ -1854,6 +1780,9 @@ type OneOfVariant struct {
 	// -- a disagreement about what an integer, an exact number or an RFC 3339
 	// date-time is, reported as "no matching oneOf variant".
 	LeafDecode *LeafDecodeDef
+	// Decoder is the decode of a candidate, as a jsonAt[T] expression over Type
+	// or its shadow. See decodeplan.go.
+	Decoder string
 }
 
 // EnumDef represents an enum type.
@@ -1970,6 +1899,17 @@ type AliasDef struct {
 	// value itself — so it is only ever set for a container.
 	NullCheck         *NullCheckDef
 	AcceptNonMatching bool // true when schema has no explicit type — silently accept non-matching JSON data
+
+	// DecodeAt says the alias decodes in place, with a decodeJSONAt of its own
+	// that its containers call rather than handing its bytes to encoding/json.
+	// Set by resolveDecodeAt for an alias whose value is a struct, a raw-JSON
+	// wrapper, a slice or a map, however many names away. See decodeplan.go.
+	DecodeAt bool
+	// UnderlyingDecoder is the decode of the underlying type, as a jsonAt
+	// expression over the alias itself; UnmarshalAsDecoder the decode of the
+	// type UnmarshalAs names. Set where DecodeAt is.
+	UnderlyingDecoder  string
+	UnmarshalAsDecoder string
 
 	// Unenforced names the schema keywords this alias silently drops, phrased
 	// for the comment that goes above the declaration. It is set only on the

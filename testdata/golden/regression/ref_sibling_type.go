@@ -18,9 +18,10 @@ type MinLen3 struct {
 }
 
 func (m *MinLen3) UnmarshalJSON(data []byte) error {
+	*m = MinLen3{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		m._raw = append(m._raw[:0], data...)
+		m._raw = append(json.RawMessage(nil), data...)
 		m._isRaw = true
 		return nil
 	}
@@ -29,8 +30,15 @@ func (m *MinLen3) UnmarshalJSON(data []byte) error {
 		m._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	m._raw = append(m._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	m._raw = append(json.RawMessage(nil), data...)
 	m._isRaw = true
 	return nil
 }
@@ -39,7 +47,9 @@ func (m MinLen3) MarshalJSON() ([]byte, error) {
 		if len(m._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return m._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), m._raw...), nil
 	}
 	return json.Marshal(m._value)
 }
@@ -47,7 +57,7 @@ func (m MinLen3) StringValue() string { return m._value }
 func (m MinLen3) IsString() bool      { return !m._isRaw }
 func (m MinLen3) Raw() json.RawMessage {
 	if m._isRaw {
-		return m._raw
+		return append(json.RawMessage(nil), m._raw...)
 	}
 	_b, _ := json.Marshal(m._value)
 	return _b
@@ -72,12 +82,30 @@ func (m MinLen3) Validate() error {
 
 type RefSiblingTypeArr []any
 
+// UnmarshalJSON replaces r with the value the document holds.
 func (r *RefSiblingTypeArr) UnmarshalJSON(data []byte) error {
-	if string(data) == "null" {
+	var _zero RefSiblingTypeArr
+	*r = _zero
+	if jsonIsNullDocument(data) {
 		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias RefSiblingTypeArr
 	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(r)))
+}
+
+// decodeJSONAt decodes the value at _sp into r, in place. The value is
+// replaced rather than merged into: a slice is decoded into an array of its
+// own rather than over the one r held, which a copy of the value made
+// earlier still shares, and a map loses the members an earlier document gave
+// it.
+func (r *RefSiblingTypeArr) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	var _zero RefSiblingTypeArr
+	*r = _zero
+	if _d.isNull(_sp) {
+		return jsonValueErrorf("null is not allowed")
+	}
+	type Alias RefSiblingTypeArr
+	return jsonDecodeRefusal(jsonAtJSON[Alias]((*Alias)(r), _d, _sp))
 }
 
 // Validate checks RefSiblingTypeArr against its JSON Schema constraints.
@@ -88,6 +116,8 @@ func (r RefSiblingTypeArr) Validate() error {
 type RefSiblingTypeBounded string
 
 func (r *RefSiblingTypeBounded) UnmarshalJSON(data []byte) error {
+	var _zero RefSiblingTypeBounded
+	*r = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -106,6 +136,8 @@ func (r RefSiblingTypeBounded) Validate() error {
 type RefSiblingTypeBoundedElemItem string
 
 func (r *RefSiblingTypeBoundedElemItem) UnmarshalJSON(data []byte) error {
+	var _zero RefSiblingTypeBoundedElemItem
+	*r = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -124,6 +156,8 @@ func (r RefSiblingTypeBoundedElemItem) Validate() error {
 type RefSiblingTypeBoundedMapvValue string
 
 func (r *RefSiblingTypeBoundedMapvValue) UnmarshalJSON(data []byte) error {
+	var _zero RefSiblingTypeBoundedMapvValue
+	*r = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -142,6 +176,8 @@ func (r RefSiblingTypeBoundedMapvValue) Validate() error {
 type RefSiblingTypeElemItem string
 
 func (r *RefSiblingTypeElemItem) UnmarshalJSON(data []byte) error {
+	var _zero RefSiblingTypeElemItem
+	*r = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -157,6 +193,8 @@ func (r RefSiblingTypeElemItem) Validate() error {
 type RefSiblingTypeMapvValue string
 
 func (r *RefSiblingTypeMapvValue) UnmarshalJSON(data []byte) error {
+	var _zero RefSiblingTypeMapvValue
+	*r = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -172,6 +210,8 @@ func (r RefSiblingTypeMapvValue) Validate() error {
 type RefSiblingTypeNum float64
 
 func (r *RefSiblingTypeNum) UnmarshalJSON(data []byte) error {
+	var _zero RefSiblingTypeNum
+	*r = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -187,6 +227,8 @@ func (r RefSiblingTypeNum) Validate() error {
 type RefSiblingTypeStr string
 
 func (r *RefSiblingTypeStr) UnmarshalJSON(data []byte) error {
+	var _zero RefSiblingTypeStr
+	*r = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -202,6 +244,8 @@ func (r RefSiblingTypeStr) Validate() error {
 type RefSiblingTypeBoundedSlotItem0 string
 
 func (r *RefSiblingTypeBoundedSlotItem0) UnmarshalJSON(data []byte) error {
+	var _zero RefSiblingTypeBoundedSlotItem0
+	*r = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -220,6 +264,8 @@ func (r RefSiblingTypeBoundedSlotItem0) Validate() error {
 type RefSiblingTypeSlotItem0 string
 
 func (r *RefSiblingTypeSlotItem0) UnmarshalJSON(data []byte) error {
+	var _zero RefSiblingTypeSlotItem0
+	*r = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -249,148 +295,193 @@ type RefSiblingType struct {
 	Slot                 []any                                     `json:"slot,omitzero"`
 }
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *RefSiblingType) UnmarshalJSON(data []byte) error {
-	r.AdditionalProperties = nil
-	r._jsonKeys = nil
-	r._jsonNulls = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into r, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever r held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (r *RefSiblingType) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*r = RefSiblingType{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"arr",
-			"bounded",
-			"boundedElem",
-			"boundedMapv",
-			"boundedSlot",
-			"elem",
-			"mapv",
-			"num",
-			"plain",
-			"slot",
-			"str",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[RefSiblingType](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias RefSiblingType
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(r),
+	if _v, _ok := _raw["arr"]; _ok {
+		if _err := func(_p *RefSiblingTypeArr, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*RefSiblingTypeArr).decodeJSONAt(_p, _d, _s))
+		}(&r.Arr, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "arr")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "arr", decode: jsonDecodeValue[RefSiblingTypeArr]},
-			{name: "bounded", decode: jsonDecodeValue[*RefSiblingTypeBounded]},
-			{name: "boundedElem", decode: jsonDecodeItems(jsonDecodeValue[RefSiblingTypeBoundedElemItem])},
-			{name: "boundedMapv", decode: jsonDecodeValues(jsonDecodeValue[RefSiblingTypeBoundedMapvValue])},
-			{name: "boundedSlot", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "elem", decode: jsonDecodeItems(jsonDecodeValue[RefSiblingTypeElemItem])},
-			{name: "mapv", decode: jsonDecodeValues(jsonDecodeValue[RefSiblingTypeMapvValue])},
-			{name: "num", decode: jsonDecodeValue[*RefSiblingTypeNum]},
-			{name: "plain", decode: jsonDecodeValue[*MinLen3]},
-			{name: "slot", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "str", decode: jsonDecodeValue[*RefSiblingTypeStr]},
-		})
+	if _v, _ok := _raw["bounded"]; _ok {
+		if _err := func(_p **RefSiblingTypeBounded, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*RefSiblingTypeBounded](_p, _d, _s, jsonDecodeValue[*RefSiblingTypeBounded])
+		}(&r.Bounded, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "bounded")
+		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	if _v, _ok := _raw["boundedElem"]; _ok {
+		if _err := func(_p *[]RefSiblingTypeBoundedElemItem, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]RefSiblingTypeBoundedElemItem](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[RefSiblingTypeBoundedElemItem]))
+		}(&r.BoundedElem, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "boundedElem")
 		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"arr",
-			"bounded",
-			"boundedSlot",
-			"num",
-			"slot",
-			"str",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	}
+	if _v, _ok := _raw["boundedMapv"]; _ok {
+		if _err := func(_p *map[string]RefSiblingTypeBoundedMapvValue, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[map[string]RefSiblingTypeBoundedMapvValue](_p, _d, _s, jsonDecodeValues(jsonDecodeValue[RefSiblingTypeBoundedMapvValue]))
+		}(&r.BoundedMapv, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "boundedMapv")
+		}
+	}
+	if _v, _ok := _raw["boundedSlot"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&r.BoundedSlot, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "boundedSlot")
+		}
+	}
+	if _v, _ok := _raw["elem"]; _ok {
+		if _err := func(_p *[]RefSiblingTypeElemItem, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]RefSiblingTypeElemItem](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[RefSiblingTypeElemItem]))
+		}(&r.Elem, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "elem")
+		}
+	}
+	if _v, _ok := _raw["mapv"]; _ok {
+		if _err := func(_p *map[string]RefSiblingTypeMapvValue, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[map[string]RefSiblingTypeMapvValue](_p, _d, _s, jsonDecodeValues(jsonDecodeValue[RefSiblingTypeMapvValue]))
+		}(&r.Mapv, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "mapv")
+		}
+	}
+	if _v, _ok := _raw["num"]; _ok {
+		if _err := func(_p **RefSiblingTypeNum, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*RefSiblingTypeNum](_p, _d, _s, jsonDecodeValue[*RefSiblingTypeNum])
+		}(&r.Num, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "num")
+		}
+	}
+	if _v, _ok := _raw["plain"]; _ok {
+		if _err := func(_p **MinLen3, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*MinLen3](_p, _d, _s, jsonDecodeValue[*MinLen3])
+		}(&r.Plain, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "plain")
+		}
+	}
+	if _v, _ok := _raw["slot"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&r.Slot, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "slot")
+		}
+	}
+	if _v, _ok := _raw["str"]; _ok {
+		if _err := func(_p **RefSiblingTypeStr, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*RefSiblingTypeStr](_p, _d, _s, jsonDecodeValue[*RefSiblingTypeStr])
+		}(&r.Str, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "str")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"arr",
+		"bounded",
+		"boundedSlot",
+		"num",
+		"slot",
+		"str",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	if _v, ok := _raw["boundedElem"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "boundedElem")
+		}
+	}
+	if _v, ok := _raw["boundedMapv"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "boundedMapv")
+		}
+	}
+	if _v, ok := _raw["elem"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "elem")
+		}
+	}
+	if _v, ok := _raw["mapv"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "mapv")
+		}
+	}
+	r._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		r._jsonKeys[_k] = true
+	}
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"plain",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if r._jsonNulls == nil {
+				r._jsonNulls = make(map[string]bool, 1)
 			}
+			r._jsonNulls[_nullKey] = true
 		}
-		if _v, ok := raw["boundedElem"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "boundedElem")
-			}
+	}
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "arr", "bounded", "boundedElem", "boundedMapv", "boundedSlot", "elem", "mapv", "num", "plain", "slot", "str":
+			continue
 		}
-		if _v, ok := raw["boundedMapv"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "boundedMapv")
-			}
+		if r.AdditionalProperties == nil {
+			r.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		if _v, ok := raw["elem"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "elem")
-			}
-		}
-		if _v, ok := raw["mapv"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "mapv")
-			}
-		}
-		r._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			r._jsonKeys[_k] = true
-		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"plain",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if r._jsonNulls == nil {
-					r._jsonNulls = make(map[string]bool, 1)
-				}
-				r._jsonNulls[_nullKey] = true
-			}
-		}
-		knownFields := map[string]bool{
-			"arr":         true,
-			"bounded":     true,
-			"boundedElem": true,
-			"boundedMapv": true,
-			"boundedSlot": true,
-			"elem":        true,
-			"mapv":        true,
-			"num":         true,
-			"plain":       true,
-			"slot":        true,
-			"str":         true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if r.AdditionalProperties == nil {
-				r.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			r.AdditionalProperties[rawKey] = rawVal
-		}
+		r.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil

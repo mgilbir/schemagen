@@ -14,19 +14,35 @@ type UnevaluatedItemsCousins struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces u with the value the document holds. See
+// decodeJSONAt.
 func (u *UnevaluatedItemsCousins) UnmarshalJSON(data []byte) error {
-	u._raw = append(u._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(u.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever u held.
+func (u *UnevaluatedItemsCousins) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*u = UnevaluatedItemsCousins{}
+	u._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (u UnevaluatedItemsCousins) MarshalJSON() ([]byte, error) {
 	if len(u._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return u._raw, nil
+	return append([]byte(nil), u._raw...), nil
 }
 
-func (u UnevaluatedItemsCousins) Raw() json.RawMessage { return u._raw }
+// Raw returns a copy of the value's bytes.
+func (u UnevaluatedItemsCousins) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), u._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.

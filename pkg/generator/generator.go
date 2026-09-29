@@ -591,6 +591,10 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// carries an UnmarshalJSON before it can decide that an alias over that enum
 	// must borrow it.
 	g.resolveEnumIntegerTokens()
+	// Before populateAliasDelegates, for the reason resolveEnumIntegerTokens
+	// is: an alias that decodes in place carries an UnmarshalJSON of its own,
+	// and an alias over it has to know that to borrow it.
+	g.resolveDecodeAt()
 	g.populateAliasDelegates()
 	// Must run after resolveAliasMethodability: an alias that cannot carry
 	// methods has nowhere to put a tolerant decode. And after
@@ -602,6 +606,10 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	if err := g.resolveNamedTypeDefaults(); err != nil {
 		return nil, err
 	}
+	// Last of the passes that read or settle a type's decode: every leaf
+	// decode and every delegate is in place, and the decode of each position
+	// is composed out of them. See decodeplan.go.
+	g.resolveDecodePlans()
 
 	// Settle the order every struct's members are declared in, which is the
 	// order they cost least in rather than the order they were built in. See
@@ -16679,7 +16687,7 @@ func (g *Generator) populateAliasDelegates() {
 			ad.MarshalAs = name
 		}
 		// What this alias just gained, the next one along may borrow.
-		if ad.UnmarshalAs != "" {
+		if ad.UnmarshalAs != "" || ad.DecodeAt {
 			unmarshalTypes[ad.Name] = true
 		}
 		if ad.MarshalAs != "" {
@@ -16771,7 +16779,9 @@ func (g *Generator) jsonMethodTables() (validatableTypes, unmarshalTypes, marsha
 		case *AliasDef:
 			if d.CanHaveMethods() {
 				validatableTypes[d.Name] = true
-				if d.NeedsNullCheck || d.IsIntegerType() || d.UnmarshalAs != "" {
+				// DecodeAt is an UnmarshalJSON of its own, which an alias over
+				// this one has to borrow; see resolveAliasDecodeAt.
+				if d.NeedsNullCheck || d.IsIntegerType() || d.UnmarshalAs != "" || d.DecodeAt {
 					unmarshalTypes[d.Name] = true
 				}
 				if d.MarshalAs != "" {

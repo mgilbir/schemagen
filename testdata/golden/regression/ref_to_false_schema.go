@@ -14,19 +14,33 @@ type Never struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *Never) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *Never) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = Never{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n Never) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n Never) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n Never) Raw() json.RawMessage { return append(json.RawMessage(nil), n._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -50,19 +64,33 @@ type RefToFalseSchemaBeside struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *RefToFalseSchemaBeside) UnmarshalJSON(data []byte) error {
-	r._raw = append(r._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever r held.
+func (r *RefToFalseSchemaBeside) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*r = RefToFalseSchemaBeside{}
+	r._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (r RefToFalseSchemaBeside) MarshalJSON() ([]byte, error) {
 	if len(r._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return r._raw, nil
+	return append([]byte(nil), r._raw...), nil
 }
 
-func (r RefToFalseSchemaBeside) Raw() json.RawMessage { return r._raw }
+// Raw returns a copy of the value's bytes.
+func (r RefToFalseSchemaBeside) Raw() json.RawMessage { return append(json.RawMessage(nil), r._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -86,19 +114,35 @@ type RefToFalseSchemaViaAllOf struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *RefToFalseSchemaViaAllOf) UnmarshalJSON(data []byte) error {
-	r._raw = append(r._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever r held.
+func (r *RefToFalseSchemaViaAllOf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*r = RefToFalseSchemaViaAllOf{}
+	r._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (r RefToFalseSchemaViaAllOf) MarshalJSON() ([]byte, error) {
 	if len(r._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return r._raw, nil
+	return append([]byte(nil), r._raw...), nil
 }
 
-func (r RefToFalseSchemaViaAllOf) Raw() json.RawMessage { return r._raw }
+// Raw returns a copy of the value's bytes.
+func (r RefToFalseSchemaViaAllOf) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), r._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -122,19 +166,35 @@ type RefToFalseSchemaViaAnyOf struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *RefToFalseSchemaViaAnyOf) UnmarshalJSON(data []byte) error {
-	r._raw = append(r._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever r held.
+func (r *RefToFalseSchemaViaAnyOf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*r = RefToFalseSchemaViaAnyOf{}
+	r._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (r RefToFalseSchemaViaAnyOf) MarshalJSON() ([]byte, error) {
 	if len(r._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return r._raw, nil
+	return append([]byte(nil), r._raw...), nil
 }
 
-func (r RefToFalseSchemaViaAnyOf) Raw() json.RawMessage { return r._raw }
+// Raw returns a copy of the value's bytes.
+func (r RefToFalseSchemaViaAnyOf) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), r._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -158,19 +218,35 @@ type RefToFalseSchemaViaNested struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *RefToFalseSchemaViaNested) UnmarshalJSON(data []byte) error {
-	r._raw = append(r._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever r held.
+func (r *RefToFalseSchemaViaNested) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*r = RefToFalseSchemaViaNested{}
+	r._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (r RefToFalseSchemaViaNested) MarshalJSON() ([]byte, error) {
 	if len(r._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return r._raw, nil
+	return append([]byte(nil), r._raw...), nil
 }
 
-func (r RefToFalseSchemaViaNested) Raw() json.RawMessage { return r._raw }
+// Raw returns a copy of the value's bytes.
+func (r RefToFalseSchemaViaNested) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), r._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -231,70 +307,133 @@ func (r *RefToFalseSchema) GetNever() *Never {
 	return zero
 }
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *RefToFalseSchema) UnmarshalJSON(data []byte) error {
-	r.AdditionalProperties = nil
-	r._jsonKeys = nil
-	r._jsonNulls = nil
-	r.ViaOneOf = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into r, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever r held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (r *RefToFalseSchema) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*r = RefToFalseSchema{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"always",
-			"alwaysAllOf",
-			"alwaysList",
-			"beside",
-			"list",
-			"map",
-			"prop",
-			"tuple",
-			"viaAllOf",
-			"viaAnyOf",
-			"viaNested",
-			"viaOneOf",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[RefToFalseSchema](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias RefToFalseSchema
-	aux := &struct {
-		*Alias
-		ViaOneOf json.RawMessage `json:"viaOneOf"`
-	}{
-		Alias: (*Alias)(r),
+	if _v, _ok := _raw["always"]; _ok {
+		if _err := func(_p *Always, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[Always](_p, _d, _s, jsonDecodeValue[Always])
+		}(&r.Always, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "always")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "always", decode: jsonDecodeValue[Always]},
-			{name: "alwaysAllOf", decode: jsonDecodeValue[any]},
-			{name: "alwaysList", decode: jsonDecodeItems(jsonDecodeValue[Always])},
-			{name: "beside", decode: jsonDecodeValue[RefToFalseSchemaBeside]},
-			{name: "list", decode: jsonDecodeItems(jsonDecodeValue[Never])},
-			{name: "map", decode: jsonDecodeValues(jsonDecodeValue[Never])},
-			{name: "prop", decode: jsonDecodeValue[Never]},
-			{name: "tuple", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "viaAllOf", decode: jsonDecodeValue[RefToFalseSchemaViaAllOf]},
-			{name: "viaAnyOf", decode: jsonDecodeValue[RefToFalseSchemaViaAnyOf]},
-			{name: "viaNested", decode: jsonDecodeValue[RefToFalseSchemaViaNested]},
-		})
+	if _v, _ok := _raw["alwaysAllOf"]; _ok {
+		if _err := func(_p *any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[any](_p, _d, _s, jsonDecodeValue[any])
+		}(&r.AlwaysAllOf, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "alwaysAllOf")
+		}
+	}
+	if _v, _ok := _raw["alwaysList"]; _ok {
+		if _err := func(_p *[]Always, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]Always](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[Always]))
+		}(&r.AlwaysList, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "alwaysList")
+		}
+	}
+	if _v, _ok := _raw["beside"]; _ok {
+		if _err := func(_p *RefToFalseSchemaBeside, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*RefToFalseSchemaBeside).decodeJSONAt(_p, _d, _s))
+		}(&r.Beside, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "beside")
+		}
+	}
+	if _v, _ok := _raw["list"]; _ok {
+		if _err := func(_p *[]Never, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeSlice[Never](_p, _d, _s, func(_p *Never, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*Never).decodeJSONAt(_p, _d, _s))
+			})
+		}(&r.List, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "list")
+		}
+	}
+	if _v, _ok := _raw["map"]; _ok {
+		if _err := func(_p *map[string]Never, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeMap[Never](_p, _d, _s, func(_p *Never, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*Never).decodeJSONAt(_p, _d, _s))
+			})
+		}(&r.Map, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "map")
+		}
+	}
+	if _v, _ok := _raw["prop"]; _ok {
+		if _err := func(_p *Never, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*Never).decodeJSONAt(_p, _d, _s))
+		}(&r.Prop, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "prop")
+		}
+	}
+	if _v, _ok := _raw["tuple"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&r.Tuple, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "tuple")
+		}
+	}
+	if _v, _ok := _raw["viaAllOf"]; _ok {
+		if _err := func(_p *RefToFalseSchemaViaAllOf, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*RefToFalseSchemaViaAllOf).decodeJSONAt(_p, _d, _s))
+		}(&r.ViaAllOf, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "viaAllOf")
+		}
+	}
+	if _v, _ok := _raw["viaAnyOf"]; _ok {
+		if _err := func(_p *RefToFalseSchemaViaAnyOf, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*RefToFalseSchemaViaAnyOf).decodeJSONAt(_p, _d, _s))
+		}(&r.ViaAnyOf, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "viaAnyOf")
+		}
+	}
+	if _v, _ok := _raw["viaNested"]; _ok {
+		if _err := func(_p *RefToFalseSchemaViaNested, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*RefToFalseSchemaViaNested).decodeJSONAt(_p, _d, _s))
+		}(&r.ViaNested, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "viaNested")
+		}
 	}
 
 	{
-		oneofData := aux.ViaOneOf
+		_ov, _has := _raw["viaOneOf"]
 		// Every refusal this union raises is a sentence about the value the union
 		// holds, and the property that reaches it goes in front of that sentence
 		// by the rule every other message is joined by (see jsonPathError).
@@ -306,7 +445,15 @@ func (r *RefToFalseSchema) UnmarshalJSON(data []byte) error {
 		oneofErrf := func(format string, args ...any) error {
 			return jsonPathf(jsonValueErrorf(format, args...), "%s", "viaOneOf")
 		}
-		if len(oneofData) > 0 && string(oneofData) != "null" {
+		// oneofWrapf is oneofErrf for a sentence that ends with a branch's own
+		// refusal, which is kept as a step of the message rather than written
+		// into it (see jsonValueWrapf): at every level of a recursive document
+		// that refuses at the bottom, each union puts its words in front of the
+		// words of the one below it.
+		oneofWrapf := func(err error, prefix string) error {
+			return jsonPathf(jsonValueWrapf(err, prefix), "%s", "viaOneOf")
+		}
+		if _has && !_d.isNull(_ov) {
 			var oneofMatched int
 			var oneofLastErr error
 			// A second tally: branches actually satisfied, not merely decoded.
@@ -318,33 +465,38 @@ func (r *RefToFalseSchema) UnmarshalJSON(data []byte) error {
 			var oneofOpaque int
 			var oneofStrictSel isRefToFalseSchema_ViaOneOf
 			var oneofStrictErr error
+			// The candidate this branch decoded, held for the tally below. Its
+			// Validate is asked only if more than one branch matched, which is
+			// the only case the tally is read in: asked here, it was run over
+			// the whole of the value at every level of a recursive document.
+			var _vc0 *Never
+			var _vcOK0 bool
+			// Every branch below is a trial, and one that holds the value's
+			// members as raw JSON takes views of the document rather than
+			// copies of them; see jsonDoc.copyOf.
+			_d.trial++
 
 			// Try variant: Never
 			{
 				var candidate *Never
-				if err := json.Unmarshal(oneofData, &candidate); err == nil {
+				if err := func(_p **Never, _d *jsonDoc, _s jsonSpan) error {
+					return jsonDecodePtr[*Never, Never](_p, _d, _s, (*Never).decodeJSONAt)
+				}(&candidate, _d, _ov); err == nil {
 					r.ViaOneOf = &RefToFalseSchema_Never{Never: candidate}
 					oneofMatched++
 					if candidate != nil {
-						if _vErr := candidate.Validate(); _vErr == nil {
-							oneofStrict++
-							oneofStrictSel = &RefToFalseSchema_Never{Never: candidate}
-						} else if _schemagenUndecided(_vErr) {
-							// No verdict on this branch, so no telling
-							// which one the document selects.
-							return oneofErrf("variant Never: %w", _vErr)
-						} else {
-							oneofStrictErr = fmt.Errorf("variant Never: %w", _vErr)
-						}
+						_vc0, _vcOK0 = candidate, true
 					} else {
 						oneofOpaque++
 					}
 				} else if _schemagenUndecided(err) {
+					_d.trial--
 					return oneofErrf("variant Never: %w", err)
 				} else {
 					oneofLastErr = err
 				}
 			}
+			_d.trial--
 
 			if oneofMatched == 0 {
 				// A branch is only put to a decode once the keys it selects on are
@@ -355,9 +507,21 @@ func (r *RefToFalseSchema) UnmarshalJSON(data []byte) error {
 				if oneofLastErr == nil {
 					return oneofErrf("no matching oneOf variant")
 				}
-				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
+				return oneofWrapf(oneofLastErr, "no matching oneOf variant: ")
 			}
 			if oneofMatched > 1 && oneofOpaque == 0 {
+				if _vcOK0 {
+					if _vErr := _vc0.Validate(); _vErr == nil {
+						oneofStrict++
+						oneofStrictSel = &RefToFalseSchema_Never{Never: _vc0}
+					} else if _schemagenUndecided(_vErr) {
+						// No verdict on this branch, so no telling which one
+						// the document selects.
+						return oneofErrf("variant Never: %w", _vErr)
+					} else {
+						oneofStrictErr = jsonValueWrapf(_vErr, "variant Never: ")
+					}
+				}
 				// Several branches decoded and every one can be judged, so the
 				// branches' own constraints settle which of them the value
 				// really satisfies. Ambiguity is already a rejection here, so
@@ -371,7 +535,7 @@ func (r *RefToFalseSchema) UnmarshalJSON(data []byte) error {
 				case oneofStrictErr != nil:
 					// Not ambiguity but a value no branch accepts: report the
 					// branch's own reason rather than a count.
-					return oneofErrf("no matching oneOf variant: %w", oneofStrictErr)
+					return oneofWrapf(oneofStrictErr, "no matching oneOf variant: ")
 				}
 			}
 			if oneofMatched > 1 {
@@ -379,84 +543,66 @@ func (r *RefToFalseSchema) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"alwaysList",
+		"beside",
+		"prop",
+		"tuple",
+		"viaAllOf",
+		"viaAnyOf",
+		"viaNested",
+		"viaOneOf",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"alwaysList",
-			"beside",
-			"prop",
-			"tuple",
-			"viaAllOf",
-			"viaAnyOf",
-			"viaNested",
-			"viaOneOf",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	}
+	if _v, ok := _raw["list"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "list")
+		}
+	}
+	if _v, ok := _raw["map"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "map")
+		}
+	}
+	r._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		r._jsonKeys[_k] = true
+	}
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"always",
+		"alwaysAllOf",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if r._jsonNulls == nil {
+				r._jsonNulls = make(map[string]bool, 1)
 			}
+			r._jsonNulls[_nullKey] = true
 		}
-		if _v, ok := raw["list"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "list")
-			}
+	}
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "always", "alwaysAllOf", "alwaysList", "beside", "list", "map", "prop", "tuple", "viaAllOf", "viaAnyOf", "viaNested", "viaOneOf":
+			continue
 		}
-		if _v, ok := raw["map"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "map")
-			}
+		if r.AdditionalProperties == nil {
+			r.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		r._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			r._jsonKeys[_k] = true
-		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"always",
-			"alwaysAllOf",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if r._jsonNulls == nil {
-					r._jsonNulls = make(map[string]bool, 1)
-				}
-				r._jsonNulls[_nullKey] = true
-			}
-		}
-		knownFields := map[string]bool{
-			"always":      true,
-			"alwaysAllOf": true,
-			"alwaysList":  true,
-			"beside":      true,
-			"list":        true,
-			"map":         true,
-			"prop":        true,
-			"tuple":       true,
-			"viaAllOf":    true,
-			"viaAnyOf":    true,
-			"viaNested":   true,
-			"viaOneOf":    true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if r.AdditionalProperties == nil {
-				r.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			r.AdditionalProperties[rawKey] = rawVal
-		}
+		r.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil

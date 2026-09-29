@@ -20,29 +20,51 @@ type {{.Name}} struct {
 var {{.AccessRulesVar}} = {{accessRules .AccessRules}}
 {{- end}}
 
+{{- if .AccessRules}}
+
+// UnmarshalJSON replaces {{$recv}} with the value the document holds. See
+// decodeJSONAt.
 func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
-	{{- if .AccessRules}}
-	if _err := _accessRefuseReadOnly(data, {{.AccessRulesVar}}); _err != nil {
-		return _err
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
 	}
-	{{- end}}
-	{{$recv}}._raw = append({{$recv}}._raw[:0], data...)
+	return _d.finish({{$recv}}.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever {{$recv}} held. The
+// bytes kept are the document's own copy (see jsonDoc.keep): the methods that
+// hand them out hand out copies.
+//
+// A value setting a location the schema marks readOnly is still kept whole: the
+// refusal is recorded on the document and returned once the decode is done
+// (see jsonDoc.finish), so a Validate check that has to ignore it -- readOnly
+// constrains no document -- has the value to judge.
+func ({{$recv}} *{{.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*{{$recv}} = {{.Name}}{}
+	if _d.refusal == nil {
+		if _err := _accessRefuseReadOnly(_d, _sp, {{.AccessRulesVar}}); _err != nil {
+			_d.refusal = _err
+		}
+	}
+	{{$recv}}._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back, without the locations the schema marks
+// writeOnly.
 func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 	if len({{$recv}}._raw) == 0 {
 		return []byte("null"), nil
 	}
-	{{- if .AccessRules}}
-	return _accessStripWriteOnly({{$recv}}._raw, {{.AccessRulesVar}})
-	{{- end}}
-	{{- if not .AccessRules}}
-	return {{$recv}}._raw, nil
-	{{- end}}
+	return _accessStripWriteOnly(append([]byte(nil), {{$recv}}._raw...), {{.AccessRulesVar}})
 }
 
-func ({{$recv}} {{.Name}}) Raw() json.RawMessage { return {{$recv}}._raw }
+// Raw returns a copy of the value's bytes.
+func ({{$recv}} {{.Name}}) Raw() json.RawMessage { return append(json.RawMessage(nil), {{$recv}}._raw...) }
+{{- else}}
+{{template "raw_holder_methods" .}}
+{{- end}}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.

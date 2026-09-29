@@ -361,7 +361,7 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 		}
 		add(cond, path)
 	}
-	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.NumberCompare || helpers.DateTime || helpers.Canonical || helpers.NullCheck || helpers.ExactProperties || helpers.DecodePath, "encoding/json")
+	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.NumberCompare || helpers.DateTime || helpers.Canonical || helpers.NullCheck || helpers.Decode || helpers.DecodePath, "encoding/json")
 	add(helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.Canonical || helpers.NullCheck || helpers.Format || helpers.PathJoin || helpers.DecodePath, "fmt")
 	// The JSON-equality reduction: a decoder over the document's own bytes, a
 	// builder for the text it reduces to, sorted member names, and strconv for
@@ -375,9 +375,17 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	// shadow type, which only decides whether a token is a number at all.
 	add(helpers.NumberCompare, "strconv")
 	add(helpers.NumberCompare, "math/big")
-	// jsonExactProperties compares a document's keys the way encoding/json
-	// compares them, which is strings.EqualFold and not an ASCII rule.
-	add(helpers.ExactProperties, "strings")
+	// The in-place decode: the document's index is searched by offset, an
+	// object key that is not plain ASCII is handed to encoding/json after a
+	// UTF-8 scan, the commonest scalars are read with strconv, and a value of
+	// the wrong kind is refused with the reflect.Type encoding/json would have
+	// named.
+	add(helpers.Decode, "reflect")
+	add(helpers.Decode, "sort")
+	add(helpers.Decode, "strconv")
+	add(helpers.Decode, "unicode/utf8")
+	// A path error writes out the chain of steps it holds with a builder, once.
+	add(helpers.PathJoin, "strings")
 	add(helpers.Dynamic, "math")
 	// jsonIntegerFromLiteral reads the number as decimal digits, which is what
 	// makes it exact where a parse into float64 could not be.

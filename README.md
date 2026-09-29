@@ -266,6 +266,46 @@ at the end of its chain of `$ref`s, through any number of them and across
 documents and Go packages: `{"$ref":"#/$defs/A"}` with `A` a `$ref` to an
 object is the same optional object as `{"$ref":"#/$defs/B"}`.
 
+### Decoding: replaced, owned, and linear
+
+**Decoding into a value replaces it.** Every generated `UnmarshalJSON` starts
+from the zero value, so a value decoded twice is exactly the second document —
+the members the second one leaves out are gone, not kept from the first. That is
+a deliberate difference from `encoding/json`, whose own decode *merges* into
+what the value held; a merged value could validate one document while holding
+another's fields. A document the decode refuses leaves the value zeroed and
+partly filled, never holding the previous document. A root that is itself a Go
+pointer (`{"type":["string","null"]}` becomes `type X *string`) is your pointer,
+and `encoding/json` decodes through it as it does through any.
+
+**A decoded value owns what it holds.** Nothing it keeps is a slice of the
+buffer you decoded it from, so reusing that buffer — a `json.Decoder` does, for
+every document of a stream — cannot change it. The parts it keeps as raw JSON
+for itself (the members a conditional reads, the bytes a raw-JSON wrapper holds)
+are views of one private copy of the document, taken once per decode: a value
+keeping any such part keeps that copy, whose size is the document's. Every
+method that hands raw bytes out — `Raw()`, `MarshalJSON()`, `BigInt()` — hands
+out a copy. An exported `json.RawMessage` member (an overflow value, a
+`patternProperties` value) is a copy of its own, as `encoding/json` makes one;
+the one exception is such a member of the branch a `oneOf` selected, which is a
+view of the private copy, because every branch is tried and copying in each trial
+cost the rest of the document at every level of a recursive one.
+
+**Decoding costs what the document costs.** Each type decodes its members in
+place and hands each member's bytes to the member's own type once; nothing is
+decoded twice or copied on the way down. Time and memory grow with the size of
+the document, not with its depth — a document nested 8,000 levels deep decodes
+in a few milliseconds, and so does one refused at its deepest point. (That is
+the generated code's cost. `json.Unmarshal` checks the whole document before it
+calls any `UnmarshalJSON`, and the `encoding/json` Go 1.27 ships spends more
+than linear time on that check as the nesting deepens; at `encoding/json`'s
+limit of 10,000 levels it adds a few milliseconds.) A `oneOf`
+tries each branch on the value, as its definition requires, so branches that
+each accept the same value each decode it. A property written twice in an
+object a generated type decodes means its last value, and the earlier one is not
+decoded at all; a map or a slice of scalars is decoded whole by `encoding/json`,
+which keeps the last value too but refuses an earlier one that does not decode.
+
 ### Numbers: exact, or `float64`
 
 A JSON number has no precision limit and a `float64` has two. By default a
@@ -1191,6 +1231,7 @@ under `tests/`, one package per area:
 | `tests/determinism` | same input, same output; the static map-order guard (`make test-determinism`) |
 | `tests/external` | the JSON Schema Test Suite harness (`make test-external`) |
 | `tests/cogen` | co-generated schemas and instances (`make cogen`) |
+| `tests/complexity` | decode, `Validate` and `MarshalJSON` held to time and memory linear in the document |
 
 What more than one of them needs is in `tests/internal/testsupport`. Every
 package whose tests can reach the go tool, directly or through that package,

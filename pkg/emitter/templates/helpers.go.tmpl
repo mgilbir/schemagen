@@ -17,12 +17,38 @@
 // A type reports what it can see, and only its container knows the path that
 // reaches it, so which of the three applies is a fact about the message that has
 // to travel with it. See issues #279 and #280.
+//
+// A message a container put its path step in front of holds the step, and what
+// joins it to the message it was put in front of, rather than the joined text:
+// the text is written out once, when it is asked for. Joined as each container
+// added its step, the message was copied once per level -- a refusal at the
+// bottom of a document nested ten thousand deep cost a hundred megabytes of
+// strings to report, however short the document.
 type jsonPathError struct {
-	err error
-	sep string
+	err  error
+	sep  string
+	seg  string
+	join string
 }
 
-func (e jsonPathError) Error() string { return e.err.Error() }
+func (e jsonPathError) Error() string {
+	if e.seg == "" && e.join == "" {
+		return e.err.Error()
+	}
+	var b strings.Builder
+	var cur error = e
+	for {
+		p, ok := cur.(jsonPathError)
+		if !ok {
+			b.WriteString(cur.Error())
+			return b.String()
+		}
+		b.WriteString(p.seg)
+		b.WriteString(p.join)
+		cur = p.err
+	}
+}
+
 func (e jsonPathError) Unwrap() error { return e.err }
 
 // JSONPathSeparator reports what to write between a containing value's path and
@@ -72,7 +98,7 @@ func jsonPathf(err error, segFormat string, args ...any) error {
 	if p, ok := err.(interface{ JSONPathSeparator() string }); ok {
 		sep = p.JSONPathSeparator()
 	}
-	return jsonPathError{sep: ".", err: fmt.Errorf("%s%s%w", fmt.Sprintf(segFormat, args...), sep, err)}
+	return jsonPathError{sep: ".", seg: fmt.Sprintf(segFormat, args...), join: sep, err: err}
 }
 
 // jsonElemPathf is jsonPathf for a segment that is an accessor rather than a
@@ -81,57 +107,37 @@ func jsonPathf(err error, segFormat string, args ...any) error {
 func jsonElemPathf(err error, segFormat string, args ...any) error {
 	return jsonPathError{sep: "", err: jsonPathf(err, segFormat, args...)}
 }
+
+// jsonValueWrapf is jsonValueErrorf for a message that ends with another
+// error's: prefix, then what err says, as fmt.Errorf(prefix+"%w", err) would
+// write it and unwrapping to err as that would. Built as a step of the chain
+// Error writes out once rather than as text, for the reason jsonPathError
+// gives: a union refusing at every level of a recursive document puts each
+// level's reason in front of the one below it.
+func jsonValueWrapf(err error, prefix string) error {
+	return jsonPathError{sep: ": ", seg: prefix, err: err}
+}
 {{- end}}
 
 {{define "decodepath_helpers"}}
-// jsonMemberDecode is one member a schema declares, together with the decode
-// that member's own position performs. See jsonDecodeMemberError.
-type jsonMemberDecode struct {
-	decode func([]byte) error
-	name   string
-}
-
-// jsonDecodeMemberError gives a refusal raised while decoding an object the path
-// of the value that caused it.
+// The decoders below are what a member refusing at decode time is traced to the
+// position at fault by, and in whose words.
 //
-// encoding/json decodes every member in one call and reports the first refusal
-// in its own words. None of the three forms that come back is a path into the
-// caller's document: a Go field path carrying the `type Alias T` shadow this
-// file decodes through and no array index at all (`.Alias.items.Alias.name`); a
-// sentence about a Go type from a leaf that answers for itself (`cannot
-// unmarshal string into Go value of type int64`); or, where a member's own type
-// refused, whatever that type said with nothing in front of it -- which is how
-// {"name":null} and {"owner":{"name":null}} came back as one message naming a
-// property that was not at fault. Issue #282.
+// A struct decodes each declared member on its own and in the order the schema
+// declares them (see jsonDoc), so the member that refuses is known, and its
+// refusal is joined to that member's name by the same rule every other message
+// is joined by (see jsonPathError). What these add is the position *inside* a
+// member: an array or a map held in a member is opened up and its elements put
+// to their own decode, so the element at fault is named by its index or its key
+// -- the step encoding/json's own message has never carried. A caller with a
+// 200-element array learns nothing from "Go struct field .Alias.items". Issue
+// #282.
 //
-// So once a decode has already failed, each declared member the document
-// carries is put to its own decode again, on its own. The member that refuses is
-// the position at fault, and its message is joined to that member's name by the
-// same rule every other message is joined by (see jsonPathError). Decoding the
-// value alone is also what takes the Alias out of the message: the destination
-// is the member's own type rather than a field of a shadow struct.
-//
-// It runs only after a decode has failed, so a document that decodes pays
-// nothing at all for it. Members are visited in the order the schema declares
-// them, so a document with two faults fails the same way every time. If no
-// member refuses -- the refusal came from a position this list does not describe
-// -- the decode's own error is what is reported, in the words it always used.
-func jsonDecodeMemberError(data []byte, err error, members []jsonMemberDecode) error {
-	var raw map[string]json.RawMessage
-	if json.Unmarshal(data, &raw) != nil {
-		return jsonDecodeRefusal(err)
-	}
-	for _, m := range members {
-		v, ok := raw[m.name]
-		if !ok {
-			continue
-		}
-		if mErr := m.decode(v); mErr != nil {
-			return jsonPathf(mErr, "%s", m.name)
-		}
-	}
-	return jsonDecodeRefusal(err)
-}
+// A member holding nothing this package decodes for itself -- scalars, and
+// containers of them -- is decoded whole by encoding/json, which is the fast
+// route, and put to these only once that decode has failed; see jsonProbeLeaf.
+// A member that does hold a type of this package is opened up as it is decoded,
+// by jsonProbeSlice and jsonProbeMap, and never decoded twice.
 
 // jsonDecodeValue is the decode of a position that holds a T, which is what the
 // member decode of a scalar, a named type or a pointer to either is made of.
@@ -292,91 +298,936 @@ func jsonDecodeTokenName(value string) string {
 }
 {{- end}}
 
-{{define "oneof_helpers"}}
-// oneofHasRequiredFields checks if a JSON object contains all the specified field names.
-func oneofHasRequiredFields(data json.RawMessage, fields ...string) bool {
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return false
+{{define "decode_helpers"}}
+// jsonDoc is one JSON document being decoded by the types of this package, read
+// in a single pass however deeply the types nest.
+//
+// Each generated type decodes the value it is handed in place, at a span of this
+// document, and hands each member's span to the member's own type in turn.
+// Nothing is decoded twice, nothing is copied on the way down, and a member's
+// end is looked up rather than found by scanning: the document is indexed once,
+// when it is opened, with the end of every object and array in it. So the whole
+// decode costs time and memory in proportion to the document, whatever its
+// depth.
+//
+// It is what replaced decoding each level through encoding/json. A type that
+// parses its object into raw members and then decodes it again through an alias
+// struct scans its whole subtree twice, and every type below it scans its own
+// subtree twice again: for a recursive schema that is depth times size. A
+// document nested 8,000 levels deep, 48 KB long, took six seconds to decode; one
+// whose deepest member was refused took time exponential in the depth, because
+// the refusal was traced by decoding each member again on its own, and each of
+// those decodes traced its own refusal the same way.
+//
+// data is the caller's buffer and is never kept past the decode. What a decoded
+// value does keep -- the members a later check reads, the bytes a raw-JSON
+// wrapper holds -- is cut from own, one copy of the document taken the first
+// time anything asks to keep a part of it. So a value never shares memory with
+// a buffer it did not allocate, and the parts it keeps at every depth share one
+// copy rather than each holding their own. See keep.
+//
+// The members are declared in the order the garbage collector scans least of:
+// the interface first, both of whose words are pointers, and then the slices,
+// whose pointer leads and whose length and capacity follow.
+type jsonDoc struct {
+	// refusal is --strict-read-write's refusal of a document that sets a
+	// readOnly location, recorded by whichever type found it and returned by
+	// finish once the whole value is decoded. Never set under any other
+	// configuration.
+	refusal error
+	data    []byte
+	own     []byte
+	starts  []int
+	ends    []int
+	// trial counts the union branch trials in progress. See copyOf.
+	trial int
+	// small is where starts and ends begin, so that indexing a document with
+	// few objects and arrays -- most documents -- allocates nothing beyond the
+	// jsonDoc itself. See newJSONDoc.
+	small [2 * jsonSmallIndex]int
+}
+
+// jsonSmallIndex is how many objects and arrays a document can hold before its
+// index needs memory of its own. Four keeps a jsonDoc within 192 bytes, one
+// allocation where the index and the scan's stack of open containers were
+// three more -- more than a flat document costs to decode in all.
+const jsonSmallIndex = 4
+
+// newJSONDoc returns a document over data with an empty index. starts and ends
+// are cut from small with their capacity capped, so the first append past it
+// moves them to an array of their own rather than writing into the other.
+func newJSONDoc(data []byte) *jsonDoc {
+	d := &jsonDoc{data: data}
+	d.starts = d.small[:0:jsonSmallIndex]
+	d.ends = d.small[jsonSmallIndex:jsonSmallIndex:2*jsonSmallIndex]
+	return d
+}
+
+// finish is what a decode opened by jsonOpenDoc returns: the refusal recorded
+// on the document, if one was, and otherwise what the decode itself returned.
+//
+// A refusal outranks every other answer, and is recorded rather than returned
+// so that nothing stops decoding when one is found: a Validate check that has to
+// ignore it -- readOnly is an annotation, and constrains no document -- still
+// gets the whole value to judge. See _decodeIgnoringReadOnly.
+func (d *jsonDoc) finish(err error) error {
+	if d.refusal != nil {
+		return d.refusal
 	}
-	for _, f := range fields {
-		if _, ok := obj[f]; !ok {
+	return err
+}
+
+// jsonAttempt runs one trial decode of a union branch under
+// --strict-read-write. A refusal recorded during the trial is the trial's
+// failure, as it was when the refusal was the branch's own decode error, and is
+// taken back off the document: a branch the value turns out not to be sets no
+// readOnly location of the value.
+func jsonAttempt(d *jsonDoc, f func() error) error {
+	before := d.refusal
+	err := f()
+	if d.refusal != before {
+		err = d.refusal
+		d.refusal = before
+	}
+	return err
+}
+
+// jsonSpan is where one value of a jsonDoc lies: data[start:end], with no
+// white space at either end.
+type jsonSpan struct {
+	start, end int
+}
+
+// jsonOpenDoc checks that data is one JSON value and indexes it, in one pass.
+//
+// A document that is not JSON is refused with encoding/json's own words for it,
+// which are what every decoder here refused one with before. encoding/json never
+// hands an UnmarshalJSON anything else, so this is reached only by a caller who
+// calls one directly.
+//
+// The check is scan's rather than json.Valid's, and accepts exactly what that
+// accepts. json.Valid is a second pass over the document, and on the
+// encoding/json that Go 1.27 ships it costs more than linear time in the depth
+// of the nesting -- a check this decode would otherwise pay on top of its own.
+// Where the two could ever disagree, encoding/json has the last word: a
+// document scan refuses is handed to encoding/json for the refusal, and one that
+// encoding/json then accepts is indexed without the check.
+func jsonOpenDoc(data []byte) (*jsonDoc, jsonSpan, error) {
+	d := newJSONDoc(data)
+	if !d.scan() {
+		var v json.RawMessage
+		if err := json.Unmarshal(data, &v); err != nil {
+			return nil, jsonSpan{}, err
+		}
+		d = newJSONDoc(data)
+		d.index()
+	}
+	start := jsonSkipSpace(data, 0)
+	return d, jsonSpan{start, d.valueEnd(start)}, nil
+}
+
+// jsonMaxDepth is how deeply encoding/json lets objects and arrays nest.
+const jsonMaxDepth = 10000
+
+// scan checks that the document is one JSON value, exactly as json.Valid does,
+// and records where every object and array of it starts and ends. The starts
+// are recorded in document order, which is the order valueEnd searches them in.
+func (d *jsonDoc) scan() bool {
+	data := d.data
+	// open is the containers not yet closed, innermost last. It starts on
+	// the stack and moves to the heap only when the nesting outgrows that.
+	var openStack [jsonSmallIndex]int
+	open := openStack[:0]
+	i := jsonSkipSpace(data, 0)
+	for {
+		// A value starts at i.
+		if i >= len(data) {
 			return false
 		}
-	}
-	return true
-}
-{{- end}}
-
-{{define "exact_properties_helper"}}
-// jsonExactProperties reduces a decoded object to the members whose names are
-// among names, and returns it re-encoded -- but only when the object carries a
-// name encoding/json would decode into one of those properties without being it.
-// Otherwise it returns nil, and the caller decodes the document itself.
-//
-// JSON Schema property names are case-sensitive. "NAME" and "name" are two
-// different properties, and a schema declaring only "name" says nothing at all
-// about "NAME": it is an additional property, and "name" is absent. encoding/json
-// reads keys the other way round -- a key that matches no field exactly is
-// matched a second time case-insensitively -- so a schema-declared member was
-// filled from a key the schema never gave it while the overflow routing filed
-// that same key as an additional property. Both halves landed at once, which is
-// why nothing reported it: the document validated going in, the value validated
-// coming out, and the property in between held someone else's value.
-//
-// strings.EqualFold is the predicate rather than an approximation of it, because
-// it is the one encoding/json matches on: the decoder's folded-name lookup is
-// documented as identical to EqualFold. That is also why this is not an ASCII
-// rule -- U+212A KELVIN SIGN folds to "k", and did reach a property named "k".
-//
-// The exact members are the only ones written back out. A key that neither
-// matches nor folds is dropped with them, which changes nothing: the decode
-// ignores a key no field answers to, and every key of the document is still read
-// by the caller from the map passed in here.
-func jsonExactProperties(raw map[string]json.RawMessage, names ...string) []byte {
-	folded := false
-	{{- /* maporder: a predicate; it answers the same whichever key it stops at. */}}
-	for key := range raw {
-		fold := false
-		for _, name := range names {
-			if key == name {
-				// An exact match settles the key whatever else it folds onto,
-				// which is what a schema declaring both "name" and "NAME" needs.
-				fold = false
+		switch data[i] {
+		case '{', '[':
+			if len(open) == jsonMaxDepth {
+				return false
+			}
+			open = append(open, len(d.starts))
+			d.starts = append(d.starts, i)
+			d.ends = append(d.ends, 0)
+			closer := byte(']')
+			if data[i] == '{' {
+				closer = '}'
+			}
+			i = jsonSkipSpace(data, i+1)
+			if i < len(data) && data[i] == closer {
+				last := len(open) - 1
+				d.ends[open[last]] = i + 1
+				open = open[:last]
+				i++
 				break
 			}
-			if !fold && strings.EqualFold(key, name) {
-				fold = true
+			if closer == '}' {
+				if i = jsonScanKey(data, i); i < 0 {
+					return false
+				}
+			}
+			continue
+		case '"':
+			if i = jsonScanString(data, i); i < 0 {
+				return false
+			}
+		case 't':
+			if i = jsonScanLiteral(data, i, "true"); i < 0 {
+				return false
+			}
+		case 'f':
+			if i = jsonScanLiteral(data, i, "false"); i < 0 {
+				return false
+			}
+		case 'n':
+			if i = jsonScanLiteral(data, i, "null"); i < 0 {
+				return false
+			}
+		default:
+			if i = jsonScanNumber(data, i); i < 0 {
+				return false
 			}
 		}
-		if fold {
-			folded = true
+		// A value ended just before i: what follows it closes containers
+		// until one takes another member.
+		for {
+			i = jsonSkipSpace(data, i)
+			if len(open) == 0 {
+				return i == len(data)
+			}
+			if i >= len(data) {
+				return false
+			}
+			last := len(open) - 1
+			isObject := data[d.starts[open[last]]] == '{'
+			switch {
+			case data[i] == ',':
+				i = jsonSkipSpace(data, i+1)
+				if isObject {
+					if i = jsonScanKey(data, i); i < 0 {
+						return false
+					}
+				}
+			case (isObject && data[i] == '}') || (!isObject && data[i] == ']'):
+				d.ends[open[last]] = i + 1
+				open = open[:last]
+				i++
+				continue
+			default:
+				return false
+			}
 			break
 		}
 	}
-	if !folded {
+}
+
+// jsonScanKey reads a member's key and its colon, returning where the value
+// starts, or -1.
+func jsonScanKey(data []byte, i int) int {
+	if i >= len(data) || data[i] != '"' {
+		return -1
+	}
+	if i = jsonScanString(data, i); i < 0 {
+		return -1
+	}
+	i = jsonSkipSpace(data, i)
+	if i >= len(data) || data[i] != ':' {
+		return -1
+	}
+	return jsonSkipSpace(data, i+1)
+}
+
+// jsonScanString returns the index just past the string literal opening at i,
+// or -1 where it is not one. A byte that is not UTF-8 is accepted, as
+// encoding/json accepts it: it is read as U+FFFD.
+func jsonScanString(data []byte, i int) int {
+	for j := i + 1; j < len(data); j++ {
+		switch c := data[j]; {
+		case c == '"':
+			return j + 1
+		case c == '\\':
+			j++
+			if j >= len(data) {
+				return -1
+			}
+			switch data[j] {
+			case '"', '\\', '/', 'b', 'f', 'n', 'r', 't':
+			case 'u':
+				if j+4 >= len(data) {
+					return -1
+				}
+				for k := j + 1; k <= j+4; k++ {
+					if !jsonIsHex(data[k]) {
+						return -1
+					}
+				}
+				j += 4
+			default:
+				return -1
+			}
+		case c < 0x20:
+			return -1
+		}
+	}
+	return -1
+}
+
+func jsonIsHex(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+}
+
+// jsonScanLiteral returns the index just past lit at i, or -1.
+func jsonScanLiteral(data []byte, i int, lit string) int {
+	if len(data)-i < len(lit) || string(data[i:i+len(lit)]) != lit {
+		return -1
+	}
+	return i + len(lit)
+}
+
+// jsonScanNumber returns the index just past the number at i, or -1.
+func jsonScanNumber(data []byte, i int) int {
+	if i < len(data) && data[i] == '-' {
+		i++
+	}
+	switch {
+	case i < len(data) && data[i] == '0':
+		i++
+	case i < len(data) && data[i] >= '1' && data[i] <= '9':
+		for i < len(data) && data[i] >= '0' && data[i] <= '9' {
+			i++
+		}
+	default:
+		return -1
+	}
+	if i < len(data) && data[i] == '.' {
+		i++
+		if i >= len(data) || data[i] < '0' || data[i] > '9' {
+			return -1
+		}
+		for i < len(data) && data[i] >= '0' && data[i] <= '9' {
+			i++
+		}
+	}
+	if i < len(data) && (data[i] == 'e' || data[i] == 'E') {
+		i++
+		if i < len(data) && (data[i] == '+' || data[i] == '-') {
+			i++
+		}
+		if i >= len(data) || data[i] < '0' || data[i] > '9' {
+			return -1
+		}
+		for i < len(data) && data[i] >= '0' && data[i] <= '9' {
+			i++
+		}
+	}
+	return i
+}
+
+// index records where every object and array of a document encoding/json has
+// already accepted starts and ends, without checking it again. See
+// jsonOpenDoc.
+func (d *jsonDoc) index() {
+	data := d.data
+	var openStack [jsonSmallIndex]int // as in scan
+	open := openStack[:0]
+	for i := 0; i < len(data); i++ {
+		switch data[i] {
+		case '"':
+			i = jsonStringEnd(data, i) - 1
+		case '{', '[':
+			open = append(open, len(d.starts))
+			d.starts = append(d.starts, i)
+			d.ends = append(d.ends, 0)
+		case '}', ']':
+			last := len(open) - 1
+			d.ends[open[last]] = i + 1
+			open = open[:last]
+		}
+	}
+}
+
+// jsonSkipSpace returns the first index at or after i that is not JSON white
+// space.
+func jsonSkipSpace(data []byte, i int) int {
+	for i < len(data) {
+		switch data[i] {
+		case ' ', '\t', '\n', '\r':
+			i++
+		default:
+			return i
+		}
+	}
+	return i
+}
+
+// jsonIsNullDocument reports whether data is the JSON null and nothing else but
+// white space -- the document isNull asks about at a span, asked of a document
+// that was not opened. Anything else, including a null followed by more, is left
+// to the decode that follows, which refuses what is not JSON.
+func jsonIsNullDocument(data []byte) bool {
+	i := jsonSkipSpace(data, 0)
+	if len(data)-i < 4 || string(data[i:i+4]) != "null" {
+		return false
+	}
+	return jsonSkipSpace(data, i+4) == len(data)
+}
+
+// jsonStringEnd returns the index just past the string literal opening at i.
+func jsonStringEnd(data []byte, i int) int {
+	for j := i + 1; j < len(data); j++ {
+		switch data[j] {
+		case '\\':
+			j++
+		case '"':
+			return j + 1
+		}
+	}
+	return len(data)
+}
+
+// valueEnd returns the index just past the value starting at i. An object or an
+// array is looked up; a string or a scalar is read to its end, which costs its
+// own length and nothing more.
+func (d *jsonDoc) valueEnd(i int) int {
+	data := d.data
+	if i >= len(data) {
+		return i
+	}
+	switch data[i] {
+	case '{', '[':
+		return d.ends[sort.SearchInts(d.starts, i)]
+	case '"':
+		return jsonStringEnd(data, i)
+	}
+	j := i
+	for j < len(data) {
+		switch data[j] {
+		case ',', '}', ']', ' ', '\t', '\n', '\r':
+			return j
+		}
+		j++
+	}
+	return j
+}
+
+// raw returns the document's bytes at sp. They belong to the caller's buffer:
+// anything that outlives the decode is taken through keep or copyOf instead.
+func (d *jsonDoc) raw(sp jsonSpan) []byte { return d.data[sp.start:sp.end] }
+
+// isNull reports whether the value at sp is a JSON null.
+func (d *jsonDoc) isNull(sp jsonSpan) bool { return d.data[sp.start] == 'n' }
+
+// keep returns the bytes at sp as a slice of the document's own copy, made the
+// first time anything is kept. The slice's capacity ends where the value does,
+// so an append to it reallocates rather than writing over what follows.
+//
+// Only unexported fields hold what keep returns, and every method that hands
+// such bytes to a caller hands a copy of them: the copy is shared by every value
+// this document decoded into, so no caller may be given a way to write to it.
+// An exported field is given copyOf instead.
+func (d *jsonDoc) keep(sp jsonSpan) json.RawMessage {
+	if d.own == nil {
+		d.own = append([]byte(nil), d.data...)
+	}
+	return json.RawMessage(d.own[sp.start:sp.end:sp.end])
+}
+
+// copyOf returns the bytes at sp in a buffer of their own, for a value a caller
+// can reach and write to: an exported json.RawMessage, which encoding/json
+// itself always copies, so that keeping one does not keep the document.
+//
+// Except while a union is trying its branches (see trial). Every branch is
+// decoded, and a branch that holds the value's members as raw JSON -- one
+// declaring none of them -- would copy them, and with them everything they
+// hold; the branch that describes the members decodes the same bytes into the
+// next level, whose own union does the same. At every level of a recursive
+// document that is a copy of the rest of it: quadratic in the depth. A trial
+// takes a view of the document's own copy instead, which costs nothing; the
+// branch that is kept keeps the view, and with it the document.
+func (d *jsonDoc) copyOf(sp jsonSpan) json.RawMessage {
+	if d.trial > 0 {
+		return d.keep(sp)
+	}
+	return append(json.RawMessage(nil), d.data[sp.start:sp.end]...)
+}
+
+// kind names the JSON kind of the value at sp the way encoding/json names it in
+// an UnmarshalTypeError.
+func (d *jsonDoc) kind(sp jsonSpan) string {
+	switch d.data[sp.start] {
+	case '{':
+		return "object"
+	case '[':
+		return "array"
+	case '"':
+		return "string"
+	case 't', 'f':
+		return "bool"
+	case 'n':
+		return "null"
+	}
+	return "number"
+}
+
+// jsonIter walks the members of an object, or the elements of an array, in the
+// order the document writes them.
+type jsonIter struct {
+	d    *jsonDoc
+	pos  int
+	stop int
+}
+
+// iter starts a walk over the object or array at sp.
+func (d *jsonDoc) iter(sp jsonSpan) jsonIter {
+	return jsonIter{d: d, pos: sp.start + 1, stop: sp.end - 1}
+}
+
+// member returns the next member of an object: its key, read exactly as
+// encoding/json reads one, and the span of its value.
+func (it *jsonIter) member() (string, jsonSpan, bool) {
+	data := it.d.data
+	i := jsonSkipSpace(data, it.pos)
+	if i >= it.stop {
+		return "", jsonSpan{}, false
+	}
+	if data[i] == ',' {
+		i = jsonSkipSpace(data, i+1)
+	}
+	keyEnd := jsonStringEnd(data, i)
+	key := jsonKey(data[i:keyEnd])
+	i = jsonSkipSpace(data, jsonSkipSpace(data, keyEnd)+1)
+	end := it.d.valueEnd(i)
+	it.pos = end
+	return key, jsonSpan{i, end}, true
+}
+
+// elem returns the span of the next element of an array.
+func (it *jsonIter) elem() (jsonSpan, bool) {
+	data := it.d.data
+	i := jsonSkipSpace(data, it.pos)
+	if i >= it.stop {
+		return jsonSpan{}, false
+	}
+	if data[i] == ',' {
+		i = jsonSkipSpace(data, i+1)
+	}
+	end := it.d.valueEnd(i)
+	it.pos = end
+	return jsonSpan{i, end}, true
+}
+
+// jsonKey reads an object key. A key of plain ASCII with no escape is its own
+// bytes; anything else is handed to encoding/json, so that an escape, a
+// surrogate pair and a byte that is not UTF-8 read exactly as they always did.
+func jsonKey(quoted []byte) string {
+	inner := quoted[1 : len(quoted)-1]
+	for _, c := range inner {
+		if c == '\\' || c >= utf8.RuneSelf {
+			var s string
+			if json.Unmarshal(quoted, &s) != nil {
+				return string(inner)
+			}
+			return s
+		}
+	}
+	return string(inner)
+}
+
+// jsonPlainString reads a JSON string literal that holds plain ASCII text and no
+// escape, and reports false for any other value.
+func jsonPlainString(b []byte) (string, bool) {
+	if len(b) < 2 || b[0] != '"' {
+		return "", false
+	}
+	inner := b[1 : len(b)-1]
+	for _, c := range inner {
+		if c == '\\' || c >= utf8.RuneSelf {
+			return "", false
+		}
+	}
+	return string(inner), true
+}
+
+// jsonAt decodes the value at a span of a document into *T.
+//
+// Every generated type that decodes in place has a decodeJSONAt method of this
+// shape, and the helpers below compose them: a slice of a type is decoded by
+// jsonDecodeSlice with that type's method for its elements, and so on down.
+type jsonAt[T any] func(*T, *jsonDoc, jsonSpan) error
+
+// jsonAtJSON decodes a value that holds nothing this package decodes in place,
+// the way encoding/json decodes it -- and through encoding/json, apart from the
+// commonest scalars, which are read directly where their spelling leaves
+// nothing for a decoder to decide. Anything else, including every value one of
+// those readings would refuse, goes to json.Unmarshal, so the result and the
+// refusal are always the ones encoding/json gives.
+func jsonAtJSON[T any](p *T, d *jsonDoc, sp jsonSpan) error {
+	b := d.data[sp.start:sp.end]
+	switch q := any(p).(type) {
+	case *string:
+		if s, ok := jsonPlainString(b); ok {
+			*q = s
+			return nil
+		}
+	case **string:
+		if b[0] == 'n' {
+			*q = nil
+			return nil
+		}
+		if s, ok := jsonPlainString(b); ok {
+			*q = &s
+			return nil
+		}
+	case *bool:
+		switch string(b) {
+		case "true":
+			*q = true
+			return nil
+		case "false":
+			*q = false
+			return nil
+		}
+	case **bool:
+		switch string(b) {
+		case "null":
+			*q = nil
+			return nil
+		case "true", "false":
+			v := b[0] == 't'
+			*q = &v
+			return nil
+		}
+	case *float64:
+		if b[0] == '-' || (b[0] >= '0' && b[0] <= '9') {
+			if f, err := strconv.ParseFloat(string(b), 64); err == nil {
+				*q = f
+				return nil
+			}
+		}
+	case *int64:
+		if b[0] == '-' || (b[0] >= '0' && b[0] <= '9') {
+			if n, err := strconv.ParseInt(string(b), 10, 64); err == nil {
+				*q = n
+				return nil
+			}
+		}
+	case json.Unmarshaler:
+		// A type of this package that decodes itself is handed the value's
+		// bytes, which is all encoding/json does for one once it has checked
+		// them -- and they were checked when the document was opened. Handed to
+		// json.Unmarshal instead, they are checked again, which for a union
+		// branch trying an object is a scan of everything the object holds, at
+		// every level. Only this package's own: encoding/json reads some types
+		// of other packages without their UnmarshalJSON -- the one Go 1.27
+		// ships decodes a time.Time itself -- and its reading is the one to
+		// give.
+		if jsonOwnType(reflect.TypeFor[T]()) {
+			return q.UnmarshalJSON(b)
+		}
+	}
+	if t := reflect.TypeFor[T](); t.Kind() == reflect.Pointer && jsonOwnType(t.Elem()) && reflect.PointerTo(t.Elem()).Implements(jsonUnmarshalerType) {
+		// A pointer to such a type, the same way, after encoding/json's
+		// reading of a pointer: a null leaves it nil, and anything else is
+		// decoded into a newly allocated value.
+		v := reflect.ValueOf(p).Elem()
+		if b[0] == 'n' {
+			v.SetZero()
+			return nil
+		}
+		v.Set(reflect.New(t.Elem()))
+		return v.Interface().(json.Unmarshaler).UnmarshalJSON(b)
+	}
+	if b[0] == '{' || b[0] == '[' {
+		// A container where T holds a scalar: refused as encoding/json refuses
+		// it, without a scan of the container to find that out.
+		if err, refused := jsonScalarRefusal[T](p, d, sp); refused {
+			return err
+		}
+	}
+	return json.Unmarshal(b, p)
+}
+
+// jsonScalarRefusal is the refusal encoding/json gives an object or an array
+// decoded into a T that is a boolean, a number or a string, or a pointer to one
+// -- which it allocates first, as encoding/json does. It reports false for
+// every other T, which decides for itself what it holds.
+func jsonScalarRefusal[T any](p *T, d *jsonDoc, sp jsonSpan) (error, bool) {
+	t := reflect.TypeFor[T]()
+	v := reflect.ValueOf(p).Elem()
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+		if !jsonIsScalarKind(t) {
+			return nil, false
+		}
+		v.Set(reflect.New(t))
+	} else if !jsonIsScalarKind(t) {
+		return nil, false
+	}
+	return &json.UnmarshalTypeError{Value: d.kind(sp), Type: t, Offset: int64(sp.start)}, true
+}
+
+// jsonIsScalarKind reports whether encoding/json reads a JSON scalar into t and
+// nothing else: t has a scalar kind, and no method of its own that would decode
+// a container into it.
+func jsonIsScalarKind(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.Bool, reflect.String,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
+		reflect.Float32, reflect.Float64:
+	default:
+		return false
+	}
+	pt := reflect.PointerTo(t)
+	return !pt.Implements(jsonUnmarshalerType) && !pt.Implements(jsonTextUnmarshalerType) &&
+		!t.Implements(jsonUnmarshalerType) && !t.Implements(jsonTextUnmarshalerType)
+}
+
+// jsonOwnType reports whether t is declared in this package, as every generated
+// type that decodes itself is.
+func jsonOwnType(t reflect.Type) bool {
+	return t.PkgPath() == jsonOwnPackage
+}
+
+var (
+	jsonOwnPackage          = reflect.TypeFor[jsonDoc]().PkgPath()
+	jsonUnmarshalerType     = reflect.TypeFor[json.Unmarshaler]()
+	jsonTextUnmarshalerType = reflect.TypeFor[interface{ UnmarshalText([]byte) error }]()
+)
+
+// jsonTypeError is the refusal encoding/json gives for a value of the wrong
+// JSON kind decoded into a T, built without handing the value to encoding/json
+// to find that out: the value may be an object the size of the rest of the
+// document, and asking would scan it.
+func jsonTypeError[T any](d *jsonDoc, sp jsonSpan) error {
+	return &json.UnmarshalTypeError{Value: d.kind(sp), Type: reflect.TypeFor[T](), Offset: int64(sp.start)}
+}
+
+// jsonKindError is the refusal encoding/json gives a value whose JSON kind a T
+// cannot hold, for a T that is a slice, a map or a struct, and nil for a value
+// it can -- and for every other T, which is left to the decode itself. A null
+// is one every such T holds: it leaves the value as it is.
+func jsonKindError[T any](d *jsonDoc, sp jsonSpan) error {
+	c := d.data[sp.start]
+	if c == 'n' {
 		return nil
 	}
-	out := make([]byte, 0, len(names)*16)
-	out = append(out, '{')
-	for _, name := range names {
-		val, ok := raw[name]
+	switch t := reflect.TypeFor[T](); t.Kind() {
+	case reflect.Slice:
+		// A []byte is a JSON string, in base64.
+		if c != '[' && !(c == '"' && t.Elem().Kind() == reflect.Uint8) {
+			return jsonTypeError[T](d, sp)
+		}
+	case reflect.Map, reflect.Struct:
+		if c != '{' {
+			return jsonTypeError[T](d, sp)
+		}
+	}
+	return nil
+}
+
+// jsonDecodePtr decodes a value into a pointer, as encoding/json does: a null
+// leaves the pointer nil without consulting the type it points to, and anything
+// else is decoded into a newly allocated value.
+func jsonDecodePtr[P ~*T, T any](p *P, d *jsonDoc, sp jsonSpan, inner jsonAt[T]) error {
+	if d.data[sp.start] == 'n' {
+		*p = nil
+		return nil
+	}
+	v := new(T)
+	*p = v
+	return inner(v, d, sp)
+}
+
+// jsonDecodeSlice decodes an array into a newly allocated slice, as
+// encoding/json does: a null leaves it nil, an empty array makes it empty and
+// not nil, and the first element that refuses ends the decode with that
+// element's own refusal.
+func jsonDecodeSlice[S ~[]E, E any](p *S, d *jsonDoc, sp jsonSpan, elem jsonAt[E]) error {
+	switch d.data[sp.start] {
+	case 'n':
+		*p = nil
+		return nil
+	case '[':
+	default:
+		return jsonTypeError[S](d, sp)
+	}
+	out := S{}
+	it := d.iter(sp)
+	for {
+		esp, ok := it.elem()
 		if !ok {
+			break
+		}
+		var e E
+		if err := elem(&e, d, esp); err != nil {
+			*p = out
+			return err
+		}
+		out = append(out, e)
+	}
+	*p = out
+	return nil
+}
+
+// jsonDecodeMap decodes an object into a newly allocated map, as encoding/json
+// does: members in document order, a key written twice holding its last value,
+// and the first value that refuses ending the decode with its own refusal.
+func jsonDecodeMap[M ~map[string]V, V any](p *M, d *jsonDoc, sp jsonSpan, elem jsonAt[V]) error {
+	switch d.data[sp.start] {
+	case 'n':
+		*p = nil
+		return nil
+	case '{':
+	default:
+		return jsonTypeError[M](d, sp)
+	}
+	out := M{}
+	*p = out
+	it := d.iter(sp)
+	for {
+		k, vsp, ok := it.member()
+		if !ok {
+			break
+		}
+		var v V
+		if err := elem(&v, d, vsp); err != nil {
+			return err
+		}
+		out[k] = v
+	}
+	return nil
+}
+
+// jsonProbeLeaf decodes a member holding nothing this package decodes in place,
+// and names the position inside it that refused. The member is decoded whole
+// first, which is the fast route and the one that almost always succeeds; only a
+// refusal puts it to probe, the member decode that opens it up (see
+// decodepath_helpers). Nothing below such a member decodes in place, so the
+// second decode costs the member's size once, and only on a refusal.
+func jsonProbeLeaf[T any](p *T, d *jsonDoc, sp jsonSpan, probe func([]byte) error) error {
+	err := jsonAtJSON(p, d, sp)
+	if err == nil {
+		return nil
+	}
+	if perr := probe(d.raw(sp)); perr != nil {
+		return perr
+	}
+	return jsonDecodeRefusal(err)
+}
+
+// jsonProbeSlice is jsonDecodeSlice for a member position, where a refusal is
+// named by the index of the element that raised it. elem answers in the words
+// the member decode gives, and is itself a probe where the element is a
+// container.
+func jsonProbeSlice[E any](p *[]E, d *jsonDoc, sp jsonSpan, elem jsonAt[E]) error {
+	switch d.data[sp.start] {
+	case 'n':
+		*p = nil
+		return nil
+	case '[':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[[]E](d, sp))
+	}
+	out := []E{}
+	it := d.iter(sp)
+	for i := 0; ; i++ {
+		esp, ok := it.elem()
+		if !ok {
+			break
+		}
+		var e E
+		if err := elem(&e, d, esp); err != nil {
+			*p = out
+			return jsonElemPathf(err, "[%d]", i)
+		}
+		out = append(out, e)
+	}
+	*p = out
+	return nil
+}
+
+// jsonProbeMap is jsonDecodeMap for a member position, where a refusal is named
+// by the key of the value that raised it. Every value is decoded; where more
+// than one refuses, the least key is the one reported, for the reason
+// jsonDecodeValues sorts: a document with two faults fails the same way every
+// time. A key written twice is judged by its last value only.
+func jsonProbeMap[V any](p *map[string]V, d *jsonDoc, sp jsonSpan, elem jsonAt[V]) error {
+	switch d.data[sp.start] {
+	case 'n':
+		*p = nil
+		return nil
+	case '{':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[map[string]V](d, sp))
+	}
+	out := map[string]V{}
+	*p = out
+	var failed map[string]error
+	it := d.iter(sp)
+	for {
+		k, vsp, ok := it.member()
+		if !ok {
+			break
+		}
+		var v V
+		if err := elem(&v, d, vsp); err != nil {
+			if failed == nil {
+				failed = make(map[string]error, 1)
+			}
+			failed[k] = err
 			continue
 		}
-		if len(out) > 1 {
-			out = append(out, ',')
-		}
-		// A Go string has no JSON encoding that can fail, and the values are the
-		// document's own bytes, kept verbatim so that a number kept whatever it
-		// was written as.
-		quoted, _ := json.Marshal(name)
-		out = append(out, quoted...)
-		out = append(out, ':')
-		out = append(out, val...)
+		delete(failed, k)
+		out[k] = v
 	}
-	out = append(out, '}')
-	return out
+	if len(failed) == 0 {
+		return nil
+	}
+	least := ""
+	first := true
+	{{- /* maporder: finds the least key, which no order of the loop changes. */}}
+	for k := range failed {
+		if first || k < least {
+			least, first = k, false
+		}
+	}
+	return jsonElemPathf(failed[least], "[%s]", _schemagenQuote(least))
+}
+{{- end}}
+
+{{define "oneof_helpers"}}
+// oneofHasRequiredFields reports whether the value at sp is a JSON object
+// carrying every one of the named members.
+//
+// It reads the object's own keys off the document rather than decoding the
+// object, so asking costs the number of members and not the size of what they
+// hold: a union whose branches are selected by their required members is asked
+// this at every level of a recursive document, and a decode of the whole value
+// at each of them made the selection alone quadratic in the depth.
+func oneofHasRequiredFields(d *jsonDoc, sp jsonSpan, fields ...string) bool {
+	if d.data[sp.start] != '{' {
+		return false
+	}
+	found := 0
+	seen := make([]bool, len(fields))
+	it := d.iter(sp)
+	for {
+		key, _, ok := it.member()
+		if !ok {
+			break
+		}
+		for i, f := range fields {
+			if !seen[i] && key == f {
+				seen[i] = true
+				found++
+			}
+		}
+	}
+	return found == len(fields)
 }
 {{- end}}
 
@@ -428,19 +1279,47 @@ func SchemagenValidationCapability() struct {
 {{- end}}
 
 {{define "oneof_discriminator_helper"}}
-// oneofDiscriminatorValue extracts the string value of a discriminator property from JSON data.
-func oneofDiscriminatorValue(data json.RawMessage, prop string) (string, error) {
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return "", fmt.Errorf("discriminator: cannot parse as object: %w", err)
+// oneofDiscriminatorValue extracts the string value of a discriminator property
+// from the value at sp.
+//
+// It reads the one member off the document, as oneofHasRequiredFields does and
+// for its reason. A member written twice means its last value, as it does
+// everywhere else a document is read. A value that is not a JSON object is
+// refused in the words encoding/json refuses one for the map this used to decode
+// into, and a member that is not a string in the words it refuses one for a
+// string; a null member is read as the empty string, which is what that decode
+// made of it.
+func oneofDiscriminatorValue(d *jsonDoc, sp jsonSpan, prop string) (string, error) {
+	switch d.data[sp.start] {
+	case '{':
+	case 'n':
+		return "", fmt.Errorf("discriminator property %q is missing", prop)
+	default:
+		return "", fmt.Errorf("discriminator: cannot parse as object: %w", jsonTypeError[map[string]json.RawMessage](d, sp))
 	}
-	raw, ok := obj[prop]
-	if !ok {
+	var member jsonSpan
+	found := false
+	it := d.iter(sp)
+	for {
+		key, vsp, ok := it.member()
+		if !ok {
+			break
+		}
+		if key == prop {
+			member, found = vsp, true
+		}
+	}
+	if !found {
 		return "", fmt.Errorf("discriminator property %q is missing", prop)
 	}
 	var val string
-	if err := json.Unmarshal(raw, &val); err != nil {
-		return "", fmt.Errorf("discriminator property %q is not a string: %w", prop, err)
+	switch d.data[member.start] {
+	case '"', 'n':
+		if err := jsonAtJSON(&val, d, member); err != nil {
+			return "", fmt.Errorf("discriminator property %q is not a string: %w", prop, err)
+		}
+	default:
+		return "", fmt.Errorf("discriminator property %q is not a string: %w", prop, jsonTypeError[string](d, member))
 	}
 	return val, nil
 }
@@ -1120,20 +1999,27 @@ type jsonNullRule struct {
 // the path itself could not tell a "." from a "[" without being told. See
 // jsonPathError.
 //
-// It reads the raw JSON rather than the decoded value because the decoded value
+// It reads the document rather than the decoded value because the decoded value
 // no longer holds the answer. encoding/json turns an explicit null into a nil
 // pointer, a nil slice or map, or a scalar left untouched at its zero -- all of
 // them exactly what an absent property leaves behind -- so once the document has
 // been decoded, "present and null" and "absent" are one state.
 //
+// It walks the document's own structure (see jsonDoc) rather than decoding each
+// level into raw members, so a level costs the number of its members and not
+// the size of what they hold. The members may be objects of this package's own
+// types, which hold further members of their own, and a decode of every level
+// here -- done again by each enclosing type for its own rule -- was quadratic in
+// the depth of the document.
+//
 // A value whose shape does not match the rule is passed over rather than
 // reported. The decoder has already had its say about the type, and a second
 // complaint from here would be a worse-worded version of the same one.
-func checkJSONNullsAt(data []byte, rule *jsonNullRule) error {
+func checkJSONNullsAt(d *jsonDoc, sp jsonSpan, rule *jsonNullRule) error {
 	if rule == nil {
 		return nil
 	}
-	if string(data) == "null" {
+	if d.data[sp.start] == 'n' {
 		if rule.Reject {
 			return jsonValueErrorf("null is not allowed")
 		}
@@ -1143,12 +2029,21 @@ func checkJSONNullsAt(data []byte, rule *jsonNullRule) error {
 		return nil
 	}
 	if rule.IsMap {
-		var obj map[string]json.RawMessage
-		if err := json.Unmarshal(data, &obj); err != nil {
+		if d.data[sp.start] != '{' {
 			return nil
 		}
-		keys := make([]string, 0, len(obj))
-		for k := range obj {
+		// A key written twice means its last value.
+		members := make(map[string]jsonSpan)
+		it := d.iter(sp)
+		for {
+			k, vsp, ok := it.member()
+			if !ok {
+				break
+			}
+			members[k] = vsp
+		}
+		keys := make([]string, 0, len(members))
+		for k := range members {
 			keys = append(keys, k)
 		}
 		// Range order over a map is deliberately unspecified, and the first
@@ -1156,18 +2051,22 @@ func checkJSONNullsAt(data []byte, rule *jsonNullRule) error {
 		// them would otherwise fail differently from one run to the next.
 		sort.Strings(keys)
 		for _, k := range keys {
-			if err := checkJSONNullsAt(obj[k], rule.Elem); err != nil {
+			if err := checkJSONNullsAt(d, members[k], rule.Elem); err != nil {
 				return jsonElemPathf(err, "[%s]", _schemagenQuote(k))
 			}
 		}
 		return nil
 	}
-	var arr []json.RawMessage
-	if err := json.Unmarshal(data, &arr); err != nil {
+	if d.data[sp.start] != '[' {
 		return nil
 	}
-	for i, v := range arr {
-		if err := checkJSONNullsAt(v, rule.Elem); err != nil {
+	it := d.iter(sp)
+	for i := 0; ; i++ {
+		esp, ok := it.elem()
+		if !ok {
+			break
+		}
+		if err := checkJSONNullsAt(d, esp, rule.Elem); err != nil {
 			return jsonElemPathf(err, "[%d]", i)
 		}
 	}

@@ -9,6 +9,8 @@ import (
 type AllOfTightestConstraints int64
 
 func (a *AllOfTightestConstraints) UnmarshalJSON(data []byte) error {
+	var _zero AllOfTightestConstraints
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}

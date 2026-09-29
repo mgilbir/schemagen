@@ -15,6 +15,8 @@ type Anything any
 type D int64
 
 func (d *D) UnmarshalJSON(data []byte) error {
+	var _zero D
+	*d = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -64,6 +66,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (p *PatternValueSubschemasPattern0) UnmarshalJSON(data []byte) error {
+	var _zero PatternValueSubschemasPattern0
+	*p = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -95,6 +99,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (p *PatternValueSubschemasPattern1) UnmarshalJSON(data []byte) error {
+	var _zero PatternValueSubschemasPattern1
+	*p = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -117,41 +123,58 @@ type PatternValueSubschemasPattern2 struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces p with the value the document holds. See
+// decodeJSONAt.
 func (p *PatternValueSubschemasPattern2) UnmarshalJSON(data []byte) error {
-	p.AdditionalProperties = nil
-	p._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(p.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into p, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever p held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (p *PatternValueSubschemasPattern2) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*p = PatternValueSubschemasPattern2{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias PatternValueSubschemasPattern2
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(p),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[PatternValueSubschemasPattern2](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	p._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		p._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if p.AdditionalProperties == nil {
+			p.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		p._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			p._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if p.AdditionalProperties == nil {
-				p.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			p.AdditionalProperties[rawKey] = rawVal
-		}
+		p.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -199,76 +222,82 @@ type PatternValueSubschemasPattern3 struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces p with the value the document holds. See
+// decodeJSONAt.
 func (p *PatternValueSubschemasPattern3) UnmarshalJSON(data []byte) error {
-	p.AdditionalProperties = nil
-	p._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(p.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into p, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever p held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (p *PatternValueSubschemasPattern3) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*p = PatternValueSubschemasPattern3{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"x",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[PatternValueSubschemasPattern3](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias PatternValueSubschemasPattern3
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(p),
+	if _v, _ok := _raw["x"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&p.X, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "x")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "x", decode: jsonDecodeValue[*string]},
-		})
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"x",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	p._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		p._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "x":
+			continue
 		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"x",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
+		if p.AdditionalProperties == nil {
+			p.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		p._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			p._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{
-			"x": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if p.AdditionalProperties == nil {
-				p.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			p.AdditionalProperties[rawKey] = rawVal
-		}
+		p.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -306,15 +335,32 @@ func (p PatternValueSubschemasPattern3) Validate() error {
 
 type PatternValueSubschemasPattern5 []string
 
+// UnmarshalJSON replaces p with the value the document holds. See
+// decodeJSONAt.
 func (p *PatternValueSubschemasPattern5) UnmarshalJSON(data []byte) error {
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(p.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into p, in place. The value is
+// replaced rather than merged into: a slice is decoded into an array of its
+// own rather than over the one p held, which a copy of the value made
+// earlier still shares, and a map loses the members an earlier document gave
+// it.
+func (p *PatternValueSubschemasPattern5) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	var _zero PatternValueSubschemasPattern5
+	*p = _zero
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	if _err := checkJSONNullsAt(data, &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
+	if _err := checkJSONNullsAt(_d, _sp, &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
 		return _err
 	}
 	type Alias PatternValueSubschemasPattern5
-	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(p)))
+	return jsonDecodeRefusal(jsonAtJSON[Alias]((*Alias)(p), _d, _sp))
 }
 
 // Validate checks PatternValueSubschemasPattern5 against its JSON Schema constraints.
@@ -329,12 +375,30 @@ func (p PatternValueSubschemasPattern5) Validate() error {
 
 type PatternValueSubschemasPattern6 []any
 
+// UnmarshalJSON replaces p with the value the document holds.
 func (p *PatternValueSubschemasPattern6) UnmarshalJSON(data []byte) error {
-	if string(data) == "null" {
+	var _zero PatternValueSubschemasPattern6
+	*p = _zero
+	if jsonIsNullDocument(data) {
 		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias PatternValueSubschemasPattern6
 	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(p)))
+}
+
+// decodeJSONAt decodes the value at _sp into p, in place. The value is
+// replaced rather than merged into: a slice is decoded into an array of its
+// own rather than over the one p held, which a copy of the value made
+// earlier still shares, and a map loses the members an earlier document gave
+// it.
+func (p *PatternValueSubschemasPattern6) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	var _zero PatternValueSubschemasPattern6
+	*p = _zero
+	if _d.isNull(_sp) {
+		return jsonValueErrorf("null is not allowed")
+	}
+	type Alias PatternValueSubschemasPattern6
+	return jsonDecodeRefusal(jsonAtJSON[Alias]((*Alias)(p), _d, _sp))
 }
 
 // Validate checks PatternValueSubschemasPattern6 against its JSON Schema constraints.
@@ -361,19 +425,35 @@ type PatternValueSubschemasPattern7 struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces p with the value the document holds. See
+// decodeJSONAt.
 func (p *PatternValueSubschemasPattern7) UnmarshalJSON(data []byte) error {
-	p._raw = append(p._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(p.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever p held.
+func (p *PatternValueSubschemasPattern7) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*p = PatternValueSubschemasPattern7{}
+	p._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (p PatternValueSubschemasPattern7) MarshalJSON() ([]byte, error) {
 	if len(p._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return p._raw, nil
+	return append([]byte(nil), p._raw...), nil
 }
 
-func (p PatternValueSubschemasPattern7) Raw() json.RawMessage { return p._raw }
+// Raw returns a copy of the value's bytes.
+func (p PatternValueSubschemasPattern7) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), p._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -403,6 +483,8 @@ func (p PatternValueSubschemasPattern7) Validate() error {
 type PatternValueSubschemasPattern8 string
 
 func (p *PatternValueSubschemasPattern8) UnmarshalJSON(data []byte) error {
+	var _zero PatternValueSubschemasPattern8
+	*p = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -423,41 +505,58 @@ type PatternValueSubschemasPattern9 struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces p with the value the document holds. See
+// decodeJSONAt.
 func (p *PatternValueSubschemasPattern9) UnmarshalJSON(data []byte) error {
-	p.AdditionalProperties = nil
-	p._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(p.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into p, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever p held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (p *PatternValueSubschemasPattern9) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*p = PatternValueSubschemasPattern9{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias PatternValueSubschemasPattern9
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(p),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[PatternValueSubschemasPattern9](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	p._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		p._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if p.AdditionalProperties == nil {
+			p.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		p._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			p._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if p.AdditionalProperties == nil {
-				p.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			p.AdditionalProperties[rawKey] = rawVal
-		}
+		p.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -505,66 +604,83 @@ type PatternValueSubschemasPattern10 struct {
 	PatternProperties    map[string]json.RawMessage `json:"-"`
 }
 
+// UnmarshalJSON replaces p with the value the document holds. See
+// decodeJSONAt.
 func (p *PatternValueSubschemasPattern10) UnmarshalJSON(data []byte) error {
-	p.AdditionalProperties = nil
-	p.PatternProperties = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(p.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into p, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever p held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (p *PatternValueSubschemasPattern10) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*p = PatternValueSubschemasPattern10{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias PatternValueSubschemasPattern10
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(p),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[PatternValueSubschemasPattern10](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
-		}
-		knownFields := map[string]bool{}
-		{
-			var _least string
-			var _failed error
-			for rawKey, rawVal := range raw { // refused for the least failing key
-				if _failed != nil && rawKey >= _least {
-					continue
+		var _least string
+		var _failed error
+		for rawKey, rawVal := range _raw { // refused for the least failing key
+			if _failed != nil && rawKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				matchesPattern := false
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_ac0b80788bc2e250.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
+					}
+					matchesPattern = _ppMatched
 				}
-				if _err := func() error {
-					if knownFields[rawKey] {
-						return nil
+				if matchesPattern {
+					if p.PatternProperties == nil {
+						p.PatternProperties = make(map[string]json.RawMessage)
 					}
-					matchesPattern := false
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_ac0b80788bc2e250.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
-					}
-					if matchesPattern {
-						if p.PatternProperties == nil {
-							p.PatternProperties = make(map[string]json.RawMessage)
-						}
-						p.PatternProperties[rawKey] = rawVal
-						return nil
-					}
-					if p.AdditionalProperties == nil {
-						p.AdditionalProperties = make(map[string]json.RawMessage)
-					}
-					p.AdditionalProperties[rawKey] = rawVal
+					p.PatternProperties[rawKey] = _d.copyOf(rawVal)
 					return nil
-				}(); _err != nil {
-					_least, _failed = rawKey, _err
 				}
+				if p.AdditionalProperties == nil {
+					p.AdditionalProperties = make(map[string]json.RawMessage)
+				}
+				p.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+				return nil
+			}(); _err != nil {
+				_least, _failed = rawKey, _err
 			}
-			if _failed != nil {
-				return _failed
-			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
 
@@ -681,57 +797,75 @@ type PatternValueSubschemasPattern11 struct {
 	AdditionalProperties map[string]string `json:"-"`
 }
 
+// UnmarshalJSON replaces p with the value the document holds. See
+// decodeJSONAt.
 func (p *PatternValueSubschemasPattern11) UnmarshalJSON(data []byte) error {
-	p.AdditionalProperties = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(p.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into p, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever p held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (p *PatternValueSubschemasPattern11) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*p = PatternValueSubschemasPattern11{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias PatternValueSubschemasPattern11
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(p),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[PatternValueSubschemasPattern11](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		var _least string
+		var _failed error
+		for rawKey, rawVal := range _raw { // refused for the least failing key
+			if _failed != nil && rawKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				if _d.isNull(rawVal) {
+					return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%s]", _schemagenQuote(rawKey))
+				}
+				if p.AdditionalProperties == nil {
+					p.AdditionalProperties = make(map[string]string)
+				}
+				var val string
+				if err := jsonAtJSON[string](&val, _d, rawVal); err != nil {
+					return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
+				}
+				p.AdditionalProperties[rawKey] = val
+				return nil
+			}(); _err != nil {
+				_least, _failed = rawKey, _err
+			}
 		}
-		knownFields := map[string]bool{}
-		{
-			var _least string
-			var _failed error
-			for rawKey, rawVal := range raw { // refused for the least failing key
-				if _failed != nil && rawKey >= _least {
-					continue
-				}
-				if _err := func() error {
-					if knownFields[rawKey] {
-						return nil
-					}
-					if string(rawVal) == "null" {
-						return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%s]", _schemagenQuote(rawKey))
-					}
-					if p.AdditionalProperties == nil {
-						p.AdditionalProperties = make(map[string]string)
-					}
-					var val string
-					if err := json.Unmarshal(rawVal, &val); err != nil {
-						return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
-					}
-					p.AdditionalProperties[rawKey] = val
-					return nil
-				}(); _err != nil {
-					_least, _failed = rawKey, _err
-				}
-			}
-			if _failed != nil {
-				return _failed
-			}
+		if _failed != nil {
+			return _failed
 		}
 	}
 
@@ -809,19 +943,35 @@ type PatternValueSubschemasPattern12 struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces p with the value the document holds. See
+// decodeJSONAt.
 func (p *PatternValueSubschemasPattern12) UnmarshalJSON(data []byte) error {
-	p._raw = append(p._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(p.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever p held.
+func (p *PatternValueSubschemasPattern12) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*p = PatternValueSubschemasPattern12{}
+	p._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (p PatternValueSubschemasPattern12) MarshalJSON() ([]byte, error) {
 	if len(p._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return p._raw, nil
+	return append([]byte(nil), p._raw...), nil
 }
 
-func (p PatternValueSubschemasPattern12) Raw() json.RawMessage { return p._raw }
+// Raw returns a copy of the value's bytes.
+func (p PatternValueSubschemasPattern12) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), p._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -863,19 +1013,35 @@ type PatternValueSubschemasPattern13 struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces p with the value the document holds. See
+// decodeJSONAt.
 func (p *PatternValueSubschemasPattern13) UnmarshalJSON(data []byte) error {
-	p._raw = append(p._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(p.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever p held.
+func (p *PatternValueSubschemasPattern13) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*p = PatternValueSubschemasPattern13{}
+	p._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (p PatternValueSubschemasPattern13) MarshalJSON() ([]byte, error) {
 	if len(p._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return p._raw, nil
+	return append([]byte(nil), p._raw...), nil
 }
 
-func (p PatternValueSubschemasPattern13) Raw() json.RawMessage { return p._raw }
+// Raw returns a copy of the value's bytes.
+func (p PatternValueSubschemasPattern13) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), p._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -909,41 +1075,58 @@ type PatternValueSubschemasPattern14 struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces p with the value the document holds. See
+// decodeJSONAt.
 func (p *PatternValueSubschemasPattern14) UnmarshalJSON(data []byte) error {
-	p.AdditionalProperties = nil
-	p._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(p.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into p, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever p held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (p *PatternValueSubschemasPattern14) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*p = PatternValueSubschemasPattern14{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias PatternValueSubschemasPattern14
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(p),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[PatternValueSubschemasPattern14](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	p._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		p._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if p.AdditionalProperties == nil {
+			p.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		p._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			p._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if p.AdditionalProperties == nil {
-				p.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			p.AdditionalProperties[rawKey] = rawVal
-		}
+		p.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -1002,41 +1185,58 @@ type PatternValueSubschemasPattern15 struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces p with the value the document holds. See
+// decodeJSONAt.
 func (p *PatternValueSubschemasPattern15) UnmarshalJSON(data []byte) error {
-	p.AdditionalProperties = nil
-	p._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(p.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into p, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever p held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (p *PatternValueSubschemasPattern15) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*p = PatternValueSubschemasPattern15{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias PatternValueSubschemasPattern15
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(p),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[PatternValueSubschemasPattern15](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	p._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		p._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if p.AdditionalProperties == nil {
+			p.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		p._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			p._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if p.AdditionalProperties == nil {
-				p.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			p.AdditionalProperties[rawKey] = rawVal
-		}
+		p.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -1077,36 +1277,54 @@ type PatternValueSubschemasPattern16 struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
+// UnmarshalJSON replaces p with the value the document holds. See
+// decodeJSONAt.
 func (p *PatternValueSubschemasPattern16) UnmarshalJSON(data []byte) error {
-	p.AdditionalProperties = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(p.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into p, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever p held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (p *PatternValueSubschemasPattern16) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*p = PatternValueSubschemasPattern16{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias PatternValueSubschemasPattern16
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(p),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[PatternValueSubschemasPattern16](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	for rawKey, rawVal := range _raw {
+		if p.AdditionalProperties == nil {
+			p.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if p.AdditionalProperties == nil {
-				p.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			p.AdditionalProperties[rawKey] = rawVal
-		}
+		p.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -1162,9 +1380,10 @@ type PatternValueSubschemasPattern20 struct {
 }
 
 func (p *PatternValueSubschemasPattern20) UnmarshalJSON(data []byte) error {
+	*p = PatternValueSubschemasPattern20{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		p._raw = append(p._raw[:0], data...)
+		p._raw = append(json.RawMessage(nil), data...)
 		p._isRaw = true
 		return nil
 	}
@@ -1173,8 +1392,15 @@ func (p *PatternValueSubschemasPattern20) UnmarshalJSON(data []byte) error {
 		p._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	p._raw = append(p._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	p._raw = append(json.RawMessage(nil), data...)
 	p._isRaw = true
 	return nil
 }
@@ -1183,7 +1409,9 @@ func (p PatternValueSubschemasPattern20) MarshalJSON() ([]byte, error) {
 		if len(p._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return p._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), p._raw...), nil
 	}
 	return json.Marshal(p._value)
 }
@@ -1191,7 +1419,7 @@ func (p PatternValueSubschemasPattern20) StringValue() string { return p._value 
 func (p PatternValueSubschemasPattern20) IsString() bool      { return !p._isRaw }
 func (p PatternValueSubschemasPattern20) Raw() json.RawMessage {
 	if p._isRaw {
-		return p._raw
+		return append(json.RawMessage(nil), p._raw...)
 	}
 	_b, _ := json.Marshal(p._value)
 	return _b
@@ -1216,206 +1444,223 @@ type PatternValueSubschemas struct {
 	PatternProperties    map[string]json.RawMessage `json:"-"`
 }
 
+// UnmarshalJSON replaces p with the value the document holds. See
+// decodeJSONAt.
 func (p *PatternValueSubschemas) UnmarshalJSON(data []byte) error {
-	p.AdditionalProperties = nil
-	p.PatternProperties = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(p.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into p, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever p held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (p *PatternValueSubschemas) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*p = PatternValueSubschemas{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias PatternValueSubschemas
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(p),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[PatternValueSubschemas](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
-		}
-		knownFields := map[string]bool{}
-		{
-			var _least string
-			var _failed error
-			for rawKey, rawVal := range raw { // refused for the least failing key
-				if _failed != nil && rawKey >= _least {
-					continue
+		var _least string
+		var _failed error
+		for rawKey, rawVal := range _raw { // refused for the least failing key
+			if _failed != nil && rawKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				matchesPattern := false
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_5cd67a1734052155.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
+					}
+					matchesPattern = _ppMatched
 				}
-				if _err := func() error {
-					if knownFields[rawKey] {
-						return nil
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_04cf29b1e752ed04.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 					}
-					matchesPattern := false
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_5cd67a1734052155.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
+					matchesPattern = _ppMatched
+				}
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_83cbf64df13435b3.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 					}
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_04cf29b1e752ed04.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
+					matchesPattern = _ppMatched
+				}
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_a09428b97b1f55b0.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 					}
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_83cbf64df13435b3.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
+					matchesPattern = _ppMatched
+				}
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_b139149fd2d200bc.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 					}
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_a09428b97b1f55b0.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
+					matchesPattern = _ppMatched
+				}
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_a6632a8b58bfa106.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 					}
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_b139149fd2d200bc.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
+					matchesPattern = _ppMatched
+				}
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_8d4715d423307d4d.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 					}
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_a6632a8b58bfa106.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
+					matchesPattern = _ppMatched
+				}
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_5f44b95a8d86d5ab.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 					}
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_8d4715d423307d4d.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
+					matchesPattern = _ppMatched
+				}
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_47b69c2f795385c2.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 					}
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_5f44b95a8d86d5ab.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
+					matchesPattern = _ppMatched
+				}
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_48bf2db34d3c3b22.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 					}
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_47b69c2f795385c2.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
+					matchesPattern = _ppMatched
+				}
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_7482dab296095d8c.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 					}
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_48bf2db34d3c3b22.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
+					matchesPattern = _ppMatched
+				}
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_4d6e762f475688fc.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 					}
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_7482dab296095d8c.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
+					matchesPattern = _ppMatched
+				}
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_53ef89a63479ce35.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 					}
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_4d6e762f475688fc.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
+					matchesPattern = _ppMatched
+				}
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_50c4508bf68f38cd.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 					}
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_53ef89a63479ce35.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
+					matchesPattern = _ppMatched
+				}
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_02e6d69d2b6e4c42.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 					}
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_50c4508bf68f38cd.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
+					matchesPattern = _ppMatched
+				}
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_9a393f59667e0a49.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 					}
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_02e6d69d2b6e4c42.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
+					matchesPattern = _ppMatched
+				}
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_4114dedf7463c309.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 					}
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_9a393f59667e0a49.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
+					matchesPattern = _ppMatched
+				}
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_0d88bc24f5d9e8d9.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 					}
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_4114dedf7463c309.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
+					matchesPattern = _ppMatched
+				}
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_7c703002152a720e.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 					}
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_0d88bc24f5d9e8d9.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
+					matchesPattern = _ppMatched
+				}
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_7187eb4d485a26bf.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 					}
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_7c703002152a720e.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
+					matchesPattern = _ppMatched
+				}
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_e39afb7c17de6a02.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 					}
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_7187eb4d485a26bf.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
+					matchesPattern = _ppMatched
+				}
+				if matchesPattern {
+					if p.PatternProperties == nil {
+						p.PatternProperties = make(map[string]json.RawMessage)
 					}
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_e39afb7c17de6a02.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
-					}
-					if matchesPattern {
-						if p.PatternProperties == nil {
-							p.PatternProperties = make(map[string]json.RawMessage)
-						}
-						p.PatternProperties[rawKey] = rawVal
-						return nil
-					}
-					if p.AdditionalProperties == nil {
-						p.AdditionalProperties = make(map[string]json.RawMessage)
-					}
-					p.AdditionalProperties[rawKey] = rawVal
+					p.PatternProperties[rawKey] = _d.copyOf(rawVal)
 					return nil
-				}(); _err != nil {
-					_least, _failed = rawKey, _err
 				}
+				if p.AdditionalProperties == nil {
+					p.AdditionalProperties = make(map[string]json.RawMessage)
+				}
+				p.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+				return nil
+			}(); _err != nil {
+				_least, _failed = rawKey, _err
 			}
-			if _failed != nil {
-				return _failed
-			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
 

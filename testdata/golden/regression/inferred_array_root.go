@@ -12,41 +12,58 @@ type InferredArrayRootItem struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InferredArrayRootItem) UnmarshalJSON(data []byte) error {
-	i.AdditionalProperties = nil
-	i._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into i, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever i held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (i *InferredArrayRootItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InferredArrayRootItem{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias InferredArrayRootItem
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(i),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[InferredArrayRootItem](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	i._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		i._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if i.AdditionalProperties == nil {
+			i.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		i._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			i._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if i.AdditionalProperties == nil {
-				i.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			i.AdditionalProperties[rawKey] = rawVal
-		}
+		i.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -97,9 +114,10 @@ type InferredArrayRoot struct {
 }
 
 func (i *InferredArrayRoot) UnmarshalJSON(data []byte) error {
+	*i = InferredArrayRoot{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		i._raw = append(i._raw[:0], data...)
+		i._raw = append(json.RawMessage(nil), data...)
 		i._isRaw = true
 		return nil
 	}
@@ -108,8 +126,15 @@ func (i *InferredArrayRoot) UnmarshalJSON(data []byte) error {
 		i._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	i._raw = append(i._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	i._raw = append(json.RawMessage(nil), data...)
 	i._isRaw = true
 	return nil
 }
@@ -118,7 +143,9 @@ func (i InferredArrayRoot) MarshalJSON() ([]byte, error) {
 		if len(i._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return i._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), i._raw...), nil
 	}
 	return json.Marshal(i._value)
 }
@@ -126,7 +153,7 @@ func (i InferredArrayRoot) Slice() []any  { return i._value }
 func (i InferredArrayRoot) IsArray() bool { return !i._isRaw }
 func (i InferredArrayRoot) Raw() json.RawMessage {
 	if i._isRaw {
-		return i._raw
+		return append(json.RawMessage(nil), i._raw...)
 	}
 	_b, _ := json.Marshal(i._value)
 	return _b

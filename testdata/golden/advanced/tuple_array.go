@@ -10,12 +10,30 @@ import (
 // Coordinate - A tuple of fixed positional items
 type Coordinate []any
 
+// UnmarshalJSON replaces c with the value the document holds.
 func (c *Coordinate) UnmarshalJSON(data []byte) error {
-	if string(data) == "null" {
+	var _zero Coordinate
+	*c = _zero
+	if jsonIsNullDocument(data) {
 		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias Coordinate
 	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(c)))
+}
+
+// decodeJSONAt decodes the value at _sp into c, in place. The value is
+// replaced rather than merged into: a slice is decoded into an array of its
+// own rather than over the one c held, which a copy of the value made
+// earlier still shares, and a map loses the members an earlier document gave
+// it.
+func (c *Coordinate) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	var _zero Coordinate
+	*c = _zero
+	if _d.isNull(_sp) {
+		return jsonValueErrorf("null is not allowed")
+	}
+	type Alias Coordinate
+	return jsonDecodeRefusal(jsonAtJSON[Alias]((*Alias)(c), _d, _sp))
 }
 
 // Validate checks Coordinate against its JSON Schema constraints.

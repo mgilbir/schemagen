@@ -10,6 +10,8 @@ import (
 type Addr string
 
 func (a *Addr) UnmarshalJSON(data []byte) error {
+	var _zero Addr
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -37,6 +39,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (c *Choice) UnmarshalJSON(data []byte) error {
+	var _zero Choice
+	*c = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -65,16 +69,32 @@ var rawAllowedJSON = _jsonCanonicalTexts([]string{
 	"null",
 })
 
+// UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
+//
+// encoding/json's contract for an Unmarshaler is that it copies what it keeps,
+// and this one kept the caller's slice: a caller that reused its read buffer --
+// a json.Decoder over a stream does, for every document -- rewrote a value it had
+// already decoded, which then validated as whatever the next document held
+// there. A value that is not JSON at all is refused in encoding/json's words;
+// encoding/json never hands one over, so only a direct caller reaches that.
 func (r *Raw) UnmarshalJSON(data []byte) error {
-	*r = Raw(data)
+	*r = nil
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	*r = Raw(append([]byte(nil), data...))
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it, in a buffer of
+// its own: the value's bytes, handed out, are bytes a caller can rewrite it
+// through.
 func (r Raw) MarshalJSON() ([]byte, error) {
 	if len(r) == 0 {
 		return []byte("null"), nil
 	}
-	return json.RawMessage(r).MarshalJSON()
+	return append([]byte(nil), r...), nil
 }
 
 // Validate checks Raw against its JSON Schema constraints.
@@ -97,6 +117,8 @@ func (r Raw) Validate() error {
 type Stamp string
 
 func (s *Stamp) UnmarshalJSON(data []byte) error {
+	var _zero Stamp
+	*s = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -112,6 +134,8 @@ func (s Stamp) Validate() error {
 type WrappedAddr string
 
 func (w *WrappedAddr) UnmarshalJSON(data []byte) error {
+	var _zero WrappedAddr
+	*w = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -139,6 +163,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (w *WrappedChoice) UnmarshalJSON(data []byte) error {
+	var _zero WrappedChoice
+	*w = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -170,6 +196,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (w *WrappedLevel) UnmarshalJSON(data []byte) error {
+	var _zero WrappedLevel
+	*w = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -198,16 +226,32 @@ var wrappedRawAllowedJSON = _jsonCanonicalTexts([]string{
 	"null",
 })
 
+// UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
+//
+// encoding/json's contract for an Unmarshaler is that it copies what it keeps,
+// and this one kept the caller's slice: a caller that reused its read buffer --
+// a json.Decoder over a stream does, for every document -- rewrote a value it had
+// already decoded, which then validated as whatever the next document held
+// there. A value that is not JSON at all is refused in encoding/json's words;
+// encoding/json never hands one over, so only a direct caller reaches that.
 func (w *WrappedRaw) UnmarshalJSON(data []byte) error {
-	*w = WrappedRaw(data)
+	*w = nil
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	*w = WrappedRaw(append([]byte(nil), data...))
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it, in a buffer of
+// its own: the value's bytes, handed out, are bytes a caller can rewrite it
+// through.
 func (w WrappedRaw) MarshalJSON() ([]byte, error) {
 	if len(w) == 0 {
 		return []byte("null"), nil
 	}
-	return json.RawMessage(w).MarshalJSON()
+	return append([]byte(nil), w...), nil
 }
 
 // Validate checks WrappedRaw against its JSON Schema constraints.
@@ -230,6 +274,8 @@ func (w WrappedRaw) Validate() error {
 type WrappedStamp string
 
 func (w *WrappedStamp) UnmarshalJSON(data []byte) error {
+	var _zero WrappedStamp
+	*w = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -254,108 +300,129 @@ type AllOfSingleBranchType struct {
 	Raw                  WrappedRaw                 `json:"raw"`
 }
 
+// UnmarshalJSON replaces a with the value the document holds. See
+// decodeJSONAt.
 func (a *AllOfSingleBranchType) UnmarshalJSON(data []byte) error {
-	a.AdditionalProperties = nil
-	a._jsonKeys = nil
-	a._jsonNulls = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(a.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into a, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever a held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (a *AllOfSingleBranchType) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*a = AllOfSingleBranchType{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"addr",
-			"choice",
-			"level",
-			"raw",
-			"stamp",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[AllOfSingleBranchType](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias AllOfSingleBranchType
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(a),
+	if _v, _ok := _raw["addr"]; _ok {
+		if _err := func(_p **WrappedAddr, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*WrappedAddr](_p, _d, _s, jsonDecodeValue[*WrappedAddr])
+		}(&a.Addr, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "addr")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "addr", decode: jsonDecodeValue[*WrappedAddr]},
-			{name: "choice", decode: jsonDecodeValue[WrappedChoice]},
-			{name: "level", decode: jsonDecodeValue[*WrappedLevel]},
-			{name: "raw", decode: jsonDecodeValue[WrappedRaw]},
-			{name: "stamp", decode: jsonDecodeValue[WrappedStamp]},
-		})
+	if _v, _ok := _raw["choice"]; _ok {
+		if _err := func(_p *WrappedChoice, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[WrappedChoice](_p, _d, _s, jsonDecodeValue[WrappedChoice])
+		}(&a.Choice, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "choice")
+		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	if _v, _ok := _raw["level"]; _ok {
+		if _err := func(_p **WrappedLevel, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*WrappedLevel](_p, _d, _s, jsonDecodeValue[*WrappedLevel])
+		}(&a.Level, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "level")
 		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"addr",
-			"choice",
-			"level",
-			"stamp",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	}
+	if _v, _ok := _raw["raw"]; _ok {
+		if _err := func(_p *WrappedRaw, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[WrappedRaw](_p, _d, _s, jsonDecodeValue[WrappedRaw])
+		}(&a.Raw, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "raw")
+		}
+	}
+	if _v, _ok := _raw["stamp"]; _ok {
+		if _err := func(_p *WrappedStamp, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[WrappedStamp](_p, _d, _s, jsonDecodeValue[WrappedStamp])
+		}(&a.Stamp, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "stamp")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"addr",
+		"choice",
+		"level",
+		"stamp",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	a._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		a._jsonKeys[_k] = true
+	}
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"raw",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if a._jsonNulls == nil {
+				a._jsonNulls = make(map[string]bool, 1)
 			}
+			a._jsonNulls[_nullKey] = true
 		}
-		a._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			a._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "addr", "choice", "level", "raw", "stamp":
+			continue
 		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"raw",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if a._jsonNulls == nil {
-					a._jsonNulls = make(map[string]bool, 1)
-				}
-				a._jsonNulls[_nullKey] = true
-			}
+		if a.AdditionalProperties == nil {
+			a.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		knownFields := map[string]bool{
-			"addr":   true,
-			"choice": true,
-			"level":  true,
-			"raw":    true,
-			"stamp":  true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if a.AdditionalProperties == nil {
-				a.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			a.AdditionalProperties[rawKey] = rawVal
-		}
+		a.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil

@@ -934,6 +934,9 @@ func oneOfNarrowingFile(secondFullyChecked bool) *generator.File {
 							Type:           &generator.NamedType{Name: "Payload", Pointer: true},
 							RequiredFields: []string{"x"},
 							Validatable:    true,
+							// What the generator's decode plan writes for a
+							// pointer to a struct that decodes in place.
+							Decoder: "func(_p **Payload, _d *jsonDoc, _s jsonSpan) error { return jsonDecodePtr(_p, _d, _s, (*Payload).decodeJSONAt) }",
 						},
 						{
 							WrapperName:    "Envelope_Any",
@@ -942,6 +945,7 @@ func oneOfNarrowingFile(secondFullyChecked bool) *generator.File {
 							Type:           &generator.PrimitiveType{Name: "any"},
 							RequiredFields: []string{"x", "y"},
 							FullyChecked:   secondFullyChecked,
+							Decoder:        "jsonAtJSON[any]",
 						},
 					},
 				}},
@@ -971,8 +975,10 @@ func TestEmitOneOfSelectionNarrowsOnBranchConstraints(t *testing.T) {
 	src := string(out)
 
 	for _, want := range []string{
-		// The stricter tally, and the branch constraint that feeds it.
-		"if _vErr := candidate.Validate(); _vErr == nil {",
+		// The stricter tally, and the branch constraint that feeds it: the
+		// candidate is held, and judged only once more than one branch matched.
+		"_vc0, _vcOK0 = candidate, true",
+		"if _vErr := _vc0.Validate(); _vErr == nil {",
 		"oneofStrict++",
 		// Only consulted where selection was already going to reject.
 		"if oneofMatched > 1 && oneofOpaque == 0 {",
@@ -980,7 +986,7 @@ func TestEmitOneOfSelectionNarrowsOnBranchConstraints(t *testing.T) {
 		"e.Body = oneofStrictSel",
 		// A value no branch accepts is not ambiguity, and is not reported as a
 		// count.
-		`return oneofErrf("no matching oneOf variant: %w", oneofStrictErr)`,
+		`return oneofWrapf(oneofStrictErr, "no matching oneOf variant: ")`,
 	} {
 		if !strings.Contains(src, want) {
 			t.Fatalf("Envelope.UnmarshalJSON is missing %q:\n%s", want, src)

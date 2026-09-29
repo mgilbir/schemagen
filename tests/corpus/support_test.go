@@ -8,6 +8,8 @@ import "github.com/mgilbir/schemagen/tests/internal/testsupport"
 const fuzzSchemaDir = testsupport.SchemaDir
 
 var (
-	corpusSchemaPaths = testsupport.CorpusSchemaPaths
-	writeTestGoMod    = testsupport.WriteTestGoMod
+	corpusSchemaPaths           = testsupport.CorpusSchemaPaths
+	extractRootTypeNameFromCode = testsupport.ExtractRootTypeNameFromCode
+	programOutput               = testsupport.ProgramOutput
+	writeTestGoMod              = testsupport.WriteTestGoMod
 )

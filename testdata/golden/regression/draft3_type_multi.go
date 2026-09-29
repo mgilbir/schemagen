@@ -12,19 +12,33 @@ type Draft3typeMulti struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces d with the value the document holds. See
+// decodeJSONAt.
 func (d *Draft3typeMulti) UnmarshalJSON(data []byte) error {
-	d._raw = append(d._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(d.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever d held.
+func (d *Draft3typeMulti) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*d = Draft3typeMulti{}
+	d._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (d Draft3typeMulti) MarshalJSON() ([]byte, error) {
 	if len(d._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return d._raw, nil
+	return append([]byte(nil), d._raw...), nil
 }
 
-func (d Draft3typeMulti) Raw() json.RawMessage { return d._raw }
+// Raw returns a copy of the value's bytes.
+func (d Draft3typeMulti) Raw() json.RawMessage { return append(json.RawMessage(nil), d._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.

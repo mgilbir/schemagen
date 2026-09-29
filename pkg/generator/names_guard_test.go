@@ -187,8 +187,9 @@ var nameSiteCalls = map[string]bool{
 // nameSiteAllowances are the sites whose name the classification above cannot
 // follow, each with the reason it comes out of the registry all the same.
 var nameSiteAllowances = map[string]string{
-	"emitDef: declare(def.TypeName(), ...)": "the name the def was built under; emitDefAs checks it is the name its caller holds, and the one direct caller (generateTypeDefFor's backstop) builds it from its own parameter",
-	"Generate: NamedType{Name: name}":       "the cross-package publishing loop, naming each def already in the file by the name it was declared under",
+	"emitDef: declare(def.TypeName(), ...)":       "the name the def was built under; emitDefAs checks it is the name its caller holds, and the one direct caller (generateTypeDefFor's backstop) builds it from its own parameter",
+	"Generate: NamedType{Name: name}":             "the cross-package publishing loop, naming each def already in the file by the name it was declared under",
+	"resolveDecodePlans: NamedType{Name: d.Name}": "the decode plan of an alias already in the file, written over the alias itself: the name it was declared under",
 }
 
 // TestNoTypeNameIsBuiltOutsideTheRegistry reads every place pkg/generator names

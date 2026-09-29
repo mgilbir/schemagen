@@ -16,9 +16,10 @@ type ContentPostureDraft7Blob struct {
 }
 
 func (c *ContentPostureDraft7Blob) UnmarshalJSON(data []byte) error {
+	*c = ContentPostureDraft7Blob{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		c._raw = append(c._raw[:0], data...)
+		c._raw = append(json.RawMessage(nil), data...)
 		c._isRaw = true
 		return nil
 	}
@@ -27,8 +28,15 @@ func (c *ContentPostureDraft7Blob) UnmarshalJSON(data []byte) error {
 		c._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	c._raw = append(c._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	c._raw = append(json.RawMessage(nil), data...)
 	c._isRaw = true
 	return nil
 }
@@ -37,7 +45,9 @@ func (c ContentPostureDraft7Blob) MarshalJSON() ([]byte, error) {
 		if len(c._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return c._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), c._raw...), nil
 	}
 	return json.Marshal(c._value)
 }
@@ -45,7 +55,7 @@ func (c ContentPostureDraft7Blob) StringValue() string { return c._value }
 func (c ContentPostureDraft7Blob) IsString() bool      { return !c._isRaw }
 func (c ContentPostureDraft7Blob) Raw() json.RawMessage {
 	if c._isRaw {
-		return c._raw
+		return append(json.RawMessage(nil), c._raw...)
 	}
 	_b, _ := json.Marshal(c._value)
 	return _b
@@ -76,9 +86,10 @@ type ContentPostureDraft7BoundedBlob struct {
 }
 
 func (c *ContentPostureDraft7BoundedBlob) UnmarshalJSON(data []byte) error {
+	*c = ContentPostureDraft7BoundedBlob{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		c._raw = append(c._raw[:0], data...)
+		c._raw = append(json.RawMessage(nil), data...)
 		c._isRaw = true
 		return nil
 	}
@@ -87,8 +98,15 @@ func (c *ContentPostureDraft7BoundedBlob) UnmarshalJSON(data []byte) error {
 		c._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	c._raw = append(c._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	c._raw = append(json.RawMessage(nil), data...)
 	c._isRaw = true
 	return nil
 }
@@ -97,7 +115,9 @@ func (c ContentPostureDraft7BoundedBlob) MarshalJSON() ([]byte, error) {
 		if len(c._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return c._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), c._raw...), nil
 	}
 	return json.Marshal(c._value)
 }
@@ -105,7 +125,7 @@ func (c ContentPostureDraft7BoundedBlob) StringValue() string { return c._value 
 func (c ContentPostureDraft7BoundedBlob) IsString() bool      { return !c._isRaw }
 func (c ContentPostureDraft7BoundedBlob) Raw() json.RawMessage {
 	if c._isRaw {
-		return c._raw
+		return append(json.RawMessage(nil), c._raw...)
 	}
 	_b, _ := json.Marshal(c._value)
 	return _b
@@ -134,6 +154,8 @@ func (c ContentPostureDraft7BoundedBlob) Validate() error {
 type ContentPostureDraft7BranchOption0 string
 
 func (c *ContentPostureDraft7BranchOption0) UnmarshalJSON(data []byte) error {
+	var _zero ContentPostureDraft7BranchOption0
+	*c = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -157,9 +179,10 @@ type ContentPostureDraft7EncodedDoc struct {
 }
 
 func (c *ContentPostureDraft7EncodedDoc) UnmarshalJSON(data []byte) error {
+	*c = ContentPostureDraft7EncodedDoc{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		c._raw = append(c._raw[:0], data...)
+		c._raw = append(json.RawMessage(nil), data...)
 		c._isRaw = true
 		return nil
 	}
@@ -168,8 +191,15 @@ func (c *ContentPostureDraft7EncodedDoc) UnmarshalJSON(data []byte) error {
 		c._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	c._raw = append(c._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	c._raw = append(json.RawMessage(nil), data...)
 	c._isRaw = true
 	return nil
 }
@@ -178,7 +208,9 @@ func (c ContentPostureDraft7EncodedDoc) MarshalJSON() ([]byte, error) {
 		if len(c._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return c._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), c._raw...), nil
 	}
 	return json.Marshal(c._value)
 }
@@ -186,7 +218,7 @@ func (c ContentPostureDraft7EncodedDoc) StringValue() string { return c._value }
 func (c ContentPostureDraft7EncodedDoc) IsString() bool      { return !c._isRaw }
 func (c ContentPostureDraft7EncodedDoc) Raw() json.RawMessage {
 	if c._isRaw {
-		return c._raw
+		return append(json.RawMessage(nil), c._raw...)
 	}
 	_b, _ := json.Marshal(c._value)
 	return _b
@@ -217,9 +249,10 @@ type ContentPostureDraft7UnknownEncoding struct {
 }
 
 func (c *ContentPostureDraft7UnknownEncoding) UnmarshalJSON(data []byte) error {
+	*c = ContentPostureDraft7UnknownEncoding{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		c._raw = append(c._raw[:0], data...)
+		c._raw = append(json.RawMessage(nil), data...)
 		c._isRaw = true
 		return nil
 	}
@@ -228,8 +261,15 @@ func (c *ContentPostureDraft7UnknownEncoding) UnmarshalJSON(data []byte) error {
 		c._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	c._raw = append(c._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	c._raw = append(json.RawMessage(nil), data...)
 	c._isRaw = true
 	return nil
 }
@@ -238,7 +278,9 @@ func (c ContentPostureDraft7UnknownEncoding) MarshalJSON() ([]byte, error) {
 		if len(c._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return c._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), c._raw...), nil
 	}
 	return json.Marshal(c._value)
 }
@@ -246,7 +288,7 @@ func (c ContentPostureDraft7UnknownEncoding) StringValue() string { return c._va
 func (c ContentPostureDraft7UnknownEncoding) IsString() bool      { return !c._isRaw }
 func (c ContentPostureDraft7UnknownEncoding) Raw() json.RawMessage {
 	if c._isRaw {
-		return c._raw
+		return append(json.RawMessage(nil), c._raw...)
 	}
 	_b, _ := json.Marshal(c._value)
 	return _b
@@ -274,9 +316,10 @@ type ContentPostureDraft7ViaAllOf struct {
 }
 
 func (c *ContentPostureDraft7ViaAllOf) UnmarshalJSON(data []byte) error {
+	*c = ContentPostureDraft7ViaAllOf{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		c._raw = append(c._raw[:0], data...)
+		c._raw = append(json.RawMessage(nil), data...)
 		c._isRaw = true
 		return nil
 	}
@@ -285,8 +328,15 @@ func (c *ContentPostureDraft7ViaAllOf) UnmarshalJSON(data []byte) error {
 		c._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	c._raw = append(c._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	c._raw = append(json.RawMessage(nil), data...)
 	c._isRaw = true
 	return nil
 }
@@ -295,7 +345,9 @@ func (c ContentPostureDraft7ViaAllOf) MarshalJSON() ([]byte, error) {
 		if len(c._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return c._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), c._raw...), nil
 	}
 	return json.Marshal(c._value)
 }
@@ -303,7 +355,7 @@ func (c ContentPostureDraft7ViaAllOf) StringValue() string { return c._value }
 func (c ContentPostureDraft7ViaAllOf) IsString() bool      { return !c._isRaw }
 func (c ContentPostureDraft7ViaAllOf) Raw() json.RawMessage {
 	if c._isRaw {
-		return c._raw
+		return append(json.RawMessage(nil), c._raw...)
 	}
 	_b, _ := json.Marshal(c._value)
 	return _b
@@ -329,6 +381,8 @@ func (c ContentPostureDraft7ViaAllOf) Validate() error {
 type ContentPostureDraft7TupleItem0 string
 
 func (c *ContentPostureDraft7TupleItem0) UnmarshalJSON(data []byte) error {
+	var _zero ContentPostureDraft7TupleItem0
+	*c = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -402,64 +456,108 @@ func (c *ContentPostureDraft7) GetBoolean() bool {
 	return zero
 }
 
+// UnmarshalJSON replaces c with the value the document holds. See
+// decodeJSONAt.
 func (c *ContentPostureDraft7) UnmarshalJSON(data []byte) error {
-	c.AdditionalProperties = nil
-	c._jsonKeys = nil
-	c._jsonNulls = nil
-	c.Branch = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(c.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into c, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever c held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (c *ContentPostureDraft7) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*c = ContentPostureDraft7{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"blob",
-			"boundedBlob",
-			"doc",
-			"encodedDoc",
-			"list",
-			"tuple",
-			"unknownEncoding",
-			"viaAllOf",
-			"branch",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ContentPostureDraft7](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias ContentPostureDraft7
-	aux := &struct {
-		*Alias
-		Branch json.RawMessage `json:"branch"`
-	}{
-		Alias: (*Alias)(c),
+	if _v, _ok := _raw["blob"]; _ok {
+		if _err := func(_p **ContentPostureDraft7Blob, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*ContentPostureDraft7Blob](_p, _d, _s, jsonDecodeValue[*ContentPostureDraft7Blob])
+		}(&c.Blob, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "blob")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "blob", decode: jsonDecodeValue[*ContentPostureDraft7Blob]},
-			{name: "boundedBlob", decode: jsonDecodeValue[*ContentPostureDraft7BoundedBlob]},
-			{name: "doc", decode: jsonDecodeValue[*string]},
-			{name: "encodedDoc", decode: jsonDecodeValue[*ContentPostureDraft7EncodedDoc]},
-			{name: "list", decode: jsonDecodeItems(jsonDecodeValue[string])},
-			{name: "tuple", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "unknownEncoding", decode: jsonDecodeValue[*ContentPostureDraft7UnknownEncoding]},
-			{name: "viaAllOf", decode: jsonDecodeValue[*ContentPostureDraft7ViaAllOf]},
-		})
+	if _v, _ok := _raw["boundedBlob"]; _ok {
+		if _err := func(_p **ContentPostureDraft7BoundedBlob, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*ContentPostureDraft7BoundedBlob](_p, _d, _s, jsonDecodeValue[*ContentPostureDraft7BoundedBlob])
+		}(&c.BoundedBlob, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "boundedBlob")
+		}
+	}
+	if _v, _ok := _raw["doc"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&c.Doc, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "doc")
+		}
+	}
+	if _v, _ok := _raw["encodedDoc"]; _ok {
+		if _err := func(_p **ContentPostureDraft7EncodedDoc, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*ContentPostureDraft7EncodedDoc](_p, _d, _s, jsonDecodeValue[*ContentPostureDraft7EncodedDoc])
+		}(&c.EncodedDoc, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "encodedDoc")
+		}
+	}
+	if _v, _ok := _raw["list"]; _ok {
+		if _err := func(_p *[]string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]string](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[string]))
+		}(&c.List, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "list")
+		}
+	}
+	if _v, _ok := _raw["tuple"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&c.Tuple, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "tuple")
+		}
+	}
+	if _v, _ok := _raw["unknownEncoding"]; _ok {
+		if _err := func(_p **ContentPostureDraft7UnknownEncoding, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*ContentPostureDraft7UnknownEncoding](_p, _d, _s, jsonDecodeValue[*ContentPostureDraft7UnknownEncoding])
+		}(&c.UnknownEncoding, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "unknownEncoding")
+		}
+	}
+	if _v, _ok := _raw["viaAllOf"]; _ok {
+		if _err := func(_p **ContentPostureDraft7ViaAllOf, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*ContentPostureDraft7ViaAllOf](_p, _d, _s, jsonDecodeValue[*ContentPostureDraft7ViaAllOf])
+		}(&c.ViaAllOf, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "viaAllOf")
+		}
 	}
 
 	{
-		oneofData := aux.Branch
+		_ov, _has := _raw["branch"]
 		// Every refusal this union raises is a sentence about the value the union
 		// holds, and the property that reaches it goes in front of that sentence
 		// by the rule every other message is joined by (see jsonPathError).
@@ -471,7 +569,15 @@ func (c *ContentPostureDraft7) UnmarshalJSON(data []byte) error {
 		oneofErrf := func(format string, args ...any) error {
 			return jsonPathf(jsonValueErrorf(format, args...), "%s", "branch")
 		}
-		if len(oneofData) > 0 && string(oneofData) != "null" {
+		// oneofWrapf is oneofErrf for a sentence that ends with a branch's own
+		// refusal, which is kept as a step of the message rather than written
+		// into it (see jsonValueWrapf): at every level of a recursive document
+		// that refuses at the bottom, each union puts its words in front of the
+		// words of the one below it.
+		oneofWrapf := func(err error, prefix string) error {
+			return jsonPathf(jsonValueWrapf(err, prefix), "%s", "branch")
+		}
+		if _has && !_d.isNull(_ov) {
 			var oneofMatched int
 			var oneofLastErr error
 			// A second tally: branches actually satisfied, not merely decoded.
@@ -483,22 +589,26 @@ func (c *ContentPostureDraft7) UnmarshalJSON(data []byte) error {
 			var oneofOpaque int
 			var oneofStrictSel isContentPostureDraft7_Branch
 			var oneofStrictErr error
+			// The candidate this branch decoded, held for the tally below. Its
+			// Validate is asked only if more than one branch matched, which is
+			// the only case the tally is read in: asked here, it was run over
+			// the whole of the value at every level of a recursive document.
+			var _vc0 ContentPostureDraft7BranchOption0
+			var _vcOK0 bool
+			// Every branch below is a trial, and one that holds the value's
+			// members as raw JSON takes views of the document rather than
+			// copies of them; see jsonDoc.copyOf.
+			_d.trial++
 
 			// Try variant: ContentPostureDraft7BranchOption0
 			{
 				var candidate ContentPostureDraft7BranchOption0
-				if err := json.Unmarshal(oneofData, &candidate); err == nil {
+				if err := jsonAtJSON[ContentPostureDraft7BranchOption0](&candidate, _d, _ov); err == nil {
 					c.Branch = &ContentPostureDraft7_ContentPostureDraft7BranchOption0{ContentPostureDraft7BranchOption0: candidate}
 					oneofMatched++
-					if _vErr := candidate.Validate(); _vErr == nil {
-						oneofStrict++
-						oneofStrictSel = &ContentPostureDraft7_ContentPostureDraft7BranchOption0{ContentPostureDraft7BranchOption0: candidate}
-					} else if _schemagenUndecided(_vErr) {
-						return oneofErrf("variant ContentPostureDraft7BranchOption0: %w", _vErr)
-					} else {
-						oneofStrictErr = fmt.Errorf("variant ContentPostureDraft7BranchOption0: %w", _vErr)
-					}
+					_vc0, _vcOK0 = candidate, true
 				} else if _schemagenUndecided(err) {
+					_d.trial--
 					return oneofErrf("variant ContentPostureDraft7BranchOption0: %w", err)
 				} else {
 					oneofLastErr = err
@@ -508,7 +618,7 @@ func (c *ContentPostureDraft7) UnmarshalJSON(data []byte) error {
 			// Try variant: Boolean
 			{
 				var candidate bool
-				if err := json.Unmarshal(oneofData, &candidate); err == nil {
+				if err := jsonAtJSON[bool](&candidate, _d, _ov); err == nil {
 					c.Branch = &ContentPostureDraft7_Boolean{Boolean: candidate}
 					oneofMatched++
 					// Nothing this branch says is left for a Validate to
@@ -516,11 +626,13 @@ func (c *ContentPostureDraft7) UnmarshalJSON(data []byte) error {
 					oneofStrict++
 					oneofStrictSel = &ContentPostureDraft7_Boolean{Boolean: candidate}
 				} else if _schemagenUndecided(err) {
+					_d.trial--
 					return oneofErrf("variant Boolean: %w", err)
 				} else {
 					oneofLastErr = err
 				}
 			}
+			_d.trial--
 
 			if oneofMatched == 0 {
 				// A branch is only put to a decode once the keys it selects on are
@@ -531,9 +643,21 @@ func (c *ContentPostureDraft7) UnmarshalJSON(data []byte) error {
 				if oneofLastErr == nil {
 					return oneofErrf("no matching oneOf variant")
 				}
-				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
+				return oneofWrapf(oneofLastErr, "no matching oneOf variant: ")
 			}
 			if oneofMatched > 1 && oneofOpaque == 0 {
+				if _vcOK0 {
+					if _vErr := _vc0.Validate(); _vErr == nil {
+						oneofStrict++
+						oneofStrictSel = &ContentPostureDraft7_ContentPostureDraft7BranchOption0{ContentPostureDraft7BranchOption0: _vc0}
+					} else if _schemagenUndecided(_vErr) {
+						// No verdict on this branch, so no telling which one
+						// the document selects.
+						return oneofErrf("variant ContentPostureDraft7BranchOption0: %w", _vErr)
+					} else {
+						oneofStrictErr = jsonValueWrapf(_vErr, "variant ContentPostureDraft7BranchOption0: ")
+					}
+				}
 				// Several branches decoded and every one can be judged, so the
 				// branches' own constraints settle which of them the value
 				// really satisfies. Ambiguity is already a rejection here, so
@@ -547,7 +671,7 @@ func (c *ContentPostureDraft7) UnmarshalJSON(data []byte) error {
 				case oneofStrictErr != nil:
 					// Not ambiguity but a value no branch accepts: report the
 					// branch's own reason rather than a count.
-					return oneofErrf("no matching oneOf variant: %w", oneofStrictErr)
+					return oneofWrapf(oneofStrictErr, "no matching oneOf variant: ")
 				}
 			}
 			if oneofMatched > 1 {
@@ -555,74 +679,59 @@ func (c *ContentPostureDraft7) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"branch",
+		"doc",
+		"tuple",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"branch",
-			"doc",
-			"tuple",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	}
+	if _v, ok := _raw["list"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "list")
+		}
+	}
+	c._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		c._jsonKeys[_k] = true
+	}
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"blob",
+		"boundedBlob",
+		"encodedDoc",
+		"unknownEncoding",
+		"viaAllOf",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if c._jsonNulls == nil {
+				c._jsonNulls = make(map[string]bool, 1)
 			}
+			c._jsonNulls[_nullKey] = true
 		}
-		if _v, ok := raw["list"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "list")
-			}
+	}
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "blob", "boundedBlob", "doc", "encodedDoc", "list", "tuple", "unknownEncoding", "viaAllOf", "branch":
+			continue
 		}
-		c._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			c._jsonKeys[_k] = true
+		if c.AdditionalProperties == nil {
+			c.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"blob",
-			"boundedBlob",
-			"encodedDoc",
-			"unknownEncoding",
-			"viaAllOf",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if c._jsonNulls == nil {
-					c._jsonNulls = make(map[string]bool, 1)
-				}
-				c._jsonNulls[_nullKey] = true
-			}
-		}
-		knownFields := map[string]bool{
-			"blob":            true,
-			"boundedBlob":     true,
-			"doc":             true,
-			"encodedDoc":      true,
-			"list":            true,
-			"tuple":           true,
-			"unknownEncoding": true,
-			"viaAllOf":        true,
-			"branch":          true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if c.AdditionalProperties == nil {
-				c.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			c.AdditionalProperties[rawKey] = rawVal
-		}
+		c.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil

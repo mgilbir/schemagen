@@ -12,6 +12,8 @@ type Anything any
 type Str string
 
 func (s *Str) UnmarshalJSON(data []byte) error {
+	var _zero Str
+	*s = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -35,95 +37,109 @@ type RefSiblingTypeDraft7 struct {
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 }
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *RefSiblingTypeDraft7) UnmarshalJSON(data []byte) error {
-	r.AdditionalProperties = nil
-	r._jsonNulls = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into r, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever r held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (r *RefSiblingTypeDraft7) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*r = RefSiblingTypeDraft7{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"bounded",
-			"plain",
-			"suppressed",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[RefSiblingTypeDraft7](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias RefSiblingTypeDraft7
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(r),
+	if _v, _ok := _raw["bounded"]; _ok {
+		if _err := func(_p **Str, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*Str](_p, _d, _s, jsonDecodeValue[*Str])
+		}(&r.Bounded, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "bounded")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "bounded", decode: jsonDecodeValue[*Str]},
-			{name: "plain", decode: jsonDecodeValue[*Str]},
-			{name: "suppressed", decode: jsonDecodeValue[Anything]},
-		})
+	if _v, _ok := _raw["plain"]; _ok {
+		if _err := func(_p **Str, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*Str](_p, _d, _s, jsonDecodeValue[*Str])
+		}(&r.Plain, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "plain")
+		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	if _v, _ok := _raw["suppressed"]; _ok {
+		if _err := func(_p *Anything, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[Anything](_p, _d, _s, jsonDecodeValue[Anything])
+		}(&r.Suppressed, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "suppressed")
 		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"bounded",
-			"plain",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"bounded",
+		"plain",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"suppressed",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if r._jsonNulls == nil {
+				r._jsonNulls = make(map[string]bool, 1)
 			}
+			r._jsonNulls[_nullKey] = true
 		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"suppressed",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if r._jsonNulls == nil {
-					r._jsonNulls = make(map[string]bool, 1)
-				}
-				r._jsonNulls[_nullKey] = true
-			}
+	}
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "bounded", "plain", "suppressed":
+			continue
 		}
-		knownFields := map[string]bool{
-			"bounded":    true,
-			"plain":      true,
-			"suppressed": true,
+		if r.AdditionalProperties == nil {
+			r.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if r.AdditionalProperties == nil {
-				r.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			r.AdditionalProperties[rawKey] = rawVal
-		}
+		r.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil

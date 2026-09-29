@@ -15,19 +15,33 @@ type AnyOfScalarBranchRoot struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces a with the value the document holds. See
+// decodeJSONAt.
 func (a *AnyOfScalarBranchRoot) UnmarshalJSON(data []byte) error {
-	a._raw = append(a._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(a.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever a held.
+func (a *AnyOfScalarBranchRoot) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*a = AnyOfScalarBranchRoot{}
+	a._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (a AnyOfScalarBranchRoot) MarshalJSON() ([]byte, error) {
 	if len(a._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return a._raw, nil
+	return append([]byte(nil), a._raw...), nil
 }
 
-func (a AnyOfScalarBranchRoot) Raw() json.RawMessage { return a._raw }
+// Raw returns a copy of the value's bytes.
+func (a AnyOfScalarBranchRoot) Raw() json.RawMessage { return append(json.RawMessage(nil), a._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.

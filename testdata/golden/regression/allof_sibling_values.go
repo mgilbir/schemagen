@@ -21,6 +21,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (n *NarrowingAllOf) UnmarshalJSON(data []byte) error {
+	var _zero NarrowingAllOf
+	*n = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -52,6 +54,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (o *OnlyB) UnmarshalJSON(data []byte) error {
+	var _zero OnlyB
+	*o = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -100,6 +104,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfSiblingValuesAllOfThroughRef) UnmarshalJSON(data []byte) error {
+	var _zero AllOfSiblingValuesAllOfThroughRef
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -131,6 +137,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfSiblingValuesBranchNarrows) UnmarshalJSON(data []byte) error {
+	var _zero AllOfSiblingValuesBranchNarrows
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -162,6 +170,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfSiblingValuesChain) UnmarshalJSON(data []byte) error {
+	var _zero AllOfSiblingValuesChain
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -193,6 +203,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfSiblingValuesConstInBranch) UnmarshalJSON(data []byte) error {
+	var _zero AllOfSiblingValuesConstInBranch
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -224,6 +236,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfSiblingValuesLaterBranchNarrows) UnmarshalJSON(data []byte) error {
+	var _zero AllOfSiblingValuesLaterBranchNarrows
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -255,6 +269,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfSiblingValuesListItemsItem) UnmarshalJSON(data []byte) error {
+	var _zero AllOfSiblingValuesListItemsItem
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -286,6 +302,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfSiblingValuesMapValuesValue) UnmarshalJSON(data []byte) error {
+	var _zero AllOfSiblingValuesMapValuesValue
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -317,6 +335,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfSiblingValuesNestedChain) UnmarshalJSON(data []byte) error {
+	var _zero AllOfSiblingValuesNestedChain
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -348,6 +368,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfSiblingValuesNumberSpelling) UnmarshalJSON(data []byte) error {
+	var _zero AllOfSiblingValuesNumberSpelling
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -412,6 +434,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (a *AllOfSiblingValuesViaRef) UnmarshalJSON(data []byte) error {
+	var _zero AllOfSiblingValuesViaRef
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -448,136 +472,194 @@ type AllOfSiblingValues struct {
 	ListItems            []AllOfSiblingValuesListItemsItem           `json:"listItems,omitzero"`
 }
 
+// UnmarshalJSON replaces a with the value the document holds. See
+// decodeJSONAt.
 func (a *AllOfSiblingValues) UnmarshalJSON(data []byte) error {
-	a.AdditionalProperties = nil
-	a._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(a.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into a, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever a held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (a *AllOfSiblingValues) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*a = AllOfSiblingValues{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"agrees",
-			"allOfThroughRef",
-			"branchNarrows",
-			"chain",
-			"constInBranch",
-			"constOnProperty",
-			"laterBranchNarrows",
-			"listItems",
-			"mapValues",
-			"nestedChain",
-			"numberSpelling",
-			"rootNarrows",
-			"silentBranch",
-			"viaRef",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[AllOfSiblingValues](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias AllOfSiblingValues
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(a),
+	if _v, _ok := _raw["agrees"]; _ok {
+		if _err := func(_p **AllOfSiblingValuesAgrees, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfSiblingValuesAgrees](_p, _d, _s, jsonDecodeValue[*AllOfSiblingValuesAgrees])
+		}(&a.Agrees, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "agrees")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "agrees", decode: jsonDecodeValue[*AllOfSiblingValuesAgrees]},
-			{name: "allOfThroughRef", decode: jsonDecodeValue[*AllOfSiblingValuesAllOfThroughRef]},
-			{name: "branchNarrows", decode: jsonDecodeValue[*AllOfSiblingValuesBranchNarrows]},
-			{name: "chain", decode: jsonDecodeValue[*AllOfSiblingValuesChain]},
-			{name: "constInBranch", decode: jsonDecodeValue[*AllOfSiblingValuesConstInBranch]},
-			{name: "constOnProperty", decode: jsonDecodeValue[*string]},
-			{name: "laterBranchNarrows", decode: jsonDecodeValue[*AllOfSiblingValuesLaterBranchNarrows]},
-			{name: "listItems", decode: jsonDecodeItems(jsonDecodeValue[AllOfSiblingValuesListItemsItem])},
-			{name: "mapValues", decode: jsonDecodeValues(jsonDecodeValue[AllOfSiblingValuesMapValuesValue])},
-			{name: "nestedChain", decode: jsonDecodeValue[*AllOfSiblingValuesNestedChain]},
-			{name: "numberSpelling", decode: jsonDecodeValue[*AllOfSiblingValuesNumberSpelling]},
-			{name: "rootNarrows", decode: jsonDecodeValue[*AllOfSiblingValuesRootNarrows]},
-			{name: "silentBranch", decode: jsonDecodeValue[*AllOfSiblingValuesSilentBranch]},
-			{name: "viaRef", decode: jsonDecodeValue[*AllOfSiblingValuesViaRef]},
-		})
+	if _v, _ok := _raw["allOfThroughRef"]; _ok {
+		if _err := func(_p **AllOfSiblingValuesAllOfThroughRef, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfSiblingValuesAllOfThroughRef](_p, _d, _s, jsonDecodeValue[*AllOfSiblingValuesAllOfThroughRef])
+		}(&a.AllOfThroughRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "allOfThroughRef")
+		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	if _v, _ok := _raw["branchNarrows"]; _ok {
+		if _err := func(_p **AllOfSiblingValuesBranchNarrows, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfSiblingValuesBranchNarrows](_p, _d, _s, jsonDecodeValue[*AllOfSiblingValuesBranchNarrows])
+		}(&a.BranchNarrows, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "branchNarrows")
 		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"agrees",
-			"allOfThroughRef",
-			"branchNarrows",
-			"chain",
-			"constInBranch",
-			"constOnProperty",
-			"laterBranchNarrows",
-			"nestedChain",
-			"numberSpelling",
-			"rootNarrows",
-			"silentBranch",
-			"viaRef",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
+	}
+	if _v, _ok := _raw["chain"]; _ok {
+		if _err := func(_p **AllOfSiblingValuesChain, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfSiblingValuesChain](_p, _d, _s, jsonDecodeValue[*AllOfSiblingValuesChain])
+		}(&a.Chain, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "chain")
 		}
-		if _v, ok := raw["listItems"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "listItems")
-			}
+	}
+	if _v, _ok := _raw["constInBranch"]; _ok {
+		if _err := func(_p **AllOfSiblingValuesConstInBranch, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfSiblingValuesConstInBranch](_p, _d, _s, jsonDecodeValue[*AllOfSiblingValuesConstInBranch])
+		}(&a.ConstInBranch, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constInBranch")
 		}
-		if _v, ok := raw["mapValues"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "mapValues")
-			}
+	}
+	if _v, _ok := _raw["constOnProperty"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&a.ConstOnProperty, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constOnProperty")
 		}
-		a._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			a._jsonKeys[_k] = true
+	}
+	if _v, _ok := _raw["laterBranchNarrows"]; _ok {
+		if _err := func(_p **AllOfSiblingValuesLaterBranchNarrows, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfSiblingValuesLaterBranchNarrows](_p, _d, _s, jsonDecodeValue[*AllOfSiblingValuesLaterBranchNarrows])
+		}(&a.LaterBranchNarrows, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "laterBranchNarrows")
 		}
-		knownFields := map[string]bool{
-			"agrees":             true,
-			"allOfThroughRef":    true,
-			"branchNarrows":      true,
-			"chain":              true,
-			"constInBranch":      true,
-			"constOnProperty":    true,
-			"laterBranchNarrows": true,
-			"listItems":          true,
-			"mapValues":          true,
-			"nestedChain":        true,
-			"numberSpelling":     true,
-			"rootNarrows":        true,
-			"silentBranch":       true,
-			"viaRef":             true,
+	}
+	if _v, _ok := _raw["listItems"]; _ok {
+		if _err := func(_p *[]AllOfSiblingValuesListItemsItem, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]AllOfSiblingValuesListItemsItem](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[AllOfSiblingValuesListItemsItem]))
+		}(&a.ListItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "listItems")
 		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if a.AdditionalProperties == nil {
-				a.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			a.AdditionalProperties[rawKey] = rawVal
+	}
+	if _v, _ok := _raw["mapValues"]; _ok {
+		if _err := func(_p *map[string]AllOfSiblingValuesMapValuesValue, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[map[string]AllOfSiblingValuesMapValuesValue](_p, _d, _s, jsonDecodeValues(jsonDecodeValue[AllOfSiblingValuesMapValuesValue]))
+		}(&a.MapValues, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "mapValues")
 		}
+	}
+	if _v, _ok := _raw["nestedChain"]; _ok {
+		if _err := func(_p **AllOfSiblingValuesNestedChain, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfSiblingValuesNestedChain](_p, _d, _s, jsonDecodeValue[*AllOfSiblingValuesNestedChain])
+		}(&a.NestedChain, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "nestedChain")
+		}
+	}
+	if _v, _ok := _raw["numberSpelling"]; _ok {
+		if _err := func(_p **AllOfSiblingValuesNumberSpelling, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfSiblingValuesNumberSpelling](_p, _d, _s, jsonDecodeValue[*AllOfSiblingValuesNumberSpelling])
+		}(&a.NumberSpelling, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "numberSpelling")
+		}
+	}
+	if _v, _ok := _raw["rootNarrows"]; _ok {
+		if _err := func(_p **AllOfSiblingValuesRootNarrows, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfSiblingValuesRootNarrows](_p, _d, _s, jsonDecodeValue[*AllOfSiblingValuesRootNarrows])
+		}(&a.RootNarrows, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "rootNarrows")
+		}
+	}
+	if _v, _ok := _raw["silentBranch"]; _ok {
+		if _err := func(_p **AllOfSiblingValuesSilentBranch, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfSiblingValuesSilentBranch](_p, _d, _s, jsonDecodeValue[*AllOfSiblingValuesSilentBranch])
+		}(&a.SilentBranch, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "silentBranch")
+		}
+	}
+	if _v, _ok := _raw["viaRef"]; _ok {
+		if _err := func(_p **AllOfSiblingValuesViaRef, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfSiblingValuesViaRef](_p, _d, _s, jsonDecodeValue[*AllOfSiblingValuesViaRef])
+		}(&a.ViaRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "viaRef")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"agrees",
+		"allOfThroughRef",
+		"branchNarrows",
+		"chain",
+		"constInBranch",
+		"constOnProperty",
+		"laterBranchNarrows",
+		"nestedChain",
+		"numberSpelling",
+		"rootNarrows",
+		"silentBranch",
+		"viaRef",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	if _v, ok := _raw["listItems"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "listItems")
+		}
+	}
+	if _v, ok := _raw["mapValues"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "mapValues")
+		}
+	}
+	a._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		a._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "agrees", "allOfThroughRef", "branchNarrows", "chain", "constInBranch", "constOnProperty", "laterBranchNarrows", "listItems", "mapValues", "nestedChain", "numberSpelling", "rootNarrows", "silentBranch", "viaRef":
+			continue
+		}
+		if a.AdditionalProperties == nil {
+			a.AdditionalProperties = make(map[string]json.RawMessage)
+		}
+		a.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil

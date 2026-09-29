@@ -14,19 +14,33 @@ type NeverNot struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NeverNot) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NeverNot) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NeverNot{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NeverNot) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NeverNot) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NeverNot) Raw() json.RawMessage { return append(json.RawMessage(nil), n._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -50,19 +64,35 @@ type ForbiddingSubschemaSpellingsAllOfNot struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsAllOfNot) UnmarshalJSON(data []byte) error {
-	f._raw = append(f._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever f held.
+func (f *ForbiddingSubschemaSpellingsAllOfNot) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsAllOfNot{}
+	f._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (f ForbiddingSubschemaSpellingsAllOfNot) MarshalJSON() ([]byte, error) {
 	if len(f._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return f._raw, nil
+	return append([]byte(nil), f._raw...), nil
 }
 
-func (f ForbiddingSubschemaSpellingsAllOfNot) Raw() json.RawMessage { return f._raw }
+// Raw returns a copy of the value's bytes.
+func (f ForbiddingSubschemaSpellingsAllOfNot) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), f._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -86,41 +116,58 @@ type ForbiddingSubschemaSpellingsAnyOfNames struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsAnyOfNames) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	f._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *ForbiddingSubschemaSpellingsAnyOfNames) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsAnyOfNames{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias ForbiddingSubschemaSpellingsAnyOfNames
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(f),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsAnyOfNames](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	f._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		f._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if f.AdditionalProperties == nil {
+			f.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		f._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			f._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
-		}
+		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -174,19 +221,35 @@ type ForbiddingSubschemaSpellingsAnyOfNot struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsAnyOfNot) UnmarshalJSON(data []byte) error {
-	f._raw = append(f._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever f held.
+func (f *ForbiddingSubschemaSpellingsAnyOfNot) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsAnyOfNot{}
+	f._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (f ForbiddingSubschemaSpellingsAnyOfNot) MarshalJSON() ([]byte, error) {
 	if len(f._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return f._raw, nil
+	return append([]byte(nil), f._raw...), nil
 }
 
-func (f ForbiddingSubschemaSpellingsAnyOfNot) Raw() json.RawMessage { return f._raw }
+// Raw returns a copy of the value's bytes.
+func (f ForbiddingSubschemaSpellingsAnyOfNot) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), f._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -210,19 +273,35 @@ type ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative0 struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative0) UnmarshalJSON(data []byte) error {
-	f._raw = append(f._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever f held.
+func (f *ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative0) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative0{}
+	f._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (f ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative0) MarshalJSON() ([]byte, error) {
 	if len(f._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return f._raw, nil
+	return append([]byte(nil), f._raw...), nil
 }
 
-func (f ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative0) Raw() json.RawMessage { return f._raw }
+// Raw returns a copy of the value's bytes.
+func (f ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative0) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), f._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -244,6 +323,8 @@ func (f ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative0) Validate() error 
 type ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative1 string
 
 func (f *ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative1) UnmarshalJSON(data []byte) error {
+	var _zero ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative1
+	*f = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -261,19 +342,35 @@ type ForbiddingSubschemaSpellingsAnyOfOneFalse struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsAnyOfOneFalse) UnmarshalJSON(data []byte) error {
-	f._raw = append(f._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever f held.
+func (f *ForbiddingSubschemaSpellingsAnyOfOneFalse) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsAnyOfOneFalse{}
+	f._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (f ForbiddingSubschemaSpellingsAnyOfOneFalse) MarshalJSON() ([]byte, error) {
 	if len(f._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return f._raw, nil
+	return append([]byte(nil), f._raw...), nil
 }
 
-func (f ForbiddingSubschemaSpellingsAnyOfOneFalse) Raw() json.RawMessage { return f._raw }
+// Raw returns a copy of the value's bytes.
+func (f ForbiddingSubschemaSpellingsAnyOfOneFalse) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), f._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -378,19 +475,35 @@ type ForbiddingSubschemaSpellingsInferredNotItemsItem struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsInferredNotItemsItem) UnmarshalJSON(data []byte) error {
-	f._raw = append(f._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever f held.
+func (f *ForbiddingSubschemaSpellingsInferredNotItemsItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsInferredNotItemsItem{}
+	f._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (f ForbiddingSubschemaSpellingsInferredNotItemsItem) MarshalJSON() ([]byte, error) {
 	if len(f._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return f._raw, nil
+	return append([]byte(nil), f._raw...), nil
 }
 
-func (f ForbiddingSubschemaSpellingsInferredNotItemsItem) Raw() json.RawMessage { return f._raw }
+// Raw returns a copy of the value's bytes.
+func (f ForbiddingSubschemaSpellingsInferredNotItemsItem) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), f._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -417,9 +530,10 @@ type ForbiddingSubschemaSpellingsInferredNotItems struct {
 }
 
 func (f *ForbiddingSubschemaSpellingsInferredNotItems) UnmarshalJSON(data []byte) error {
+	*f = ForbiddingSubschemaSpellingsInferredNotItems{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		f._raw = append(f._raw[:0], data...)
+		f._raw = append(json.RawMessage(nil), data...)
 		f._isRaw = true
 		return nil
 	}
@@ -428,8 +542,15 @@ func (f *ForbiddingSubschemaSpellingsInferredNotItems) UnmarshalJSON(data []byte
 		f._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	f._raw = append(f._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	f._raw = append(json.RawMessage(nil), data...)
 	f._isRaw = true
 	return nil
 }
@@ -438,7 +559,9 @@ func (f ForbiddingSubschemaSpellingsInferredNotItems) MarshalJSON() ([]byte, err
 		if len(f._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return f._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), f._raw...), nil
 	}
 	return json.Marshal(f._value)
 }
@@ -446,7 +569,7 @@ func (f ForbiddingSubschemaSpellingsInferredNotItems) Slice() []any  { return f.
 func (f ForbiddingSubschemaSpellingsInferredNotItems) IsArray() bool { return !f._isRaw }
 func (f ForbiddingSubschemaSpellingsInferredNotItems) Raw() json.RawMessage {
 	if f._isRaw {
-		return f._raw
+		return append(json.RawMessage(nil), f._raw...)
 	}
 	_b, _ := json.Marshal(f._value)
 	return _b
@@ -478,9 +601,10 @@ type ForbiddingSubschemaSpellingsInferredNotSlot struct {
 }
 
 func (f *ForbiddingSubschemaSpellingsInferredNotSlot) UnmarshalJSON(data []byte) error {
+	*f = ForbiddingSubschemaSpellingsInferredNotSlot{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		f._raw = append(f._raw[:0], data...)
+		f._raw = append(json.RawMessage(nil), data...)
 		f._isRaw = true
 		return nil
 	}
@@ -489,8 +613,15 @@ func (f *ForbiddingSubschemaSpellingsInferredNotSlot) UnmarshalJSON(data []byte)
 		f._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	f._raw = append(f._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	f._raw = append(json.RawMessage(nil), data...)
 	f._isRaw = true
 	return nil
 }
@@ -499,7 +630,9 @@ func (f ForbiddingSubschemaSpellingsInferredNotSlot) MarshalJSON() ([]byte, erro
 		if len(f._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return f._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), f._raw...), nil
 	}
 	return json.Marshal(f._value)
 }
@@ -507,7 +640,7 @@ func (f ForbiddingSubschemaSpellingsInferredNotSlot) Slice() []any  { return f._
 func (f ForbiddingSubschemaSpellingsInferredNotSlot) IsArray() bool { return !f._isRaw }
 func (f ForbiddingSubschemaSpellingsInferredNotSlot) Raw() json.RawMessage {
 	if f._isRaw {
-		return f._raw
+		return append(json.RawMessage(nil), f._raw...)
 	}
 	_b, _ := json.Marshal(f._value)
 	return _b
@@ -541,9 +674,10 @@ type ForbiddingSubschemaSpellingsInferredNotTail struct {
 }
 
 func (f *ForbiddingSubschemaSpellingsInferredNotTail) UnmarshalJSON(data []byte) error {
+	*f = ForbiddingSubschemaSpellingsInferredNotTail{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		f._raw = append(f._raw[:0], data...)
+		f._raw = append(json.RawMessage(nil), data...)
 		f._isRaw = true
 		return nil
 	}
@@ -552,8 +686,15 @@ func (f *ForbiddingSubschemaSpellingsInferredNotTail) UnmarshalJSON(data []byte)
 		f._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	f._raw = append(f._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	f._raw = append(json.RawMessage(nil), data...)
 	f._isRaw = true
 	return nil
 }
@@ -562,7 +703,9 @@ func (f ForbiddingSubschemaSpellingsInferredNotTail) MarshalJSON() ([]byte, erro
 		if len(f._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return f._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), f._raw...), nil
 	}
 	return json.Marshal(f._value)
 }
@@ -570,7 +713,7 @@ func (f ForbiddingSubschemaSpellingsInferredNotTail) Slice() []any  { return f._
 func (f ForbiddingSubschemaSpellingsInferredNotTail) IsArray() bool { return !f._isRaw }
 func (f ForbiddingSubschemaSpellingsInferredNotTail) Raw() json.RawMessage {
 	if f._isRaw {
-		return f._raw
+		return append(json.RawMessage(nil), f._raw...)
 	}
 	_b, _ := json.Marshal(f._value)
 	return _b
@@ -601,19 +744,35 @@ type ForbiddingSubschemaSpellingsInferredOneOfItemsItem struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsInferredOneOfItemsItem) UnmarshalJSON(data []byte) error {
-	f._raw = append(f._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever f held.
+func (f *ForbiddingSubschemaSpellingsInferredOneOfItemsItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsInferredOneOfItemsItem{}
+	f._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (f ForbiddingSubschemaSpellingsInferredOneOfItemsItem) MarshalJSON() ([]byte, error) {
 	if len(f._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return f._raw, nil
+	return append([]byte(nil), f._raw...), nil
 }
 
-func (f ForbiddingSubschemaSpellingsInferredOneOfItemsItem) Raw() json.RawMessage { return f._raw }
+// Raw returns a copy of the value's bytes.
+func (f ForbiddingSubschemaSpellingsInferredOneOfItemsItem) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), f._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -640,9 +799,10 @@ type ForbiddingSubschemaSpellingsInferredOneOfItems struct {
 }
 
 func (f *ForbiddingSubschemaSpellingsInferredOneOfItems) UnmarshalJSON(data []byte) error {
+	*f = ForbiddingSubschemaSpellingsInferredOneOfItems{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		f._raw = append(f._raw[:0], data...)
+		f._raw = append(json.RawMessage(nil), data...)
 		f._isRaw = true
 		return nil
 	}
@@ -651,8 +811,15 @@ func (f *ForbiddingSubschemaSpellingsInferredOneOfItems) UnmarshalJSON(data []by
 		f._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	f._raw = append(f._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	f._raw = append(json.RawMessage(nil), data...)
 	f._isRaw = true
 	return nil
 }
@@ -661,7 +828,9 @@ func (f ForbiddingSubschemaSpellingsInferredOneOfItems) MarshalJSON() ([]byte, e
 		if len(f._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return f._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), f._raw...), nil
 	}
 	return json.Marshal(f._value)
 }
@@ -669,7 +838,7 @@ func (f ForbiddingSubschemaSpellingsInferredOneOfItems) Slice() []any  { return 
 func (f ForbiddingSubschemaSpellingsInferredOneOfItems) IsArray() bool { return !f._isRaw }
 func (f ForbiddingSubschemaSpellingsInferredOneOfItems) Raw() json.RawMessage {
 	if f._isRaw {
-		return f._raw
+		return append(json.RawMessage(nil), f._raw...)
 	}
 	_b, _ := json.Marshal(f._value)
 	return _b
@@ -701,9 +870,10 @@ type ForbiddingSubschemaSpellingsInferredOneOfTail struct {
 }
 
 func (f *ForbiddingSubschemaSpellingsInferredOneOfTail) UnmarshalJSON(data []byte) error {
+	*f = ForbiddingSubschemaSpellingsInferredOneOfTail{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		f._raw = append(f._raw[:0], data...)
+		f._raw = append(json.RawMessage(nil), data...)
 		f._isRaw = true
 		return nil
 	}
@@ -712,8 +882,15 @@ func (f *ForbiddingSubschemaSpellingsInferredOneOfTail) UnmarshalJSON(data []byt
 		f._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	f._raw = append(f._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	f._raw = append(json.RawMessage(nil), data...)
 	f._isRaw = true
 	return nil
 }
@@ -722,7 +899,9 @@ func (f ForbiddingSubschemaSpellingsInferredOneOfTail) MarshalJSON() ([]byte, er
 		if len(f._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return f._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), f._raw...), nil
 	}
 	return json.Marshal(f._value)
 }
@@ -730,7 +909,7 @@ func (f ForbiddingSubschemaSpellingsInferredOneOfTail) Slice() []any  { return f
 func (f ForbiddingSubschemaSpellingsInferredOneOfTail) IsArray() bool { return !f._isRaw }
 func (f ForbiddingSubschemaSpellingsInferredOneOfTail) Raw() json.RawMessage {
 	if f._isRaw {
-		return f._raw
+		return append(json.RawMessage(nil), f._raw...)
 	}
 	_b, _ := json.Marshal(f._value)
 	return _b
@@ -761,41 +940,58 @@ type ForbiddingSubschemaSpellingsInlineDepRequired struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsInlineDepRequired) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	f._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *ForbiddingSubschemaSpellingsInlineDepRequired) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsInlineDepRequired{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias ForbiddingSubschemaSpellingsInlineDepRequired
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(f),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsInlineDepRequired](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	f._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		f._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if f.AdditionalProperties == nil {
+			f.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		f._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			f._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
-		}
+		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -837,41 +1033,58 @@ type ForbiddingSubschemaSpellingsInlineFalseDependent struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsInlineFalseDependent) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	f._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *ForbiddingSubschemaSpellingsInlineFalseDependent) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsInlineFalseDependent{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias ForbiddingSubschemaSpellingsInlineFalseDependent
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(f),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsInlineFalseDependent](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	f._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		f._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if f.AdditionalProperties == nil {
+			f.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		f._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			f._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
-		}
+		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -911,41 +1124,58 @@ type ForbiddingSubschemaSpellingsInlineFalseNames struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsInlineFalseNames) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	f._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *ForbiddingSubschemaSpellingsInlineFalseNames) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsInlineFalseNames{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias ForbiddingSubschemaSpellingsInlineFalseNames
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(f),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsInlineFalseNames](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	f._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		f._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if f.AdditionalProperties == nil {
+			f.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		f._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			f._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
-		}
+		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -999,41 +1229,58 @@ type ForbiddingSubschemaSpellingsInlineMaxProps struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsInlineMaxProps) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	f._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *ForbiddingSubschemaSpellingsInlineMaxProps) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsInlineMaxProps{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias ForbiddingSubschemaSpellingsInlineMaxProps
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(f),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsInlineMaxProps](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	f._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		f._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if f.AdditionalProperties == nil {
+			f.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		f._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			f._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
-		}
+		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -1081,41 +1328,58 @@ type ForbiddingSubschemaSpellingsInlineMinProps struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsInlineMinProps) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	f._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *ForbiddingSubschemaSpellingsInlineMinProps) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsInlineMinProps{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias ForbiddingSubschemaSpellingsInlineMinProps
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(f),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsInlineMinProps](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	f._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		f._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if f.AdditionalProperties == nil {
+			f.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		f._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			f._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
-		}
+		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -1160,41 +1424,58 @@ type ForbiddingSubschemaSpellingsInlineNotDependent struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsInlineNotDependent) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	f._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *ForbiddingSubschemaSpellingsInlineNotDependent) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsInlineNotDependent{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias ForbiddingSubschemaSpellingsInlineNotDependent
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(f),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsInlineNotDependent](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	f._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		f._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if f.AdditionalProperties == nil {
+			f.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		f._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			f._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
-		}
+		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -1234,41 +1515,58 @@ type ForbiddingSubschemaSpellingsInlineNotNames struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsInlineNotNames) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	f._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *ForbiddingSubschemaSpellingsInlineNotNames) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsInlineNotNames{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias ForbiddingSubschemaSpellingsInlineNotNames
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(f),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsInlineNotNames](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	f._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		f._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if f.AdditionalProperties == nil {
+			f.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		f._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			f._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
-		}
+		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -1322,41 +1620,58 @@ type ForbiddingSubschemaSpellingsInlineRequired struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsInlineRequired) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	f._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *ForbiddingSubschemaSpellingsInlineRequired) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsInlineRequired{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias ForbiddingSubschemaSpellingsInlineRequired
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(f),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsInlineRequired](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	f._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		f._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if f.AdditionalProperties == nil {
+			f.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		f._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			f._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
-		}
+		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -1403,41 +1718,58 @@ type ForbiddingSubschemaSpellingsNotDependent struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsNotDependent) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	f._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *ForbiddingSubschemaSpellingsNotDependent) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsNotDependent{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias ForbiddingSubschemaSpellingsNotDependent
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(f),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsNotDependent](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	f._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		f._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if f.AdditionalProperties == nil {
+			f.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		f._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			f._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
-		}
+		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -1480,19 +1812,35 @@ type ForbiddingSubschemaSpellingsNotEnumBranch struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsNotEnumBranch) UnmarshalJSON(data []byte) error {
-	f._raw = append(f._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever f held.
+func (f *ForbiddingSubschemaSpellingsNotEnumBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsNotEnumBranch{}
+	f._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (f ForbiddingSubschemaSpellingsNotEnumBranch) MarshalJSON() ([]byte, error) {
 	if len(f._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return f._raw, nil
+	return append([]byte(nil), f._raw...), nil
 }
 
-func (f ForbiddingSubschemaSpellingsNotEnumBranch) Raw() json.RawMessage { return f._raw }
+// Raw returns a copy of the value's bytes.
+func (f ForbiddingSubschemaSpellingsNotEnumBranch) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), f._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1534,19 +1882,35 @@ type ForbiddingSubschemaSpellingsNotFalse struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsNotFalse) UnmarshalJSON(data []byte) error {
-	f._raw = append(f._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever f held.
+func (f *ForbiddingSubschemaSpellingsNotFalse) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsNotFalse{}
+	f._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (f ForbiddingSubschemaSpellingsNotFalse) MarshalJSON() ([]byte, error) {
 	if len(f._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return f._raw, nil
+	return append([]byte(nil), f._raw...), nil
 }
 
-func (f ForbiddingSubschemaSpellingsNotFalse) Raw() json.RawMessage { return f._raw }
+// Raw returns a copy of the value's bytes.
+func (f ForbiddingSubschemaSpellingsNotFalse) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), f._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1585,41 +1949,58 @@ type ForbiddingSubschemaSpellingsNotNames struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsNotNames) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	f._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *ForbiddingSubschemaSpellingsNotNames) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsNotNames{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias ForbiddingSubschemaSpellingsNotNames
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(f),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsNotNames](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	f._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		f._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if f.AdditionalProperties == nil {
+			f.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		f._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			f._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
-		}
+		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -1676,19 +2057,35 @@ type ForbiddingSubschemaSpellingsNotShallowEnum struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsNotShallowEnum) UnmarshalJSON(data []byte) error {
-	f._raw = append(f._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever f held.
+func (f *ForbiddingSubschemaSpellingsNotShallowEnum) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsNotShallowEnum{}
+	f._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (f ForbiddingSubschemaSpellingsNotShallowEnum) MarshalJSON() ([]byte, error) {
 	if len(f._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return f._raw, nil
+	return append([]byte(nil), f._raw...), nil
 }
 
-func (f ForbiddingSubschemaSpellingsNotShallowEnum) Raw() json.RawMessage { return f._raw }
+// Raw returns a copy of the value's bytes.
+func (f ForbiddingSubschemaSpellingsNotShallowEnum) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), f._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1732,19 +2129,35 @@ type ForbiddingSubschemaSpellingsNotTypedConst struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsNotTypedConst) UnmarshalJSON(data []byte) error {
-	f._raw = append(f._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever f held.
+func (f *ForbiddingSubschemaSpellingsNotTypedConst) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsNotTypedConst{}
+	f._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (f ForbiddingSubschemaSpellingsNotTypedConst) MarshalJSON() ([]byte, error) {
 	if len(f._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return f._raw, nil
+	return append([]byte(nil), f._raw...), nil
 }
 
-func (f ForbiddingSubschemaSpellingsNotTypedConst) Raw() json.RawMessage { return f._raw }
+// Raw returns a copy of the value's bytes.
+func (f ForbiddingSubschemaSpellingsNotTypedConst) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), f._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1787,75 +2200,81 @@ type ForbiddingSubschemaSpellingsNotUnevalProps struct {
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsNotUnevalProps) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	f._jsonNulls = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *ForbiddingSubschemaSpellingsNotUnevalProps) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsNotUnevalProps{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"k",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsNotUnevalProps](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias ForbiddingSubschemaSpellingsNotUnevalProps
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(f),
+	if _v, _ok := _raw["k"]; _ok {
+		if _err := func(_p *any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[any](_p, _d, _s, jsonDecodeValue[any])
+		}(&f.K, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "k")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "k", decode: jsonDecodeValue[any]},
-		})
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"k",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if f._jsonNulls == nil {
+				f._jsonNulls = make(map[string]bool, 1)
+			}
+			f._jsonNulls[_nullKey] = true
+		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "k":
+			continue
 		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"k",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if f._jsonNulls == nil {
-					f._jsonNulls = make(map[string]bool, 1)
-				}
-				f._jsonNulls[_nullKey] = true
-			}
+		if f.AdditionalProperties == nil {
+			f.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		knownFields := map[string]bool{
-			"k": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
-		}
+		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -1949,57 +2368,74 @@ type ForbiddingSubschemaSpellingsNullableInlineNames struct {
 	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsNullableInlineNames) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	f._jsonKeys = nil
-	f._nonObject = false
-	f._rawNonObject = nil
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *ForbiddingSubschemaSpellingsNullableInlineNames) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsNullableInlineNames{}
 	// The schema admits a document that is not an object, so object constraints
 	// are type-conditional. Non-object JSON data is accepted here and judged by
 	// Validate; raw bytes are preserved for roundtrip.
-	if len(data) == 0 || data[0] != '{' {
+	if _d.data[_sp.start] != '{' {
 		f._nonObject = true
-		f._rawNonObject = append(f._rawNonObject[:0], data...)
+		f._rawNonObject = _d.keep(_sp)
 		return nil
 	}
-	type Alias ForbiddingSubschemaSpellingsNullableInlineNames
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(f),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsNullableInlineNames](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	f._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		f._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if f.AdditionalProperties == nil {
+			f.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		f._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			f._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
-		}
+		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
 }
 func (f ForbiddingSubschemaSpellingsNullableInlineNames) MarshalJSON() ([]byte, error) {
-	// Non-object data was silently accepted — return the original raw bytes.
+	// Non-object data was silently accepted — return the original raw bytes,
+	// in a buffer of their own: the value's bytes, handed out, are bytes a
+	// caller can rewrite the value through.
 	if f._nonObject {
 		if len(f._rawNonObject) > 0 {
-			return f._rawNonObject, nil
+			return append([]byte(nil), f._rawNonObject...), nil
 		}
 		return []byte("null"), nil
 	}
@@ -2099,41 +2535,58 @@ type ForbiddingSubschemaSpellingsOkNames struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsOkNames) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	f._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *ForbiddingSubschemaSpellingsOkNames) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsOkNames{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias ForbiddingSubschemaSpellingsOkNames
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(f),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsOkNames](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	f._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		f._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if f.AdditionalProperties == nil {
+			f.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		f._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			f._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
-		}
+		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -2190,41 +2643,58 @@ type ForbiddingSubschemaSpellingsOneOfDependent struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsOneOfDependent) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	f._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *ForbiddingSubschemaSpellingsOneOfDependent) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsOneOfDependent{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias ForbiddingSubschemaSpellingsOneOfDependent
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(f),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsOneOfDependent](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	f._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		f._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if f.AdditionalProperties == nil {
+			f.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		f._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			f._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
-		}
+		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -2264,41 +2734,58 @@ type ForbiddingSubschemaSpellingsOneOfNames struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsOneOfNames) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	f._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *ForbiddingSubschemaSpellingsOneOfNames) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsOneOfNames{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias ForbiddingSubschemaSpellingsOneOfNames
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(f),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsOneOfNames](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	f._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		f._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if f.AdditionalProperties == nil {
+			f.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		f._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			f._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
-		}
+		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -2355,19 +2842,35 @@ type ForbiddingSubschemaSpellingsOneOfOneFalse struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsOneOfOneFalse) UnmarshalJSON(data []byte) error {
-	f._raw = append(f._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever f held.
+func (f *ForbiddingSubschemaSpellingsOneOfOneFalse) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsOneOfOneFalse{}
+	f._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (f ForbiddingSubschemaSpellingsOneOfOneFalse) MarshalJSON() ([]byte, error) {
 	if len(f._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return f._raw, nil
+	return append([]byte(nil), f._raw...), nil
 }
 
-func (f ForbiddingSubschemaSpellingsOneOfOneFalse) Raw() json.RawMessage { return f._raw }
+// Raw returns a copy of the value's bytes.
+func (f ForbiddingSubschemaSpellingsOneOfOneFalse) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), f._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -2412,75 +2915,81 @@ type ForbiddingSubschemaSpellingsOneOfUnevalProps struct {
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsOneOfUnevalProps) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	f._jsonNulls = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *ForbiddingSubschemaSpellingsOneOfUnevalProps) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsOneOfUnevalProps{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"k",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsOneOfUnevalProps](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias ForbiddingSubschemaSpellingsOneOfUnevalProps
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(f),
+	if _v, _ok := _raw["k"]; _ok {
+		if _err := func(_p *any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[any](_p, _d, _s, jsonDecodeValue[any])
+		}(&f.K, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "k")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "k", decode: jsonDecodeValue[any]},
-		})
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"k",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if f._jsonNulls == nil {
+				f._jsonNulls = make(map[string]bool, 1)
+			}
+			f._jsonNulls[_nullKey] = true
+		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "k":
+			continue
 		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"k",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if f._jsonNulls == nil {
-					f._jsonNulls = make(map[string]bool, 1)
-				}
-				f._jsonNulls[_nullKey] = true
-			}
+		if f.AdditionalProperties == nil {
+			f.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		knownFields := map[string]bool{
-			"k": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
-		}
+		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -2572,41 +3081,58 @@ type ForbiddingSubschemaSpellingsRefNotNames struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsRefNotNames) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	f._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *ForbiddingSubschemaSpellingsRefNotNames) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsRefNotNames{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias ForbiddingSubschemaSpellingsRefNotNames
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(f),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsRefNotNames](_d, _sp))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	f._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		f._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		if f.AdditionalProperties == nil {
+			f.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		f._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			f._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
-		}
+		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -2663,19 +3189,35 @@ type ForbiddingSubschemaSpellingsUnionBranchRequired struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellingsUnionBranchRequired) UnmarshalJSON(data []byte) error {
-	f._raw = append(f._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever f held.
+func (f *ForbiddingSubschemaSpellingsUnionBranchRequired) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellingsUnionBranchRequired{}
+	f._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (f ForbiddingSubschemaSpellingsUnionBranchRequired) MarshalJSON() ([]byte, error) {
 	if len(f._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return f._raw, nil
+	return append([]byte(nil), f._raw...), nil
 }
 
-func (f ForbiddingSubschemaSpellingsUnionBranchRequired) Raw() json.RawMessage { return f._raw }
+// Raw returns a copy of the value's bytes.
+func (f ForbiddingSubschemaSpellingsUnionBranchRequired) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), f._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -2807,128 +3349,368 @@ func (f *ForbiddingSubschemaSpellings) GetInteger() int64 {
 	return zero
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *ForbiddingSubschemaSpellings) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	f._jsonKeys = nil
-	f._jsonNulls = nil
-	f.StrBranchRequired = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = ForbiddingSubschemaSpellings{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"allOfContains",
-			"allOfNot",
-			"anyOfNames",
-			"anyOfNot",
-			"anyOfOneFalse",
-			"inferredNotItems",
-			"inferredNotSlot",
-			"inferredNotTail",
-			"inferredOneOfItems",
-			"inferredOneOfTail",
-			"inlineDepRequired",
-			"inlineFalseDependent",
-			"inlineFalseNames",
-			"inlineMaxProps",
-			"inlineMinProps",
-			"inlineNotDependent",
-			"inlineNotNames",
-			"inlineRequired",
-			"mapWithMinProps",
-			"notContains",
-			"notDependent",
-			"notEnumBranch",
-			"notFalse",
-			"notNames",
-			"notShallowEnum",
-			"notTypedConst",
-			"notUnevalItems",
-			"notUnevalProps",
-			"nullableInlineNames",
-			"okContains",
-			"okNames",
-			"oneOfContains",
-			"oneOfDependent",
-			"oneOfNames",
-			"oneOfOneFalse",
-			"oneOfUnevalItems",
-			"oneOfUnevalProps",
-			"plainItems",
-			"refNotNames",
-			"unionBranchRequired",
-			"strBranchRequired",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellings](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias ForbiddingSubschemaSpellings
-	aux := &struct {
-		*Alias
-		StrBranchRequired json.RawMessage `json:"strBranchRequired"`
-	}{
-		Alias: (*Alias)(f),
+	if _v, _ok := _raw["allOfContains"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&f.AllOfContains, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "allOfContains")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "allOfContains", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "allOfNot", decode: jsonDecodeValue[ForbiddingSubschemaSpellingsAllOfNot]},
-			{name: "anyOfNames", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsAnyOfNames]},
-			{name: "anyOfNot", decode: jsonDecodeValue[ForbiddingSubschemaSpellingsAnyOfNot]},
-			{name: "anyOfOneFalse", decode: jsonDecodeValue[ForbiddingSubschemaSpellingsAnyOfOneFalse]},
-			{name: "inferredNotItems", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredNotItems]},
-			{name: "inferredNotSlot", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredNotSlot]},
-			{name: "inferredNotTail", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredNotTail]},
-			{name: "inferredOneOfItems", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredOneOfItems]},
-			{name: "inferredOneOfTail", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredOneOfTail]},
-			{name: "inlineDepRequired", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineDepRequired]},
-			{name: "inlineFalseDependent", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineFalseDependent]},
-			{name: "inlineFalseNames", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineFalseNames]},
-			{name: "inlineMaxProps", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineMaxProps]},
-			{name: "inlineMinProps", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineMinProps]},
-			{name: "inlineNotDependent", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineNotDependent]},
-			{name: "inlineNotNames", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineNotNames]},
-			{name: "inlineRequired", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsInlineRequired]},
-			{name: "mapWithMinProps", decode: jsonDecodeValues(jsonDecodeValue[string])},
-			{name: "notContains", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "notDependent", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsNotDependent]},
-			{name: "notEnumBranch", decode: jsonDecodeValue[ForbiddingSubschemaSpellingsNotEnumBranch]},
-			{name: "notFalse", decode: jsonDecodeValue[ForbiddingSubschemaSpellingsNotFalse]},
-			{name: "notNames", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsNotNames]},
-			{name: "notShallowEnum", decode: jsonDecodeValue[ForbiddingSubschemaSpellingsNotShallowEnum]},
-			{name: "notTypedConst", decode: jsonDecodeValue[ForbiddingSubschemaSpellingsNotTypedConst]},
-			{name: "notUnevalItems", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "notUnevalProps", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsNotUnevalProps]},
-			{name: "nullableInlineNames", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsNullableInlineNames]},
-			{name: "okContains", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "okNames", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsOkNames]},
-			{name: "oneOfContains", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "oneOfDependent", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsOneOfDependent]},
-			{name: "oneOfNames", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsOneOfNames]},
-			{name: "oneOfOneFalse", decode: jsonDecodeValue[ForbiddingSubschemaSpellingsOneOfOneFalse]},
-			{name: "oneOfUnevalItems", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "oneOfUnevalProps", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsOneOfUnevalProps]},
-			{name: "plainItems", decode: jsonDecodeItems(jsonDecodeValue[string])},
-			{name: "refNotNames", decode: jsonDecodeValue[*ForbiddingSubschemaSpellingsRefNotNames]},
-			{name: "unionBranchRequired", decode: jsonDecodeValue[ForbiddingSubschemaSpellingsUnionBranchRequired]},
-		})
+	if _v, _ok := _raw["allOfNot"]; _ok {
+		if _err := func(_p *ForbiddingSubschemaSpellingsAllOfNot, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*ForbiddingSubschemaSpellingsAllOfNot).decodeJSONAt(_p, _d, _s))
+		}(&f.AllOfNot, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "allOfNot")
+		}
+	}
+	if _v, _ok := _raw["anyOfNames"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsAnyOfNames, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsAnyOfNames, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*ForbiddingSubschemaSpellingsAnyOfNames, ForbiddingSubschemaSpellingsAnyOfNames](_p, _d, _s, (*ForbiddingSubschemaSpellingsAnyOfNames).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&f.AnyOfNames, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "anyOfNames")
+		}
+	}
+	if _v, _ok := _raw["anyOfNot"]; _ok {
+		if _err := func(_p *ForbiddingSubschemaSpellingsAnyOfNot, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*ForbiddingSubschemaSpellingsAnyOfNot).decodeJSONAt(_p, _d, _s))
+		}(&f.AnyOfNot, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "anyOfNot")
+		}
+	}
+	if _v, _ok := _raw["anyOfOneFalse"]; _ok {
+		if _err := func(_p *ForbiddingSubschemaSpellingsAnyOfOneFalse, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*ForbiddingSubschemaSpellingsAnyOfOneFalse).decodeJSONAt(_p, _d, _s))
+		}(&f.AnyOfOneFalse, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "anyOfOneFalse")
+		}
+	}
+	if _v, _ok := _raw["inferredNotItems"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsInferredNotItems, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*ForbiddingSubschemaSpellingsInferredNotItems](_p, _d, _s, jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredNotItems])
+		}(&f.InferredNotItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "inferredNotItems")
+		}
+	}
+	if _v, _ok := _raw["inferredNotSlot"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsInferredNotSlot, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*ForbiddingSubschemaSpellingsInferredNotSlot](_p, _d, _s, jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredNotSlot])
+		}(&f.InferredNotSlot, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "inferredNotSlot")
+		}
+	}
+	if _v, _ok := _raw["inferredNotTail"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsInferredNotTail, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*ForbiddingSubschemaSpellingsInferredNotTail](_p, _d, _s, jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredNotTail])
+		}(&f.InferredNotTail, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "inferredNotTail")
+		}
+	}
+	if _v, _ok := _raw["inferredOneOfItems"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsInferredOneOfItems, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*ForbiddingSubschemaSpellingsInferredOneOfItems](_p, _d, _s, jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredOneOfItems])
+		}(&f.InferredOneOfItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "inferredOneOfItems")
+		}
+	}
+	if _v, _ok := _raw["inferredOneOfTail"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsInferredOneOfTail, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*ForbiddingSubschemaSpellingsInferredOneOfTail](_p, _d, _s, jsonDecodeValue[*ForbiddingSubschemaSpellingsInferredOneOfTail])
+		}(&f.InferredOneOfTail, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "inferredOneOfTail")
+		}
+	}
+	if _v, _ok := _raw["inlineDepRequired"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsInlineDepRequired, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsInlineDepRequired, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*ForbiddingSubschemaSpellingsInlineDepRequired, ForbiddingSubschemaSpellingsInlineDepRequired](_p, _d, _s, (*ForbiddingSubschemaSpellingsInlineDepRequired).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&f.InlineDepRequired, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "inlineDepRequired")
+		}
+	}
+	if _v, _ok := _raw["inlineFalseDependent"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsInlineFalseDependent, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsInlineFalseDependent, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*ForbiddingSubschemaSpellingsInlineFalseDependent, ForbiddingSubschemaSpellingsInlineFalseDependent](_p, _d, _s, (*ForbiddingSubschemaSpellingsInlineFalseDependent).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&f.InlineFalseDependent, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "inlineFalseDependent")
+		}
+	}
+	if _v, _ok := _raw["inlineFalseNames"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsInlineFalseNames, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsInlineFalseNames, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*ForbiddingSubschemaSpellingsInlineFalseNames, ForbiddingSubschemaSpellingsInlineFalseNames](_p, _d, _s, (*ForbiddingSubschemaSpellingsInlineFalseNames).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&f.InlineFalseNames, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "inlineFalseNames")
+		}
+	}
+	if _v, _ok := _raw["inlineMaxProps"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsInlineMaxProps, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsInlineMaxProps, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*ForbiddingSubschemaSpellingsInlineMaxProps, ForbiddingSubschemaSpellingsInlineMaxProps](_p, _d, _s, (*ForbiddingSubschemaSpellingsInlineMaxProps).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&f.InlineMaxProps, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "inlineMaxProps")
+		}
+	}
+	if _v, _ok := _raw["inlineMinProps"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsInlineMinProps, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsInlineMinProps, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*ForbiddingSubschemaSpellingsInlineMinProps, ForbiddingSubschemaSpellingsInlineMinProps](_p, _d, _s, (*ForbiddingSubschemaSpellingsInlineMinProps).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&f.InlineMinProps, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "inlineMinProps")
+		}
+	}
+	if _v, _ok := _raw["inlineNotDependent"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsInlineNotDependent, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsInlineNotDependent, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*ForbiddingSubschemaSpellingsInlineNotDependent, ForbiddingSubschemaSpellingsInlineNotDependent](_p, _d, _s, (*ForbiddingSubschemaSpellingsInlineNotDependent).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&f.InlineNotDependent, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "inlineNotDependent")
+		}
+	}
+	if _v, _ok := _raw["inlineNotNames"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsInlineNotNames, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsInlineNotNames, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*ForbiddingSubschemaSpellingsInlineNotNames, ForbiddingSubschemaSpellingsInlineNotNames](_p, _d, _s, (*ForbiddingSubschemaSpellingsInlineNotNames).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&f.InlineNotNames, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "inlineNotNames")
+		}
+	}
+	if _v, _ok := _raw["inlineRequired"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsInlineRequired, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsInlineRequired, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*ForbiddingSubschemaSpellingsInlineRequired, ForbiddingSubschemaSpellingsInlineRequired](_p, _d, _s, (*ForbiddingSubschemaSpellingsInlineRequired).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&f.InlineRequired, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "inlineRequired")
+		}
+	}
+	if _v, _ok := _raw["mapWithMinProps"]; _ok {
+		if _err := func(_p *map[string]string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[map[string]string](_p, _d, _s, jsonDecodeValues(jsonDecodeValue[string]))
+		}(&f.MapWithMinProps, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "mapWithMinProps")
+		}
+	}
+	if _v, _ok := _raw["notContains"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&f.NotContains, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "notContains")
+		}
+	}
+	if _v, _ok := _raw["notDependent"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsNotDependent, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsNotDependent, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*ForbiddingSubschemaSpellingsNotDependent, ForbiddingSubschemaSpellingsNotDependent](_p, _d, _s, (*ForbiddingSubschemaSpellingsNotDependent).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&f.NotDependent, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "notDependent")
+		}
+	}
+	if _v, _ok := _raw["notEnumBranch"]; _ok {
+		if _err := func(_p *ForbiddingSubschemaSpellingsNotEnumBranch, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*ForbiddingSubschemaSpellingsNotEnumBranch).decodeJSONAt(_p, _d, _s))
+		}(&f.NotEnumBranch, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "notEnumBranch")
+		}
+	}
+	if _v, _ok := _raw["notFalse"]; _ok {
+		if _err := func(_p *ForbiddingSubschemaSpellingsNotFalse, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*ForbiddingSubschemaSpellingsNotFalse).decodeJSONAt(_p, _d, _s))
+		}(&f.NotFalse, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "notFalse")
+		}
+	}
+	if _v, _ok := _raw["notNames"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsNotNames, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsNotNames, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*ForbiddingSubschemaSpellingsNotNames, ForbiddingSubschemaSpellingsNotNames](_p, _d, _s, (*ForbiddingSubschemaSpellingsNotNames).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&f.NotNames, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "notNames")
+		}
+	}
+	if _v, _ok := _raw["notShallowEnum"]; _ok {
+		if _err := func(_p *ForbiddingSubschemaSpellingsNotShallowEnum, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*ForbiddingSubschemaSpellingsNotShallowEnum).decodeJSONAt(_p, _d, _s))
+		}(&f.NotShallowEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "notShallowEnum")
+		}
+	}
+	if _v, _ok := _raw["notTypedConst"]; _ok {
+		if _err := func(_p *ForbiddingSubschemaSpellingsNotTypedConst, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*ForbiddingSubschemaSpellingsNotTypedConst).decodeJSONAt(_p, _d, _s))
+		}(&f.NotTypedConst, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "notTypedConst")
+		}
+	}
+	if _v, _ok := _raw["notUnevalItems"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&f.NotUnevalItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "notUnevalItems")
+		}
+	}
+	if _v, _ok := _raw["notUnevalProps"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsNotUnevalProps, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsNotUnevalProps, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*ForbiddingSubschemaSpellingsNotUnevalProps, ForbiddingSubschemaSpellingsNotUnevalProps](_p, _d, _s, (*ForbiddingSubschemaSpellingsNotUnevalProps).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&f.NotUnevalProps, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "notUnevalProps")
+		}
+	}
+	if _v, _ok := _raw["nullableInlineNames"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsNullableInlineNames, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsNullableInlineNames, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*ForbiddingSubschemaSpellingsNullableInlineNames, ForbiddingSubschemaSpellingsNullableInlineNames](_p, _d, _s, (*ForbiddingSubschemaSpellingsNullableInlineNames).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&f.NullableInlineNames, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "nullableInlineNames")
+		}
+	}
+	if _v, _ok := _raw["okContains"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&f.OkContains, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "okContains")
+		}
+	}
+	if _v, _ok := _raw["okNames"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsOkNames, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsOkNames, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*ForbiddingSubschemaSpellingsOkNames, ForbiddingSubschemaSpellingsOkNames](_p, _d, _s, (*ForbiddingSubschemaSpellingsOkNames).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&f.OkNames, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "okNames")
+		}
+	}
+	if _v, _ok := _raw["oneOfContains"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&f.OneOfContains, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "oneOfContains")
+		}
+	}
+	if _v, _ok := _raw["oneOfDependent"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsOneOfDependent, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsOneOfDependent, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*ForbiddingSubschemaSpellingsOneOfDependent, ForbiddingSubschemaSpellingsOneOfDependent](_p, _d, _s, (*ForbiddingSubschemaSpellingsOneOfDependent).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&f.OneOfDependent, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "oneOfDependent")
+		}
+	}
+	if _v, _ok := _raw["oneOfNames"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsOneOfNames, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsOneOfNames, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*ForbiddingSubschemaSpellingsOneOfNames, ForbiddingSubschemaSpellingsOneOfNames](_p, _d, _s, (*ForbiddingSubschemaSpellingsOneOfNames).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&f.OneOfNames, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "oneOfNames")
+		}
+	}
+	if _v, _ok := _raw["oneOfOneFalse"]; _ok {
+		if _err := func(_p *ForbiddingSubschemaSpellingsOneOfOneFalse, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*ForbiddingSubschemaSpellingsOneOfOneFalse).decodeJSONAt(_p, _d, _s))
+		}(&f.OneOfOneFalse, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "oneOfOneFalse")
+		}
+	}
+	if _v, _ok := _raw["oneOfUnevalItems"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&f.OneOfUnevalItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "oneOfUnevalItems")
+		}
+	}
+	if _v, _ok := _raw["oneOfUnevalProps"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsOneOfUnevalProps, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsOneOfUnevalProps, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*ForbiddingSubschemaSpellingsOneOfUnevalProps, ForbiddingSubschemaSpellingsOneOfUnevalProps](_p, _d, _s, (*ForbiddingSubschemaSpellingsOneOfUnevalProps).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&f.OneOfUnevalProps, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "oneOfUnevalProps")
+		}
+	}
+	if _v, _ok := _raw["plainItems"]; _ok {
+		if _err := func(_p *[]string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]string](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[string]))
+		}(&f.PlainItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "plainItems")
+		}
+	}
+	if _v, _ok := _raw["refNotNames"]; _ok {
+		if _err := func(_p **ForbiddingSubschemaSpellingsRefNotNames, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsRefNotNames, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodePtr[*ForbiddingSubschemaSpellingsRefNotNames, ForbiddingSubschemaSpellingsRefNotNames](_p, _d, _s, (*ForbiddingSubschemaSpellingsRefNotNames).decodeJSONAt)
+			}(_p, _d, _s))
+		}(&f.RefNotNames, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "refNotNames")
+		}
+	}
+	if _v, _ok := _raw["unionBranchRequired"]; _ok {
+		if _err := func(_p *ForbiddingSubschemaSpellingsUnionBranchRequired, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*ForbiddingSubschemaSpellingsUnionBranchRequired).decodeJSONAt(_p, _d, _s))
+		}(&f.UnionBranchRequired, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "unionBranchRequired")
+		}
 	}
 
 	{
-		oneofData := aux.StrBranchRequired
+		_ov, _has := _raw["strBranchRequired"]
 		// Every refusal this union raises is a sentence about the value the union
 		// holds, and the property that reaches it goes in front of that sentence
 		// by the rule every other message is joined by (see jsonPathError).
@@ -2940,17 +3722,30 @@ func (f *ForbiddingSubschemaSpellings) UnmarshalJSON(data []byte) error {
 		oneofErrf := func(format string, args ...any) error {
 			return jsonPathf(jsonValueErrorf(format, args...), "%s", "strBranchRequired")
 		}
-		if len(oneofData) > 0 && string(oneofData) != "null" {
+		// oneofWrapf is oneofErrf for a sentence that ends with a branch's own
+		// refusal, which is kept as a step of the message rather than written
+		// into it (see jsonValueWrapf): at every level of a recursive document
+		// that refuses at the bottom, each union puts its words in front of the
+		// words of the one below it.
+		oneofWrapf := func(err error, prefix string) error {
+			return jsonPathf(jsonValueWrapf(err, prefix), "%s", "strBranchRequired")
+		}
+		if _has && !_d.isNull(_ov) {
 			var oneofMatched int
 			var oneofLastErr error
+			// Every branch below is a trial, and one that holds the value's
+			// members as raw JSON takes views of the document rather than
+			// copies of them; see jsonDoc.copyOf.
+			_d.trial++
 
 			// Try variant: String
 			{
 				var candidate string
-				if err := json.Unmarshal(oneofData, &candidate); err == nil {
+				if err := jsonAtJSON[string](&candidate, _d, _ov); err == nil {
 					f.StrBranchRequired = &ForbiddingSubschemaSpellings_String{String: candidate}
 					oneofMatched++
 				} else if _schemagenUndecided(err) {
+					_d.trial--
 					return oneofErrf("variant String: %w", err)
 				} else {
 					oneofLastErr = err
@@ -2965,7 +3760,7 @@ func (f *ForbiddingSubschemaSpellings) UnmarshalJSON(data []byte) error {
 				// of the file does -- otherwise a document this branch
 				// accepts is reported as matching no branch at all.
 				var _iv jsonInteger
-				_ivErr := json.Unmarshal(oneofData, &_iv)
+				_ivErr := jsonAtJSON[jsonInteger](&_iv, _d, _ov)
 				if _ivErr == nil {
 					candidate = int64(_iv)
 				}
@@ -2973,11 +3768,13 @@ func (f *ForbiddingSubschemaSpellings) UnmarshalJSON(data []byte) error {
 					f.StrBranchRequired = &ForbiddingSubschemaSpellings_Integer{Integer: candidate}
 					oneofMatched++
 				} else if _schemagenUndecided(err) {
+					_d.trial--
 					return oneofErrf("variant Integer: %w", err)
 				} else {
 					oneofLastErr = err
 				}
 			}
+			_d.trial--
 
 			if oneofMatched == 0 {
 				// A branch is only put to a decode once the keys it selects on are
@@ -2988,142 +3785,95 @@ func (f *ForbiddingSubschemaSpellings) UnmarshalJSON(data []byte) error {
 				if oneofLastErr == nil {
 					return oneofErrf("no matching oneOf variant")
 				}
-				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
+				return oneofWrapf(oneofLastErr, "no matching oneOf variant: ")
 			}
 			if oneofMatched > 1 {
 				return oneofErrf("multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
 			}
 		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"allOfContains",
+		"allOfNot",
+		"anyOfNames",
+		"inlineDepRequired",
+		"inlineFalseDependent",
+		"inlineFalseNames",
+		"inlineMaxProps",
+		"inlineMinProps",
+		"inlineNotDependent",
+		"inlineNotNames",
+		"inlineRequired",
+		"notContains",
+		"notDependent",
+		"notNames",
+		"notUnevalItems",
+		"notUnevalProps",
+		"okContains",
+		"okNames",
+		"oneOfContains",
+		"oneOfDependent",
+		"oneOfNames",
+		"oneOfUnevalItems",
+		"oneOfUnevalProps",
+		"refNotNames",
+		"strBranchRequired",
+		"unionBranchRequired",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"allOfContains",
-			"allOfNot",
-			"anyOfNames",
-			"inlineDepRequired",
-			"inlineFalseDependent",
-			"inlineFalseNames",
-			"inlineMaxProps",
-			"inlineMinProps",
-			"inlineNotDependent",
-			"inlineNotNames",
-			"inlineRequired",
-			"notContains",
-			"notDependent",
-			"notNames",
-			"notUnevalItems",
-			"notUnevalProps",
-			"okContains",
-			"okNames",
-			"oneOfContains",
-			"oneOfDependent",
-			"oneOfNames",
-			"oneOfUnevalItems",
-			"oneOfUnevalProps",
-			"refNotNames",
-			"strBranchRequired",
-			"unionBranchRequired",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	}
+	if _v, ok := _raw["mapWithMinProps"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "mapWithMinProps")
+		}
+	}
+	if _v, ok := _raw["plainItems"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "plainItems")
+		}
+	}
+	f._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		f._jsonKeys[_k] = true
+	}
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"inferredNotItems",
+		"inferredNotSlot",
+		"inferredNotTail",
+		"inferredOneOfItems",
+		"inferredOneOfTail",
+		"nullableInlineNames",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if f._jsonNulls == nil {
+				f._jsonNulls = make(map[string]bool, 1)
 			}
+			f._jsonNulls[_nullKey] = true
 		}
-		if _v, ok := raw["mapWithMinProps"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "mapWithMinProps")
-			}
+	}
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "allOfContains", "allOfNot", "anyOfNames", "anyOfNot", "anyOfOneFalse", "inferredNotItems", "inferredNotSlot", "inferredNotTail", "inferredOneOfItems", "inferredOneOfTail", "inlineDepRequired", "inlineFalseDependent", "inlineFalseNames", "inlineMaxProps", "inlineMinProps", "inlineNotDependent", "inlineNotNames", "inlineRequired", "mapWithMinProps", "notContains", "notDependent", "notEnumBranch", "notFalse", "notNames", "notShallowEnum", "notTypedConst", "notUnevalItems", "notUnevalProps", "nullableInlineNames", "okContains", "okNames", "oneOfContains", "oneOfDependent", "oneOfNames", "oneOfOneFalse", "oneOfUnevalItems", "oneOfUnevalProps", "plainItems", "refNotNames", "unionBranchRequired", "strBranchRequired":
+			continue
 		}
-		if _v, ok := raw["plainItems"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "plainItems")
-			}
+		if f.AdditionalProperties == nil {
+			f.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		f._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			f._jsonKeys[_k] = true
-		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"inferredNotItems",
-			"inferredNotSlot",
-			"inferredNotTail",
-			"inferredOneOfItems",
-			"inferredOneOfTail",
-			"nullableInlineNames",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if f._jsonNulls == nil {
-					f._jsonNulls = make(map[string]bool, 1)
-				}
-				f._jsonNulls[_nullKey] = true
-			}
-		}
-		knownFields := map[string]bool{
-			"allOfContains":        true,
-			"allOfNot":             true,
-			"anyOfNames":           true,
-			"anyOfNot":             true,
-			"anyOfOneFalse":        true,
-			"inferredNotItems":     true,
-			"inferredNotSlot":      true,
-			"inferredNotTail":      true,
-			"inferredOneOfItems":   true,
-			"inferredOneOfTail":    true,
-			"inlineDepRequired":    true,
-			"inlineFalseDependent": true,
-			"inlineFalseNames":     true,
-			"inlineMaxProps":       true,
-			"inlineMinProps":       true,
-			"inlineNotDependent":   true,
-			"inlineNotNames":       true,
-			"inlineRequired":       true,
-			"mapWithMinProps":      true,
-			"notContains":          true,
-			"notDependent":         true,
-			"notEnumBranch":        true,
-			"notFalse":             true,
-			"notNames":             true,
-			"notShallowEnum":       true,
-			"notTypedConst":        true,
-			"notUnevalItems":       true,
-			"notUnevalProps":       true,
-			"nullableInlineNames":  true,
-			"okContains":           true,
-			"okNames":              true,
-			"oneOfContains":        true,
-			"oneOfDependent":       true,
-			"oneOfNames":           true,
-			"oneOfOneFalse":        true,
-			"oneOfUnevalItems":     true,
-			"oneOfUnevalProps":     true,
-			"plainItems":           true,
-			"refNotNames":          true,
-			"unionBranchRequired":  true,
-			"strBranchRequired":    true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
-		}
+		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil

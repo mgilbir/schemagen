@@ -13,76 +13,82 @@ type Circle struct {
 	Radius               float64                    `json:"radius"`
 }
 
+// UnmarshalJSON replaces c with the value the document holds. See
+// decodeJSONAt.
 func (c *Circle) UnmarshalJSON(data []byte) error {
-	c.AdditionalProperties = nil
-	c._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(c.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into c, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever c held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (c *Circle) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*c = Circle{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"radius",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[Circle](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias Circle
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(c),
+	if _v, _ok := _raw["radius"]; _ok {
+		if _err := func(_p *float64, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[float64](_p, _d, _s, jsonDecodeValue[float64])
+		}(&c.Radius, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "radius")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "radius", decode: jsonDecodeValue[float64]},
-		})
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"radius",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	c._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		c._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "radius":
+			continue
 		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"radius",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
+		if c.AdditionalProperties == nil {
+			c.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		c._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			c._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{
-			"radius": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if c.AdditionalProperties == nil {
-				c.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			c.AdditionalProperties[rawKey] = rawVal
-		}
+		c.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -131,80 +137,90 @@ type Rectangle struct {
 	Width                float64                    `json:"width"`
 }
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *Rectangle) UnmarshalJSON(data []byte) error {
-	r.AdditionalProperties = nil
-	r._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into r, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever r held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (r *Rectangle) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*r = Rectangle{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"height",
-			"width",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[Rectangle](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias Rectangle
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(r),
+	if _v, _ok := _raw["height"]; _ok {
+		if _err := func(_p *float64, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[float64](_p, _d, _s, jsonDecodeValue[float64])
+		}(&r.Height, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "height")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "height", decode: jsonDecodeValue[float64]},
-			{name: "width", decode: jsonDecodeValue[float64]},
-		})
+	if _v, _ok := _raw["width"]; _ok {
+		if _err := func(_p *float64, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[float64](_p, _d, _s, jsonDecodeValue[float64])
+		}(&r.Width, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "width")
+		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"height",
+		"width",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"height",
-			"width",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
+	}
+	r._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		r._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "height", "width":
+			continue
 		}
-		r._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			r._jsonKeys[_k] = true
+		if r.AdditionalProperties == nil {
+			r.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		knownFields := map[string]bool{
-			"height": true,
-			"width":  true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if r.AdditionalProperties == nil {
-				r.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			r.AdditionalProperties[rawKey] = rawVal
-		}
+		r.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil
@@ -295,49 +311,59 @@ func (d *Drawing) GetRectangle() *Rectangle {
 	return zero
 }
 
+// UnmarshalJSON replaces d with the value the document holds. See
+// decodeJSONAt.
 func (d *Drawing) UnmarshalJSON(data []byte) error {
-	d.AdditionalProperties = nil
-	d._jsonKeys = nil
-	d.Shape = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(d.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into d, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever d held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (d *Drawing) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*d = Drawing{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"name",
-			"shape",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeError[Drawing](_d, _sp))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias Drawing
-	aux := &struct {
-		*Alias
-		Shape json.RawMessage `json:"shape"`
-	}{
-		Alias: (*Alias)(d),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "name", decode: jsonDecodeValue[string]},
-		})
+	if _v, _ok := _raw["name"]; _ok {
+		if _err := func(_p *string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[string](_p, _d, _s, jsonDecodeValue[string])
+		}(&d.Name, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "name")
+		}
 	}
 
 	{
-		oneofData := aux.Shape
+		_ov, _has := _raw["shape"]
 		// Every refusal this union raises is a sentence about the value the union
 		// holds, and the property that reaches it goes in front of that sentence
 		// by the rule every other message is joined by (see jsonPathError).
@@ -349,7 +375,15 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 		oneofErrf := func(format string, args ...any) error {
 			return jsonPathf(jsonValueErrorf(format, args...), "%s", "shape")
 		}
-		if len(oneofData) > 0 && string(oneofData) != "null" {
+		// oneofWrapf is oneofErrf for a sentence that ends with a branch's own
+		// refusal, which is kept as a step of the message rather than written
+		// into it (see jsonValueWrapf): at every level of a recursive document
+		// that refuses at the bottom, each union puts its words in front of the
+		// words of the one below it.
+		oneofWrapf := func(err error, prefix string) error {
+			return jsonPathf(jsonValueWrapf(err, prefix), "%s", "shape")
+		}
+		if _has && !_d.isNull(_ov) {
 			var oneofMatched int
 			var oneofLastErr error
 			// A second tally: branches actually satisfied, not merely decoded.
@@ -361,29 +395,39 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 			var oneofOpaque int
 			var oneofStrictSel isDrawing_Shape
 			var oneofStrictErr error
+			// The candidate this branch decoded, held for the tally below. Its
+			// Validate is asked only if more than one branch matched, which is
+			// the only case the tally is read in: asked here, it was run over
+			// the whole of the value at every level of a recursive document.
+			var _vc0 *Circle
+			var _vcOK0 bool
+			// The candidate this branch decoded, held for the tally below. Its
+			// Validate is asked only if more than one branch matched, which is
+			// the only case the tally is read in: asked here, it was run over
+			// the whole of the value at every level of a recursive document.
+			var _vc1 *Rectangle
+			var _vcOK1 bool
+			// Every branch below is a trial, and one that holds the value's
+			// members as raw JSON takes views of the document rather than
+			// copies of them; see jsonDoc.copyOf.
+			_d.trial++
 
 			// Try variant: Circle
 			{
-				if oneofHasRequiredFields(oneofData, "radius") {
+				if oneofHasRequiredFields(_d, _ov, "radius") {
 					var candidate *Circle
-					if err := json.Unmarshal(oneofData, &candidate); err == nil {
+					if err := func(_p **Circle, _d *jsonDoc, _s jsonSpan) error {
+						return jsonDecodePtr[*Circle, Circle](_p, _d, _s, (*Circle).decodeJSONAt)
+					}(&candidate, _d, _ov); err == nil {
 						d.Shape = &Drawing_Circle{Circle: candidate}
 						oneofMatched++
 						if candidate != nil {
-							if _vErr := candidate.Validate(); _vErr == nil {
-								oneofStrict++
-								oneofStrictSel = &Drawing_Circle{Circle: candidate}
-							} else if _schemagenUndecided(_vErr) {
-								// No verdict on this branch, so no telling
-								// which one the document selects.
-								return oneofErrf("variant Circle: %w", _vErr)
-							} else {
-								oneofStrictErr = fmt.Errorf("variant Circle: %w", _vErr)
-							}
+							_vc0, _vcOK0 = candidate, true
 						} else {
 							oneofOpaque++
 						}
 					} else if _schemagenUndecided(err) {
+						_d.trial--
 						return oneofErrf("variant Circle: %w", err)
 					} else {
 						oneofLastErr = err
@@ -393,32 +437,27 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 
 			// Try variant: Rectangle
 			{
-				if oneofHasRequiredFields(oneofData, "width", "height") {
+				if oneofHasRequiredFields(_d, _ov, "width", "height") {
 					var candidate *Rectangle
-					if err := json.Unmarshal(oneofData, &candidate); err == nil {
+					if err := func(_p **Rectangle, _d *jsonDoc, _s jsonSpan) error {
+						return jsonDecodePtr[*Rectangle, Rectangle](_p, _d, _s, (*Rectangle).decodeJSONAt)
+					}(&candidate, _d, _ov); err == nil {
 						d.Shape = &Drawing_Rectangle{Rectangle: candidate}
 						oneofMatched++
 						if candidate != nil {
-							if _vErr := candidate.Validate(); _vErr == nil {
-								oneofStrict++
-								oneofStrictSel = &Drawing_Rectangle{Rectangle: candidate}
-							} else if _schemagenUndecided(_vErr) {
-								// No verdict on this branch, so no telling
-								// which one the document selects.
-								return oneofErrf("variant Rectangle: %w", _vErr)
-							} else {
-								oneofStrictErr = fmt.Errorf("variant Rectangle: %w", _vErr)
-							}
+							_vc1, _vcOK1 = candidate, true
 						} else {
 							oneofOpaque++
 						}
 					} else if _schemagenUndecided(err) {
+						_d.trial--
 						return oneofErrf("variant Rectangle: %w", err)
 					} else {
 						oneofLastErr = err
 					}
 				}
 			}
+			_d.trial--
 
 			if oneofMatched == 0 {
 				// A branch is only put to a decode once the keys it selects on are
@@ -429,9 +468,33 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 				if oneofLastErr == nil {
 					return oneofErrf("no matching oneOf variant")
 				}
-				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
+				return oneofWrapf(oneofLastErr, "no matching oneOf variant: ")
 			}
 			if oneofMatched > 1 && oneofOpaque == 0 {
+				if _vcOK0 {
+					if _vErr := _vc0.Validate(); _vErr == nil {
+						oneofStrict++
+						oneofStrictSel = &Drawing_Circle{Circle: _vc0}
+					} else if _schemagenUndecided(_vErr) {
+						// No verdict on this branch, so no telling which one
+						// the document selects.
+						return oneofErrf("variant Circle: %w", _vErr)
+					} else {
+						oneofStrictErr = jsonValueWrapf(_vErr, "variant Circle: ")
+					}
+				}
+				if _vcOK1 {
+					if _vErr := _vc1.Validate(); _vErr == nil {
+						oneofStrict++
+						oneofStrictSel = &Drawing_Rectangle{Rectangle: _vc1}
+					} else if _schemagenUndecided(_vErr) {
+						// No verdict on this branch, so no telling which one
+						// the document selects.
+						return oneofErrf("variant Rectangle: %w", _vErr)
+					} else {
+						oneofStrictErr = jsonValueWrapf(_vErr, "variant Rectangle: ")
+					}
+				}
 				// Several branches decoded and every one can be judged, so the
 				// branches' own constraints settle which of them the value
 				// really satisfies. Ambiguity is already a rejection here, so
@@ -445,7 +508,7 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 				case oneofStrictErr != nil:
 					// Not ambiguity but a value no branch accepts: report the
 					// branch's own reason rather than a count.
-					return oneofErrf("no matching oneOf variant: %w", oneofStrictErr)
+					return oneofWrapf(oneofStrictErr, "no matching oneOf variant: ")
 				}
 			}
 			if oneofMatched > 1 {
@@ -453,41 +516,33 @@ func (d *Drawing) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"name",
+		"shape",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"name",
-			"shape",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
+	}
+	d._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		d._jsonKeys[_k] = true
+	}
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "name", "shape":
+			continue
 		}
-		d._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			d._jsonKeys[_k] = true
+		if d.AdditionalProperties == nil {
+			d.AdditionalProperties = make(map[string]json.RawMessage)
 		}
-		knownFields := map[string]bool{
-			"name":  true,
-			"shape": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if d.AdditionalProperties == nil {
-				d.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			d.AdditionalProperties[rawKey] = rawVal
-		}
+		d.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
 	}
 
 	return nil

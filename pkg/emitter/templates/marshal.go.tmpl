@@ -4,10 +4,12 @@
 
 func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	{{- if $struct.AcceptNonObject}}
-	// Non-object data was silently accepted — return the original raw bytes.
+	// Non-object data was silently accepted — return the original raw bytes,
+	// in a buffer of their own: the value's bytes, handed out, are bytes a
+	// caller can rewrite the value through.
 	if {{$recv}}._nonObject {
 		if len({{$recv}}._rawNonObject) > 0 {
-			return {{$recv}}._rawNonObject, nil
+			return append([]byte(nil), {{$recv}}._rawNonObject...), nil
 		}
 		return []byte("null"), nil
 	}

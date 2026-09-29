@@ -18,6 +18,7 @@ type Counter struct {
 }
 
 func (c *Counter) UnmarshalJSON(data []byte) error {
+	*c = Counter{}
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -81,9 +82,13 @@ func (c Counter) MarshalJSON() ([]byte, error) {
 	return json.Marshal(c._int64)
 }
 func (c Counter) Int64() int64 { return c._int64 }
+
+// BigInt returns the value as a *big.Int of the caller's own. The value's own
+// is not handed out: a copy of the value shares it, and a caller writing
+// through it would change both.
 func (c Counter) BigInt() *big.Int {
 	if c._isBigInt && c._bigInt != nil {
-		return c._bigInt
+		return new(big.Int).Set(c._bigInt)
 	}
 	return big.NewInt(c._int64)
 }
