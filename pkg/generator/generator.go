@@ -7174,6 +7174,9 @@ func (g *Generator) objectOneOfBranchOnPath(s *schema.Schema, onPath map[*schema
 			branch.Checks = append(branch.Checks, *check)
 		}
 	}
+	if ap := resolved.AdditionalProperties; ap != nil && ap.Bool != nil && !*ap.Bool && len(resolved.PatternProperties) == 0 {
+		branch.ClosedKeySets = append(branch.ClosedKeySets, propNames)
+	}
 	if len(resolved.AllOf) > 0 {
 		if onPath == nil {
 			onPath = make(map[*schema.Schema]bool)
@@ -7183,6 +7186,7 @@ func (g *Generator) objectOneOfBranchOnPath(s *schema.Schema, onPath map[*schema
 			subBranch := g.objectOneOfBranchOnPath(sub, onPath)
 			branch.RequiredKeys = mergeStringSets(branch.RequiredKeys, subBranch.RequiredKeys)
 			branch.Checks = append(branch.Checks, subBranch.Checks...)
+			branch.ClosedKeySets = append(branch.ClosedKeySets, subBranch.ClosedKeySets...)
 		}
 		delete(onPath, resolved)
 	}

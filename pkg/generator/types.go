@@ -701,6 +701,14 @@ type ObjectAnyOfDef struct {
 type ObjectOneOfBranch struct {
 	RequiredKeys []string
 	Checks       []ObjectPropertyCheck
+	// ClosedKeySets holds, for each schema in the branch that closes its object
+	// with "additionalProperties": false and no patternProperties, the property
+	// names that schema allows. A key present outside any one of them fails the
+	// branch. Without it a closed branch matched an object carrying keys it
+	// forbids, and a oneOf counted two matches for one: CycloneDX 1.6's model
+	// card datasets, whose "Data Reference" branch allows only "ref", refused
+	// every inline dataset the specification's own example BOM holds.
+	ClosedKeySets [][]string
 }
 
 // ObjectConditionalDef describes an object-level if/then/else sitting beside an

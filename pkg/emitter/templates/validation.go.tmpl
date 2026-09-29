@@ -523,6 +523,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				_branchMatches = false
 			}
 			{{- end}}
+			{{- template "object_branch_closed_keys" (mkClosedKeysCtx $recv $branch)}}
 			{{- range $branch.Checks}}
 			if _branchMatches {
 				if _raw, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .JSONName}}]; _ok {
@@ -602,6 +603,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				_branchMatches = false
 			}
 			{{- end}}
+			{{- template "object_branch_closed_keys" (mkClosedKeysCtx $recv $branch)}}
 			{{- range $branch.Checks}}
 			if _branchMatches {
 				if _raw, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .JSONName}}]; _ok {
@@ -2678,6 +2680,33 @@ declares a field for it at all.
 			continue
 		}
 		if _err := func() error {
+{{- end}}
+
+{{- /* object_branch_closed_keys fails an object-level oneOf/anyOf branch for a
+       key the document wrote that one of the branch's closed schemas
+       ("additionalProperties": false) does not allow. See
+       ObjectOneOfBranch.ClosedKeySets. */}}
+{{define "object_branch_closed_keys"}}
+{{- $recv := .Recv}}
+{{- range $set := .Branch.ClosedKeySets}}
+			if _branchMatches {
+				{{- /* maporder: only asks whether some recorded key is outside the set, which no order of the loop changes. */}}
+				for _key, _present := range {{$recv}}._jsonKeys {
+					if !_present {
+						continue
+					}
+					{{- if $set}}
+					switch _key {
+					case {{range $i, $k := $set}}{{if $i}}, {{end}}{{printf "%q" $k}}{{end}}:
+					default:
+						_branchMatches = false
+					}
+					{{- else}}
+					_branchMatches = false
+					{{- end}}
+				}
+			}
+{{- end}}
 {{- end}}
 
 {{define "least_key_close"}}

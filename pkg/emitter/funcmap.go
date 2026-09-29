@@ -65,6 +65,7 @@ func FuncMap() template.FuncMap {
 		"validationStringSet":    validationStringSetFunc,
 		"jsonErrorName":          jsonErrorNameFunc,
 		"mkCondCtx":              mkCondCtxFunc,
+		"mkClosedKeysCtx":        mkClosedKeysCtxFunc,
 		"mkItemCtx":              mkItemCtxFunc,
 		"mkContainsCtx":          mkContainsCtxFunc,
 		"mkContainsCtxIn":        mkContainsCtxInFunc,
@@ -649,6 +650,18 @@ func goStringSlice(values []string) string {
 		parts[i] = fmt.Sprintf("%q", v)
 	}
 	return "[]string{" + strings.Join(parts, ", ") + "}"
+}
+
+// ClosedKeysContext is what object_branch_closed_keys renders: the receiver
+// whose recorded keys are read, and the branch whose closed key sets they are
+// held to.
+type ClosedKeysContext struct {
+	Recv   string
+	Branch generator.ObjectOneOfBranch
+}
+
+func mkClosedKeysCtxFunc(recv string, branch generator.ObjectOneOfBranch) ClosedKeysContext {
+	return ClosedKeysContext{Recv: recv, Branch: branch}
 }
 
 // OneOfContext is passed to oneof_interface and oneof_getters templates.

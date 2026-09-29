@@ -316,6 +316,11 @@
 - A type's `UnmarshalJSON` called directly with bytes that are not JSON refuses
   them with `encoding/json`'s own words. The raw-JSON wrappers, the inferred
   wrappers and the heterogeneous enums accepted them and wrote them back out.
+- An object-level `oneOf` or `anyOf` branch closed with `"additionalProperties":
+  false` no longer matches an object carrying keys it forbids. A `oneOf` counted
+  it as a second match and refused the object: four of the example BOMs the
+  CycloneDX 1.6 specification ships (a jsf signature, a model card's inline
+  dataset) failed `Validate`.
 
 ### Changed
 

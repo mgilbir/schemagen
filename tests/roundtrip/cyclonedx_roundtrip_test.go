@@ -25,13 +25,30 @@ import (
 // back. Every BOM here has at least one such position.
 //
 // What is asserted is the shape: the marshalled document has exactly the members
-// the input had, at every depth, and decodes again. Two things about the values
-// are deliberately not asserted, because they are other defects and holding them
-// here would hide this one behind them: a `format: date-time` value is held as a
-// time.Time and written back in its canonical spelling (+00:00 as Z, .000Z as
-// Z), and Validate refuses three of these valid BOMs over a oneOf whose branches
-// overlap. The shape comparison is what sees an invented member, a dropped one,
-// or an array that changed length.
+// the input had, at every depth, and decodes again. The shape comparison is what
+// sees an invented member, a dropped one, or an array that changed length. The
+// values are not compared: a `format: date-time` value is held as a time.Time
+// and written back in its canonical spelling (+00:00 as Z, .000Z as Z), which is
+// another defect, and holding it here would hide this one behind it.
+//
+// Every BOM also has to validate, before and after the round trip. Four did
+// not: an object-level oneOf counted a branch closed by "additionalProperties":
+// false as matching an object that carries keys it forbids (see
+// ObjectOneOfBranch.ClosedKeySets). jsf's signature is a oneOf of {signers},
+// {chain} -- both closed -- and a signer, so every simple signature matched all
+// three; the model card's datasets are a oneOf of inline data and a closed
+// {ref}, so every inline dataset matched both.
+//
+// That these BOMs are valid is not this test's say-so. Bowtie, run over the 1.6
+// schema with jsf and spdx bundled into it, has python-jsonschema 4.26 and ajv
+// 8.20 agree that valid-machine-learning is valid. The other three --
+// valid-attestation, valid-signatures and valid-standard -- both call invalid,
+// and python-jsonschema says why: jsf's signer "algorithm" is a oneOf of an enum
+// and a {"format":"uri"} string, and with format an annotation "ES256" satisfies
+// both. This generator asserts format on draft 7 (README, "Format: assertion or
+// annotation"), and under that reading -- python-jsonschema with its format
+// checker, "uri" included -- all four are valid, as the specification ships
+// them.
 func TestCycloneDXExampleBOMsKeepTheirShape(t *testing.T) {
 	if testing.Short() {
 		t.Skip("generates and compiles the CycloneDX 1.6 types")
@@ -157,6 +174,9 @@ func main() {
 			report("does not decode: %v", err)
 			continue
 		}
+		if err := bom.Validate(); err != nil {
+			report("does not validate: %v", err)
+		}
 		out, err := json.Marshal(bom)
 		if err != nil {
 			report("does not marshal: %v", err)
@@ -175,6 +195,8 @@ func main() {
 		var again cdx.Bom
 		if err := json.Unmarshal(out, &again); err != nil {
 			report("the output does not decode with the same type: %v", err)
+		} else if err := again.Validate(); err != nil {
+			report("the output does not validate: %v", err)
 		}
 	}
 	if failed > 0 {
