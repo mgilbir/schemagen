@@ -75,6 +75,22 @@
   - The `pkg/generator.HelperSet` is reduced to the patterns a package
     compiles, and the pruning that decided which helper blocks a package needed
     is gone with the blocks.
+- `--strict-read-write` binds `readOnly` and `writeOnly` by one rule, JSON
+  Schema's own: a keyword applies where the route to a location is fixed by
+  keys, indexes, `allOf` and `$ref`, and is conditional where the route goes
+  through a branch, `contains`, or the part of `unevaluatedProperties` /
+  `unevaluatedItems` a branch might evaluate. `readOnly` refuses only at the
+  first kind; `writeOnly` strips at both. Two positions broke it. `readOnly`
+  inside `contains` refused every element that set the member, including ones
+  `contains` does not describe: under `{"contains":{"required":["kind"],
+  "properties":{"secret":{"readOnly":true}}}}`, `[{"kind":1},{"secret":2}]`
+  was refused. It now binds nothing there, as inside an `anyOf`. And a keyword
+  written directly on a `patternProperties` or `additionalProperties` value was
+  read by nothing, so a `writeOnly` one was written straight back out: those
+  members have keys, and are now refused and stripped by key like a property.
+  An `additionalProperties` rule also reaches a member only an `allOf` branch
+  names, which is one of its leftovers, and a required property such a
+  `readOnly` value governs is reported as unsatisfiable.
 - A pattern is judged by the ECMA-262 grammar for the `u` flag, the dialect
   JSON Schema names, and nothing looser. ES2025 modifier groups are accepted
   and matched as specified, in every position a pattern occupies:

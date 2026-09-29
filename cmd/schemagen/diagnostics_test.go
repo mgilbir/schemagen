@@ -722,6 +722,39 @@ func TestUnsatisfiableRequiredWarningFollowsARef(t *testing.T) {
 	}
 }
 
+// A readOnly on a patternProperties or additionalProperties value binds every
+// member its key selects, the struct's own required properties included, so the
+// decoder refuses those too and the warning has to follow. "name" is the
+// control: required, declared, matched by no pattern and so no leftover -- no
+// rule reaches it, and it must not be warned about.
+func TestUnsatisfiableRequiredWarningFollowsAPatternAndALeftover(t *testing.T) {
+	src := t.TempDir()
+	mainPath := filepath.Join(src, "memberro.json")
+	writeFile(t, mainPath, `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"title": "MemberRODoc", "type": "object", "required": ["sid", "extra", "name"],
+		"properties": {"sid": {"type": "string"}, "name": {"type": "string"}},
+		"patternProperties": {"^s": {"type": "string", "readOnly": true}},
+		"additionalProperties": {"type": "string", "readOnly": true}
+	}`)
+
+	stderr, err := runGenerateCapturing(t, mainPath, "-o", t.TempDir(), "-p", "m", "--strict-read-write")
+	if err != nil {
+		t.Fatalf("generate: %v\nstderr:\n%s", err, stderr)
+	}
+	for _, want := range []string{
+		"MemberRoDoc.sid is both required and readOnly",
+		"MemberRoDoc.extra is both required and readOnly",
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("stderr should contain %q, got:\n%s", want, stderr)
+		}
+	}
+	if strings.Contains(stderr, "MemberRoDoc.name is both") {
+		t.Errorf("no rule reaches the declared, unmatched %q, so it must not be warned about:\n%s", "name", stderr)
+	}
+}
+
 // ---------- issue #228: a $ref cycle between input documents ----------
 
 // --shared-types generates the inputs in one pass, so a cycle has no order that

@@ -5904,6 +5904,19 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	if additionalProps != nil && s.AdditionalProperties != nil {
 		additionalProps.Claim = claimOf(s, "additionalProperties")
 	}
+	// A required property is refused just as surely by a readOnly on the
+	// patternProperties or additionalProperties value that governs its key as by
+	// one on the property itself -- the decoder applies the depth-1 rules to the
+	// struct's own members -- so it is reported the same way. Only a key the
+	// rule is known to reach counts: a pattern with no answer is not a match.
+	for _, key := range requiredJSON {
+		for _, rule := range accessRules {
+			if rule.ReadOnly && len(rule.Path) == 1 && accessStepReachesKey(rule.Path[0], key) {
+				g.noteUnsatisfiableRequired(name, key)
+				break
+			}
+		}
+	}
 
 	structDef := &StructDef{
 		Name:                   name,

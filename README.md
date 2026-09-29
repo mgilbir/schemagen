@@ -641,15 +641,23 @@ which they have a direction ([2020-12 §9.4][ro]):
 - `MarshalJSON` **omits** every `writeOnly` property — the spec says the value
   "is never present when the instance is retrieved from the owning authority".
 
-Both bind on a **property**, whichever way the schema says so: written on the
-property, reached through its `$ref` (however long the chain), or stated in one
-of its `allOf` branches all name the same instance location and all bind. That
-holds wherever the property is, including the places the generated code keeps
-the value as raw JSON and never decodes it into the type built for the
-sub-schema — a `prefixItems` slot, a `contains` element, a `patternProperties`
-value, and a schema whose whole shape is `unevaluatedProperties` or
-`unevaluatedItems`. Those positions carry a path table rather than a key list,
-because there is no Go field at them to key on.
+Both bind on an **object member**, whichever way the schema says so: written on
+the member's schema, reached through its `$ref` (however long the chain), or
+stated in one of its `allOf` branches all name the same instance location and all
+bind. The member can be a property, or a member chosen by its key — a
+`patternProperties` value binds every member whose key matches, and an
+`additionalProperties` value every member its own object's `properties` and
+`patternProperties` leave over — and it can be anywhere, including the places the
+generated code keeps the value as raw JSON and never decodes it into the type
+built for the sub-schema: a member inside a `prefixItems` slot, an `items`
+element, a `patternProperties` value, and a schema whose whole shape is
+`unevaluatedProperties` or `unevaluatedItems`. Those positions carry a path
+table rather than a key list, because there is no Go field at them to key on.
+
+An array element marked `readOnly` or `writeOnly` is documentation and nothing
+more: an element cannot be left out of an array without changing its length,
+which `minItems` and every index after it can see, so neither keyword has an
+action there. The members inside the element are still bound.
 
 A property that is both `required` and `readOnly` is refused twice under this
 flag and satisfied by nothing: a document that sets it fails to decode
@@ -668,17 +676,28 @@ decoder's refusal came back out of `Validate()` as `read-only property may not
 be set`. `readOnly` constrains no document, so that was a verdict about a
 question the schema did not ask.
 
-At a **conditional** branch — `anyOf`, `oneOf`, `if`/`then`/`else`,
-`dependentSchemas`, `not` — the two keywords part company, and the asymmetry is
-deliberate.
+One rule decides where each keyword binds, and it is §7.7.1's: a subschema
+annotates exactly the locations it successfully evaluates. A location reached
+only through keys and indexes — `properties`, `patternProperties`,
+`additionalProperties`, `prefixItems`, `items`, `additionalItems` — and through
+`allOf` and `$ref` is one the keyword describes on every valid document. Every
+other route is **conditional**, because whether it reaches the location depends
+on what the document holds: an `anyOf`, `oneOf`, `if`/`then`/`else`,
+`dependentSchemas` or `not` branch applies only when it is selected; `contains`
+describes only the elements that match it; `unevaluatedProperties` and
+`unevaluatedItems` describe only what the other keywords — conditional ones
+included — left unevaluated. At a conditional location the two keywords part
+company, and the asymmetry is deliberate.
 
 `readOnly` does not follow one. Which branch applies is the document's business,
-and a refusal keyed on one would reject documents the schema accepts; a `not`
-that *succeeds* is a subschema that *failed*, so nothing inside it marks anything
-either. That holds however the branch is reached — including an object-level
-conditional inside an `allOf` branch, whose properties are merged into the same
-struct: the branch is where such a property gets its Go type, and what it
-*asserts* is held back.
+and a refusal keyed on one would reject documents the schema accepts: under
+`{"contains":{"required":["kind"],"properties":{"secret":{"readOnly":true}}}}`,
+the array `[{"kind":1},{"secret":2}]` is valid and its second element is not one
+`contains` describes. A `not` that *succeeds* is a subschema that *failed*, so
+nothing inside it marks anything either. That holds however the branch is
+reached — including an object-level conditional inside an `allOf` branch, whose
+properties are merged into the same struct: the branch is where such a property
+gets its Go type, and what it *asserts* is held back.
 
 `writeOnly` does follow one, at every position and at any depth — including the
 plainest spelling of all, where the conditional is written on the object whose own
@@ -701,7 +720,10 @@ the caller chose rather than spec validation, so it is allowed to be stricter
 than §7.7.1's annotation rules in the direction that fails safe. The cost is
 named rather than hidden: a `writeOnly` inside a branch the document does not
 match is stripped anyway, because the rules are a static table of locations and
-cannot evaluate a condition. `Validate` is untouched by any of it — no verdict
+cannot evaluate a condition. So one inside `contains` is stripped from every
+element, and one inside `unevaluatedProperties` from every member the object's
+unconditional keywords — its own and its `allOf` and `$ref` reach — do not
+evaluate. `Validate` is untouched by any of it — no verdict
 has ever depended on either keyword and none does now.
 
 That last part is not only about annotations. A property an `if`/`then`/`else`
@@ -735,6 +757,20 @@ declares a documented `type D`, where before it declared a bare one and lost the
 prose outright — a property at least has a field above it to carry what its
 `allOf` says, and a definition has nothing.
 
+Under `--strict-read-write`, how a property is typed makes no difference. A
+property whose `oneOf` becomes a sealed-interface group is checked exactly as a
+plain field is.
+
+The flag is opt-in for two reasons. A type built this way no longer round-trips,
+by design. And it picks a side: one Go type cannot be both the request shape and
+the response shape, and `MarshalJSON` is not told which it is being asked for, so
+a *client* building a request with the same type would have its `writeOnly`
+password dropped. The default declines to guess.
+
+Under neither setting do these keywords change a validation verdict.
+
+[ro]: https://json-schema.org/draft/2020-12/json-schema-validation#section-9.4
+
 ### `default`
 
 `default` answers the same reach question, and it answers it in the parent
@@ -751,24 +787,6 @@ referenced type, so the value is written as a conversion into it —
 `_default := ResourceID("unset")`. Types a JSON scalar does not convert to (a
 struct, a slice, a `time.Time` alias, a big-int wrapper) get no default, as
 before.
-
-How the property is typed makes no difference. A property whose `oneOf` becomes
-a sealed-interface group is checked exactly as a plain field is.
-
-Outside a property the two keywords stay documentation. A `readOnly` array
-element or map value has no property name for the check to key on, and there is
-no way to omit an element from an array without changing its length — so the
-keyword is said in the doc comment on the element's own type and nowhere else.
-
-It is opt-in for two reasons. A type built this way no longer round-trips, by
-design. And it picks a side: one Go type cannot be both the request shape and the
-response shape, and `MarshalJSON` is not told which it is being asked for, so a
-*client* building a request with the same type would have its `writeOnly`
-password dropped. The default declines to guess.
-
-Under neither setting do these keywords change a validation verdict.
-
-[ro]: https://json-schema.org/draft/2020-12/json-schema-validation#section-9.4
 
 ### Unresolvable References
 

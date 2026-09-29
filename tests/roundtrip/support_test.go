@@ -12,6 +12,7 @@ var (
 	generateRoundTripMain        = testsupport.GenerateRoundTripMain
 	generateWithRootName         = testsupport.GenerateWithRootName
 	programOutput                = testsupport.ProgramOutput
+	runEngineProgram             = testsupport.RunEngineProgram
 	runSchemagen                 = testsupport.RunSchemagen
 	schemagenBinary              = testsupport.SchemagenBinary
 	writeCrossFile               = testsupport.WriteCrossFile

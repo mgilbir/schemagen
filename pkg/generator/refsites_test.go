@@ -91,6 +91,11 @@ var refReadingSites = map[string]refReadingSite{
 	},
 
 	// ------------------------------------------------ reads whichever is there
+	"generator/accessrules.go | (*Generator).evaluatingReach": {
+		Verdict: refReadsWhicheverIsThere, Reads: "$dynamicRef,$recursiveRef",
+		Why: "follows any reference through referenceOn and referenceTargetUncounted, and names the two dynamic ones only " +
+			"to call the reach opaque: where they land depends on the evaluation's path",
+	},
 	"generator/dynamic.go | schemaCarriesRef": {
 		Verdict: refReadsWhicheverIsThere, Reads: "$dynamicRef,EffectiveRef()",
 		Why: "a branch carrying any reference is left alone whole rather than read in part",
