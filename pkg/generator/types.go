@@ -2888,6 +2888,18 @@ type File struct {
 	// items -- compiled for the runtime evaluator, which judges the element as
 	// it is held rather than decoding it into the type. See ElementNode.
 	ElementNodes []*ElementNode
+
+	// TreeTypes are the types of this file that read their own identity, each of
+	// which declares SchemagenJSONTree: the exported reading of its tree that
+	// another package of a multi-package run compares its values by, since it
+	// cannot call the unexported jsonIdentity. See resolveIdentityPlans.
+	TreeTypes []TreeType
+}
+
+// TreeType is a type of the file that declares SchemagenJSONTree. See
+// File.TreeTypes.
+type TreeType struct {
+	Name string
 }
 
 // ElementNode is the schema of a type, compiled for the runtime evaluator: what

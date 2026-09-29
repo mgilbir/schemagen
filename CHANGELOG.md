@@ -373,6 +373,10 @@
   about a quarter less CPU. A struct's decode and encode no longer instantiate
   a generic helper per struct type, and the helpers they call on every member
   are not inlined into each type's methods.
+- A value of a type another package of the same run generated is compared --
+  `const`, `enum`, `uniqueItems`, an element judged as it is held -- by that
+  type's new exported `SchemagenJSONTree` method, rather than by what its
+  `MarshalJSON` writes. See "Several Schemas, Several Packages" in the README.
 - An element held as decoded JSON whose sub-schema has a type of its own -- a
   tuple position of a `[]any`, an element `contains` counts, an inferred
   array's items and tail -- is judged as it is held, by that schema compiled for

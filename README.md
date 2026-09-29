@@ -996,6 +996,17 @@ Notes:
   owning package declares nothing for is an error rather than a copy.
 - The mode currently requires `--validation static`, and `--package` does not
   apply (each package is named after its import path).
+- A generated type whose values a `const`, an `enum` or a `uniqueItems`
+  compares declares `SchemagenJSONTree() (any, error)`: the value as `encoding/json`
+  decodes the JSON its `MarshalJSON` writes into an `any` (`map[string]any`,
+  `[]any`, `string`, `bool`, `nil`, `json.Number`), read off the value rather
+  than written out and decoded. A package compares another package's values
+  through it, since it cannot call that package's unexported helpers; in a run
+  of several packages (this mode and `--shared-types`) every struct, and every
+  type with a `MarshalJSON` of its own, declares it -- any other type is read by
+  its Go kind, which needs nothing from it. The name is reserved: a property that would
+  be spelled `SchemagenJSONTree` is renamed, and a `--field-map` override to it
+  is refused, as for `Validate` and `MarshalJSON`.
 
 ### Config File
 

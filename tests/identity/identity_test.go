@@ -495,6 +495,16 @@ func TestValidateWritesNothing(t *testing.T) {
 // and how many of that package's blocks ran.
 func validateUnderCoverage(t *testing.T, root, dir string, args []string, want string) ([]string, int) {
 	t.Helper()
+	// The module is named after dir and so is the package in it: a coverage
+	// profile names the package's files by its import path.
+	return profileWrites(t, runUnderCoverage(t, root, args, want), root, "ex.test/"+dir, []string{dir})
+}
+
+// runUnderCoverage builds root's ./covdrv with coverage over the whole module,
+// runs it with args after the counters directory, checks it printed want, and
+// returns the coverage profile it wrote.
+func runUnderCoverage(t *testing.T, root string, args []string, want string) string {
+	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	bin := filepath.Join(root, "covdrv.bin")
@@ -516,11 +526,22 @@ func validateUnderCoverage(t *testing.T, root, dir string, args []string, want s
 	if out, err := textfmt.CombinedOutput(); err != nil {
 		t.Fatalf("reading the counters: %v\n%s", err, out)
 	}
-	// The module is named after dir and so is the package in it: a coverage
-	// profile names the package's files by its import path.
-	writes, executed, err := executedWrites(profile, filepath.Join(root, dir), "/"+dir+"/"+dir+"/")
-	if err != nil {
-		t.Fatal(err)
+	return profile
+}
+
+// profileWrites is executedWrites over each of pkgs, directories of the module
+// at root, whose path is module.
+func profileWrites(t *testing.T, profile, root, module string, pkgs []string) ([]string, int) {
+	t.Helper()
+	var writes []string
+	executed := 0
+	for _, pkg := range pkgs {
+		w, n, err := executedWrites(profile, filepath.Join(root, pkg), module+"/"+pkg+"/")
+		if err != nil {
+			t.Fatal(err)
+		}
+		writes = append(writes, w...)
+		executed += n
 	}
 	return writes, executed
 }
@@ -787,6 +808,146 @@ func main() {
 	for i, r := range decoded {
 		if err := r.Validate(); (err == nil) != docs[i].valid {
 			fmt.Println("decoded:", docs[i].doc, "valid:", docs[i].valid, "Validate:", err)
+			os.Exit(1)
+		}
+	}
+	if err := coverage.WriteCountersDir(os.Args[1]); err != nil {
+		panic(err)
+	}
+	fmt.Println("PASS")
+}
+`
+
+// TestAnotherPackagesValuesAreComparedWithoutWriting is TestValidateWritesNothing
+// across packages. A package generated beside another in one run compares
+// values of the other's types -- uniqueItems over them, and elements it judges
+// as it holds them -- and it cannot call their jsonIdentity, which is
+// unexported: it used to read them off what their MarshalJSON wrote. Each such
+// type now declares SchemagenJSONTree, and they are read by that. Under
+// --schema-package the two are separate packages; under --shared-types they are
+// one, the control. Validate runs with coverage over both packages' code, over
+// decoded documents and values built in Go, holds each to its verdict, and must
+// write nothing out.
+func TestAnotherPackagesValuesAreComparedWithoutWriting(t *testing.T) {
+	if testing.Short() {
+		t.Skip("generates, compiles and runs two packages with coverage")
+	}
+	t.Parallel()
+	src := t.TempDir()
+	schemaPath := filepath.Join(src, "schema.json")
+	otherPath := filepath.Join(src, "other.json")
+	writeCrossFile(t, schemaPath, crossCompareSchema)
+	writeCrossFile(t, otherPath, crossCompareOther)
+	bin := schemagenBinary(t)
+	for _, c := range []struct {
+		name  string
+		args  func(out string) []string
+		pkgs  []string
+		other string
+	}{
+		{"schema-package", func(out string) []string {
+			return []string{"generate", schemaPath, otherPath, "-o", out,
+				"--schema-package", "https://ex.test/schema.json=ex.test/xp/gen",
+				"--schema-package", "https://ex.test/other.json=ex.test/xp/other",
+				"--root-name", "schema.json=Root", "--root-name", "other.json=Other"}
+		}, []string{"gen", "other"}, "other"},
+		{"shared-types", func(out string) []string {
+			return []string{"generate", schemaPath, otherPath, "-o", filepath.Join(out, "gen"), "-p", "gen", "--shared-types",
+				"--root-name", "schema.json=Root", "--root-name", "other.json=Other"}
+		}, []string{"gen"}, "gen"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			out := t.TempDir()
+			runSchemagen(t, bin, c.args(out)...)
+			if err := writeTestGoMod(out, "ex.test/xp"); err != nil {
+				t.Fatal(err)
+			}
+			driver := strings.ReplaceAll(crossCompareDriver, "@OTHER@", c.other)
+			if c.other == "gen" {
+				driver = strings.Replace(driver, "\tother \"ex.test/xp/gen\"\n", "", 1)
+				driver = strings.ReplaceAll(driver, "other.", "gen.")
+			}
+			if err := os.MkdirAll(filepath.Join(out, "covdrv"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(out, "covdrv", "main.go"), []byte(driver), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			writes, executed := profileWrites(t, runUnderCoverage(t, out, nil, "PASS"), out, "ex.test/xp", c.pkgs)
+			if executed < 50 {
+				t.Fatalf("only %d blocks of the generated packages ran during Validate; the counters are not reading them", executed)
+			}
+			if len(writes) > 0 {
+				t.Errorf("Validate wrote values out to compare another package's, %d places:\n\t%s", len(writes), strings.Join(writes, "\n\t"))
+			}
+		})
+	}
+}
+
+const crossCompareSchema = `{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://ex.test/schema.json","type":"object",
+ "properties":{"items":{"type":"array","uniqueItems":true,"items":{"$ref":"other.json#/$defs/Item"}},
+               "tup":{"type":"array","prefixItems":[{"$ref":"other.json#/$defs/Item"}]},
+               "one":{"$ref":"other.json#/$defs/Item"}}}`
+
+const crossCompareOther = `{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://ex.test/other.json","type":"object",
+ "$defs":{"Item":{"type":"object","properties":{"a":{"type":"integer","minimum":1},"b":{"type":"array","items":{"type":"string"}},"n":{"type":["string","null"]}}}}}`
+
+const crossCompareDriver = `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"runtime/coverage"
+
+	gen "ex.test/xp/gen"
+	other "ex.test/xp/@OTHER@"
+)
+
+func main() {
+	docs := []struct {
+		doc   string
+		valid bool
+	}{
+		{` + "`" + `{"items":[{"a":1,"b":["x"]},{"a":2},{"a":1,"n":null},{"b":["x"],"a":1,"n":"y"}],"tup":[{"a":3}]}` + "`" + `, true},
+		{` + "`" + `{"items":[{"a":1,"b":["x"]},{"b":["x"],"a":1.0}]}` + "`" + `, false},
+		{` + "`" + `{"items":[{"n":null},{"n":null}]}` + "`" + `, false},
+		{` + "`" + `{"tup":[{"a":0}]}` + "`" + `, false},
+	}
+	var decoded []gen.Root
+	for _, d := range docs {
+		var r gen.Root
+		if err := json.Unmarshal([]byte(d.doc), &r); err != nil {
+			fmt.Println("decode:", d.doc, err)
+			os.Exit(1)
+		}
+		decoded = append(decoded, r)
+	}
+	one, two := int64(1), int64(2)
+	built := []struct {
+		r     gen.Root
+		valid bool
+	}{
+		{gen.Root{Items: []other.Item{{A: &one}, {A: &two}}, Tup: []any{other.Item{A: &two}}}, true},
+		// An optional property's keywords are judged where the document wrote
+		// it, which a value built in Go never says; so the duplicate is not
+		// looked at, and its elements are read only by the tuple below.
+		{gen.Root{Items: []other.Item{{A: &one, B: []string{"x"}}, {A: &one, B: []string{"x"}}}}, true},
+		{gen.Root{Tup: []any{&other.Item{A: new(int64)}}}, false},
+	}
+	if err := coverage.ClearCounters(); err != nil {
+		panic(err)
+	}
+	for i, r := range decoded {
+		if err := r.Validate(); (err == nil) != docs[i].valid {
+			fmt.Println("decoded:", docs[i].doc, "valid:", docs[i].valid, "Validate:", err)
+			os.Exit(1)
+		}
+	}
+	for i, b := range built {
+		if err := b.r.Validate(); (err == nil) != b.valid {
+			fmt.Println("built:", i, "valid:", b.valid, "Validate:", err)
 			os.Exit(1)
 		}
 	}

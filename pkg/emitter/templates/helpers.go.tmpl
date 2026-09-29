@@ -4874,6 +4874,11 @@ func jsonTreeReflect(rv reflect.Value, m *jsonValidation) (any, error) {
 	if rv.CanAddr() && reflect.PointerTo(t).Implements(jsonIdentifierType) {
 		return jsonTreeOfIdentifier(rv.Addr().Interface().(jsonIdentifier), m)
 	}
+	if rv.CanAddr() && reflect.PointerTo(t).Implements(jsonTreeHolderType) {
+		// A type another package of the run generated, read by its own
+		// reading. See jsonTreeHolder.
+		return rv.Addr().Interface().(jsonTreeHolder).SchemagenJSONTree()
+	}
 	if t.Kind() == reflect.Pointer {
 		if rv.IsNil() {
 			return nil, nil
@@ -5144,12 +5149,21 @@ func jsonIDAnyMap(obj map[string]any, m *jsonValidation) (jsonID, error) {
 
 // jsonTextMarshaler is encoding.TextMarshaler, spelled here so that the
 // package need not import encoding for one interface.
+// jsonTreeHolder is a type of another package generated in the same run, which
+// reads its own tree but cannot be asked through jsonIdentifier, whose method
+// is unexported: its identity is read off its exported SchemagenJSONTree
+// rather than off what its MarshalJSON writes.
+type jsonTreeHolder interface {
+	SchemagenJSONTree() (any, error)
+}
+
 type jsonTextMarshaler interface {
 	MarshalText() ([]byte, error)
 }
 
 var (
 	jsonIdentifierType    = reflect.TypeFor[jsonIdentifier]()
+	jsonTreeHolderType    = reflect.TypeFor[jsonTreeHolder]()
 	jsonMarshalerType     = reflect.TypeFor[json.Marshaler]()
 	jsonTextMarshalerType = reflect.TypeFor[jsonTextMarshaler]()
 	jsonNumberType        = reflect.TypeFor[json.Number]()
@@ -5173,6 +5187,15 @@ func jsonIDReflect(rv reflect.Value, m *jsonValidation) (jsonID, error) {
 	}
 	if rv.CanAddr() && reflect.PointerTo(t).Implements(jsonIdentifierType) {
 		return rv.Addr().Interface().(jsonIdentifier).jsonIdentity(m)
+	}
+	if rv.CanAddr() && reflect.PointerTo(t).Implements(jsonTreeHolderType) {
+		// A type another package of the run generated: its tree, read by its
+		// own reading, which is decoded JSON. See jsonTreeHolder.
+		tree, err := rv.Addr().Interface().(jsonTreeHolder).SchemagenJSONTree()
+		if err != nil {
+			return jsonID{}, err
+		}
+		return jsonIDAny(tree, m)
 	}
 	if t.Kind() == reflect.Pointer {
 		if rv.IsNil() {

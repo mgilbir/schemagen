@@ -1639,3 +1639,12 @@ func (u UntypedFormatPositions) Validate() error {
 // _etUntypedFormatPositionsTupleItem0 is the schema of UntypedFormatPositionsTupleItem0, compiled for judging an element held as
 // decoded JSON against it.
 var _etUntypedFormatPositionsTupleItem0 = _schemaNode{}
+
+// SchemagenJSONTree returns u as encoding/json decodes the JSON its
+// MarshalJSON writes into an any -- map[string]any, []any, string, bool, nil and
+// json.Number -- read off the value rather than written out and decoded. Another
+// package generated in the same run compares values of this type by it (const,
+// enum, uniqueItems) without encoding them. Its result is the caller's.
+func (u *UntypedFormatPositionsTupleItem0) SchemagenJSONTree() (any, error) {
+	return jsonTreeOfIdentifier(u, nil)
+}

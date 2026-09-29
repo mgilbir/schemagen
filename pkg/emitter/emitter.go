@@ -232,6 +232,7 @@ func (e *Emitter) Emit(f *generator.File) ([]byte, error) {
 		UnresolvedRefs:       f.UnresolvedRefs,
 		UndeclaredRefTypes:   f.UndeclaredRefTypes,
 		ElementNodes:         f.ElementNodes,
+		TreeTypes:            f.TreeTypes,
 	}
 
 	var buf bytes.Buffer
@@ -586,6 +587,8 @@ type fileData struct {
 	UndeclaredRefTypes []generator.UndeclaredRefType
 	// ElementNodes are declared after the types. See generator.ElementNode.
 	ElementNodes []*generator.ElementNode
+	// TreeTypes declare SchemagenJSONTree. See generator.File.TreeTypes.
+	TreeTypes []generator.TreeType
 }
 
 func (d fileData) HasValidationCapability() bool {

@@ -2361,3 +2361,12 @@ func (n NullableFormatPositions) Validate() error {
 var _etNullableFormatPositionsTupleItem0 = _schemaNode{
 	Type: []string{"string", "null"},
 }
+
+// SchemagenJSONTree returns n as encoding/json decodes the JSON its
+// MarshalJSON writes into an any -- map[string]any, []any, string, bool, nil and
+// json.Number -- read off the value rather than written out and decoded. Another
+// package generated in the same run compares values of this type by it (const,
+// enum, uniqueItems) without encoding them. Its result is the caller's.
+func (n *NullableFormatPositionsTupleItem0) SchemagenJSONTree() (any, error) {
+	return jsonTreeOfIdentifier(n, nil)
+}

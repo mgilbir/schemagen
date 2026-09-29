@@ -16,6 +16,7 @@ var reservedFieldNames = map[string]string{
 	"MarshalJSON":          "the generated MarshalJSON method",
 	"UnmarshalJSON":        "the generated UnmarshalJSON method",
 	"SetDefaults":          "the generated SetDefaults method",
+	"SchemagenJSONTree":    "the generated SchemagenJSONTree method",
 	"AdditionalProperties": "the generated additional-properties overflow field",
 	"PatternProperties":    "the generated pattern-properties overflow field",
 }
@@ -32,6 +33,7 @@ var generatedMemberNames = []string{
 	"MarshalJSON",
 	"UnmarshalJSON",
 	"SetDefaults",
+	"SchemagenJSONTree",
 	"AdditionalProperties",
 	"PatternProperties",
 }

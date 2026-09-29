@@ -6,7 +6,7 @@ package emitter
 // guardTableTemplatesHash is gocontext.TemplatesHash of the templates this
 // table was computed from. New refuses to start if the embedded templates
 // hash to anything else.
-const guardTableTemplatesHash = "crc32c:128556ca"
+const guardTableTemplatesHash = "crc32c:db73c256"
 
 // guardTable is every output action of every template and the guard for the
 // Go context it writes into. See internal/gocontext.
@@ -1384,6 +1384,10 @@ var guardTable = []guardEntry{
 	{"struct_identity_fields", 25382, "_goCode"},
 	{"struct_identity_fields", 25431, "_goCode"},
 	{"struct_identity_fields", 25458, "_goCode"},
+	{"tree_method", 7029, "_goComment"},
+	{"tree_method", 7400, "_goCode"},
+	{"tree_method", 7411, "_goCode"},
+	{"tree_method", 7486, "_goCode"},
 	{"tuple_item_case", 95317, "_goCode"},
 	{"tuple_item_case", 95340, "_goCode"},
 	{"tuple_item_case", 95351, "_goFormat"},

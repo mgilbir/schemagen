@@ -263,6 +263,8 @@ var helperIdentifiers = []string{
 	"jsonTreeEqual",
 	"jsonIDJSON",
 	"jsonTypeErrorFor",
+	"jsonTreeHolder",
+	"jsonTreeHolderType",
 	"jsonMarshalerErrFor",
 	"jsonIDObjectOf",
 	"jsonNotJSON",

@@ -432,3 +432,12 @@ var _etEventRecordItem2 = _schemaNode{
 	Required: []string{"level"},
 	Type:     []string{"object"},
 }
+
+// SchemagenJSONTree returns e as encoding/json decodes the JSON its
+// MarshalJSON writes into an any -- map[string]any, []any, string, bool, nil and
+// json.Number -- read off the value rather than written out and decoded. Another
+// package generated in the same run compares values of this type by it (const,
+// enum, uniqueItems) without encoding them. Its result is the caller's.
+func (e *EventRecordItem2) SchemagenJSONTree() (any, error) {
+	return jsonTreeOfIdentifier(e, nil)
+}

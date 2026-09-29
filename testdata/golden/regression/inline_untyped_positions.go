@@ -1365,3 +1365,12 @@ func (i InlineUntypedPositions) Validate() error {
 var _etInlineUntypedPositionsSlotItem0 = _schemaNode{
 	Minimum: _floatPtr(5),
 }
+
+// SchemagenJSONTree returns i as encoding/json decodes the JSON its
+// MarshalJSON writes into an any -- map[string]any, []any, string, bool, nil and
+// json.Number -- read off the value rather than written out and decoded. Another
+// package generated in the same run compares values of this type by it (const,
+// enum, uniqueItems) without encoding them. Its result is the caller's.
+func (i *InlineUntypedPositionsSlotItem0) SchemagenJSONTree() (any, error) {
+	return jsonTreeOfIdentifier(i, nil)
+}

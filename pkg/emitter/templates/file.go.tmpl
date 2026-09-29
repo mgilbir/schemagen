@@ -44,6 +44,9 @@ import (
 {{- range .ElementNodes}}
 {{template "element_node" .}}
 {{end}}
+{{- range .TreeTypes}}
+{{template "tree_method" .}}
+{{end}}
 {{- if .HasValidationCapability}}
 {{template "validation_capability" .}}
 {{- end}}

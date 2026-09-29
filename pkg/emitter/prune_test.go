@@ -35,6 +35,9 @@ var helperMinimalityCases = []struct {
 	{"an object-level conditional's const", `{"type":"object","properties":{"k":{}},"if":{"properties":{"k":{"const":1}}},"then":{"required":["x"]}}`, nil},
 	{"an enum held as raw JSON", `{"enum":[{"a":1},"x"]}`, nil},
 	{"uniqueItems over structs", `{"type":"object","properties":{"a":{"type":"array","uniqueItems":true,"items":{"type":"object","properties":{"x":{"type":"string"}}}}}}`, nil},
+	// A property spelled like the exported tree method, on a type that
+	// declares it: the property is renamed rather than colliding.
+	{"a property named SchemagenJSONTree", `{"type":"object","properties":{"SchemagenJSONTree":{"type":"string"},"kids":{"type":"array","uniqueItems":true,"items":{"$ref":"#"}}}}`, nil},
 	{"a contains stating a type", `{"type":"object","properties":{"a":{"type":"array","contains":{"type":"integer"}}}}`, nil},
 	{"a schema held whole", `{"$schema":"https://json-schema.org/draft/2020-12/schema","$dynamicAnchor":"n","not":{"type":"number"},"properties":{"c":{"$dynamicRef":"#n"},"n":{"enum":["a","b"]}}}`, nil},
 	{"patterns and formats", `{"type":"object","properties":{"p":{"type":"string","pattern":"^a+$"},"d":{"type":"string","format":"date-time"},"h":{"type":"string","format":"hostname"}},"patternProperties":{"^x":{"type":"integer"}}}`,

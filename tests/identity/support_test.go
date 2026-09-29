@@ -11,5 +11,6 @@ var (
 	rewriteHelperFile   = testsupport.RewriteHelperFile
 	runSchemagen        = testsupport.RunSchemagen
 	schemagenBinary     = testsupport.SchemagenBinary
+	writeCrossFile      = testsupport.WriteCrossFile
 	writeTestGoMod      = testsupport.WriteTestGoMod
 )

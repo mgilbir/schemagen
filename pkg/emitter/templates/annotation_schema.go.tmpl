@@ -185,3 +185,19 @@ func init() {
 var {{.Var}} = {{.Literal}}
 {{- end}}
 {{- end}}
+
+{{/*
+tree_method declares SchemagenJSONTree on a type that reads its own identity.
+*/}}
+{{define "tree_method"}}
+{{- $recv := receiverName .Name}}
+
+// SchemagenJSONTree returns {{$recv}} as encoding/json decodes the JSON its
+// MarshalJSON writes into an any -- map[string]any, []any, string, bool, nil and
+// json.Number -- read off the value rather than written out and decoded. Another
+// package generated in the same run compares values of this type by it (const,
+// enum, uniqueItems) without encoding them. Its result is the caller's.
+func ({{$recv}} *{{.Name}}) SchemagenJSONTree() (any, error) {
+	return jsonTreeOfIdentifier({{$recv}}, nil)
+}
+{{- end}}

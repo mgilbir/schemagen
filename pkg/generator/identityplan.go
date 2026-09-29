@@ -154,6 +154,15 @@ func (g *Generator) resolveIdentityPlans() {
 		}
 	}
 
+	// Every type that reads its own identity says what its tree is, exported:
+	// the one reading another package can call (see File.TreeTypes).
+	g.output.TreeTypes = nil
+	for _, td := range g.output.TypeDefs {
+		if defHasIdentity(td) {
+			g.output.TreeTypes = append(g.output.TreeTypes, TreeType{Name: td.TypeName()})
+		}
+	}
+
 	g.resolveValidateIn()
 }
 
@@ -314,6 +323,16 @@ func (g *Generator) identityReach() map[string]bool {
 	// functions, reading trees.
 	for _, n := range g.output.ElementNodes {
 		visit(&NamedType{Name: n.TypeName})
+	}
+	// In a run of several packages, another package may compare values of any
+	// type declared here, and it reads their identity through
+	// SchemagenJSONTree, which only a type that reads its own can declare. This
+	// package is generated before the packages that refer to it, so it cannot
+	// know which of its types they compare; every one reads its own.
+	if g.config.CrossPackage != nil {
+		for _, td := range g.output.TypeDefs {
+			visit(&NamedType{Name: td.TypeName()})
+		}
 	}
 	for _, td := range g.output.TypeDefs {
 		switch d := td.(type) {

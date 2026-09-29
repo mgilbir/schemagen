@@ -1029,3 +1029,39 @@ var _etInferredArrayTupleDraft7TupRest = _schemaNode{
 	Required: []string{"b"},
 	Type:     []string{"object"},
 }
+
+// SchemagenJSONTree returns n as encoding/json decodes the JSON its
+// MarshalJSON writes into an any -- map[string]any, []any, string, bool, nil and
+// json.Number -- read off the value rather than written out and decoded. Another
+// package generated in the same run compares values of this type by it (const,
+// enum, uniqueItems) without encoding them. Its result is the caller's.
+func (n *NeedsA) SchemagenJSONTree() (any, error) {
+	return jsonTreeOfIdentifier(n, nil)
+}
+
+// SchemagenJSONTree returns i as encoding/json decodes the JSON its
+// MarshalJSON writes into an any -- map[string]any, []any, string, bool, nil and
+// json.Number -- read off the value rather than written out and decoded. Another
+// package generated in the same run compares values of this type by it (const,
+// enum, uniqueItems) without encoding them. Its result is the caller's.
+func (i *InferredArrayTupleDraft7OneItem) SchemagenJSONTree() (any, error) {
+	return jsonTreeOfIdentifier(i, nil)
+}
+
+// SchemagenJSONTree returns i as encoding/json decodes the JSON its
+// MarshalJSON writes into an any -- map[string]any, []any, string, bool, nil and
+// json.Number -- read off the value rather than written out and decoded. Another
+// package generated in the same run compares values of this type by it (const,
+// enum, uniqueItems) without encoding them. Its result is the caller's.
+func (i *InferredArrayTupleDraft7TupItem0) SchemagenJSONTree() (any, error) {
+	return jsonTreeOfIdentifier(i, nil)
+}
+
+// SchemagenJSONTree returns i as encoding/json decodes the JSON its
+// MarshalJSON writes into an any -- map[string]any, []any, string, bool, nil and
+// json.Number -- read off the value rather than written out and decoded. Another
+// package generated in the same run compares values of this type by it (const,
+// enum, uniqueItems) without encoding them. Its result is the caller's.
+func (i *InferredArrayTupleDraft7TupRest) SchemagenJSONTree() (any, error) {
+	return jsonTreeOfIdentifier(i, nil)
+}
