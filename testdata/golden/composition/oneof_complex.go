@@ -39,7 +39,7 @@ func (e *EmailTarget) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[EmailTarget](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*EmailTarget)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -187,7 +187,7 @@ func (h *HTMLContent) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[HTMLContent](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*HTMLContent)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -351,7 +351,7 @@ func (s *SmsTarget) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[SmsTarget](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*SmsTarget)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -498,7 +498,7 @@ func (t *TextContent) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[TextContent](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*TextContent)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -731,7 +731,7 @@ func (n *Notification) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Notification](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Notification)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -811,7 +811,13 @@ func (n *Notification) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				if oneofHasRequiredFields(_d, _ov, "body") {
 					var candidate *TextContent
 					if err := func(_p **TextContent, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*TextContent, TextContent](_p, _d, _s, (*TextContent).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(TextContent)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						n.Content = &Notification_TextContent{TextContent: candidate}
 						oneofMatched++
@@ -834,7 +840,13 @@ func (n *Notification) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				if oneofHasRequiredFields(_d, _ov, "html") {
 					var candidate *HTMLContent
 					if err := func(_p **HTMLContent, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*HTMLContent, HTMLContent](_p, _d, _s, (*HTMLContent).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(HTMLContent)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						n.Content = &Notification_HTMLContent{HTMLContent: candidate}
 						oneofMatched++
@@ -966,7 +978,13 @@ func (n *Notification) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				if oneofHasRequiredFields(_d, _ov, "email_address") {
 					var candidate *EmailTarget
 					if err := func(_p **EmailTarget, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*EmailTarget, EmailTarget](_p, _d, _s, (*EmailTarget).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(EmailTarget)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						n.Target = &Notification_EmailTarget{EmailTarget: candidate}
 						oneofMatched++
@@ -989,7 +1007,13 @@ func (n *Notification) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				if oneofHasRequiredFields(_d, _ov, "phone_number") {
 					var candidate *SmsTarget
 					if err := func(_p **SmsTarget, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*SmsTarget, SmsTarget](_p, _d, _s, (*SmsTarget).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(SmsTarget)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						n.Target = &Notification_SmsTarget{SmsTarget: candidate}
 						oneofMatched++
@@ -1154,9 +1178,14 @@ func (n Notification) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte
 		switch _sel := n.Content.(type) {
 		case *Notification_TextContent:
 			_out, _err := (func(_v *TextContent, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*TextContent, TextContent](_v, _b, func(_v TextContent, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[TextContent](_v, _b, TextContent.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*TextContent)(nil), true)
+				}
+				return _out, nil
 			})(_sel.TextContent, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling Notification.Content: %w", _err)
@@ -1164,9 +1193,14 @@ func (n Notification) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte
 			return _out, nil
 		case *Notification_HTMLContent:
 			_out, _err := (func(_v *HTMLContent, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*HTMLContent, HTMLContent](_v, _b, func(_v HTMLContent, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[HTMLContent](_v, _b, HTMLContent.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*HTMLContent)(nil), true)
+				}
+				return _out, nil
 			})(_sel.HTMLContent, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling Notification.Content: %w", _err)
@@ -1177,9 +1211,14 @@ func (n Notification) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte
 		switch _sel := n.Target.(type) {
 		case *Notification_EmailTarget:
 			_out, _err := (func(_v *EmailTarget, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*EmailTarget, EmailTarget](_v, _b, func(_v EmailTarget, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[EmailTarget](_v, _b, EmailTarget.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*EmailTarget)(nil), true)
+				}
+				return _out, nil
 			})(_sel.EmailTarget, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling Notification.Target: %w", _err)
@@ -1187,9 +1226,14 @@ func (n Notification) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte
 			return _out, nil
 		case *Notification_SmsTarget:
 			_out, _err := (func(_v *SmsTarget, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*SmsTarget, SmsTarget](_v, _b, func(_v SmsTarget, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[SmsTarget](_v, _b, SmsTarget.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*SmsTarget)(nil), true)
+				}
+				return _out, nil
 			})(_sel.SmsTarget, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling Notification.Target: %w", _err)

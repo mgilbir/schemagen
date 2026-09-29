@@ -1,6 +1,8 @@
 package generator
 
 import (
+	"go/scanner"
+	"go/token"
 	"regexp"
 	"slices"
 	"sort"
@@ -180,6 +182,13 @@ type HelperSet struct {
 	// type another package declares, in a package that states no pattern.
 	Undecided bool
 
+	// Roots is every identifier the package's generated files use, read from
+	// their source. The blocks above decide what the helper file renders; of
+	// that, only the declarations these names reach are kept (see the
+	// emitter's pruneHelpers). Nil, as in a set written by hand rather than read
+	// from source, keeps every declaration of every block rendered.
+	Roots []string
+
 	// FormatHostname pulls in the two hostname checks, which are kept apart
 	// from the rest because they are the only ones that need a dependency the
 	// caller would not otherwise take: golang.org/x/net/idna, for punycode, the
@@ -235,6 +244,7 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.Patterns = mergeSortedUnique(h.Patterns, other.Patterns)
 	h.Quote = h.Quote || other.Quote
 	h.Undecided = h.Undecided || other.Undecided
+	h.Roots = mergeSortedUnique(h.Roots, other.Roots)
 }
 
 // CloseOverCalls adds the blocks the selected blocks themselves call.
@@ -328,6 +338,7 @@ func (h *HelperSet) CloseOverCalls() {
 // a file that is written once. Under-matching breaks the build.
 func HelpersReferencedBy(src string) HelperSet {
 	var set HelperSet
+	set.Roots = identifiersIn(src)
 	// The compiled patterns. A generated file names the package-level variable
 	// each pattern is held in, and the registry PatternVarName filled while the
 	// file was rendered says which pattern that is. So the one reading here is
@@ -500,10 +511,18 @@ func HelpersReferencedBy(src string) HelperSet {
 		set.Canonical = true
 	}
 	// The identity blocks. A file naming anything a block declares takes the
-	// block, and CloseOverCalls the blocks it calls.
+	// block, and CloseOverCalls the blocks it calls. Read off the file's
+	// identifiers, so a name in a comment takes nothing.
+	ids := make(map[string]bool, len(set.Roots))
+	for _, id := range set.Roots {
+		ids[id] = true
+	}
 	for _, b := range identityBlocks {
-		if b.names.MatchString(src) {
-			b.set(&set)
+		for _, d := range b.decls {
+			if ids[d] {
+				b.set(&set)
+				break
+			}
 		}
 	}
 	// jsonNullRule and checkJSONNullsAt come as one block, and the walker's name
@@ -561,7 +580,6 @@ type identityBlock struct {
 	template string
 	set      func(*HelperSet)
 	decls    []string
-	names    *regexp.Regexp
 }
 
 // identityBlocks lists the identity helpers' blocks. A generated file naming
@@ -600,8 +618,7 @@ var identityBlocks = []identityBlock{
 }
 
 func newIdentityBlock(template string, set func(*HelperSet), decls ...string) identityBlock {
-	return identityBlock{template: template, set: set, decls: decls,
-		names: regexp.MustCompile(`\b(?:` + strings.Join(decls, "|") + `)\b`)}
+	return identityBlock{template: template, set: set, decls: decls}
 }
 
 // IdentityBlockDecls returns, for each block of the identity helpers, the
@@ -770,4 +787,29 @@ func wrapProse(text string, width int) string {
 		b.WriteString(word)
 	}
 	return b.String()
+}
+
+// identifiersIn is every identifier Go source uses, sorted and without
+// repeats: its tokens, so that a name in a comment or a string is not one.
+func identifiersIn(src string) []string {
+	var sc scanner.Scanner
+	fset := token.NewFileSet()
+	file := fset.AddFile("", fset.Base(), len(src))
+	sc.Init(file, []byte(src), nil, 0)
+	seen := map[string]bool{}
+	for {
+		_, tok, lit := sc.Scan()
+		if tok == token.EOF {
+			break
+		}
+		if tok == token.IDENT {
+			seen[lit] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for id := range seen {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
 }

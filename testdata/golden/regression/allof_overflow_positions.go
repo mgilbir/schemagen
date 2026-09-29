@@ -114,7 +114,7 @@ func (l *Lower) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Lower](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Lower)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -322,7 +322,7 @@ func (a AllOfOverflowPositionsItemsItem) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(a._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -511,7 +511,7 @@ func (a *AllOfOverflowPositionsNamedKey) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfOverflowPositionsNamedKey](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfOverflowPositionsNamedKey)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -798,7 +798,7 @@ func (a *AllOfOverflowPositionsSoleBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpa
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfOverflowPositionsSoleBranch](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfOverflowPositionsSoleBranch)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -987,7 +987,7 @@ func (a AllOfOverflowPositionsTwoBranches) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(a._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -1078,7 +1078,7 @@ func (a AllOfOverflowPositionsViaRef) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(a._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -1129,7 +1129,7 @@ func (a *AllOfOverflowPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfOverflowPositions](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfOverflowPositions)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1158,7 +1158,13 @@ func (a *AllOfOverflowPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["namedKey"]; _ok {
 		if _err := func(_p **AllOfOverflowPositionsNamedKey, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfOverflowPositionsNamedKey, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfOverflowPositionsNamedKey, AllOfOverflowPositionsNamedKey](_p, _d, _s, (*AllOfOverflowPositionsNamedKey).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfOverflowPositionsNamedKey)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.NamedKey, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "namedKey")
@@ -1167,7 +1173,13 @@ func (a *AllOfOverflowPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["soleBranch"]; _ok {
 		if _err := func(_p **AllOfOverflowPositionsSoleBranch, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfOverflowPositionsSoleBranch, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfOverflowPositionsSoleBranch, AllOfOverflowPositionsSoleBranch](_p, _d, _s, (*AllOfOverflowPositionsSoleBranch).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfOverflowPositionsSoleBranch)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.SoleBranch, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "soleBranch")
@@ -1298,15 +1310,25 @@ func (a AllOfOverflowPositions) appendMemberJSON(_idx int, _key string, _b []byt
 	switch _idx {
 	case 0:
 		return (func(_v *AllOfOverflowPositionsNamedKey, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfOverflowPositionsNamedKey, AllOfOverflowPositionsNamedKey](_v, _b, func(_v AllOfOverflowPositionsNamedKey, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfOverflowPositionsNamedKey](_v, _b, AllOfOverflowPositionsNamedKey.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfOverflowPositionsNamedKey)(nil), true)
+			}
+			return _out, nil
 		})(a.NamedKey, _b)
 	case 1:
 		return (func(_v *AllOfOverflowPositionsSoleBranch, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfOverflowPositionsSoleBranch, AllOfOverflowPositionsSoleBranch](_v, _b, func(_v AllOfOverflowPositionsSoleBranch, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfOverflowPositionsSoleBranch](_v, _b, AllOfOverflowPositionsSoleBranch.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfOverflowPositionsSoleBranch)(nil), true)
+			}
+			return _out, nil
 		})(a.SoleBranch, _b)
 	}
 	return _b, nil

@@ -41,7 +41,7 @@ func (r *RowsItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[RowsItem](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*RowsItem)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -194,7 +194,11 @@ func (r *Rows) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 func (r Rows) appendJSON(_b []byte) ([]byte, error) {
 	return (func(_v Rows, _b []byte) ([]byte, error) {
 		return jsonEncSlice[Rows, RowsItem](_v, _b, func(_v RowsItem, _b []byte) ([]byte, error) {
-			return jsonEncMarshaler[RowsItem](_v, _b, RowsItem.appendJSON, false)
+			_out, _err := _v.appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*RowsItem)(nil), false)
+			}
+			return _out, nil
 		})
 	})(r, _b)
 }
@@ -305,7 +309,7 @@ func (i *ItemConstraints) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ItemConstraints](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ItemConstraints)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an

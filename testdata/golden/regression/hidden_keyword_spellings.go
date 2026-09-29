@@ -41,7 +41,7 @@ func (a *AnyOfSummary) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AnyOfSummary](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AnyOfSummary)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -235,7 +235,7 @@ func (a *AnyOfSummaryFalse) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AnyOfSummaryFalse](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AnyOfSummaryFalse)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -460,7 +460,7 @@ func (h HiddenKeywordSpellingsConstNullBranch) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(h._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -539,7 +539,7 @@ func (h HiddenKeywordSpellingsConstStringBranch) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(h._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -621,7 +621,7 @@ func (h HiddenKeywordSpellingsOneOfConstNull) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(h._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -721,7 +721,7 @@ func (h *HiddenKeywordSpellingsPatternConstNull) decodeJSONAt(_d *jsonDoc, _sp j
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[HiddenKeywordSpellingsPatternConstNull](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*HiddenKeywordSpellingsPatternConstNull)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -934,7 +934,7 @@ func (h *HiddenKeywordSpellingsPatternConstString) decodeJSONAt(_d *jsonDoc, _sp
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[HiddenKeywordSpellingsPatternConstString](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*HiddenKeywordSpellingsPatternConstString)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1138,7 +1138,7 @@ func (h *HiddenKeywordSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[HiddenKeywordSpellings](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*HiddenKeywordSpellings)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1158,7 +1158,13 @@ func (h *HiddenKeywordSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["anyOfSummaryEmptyEnum"]; _ok {
 		if _err := func(_p **AnyOfSummary, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AnyOfSummary, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AnyOfSummary, AnyOfSummary](_p, _d, _s, (*AnyOfSummary).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AnyOfSummary)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&h.AnyOfSummaryEmptyEnum, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "anyOfSummaryEmptyEnum")
@@ -1167,7 +1173,13 @@ func (h *HiddenKeywordSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["anyOfSummaryFalse"]; _ok {
 		if _err := func(_p **AnyOfSummaryFalse, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AnyOfSummaryFalse, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AnyOfSummaryFalse, AnyOfSummaryFalse](_p, _d, _s, (*AnyOfSummaryFalse).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AnyOfSummaryFalse)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&h.AnyOfSummaryFalse, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "anyOfSummaryFalse")
@@ -1197,7 +1209,13 @@ func (h *HiddenKeywordSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["patternConstNull"]; _ok {
 		if _err := func(_p **HiddenKeywordSpellingsPatternConstNull, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **HiddenKeywordSpellingsPatternConstNull, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*HiddenKeywordSpellingsPatternConstNull, HiddenKeywordSpellingsPatternConstNull](_p, _d, _s, (*HiddenKeywordSpellingsPatternConstNull).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(HiddenKeywordSpellingsPatternConstNull)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&h.PatternConstNull, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "patternConstNull")
@@ -1206,7 +1224,13 @@ func (h *HiddenKeywordSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["patternConstString"]; _ok {
 		if _err := func(_p **HiddenKeywordSpellingsPatternConstString, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **HiddenKeywordSpellingsPatternConstString, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*HiddenKeywordSpellingsPatternConstString, HiddenKeywordSpellingsPatternConstString](_p, _d, _s, (*HiddenKeywordSpellingsPatternConstString).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(HiddenKeywordSpellingsPatternConstString)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&h.PatternConstString, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "patternConstString")
@@ -1346,27 +1370,47 @@ func (h HiddenKeywordSpellings) appendMemberJSON(_idx int, _key string, _b []byt
 	switch _idx {
 	case 0:
 		return (func(_v *AnyOfSummary, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AnyOfSummary, AnyOfSummary](_v, _b, func(_v AnyOfSummary, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AnyOfSummary](_v, _b, AnyOfSummary.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AnyOfSummary)(nil), true)
+			}
+			return _out, nil
 		})(h.AnyOfSummaryEmptyEnum, _b)
 	case 1:
 		return (func(_v *AnyOfSummaryFalse, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AnyOfSummaryFalse, AnyOfSummaryFalse](_v, _b, func(_v AnyOfSummaryFalse, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AnyOfSummaryFalse](_v, _b, AnyOfSummaryFalse.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AnyOfSummaryFalse)(nil), true)
+			}
+			return _out, nil
 		})(h.AnyOfSummaryFalse, _b)
 	case 2:
 		return (func(_v *HiddenKeywordSpellingsPatternConstNull, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*HiddenKeywordSpellingsPatternConstNull, HiddenKeywordSpellingsPatternConstNull](_v, _b, func(_v HiddenKeywordSpellingsPatternConstNull, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[HiddenKeywordSpellingsPatternConstNull](_v, _b, HiddenKeywordSpellingsPatternConstNull.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*HiddenKeywordSpellingsPatternConstNull)(nil), true)
+			}
+			return _out, nil
 		})(h.PatternConstNull, _b)
 	case 3:
 		return (func(_v *HiddenKeywordSpellingsPatternConstString, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*HiddenKeywordSpellingsPatternConstString, HiddenKeywordSpellingsPatternConstString](_v, _b, func(_v HiddenKeywordSpellingsPatternConstString, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[HiddenKeywordSpellingsPatternConstString](_v, _b, HiddenKeywordSpellingsPatternConstString.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*HiddenKeywordSpellingsPatternConstString)(nil), true)
+			}
+			return _out, nil
 		})(h.PatternConstString, _b)
 	}
 	return _b, nil

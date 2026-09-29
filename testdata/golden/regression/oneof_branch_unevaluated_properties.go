@@ -48,7 +48,7 @@ func (o *OneOfBranchUnevaluatedPropertiesValueOption0) decodeJSONAt(_d *jsonDoc,
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OneOfBranchUnevaluatedPropertiesValueOption0](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfBranchUnevaluatedPropertiesValueOption0)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -258,7 +258,7 @@ func (o *OneOfBranchUnevaluatedPropertiesValueOption1) decodeJSONAt(_d *jsonDoc,
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OneOfBranchUnevaluatedPropertiesValueOption1](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfBranchUnevaluatedPropertiesValueOption1)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -476,7 +476,7 @@ func (o *OneOfBranchUnevaluatedProperties) decodeJSONAt(_d *jsonDoc, _sp jsonSpa
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OneOfBranchUnevaluatedProperties](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfBranchUnevaluatedProperties)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -540,7 +540,13 @@ func (o *OneOfBranchUnevaluatedProperties) decodeJSONAt(_d *jsonDoc, _sp jsonSpa
 				if oneofHasRequiredFields(_d, _ov, "b") {
 					var candidate *OneOfBranchUnevaluatedPropertiesValueOption0
 					if err := func(_p **OneOfBranchUnevaluatedPropertiesValueOption0, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*OneOfBranchUnevaluatedPropertiesValueOption0, OneOfBranchUnevaluatedPropertiesValueOption0](_p, _d, _s, (*OneOfBranchUnevaluatedPropertiesValueOption0).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(OneOfBranchUnevaluatedPropertiesValueOption0)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						o.Value = &OneOfBranchUnevaluatedProperties_OneOfBranchUnevaluatedPropertiesValueOption0{OneOfBranchUnevaluatedPropertiesValueOption0: candidate}
 						oneofMatched++
@@ -563,7 +569,13 @@ func (o *OneOfBranchUnevaluatedProperties) decodeJSONAt(_d *jsonDoc, _sp jsonSpa
 				if oneofHasRequiredFields(_d, _ov, "a") {
 					var candidate *OneOfBranchUnevaluatedPropertiesValueOption1
 					if err := func(_p **OneOfBranchUnevaluatedPropertiesValueOption1, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*OneOfBranchUnevaluatedPropertiesValueOption1, OneOfBranchUnevaluatedPropertiesValueOption1](_p, _d, _s, (*OneOfBranchUnevaluatedPropertiesValueOption1).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(OneOfBranchUnevaluatedPropertiesValueOption1)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						o.Value = &OneOfBranchUnevaluatedProperties_OneOfBranchUnevaluatedPropertiesValueOption1{OneOfBranchUnevaluatedPropertiesValueOption1: candidate}
 						oneofMatched++
@@ -672,15 +684,25 @@ func (o OneOfBranchUnevaluatedProperties) appendJSON(_b []byte) ([]byte, error) 
 		switch _sel := o.Value.(type) {
 		case *OneOfBranchUnevaluatedProperties_OneOfBranchUnevaluatedPropertiesValueOption0:
 			return (func(_v *OneOfBranchUnevaluatedPropertiesValueOption0, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*OneOfBranchUnevaluatedPropertiesValueOption0, OneOfBranchUnevaluatedPropertiesValueOption0](_v, _b, func(_v OneOfBranchUnevaluatedPropertiesValueOption0, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[OneOfBranchUnevaluatedPropertiesValueOption0](_v, _b, OneOfBranchUnevaluatedPropertiesValueOption0.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*OneOfBranchUnevaluatedPropertiesValueOption0)(nil), true)
+				}
+				return _out, nil
 			})(_sel.OneOfBranchUnevaluatedPropertiesValueOption0, _b)
 		case *OneOfBranchUnevaluatedProperties_OneOfBranchUnevaluatedPropertiesValueOption1:
 			return (func(_v *OneOfBranchUnevaluatedPropertiesValueOption1, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*OneOfBranchUnevaluatedPropertiesValueOption1, OneOfBranchUnevaluatedPropertiesValueOption1](_v, _b, func(_v OneOfBranchUnevaluatedPropertiesValueOption1, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[OneOfBranchUnevaluatedPropertiesValueOption1](_v, _b, OneOfBranchUnevaluatedPropertiesValueOption1.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*OneOfBranchUnevaluatedPropertiesValueOption1)(nil), true)
+				}
+				return _out, nil
 			})(_sel.OneOfBranchUnevaluatedPropertiesValueOption1, _b)
 		}
 	}

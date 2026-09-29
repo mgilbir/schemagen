@@ -95,7 +95,7 @@ func (a *AllOfObjectEnumConstMember) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) err
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfObjectEnumConstMember](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfObjectEnumConstMember)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -261,7 +261,7 @@ func (a *AllOfObjectEnumInline) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfObjectEnumInline](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfObjectEnumInline)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -428,7 +428,7 @@ func (a *AllOfObjectEnumNested) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfObjectEnumNested](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfObjectEnumNested)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -586,7 +586,7 @@ func (a *AllOfObjectEnumPlain) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfObjectEnumPlain](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfObjectEnumPlain)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -742,7 +742,7 @@ func (a *AllOfObjectEnumReordered) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfObjectEnumReordered](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfObjectEnumReordered)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -985,7 +985,7 @@ func (a *AllOfObjectEnumViaRef) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfObjectEnumViaRef](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfObjectEnumViaRef)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1156,7 +1156,7 @@ func (a *AllOfObjectEnum) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfObjectEnum](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfObjectEnum)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1176,7 +1176,13 @@ func (a *AllOfObjectEnum) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["constMember"]; _ok {
 		if _err := func(_p **AllOfObjectEnumConstMember, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfObjectEnumConstMember, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfObjectEnumConstMember, AllOfObjectEnumConstMember](_p, _d, _s, (*AllOfObjectEnumConstMember).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfObjectEnumConstMember)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.ConstMember, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "constMember")
@@ -1185,7 +1191,13 @@ func (a *AllOfObjectEnum) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["inline"]; _ok {
 		if _err := func(_p **AllOfObjectEnumInline, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfObjectEnumInline, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfObjectEnumInline, AllOfObjectEnumInline](_p, _d, _s, (*AllOfObjectEnumInline).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfObjectEnumInline)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.Inline, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "inline")
@@ -1194,7 +1206,13 @@ func (a *AllOfObjectEnum) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["nested"]; _ok {
 		if _err := func(_p **AllOfObjectEnumNested, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfObjectEnumNested, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfObjectEnumNested, AllOfObjectEnumNested](_p, _d, _s, (*AllOfObjectEnumNested).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfObjectEnumNested)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.Nested, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "nested")
@@ -1203,7 +1221,13 @@ func (a *AllOfObjectEnum) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["plain"]; _ok {
 		if _err := func(_p **AllOfObjectEnumPlain, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfObjectEnumPlain, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfObjectEnumPlain, AllOfObjectEnumPlain](_p, _d, _s, (*AllOfObjectEnumPlain).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfObjectEnumPlain)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.Plain, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "plain")
@@ -1212,7 +1236,13 @@ func (a *AllOfObjectEnum) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["reordered"]; _ok {
 		if _err := func(_p **AllOfObjectEnumReordered, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfObjectEnumReordered, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfObjectEnumReordered, AllOfObjectEnumReordered](_p, _d, _s, (*AllOfObjectEnumReordered).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfObjectEnumReordered)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.Reordered, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "reordered")
@@ -1228,7 +1258,13 @@ func (a *AllOfObjectEnum) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["viaRef"]; _ok {
 		if _err := func(_p **AllOfObjectEnumViaRef, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfObjectEnumViaRef, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfObjectEnumViaRef, AllOfObjectEnumViaRef](_p, _d, _s, (*AllOfObjectEnumViaRef).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfObjectEnumViaRef)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.ViaRef, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "viaRef")
@@ -1345,39 +1381,69 @@ func (a AllOfObjectEnum) appendMemberJSON(_idx int, _key string, _b []byte) ([]b
 	switch _idx {
 	case 0:
 		return (func(_v *AllOfObjectEnumConstMember, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfObjectEnumConstMember, AllOfObjectEnumConstMember](_v, _b, func(_v AllOfObjectEnumConstMember, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfObjectEnumConstMember](_v, _b, AllOfObjectEnumConstMember.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfObjectEnumConstMember)(nil), true)
+			}
+			return _out, nil
 		})(a.ConstMember, _b)
 	case 1:
 		return (func(_v *AllOfObjectEnumInline, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfObjectEnumInline, AllOfObjectEnumInline](_v, _b, func(_v AllOfObjectEnumInline, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfObjectEnumInline](_v, _b, AllOfObjectEnumInline.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfObjectEnumInline)(nil), true)
+			}
+			return _out, nil
 		})(a.Inline, _b)
 	case 2:
 		return (func(_v *AllOfObjectEnumNested, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfObjectEnumNested, AllOfObjectEnumNested](_v, _b, func(_v AllOfObjectEnumNested, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfObjectEnumNested](_v, _b, AllOfObjectEnumNested.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfObjectEnumNested)(nil), true)
+			}
+			return _out, nil
 		})(a.Nested, _b)
 	case 3:
 		return (func(_v *AllOfObjectEnumPlain, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfObjectEnumPlain, AllOfObjectEnumPlain](_v, _b, func(_v AllOfObjectEnumPlain, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfObjectEnumPlain](_v, _b, AllOfObjectEnumPlain.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfObjectEnumPlain)(nil), true)
+			}
+			return _out, nil
 		})(a.Plain, _b)
 	case 4:
 		return (func(_v *AllOfObjectEnumReordered, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfObjectEnumReordered, AllOfObjectEnumReordered](_v, _b, func(_v AllOfObjectEnumReordered, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfObjectEnumReordered](_v, _b, AllOfObjectEnumReordered.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfObjectEnumReordered)(nil), true)
+			}
+			return _out, nil
 		})(a.Reordered, _b)
 	case 5:
 		return (func(_v *AllOfObjectEnumViaRef, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfObjectEnumViaRef, AllOfObjectEnumViaRef](_v, _b, func(_v AllOfObjectEnumViaRef, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfObjectEnumViaRef](_v, _b, AllOfObjectEnumViaRef.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfObjectEnumViaRef)(nil), true)
+			}
+			return _out, nil
 		})(a.ViaRef, _b)
 	}
 	return _b, nil

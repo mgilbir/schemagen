@@ -38,7 +38,7 @@ func (i *InferredArrayRootItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[InferredArrayRootItem](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*InferredArrayRootItem)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -111,9 +111,9 @@ func (i InferredArrayRootItem) appendMemberJSON(_idx int, _key string, _b []byte
 func (i *InferredArrayRootItem) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 	_o := jsonIDObj{m: _m}
 	for _key, _member := range i.AdditionalProperties {
-		_o.held(_key, _member)
+		_o.idHeld(_key, _member)
 	}
-	return _o.id(i.jsonIdentityMember, _m)
+	return _o.idOf(i.jsonIdentityMember, _m)
 }
 
 // jsonIdentityMember reads the member of i numbered idx, as

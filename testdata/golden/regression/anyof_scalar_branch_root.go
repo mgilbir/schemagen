@@ -79,7 +79,7 @@ func (a AnyOfScalarBranchRoot) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(a._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict

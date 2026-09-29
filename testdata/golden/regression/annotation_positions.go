@@ -170,7 +170,7 @@ func (a AnnDynamic) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(a._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -523,7 +523,7 @@ func (a AnnRuntime) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(a._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -579,7 +579,7 @@ func (a *AnnStruct) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AnnStruct](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AnnStruct)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1209,7 +1209,7 @@ func (d DepRuntime) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(d._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -1257,7 +1257,7 @@ func (d *DepStruct) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[DepStruct](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*DepStruct)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1800,7 +1800,7 @@ func (p PlainRuntime) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(p._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -1845,7 +1845,7 @@ func (p *PlainStruct) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[PlainStruct](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*PlainStruct)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -2080,7 +2080,7 @@ func (a *AnnotationPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AnnotationPositions](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AnnotationPositions)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -2205,7 +2205,13 @@ func (a *AnnotationPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["struct"]; _ok {
 		if _err := func(_p **AnnStruct, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AnnStruct, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AnnStruct, AnnStruct](_p, _d, _s, (*AnnStruct).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AnnStruct)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.Struct, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "struct")
@@ -2214,7 +2220,13 @@ func (a *AnnotationPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["structPlain"]; _ok {
 		if _err := func(_p **PlainStruct, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **PlainStruct, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*PlainStruct, PlainStruct](_p, _d, _s, (*PlainStruct).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(PlainStruct)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.StructPlain, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "structPlain")
@@ -2317,11 +2329,11 @@ func (a AnnotationPositions) appendJSON(_b []byte) ([]byte, error) {
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range a._jsonNulls {
-				_cur, _present, _err := _o.value(_k, a.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, a.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -2516,15 +2528,25 @@ func (a AnnotationPositions) appendMemberJSON(_idx int, _key string, _b []byte) 
 	switch _idx {
 	case 8:
 		return (func(_v *AnnStruct, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AnnStruct, AnnStruct](_v, _b, func(_v AnnStruct, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AnnStruct](_v, _b, AnnStruct.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AnnStruct)(nil), true)
+			}
+			return _out, nil
 		})(a.Struct, _b)
 	case 9:
 		return (func(_v *PlainStruct, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*PlainStruct, PlainStruct](_v, _b, func(_v PlainStruct, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[PlainStruct](_v, _b, PlainStruct.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*PlainStruct)(nil), true)
+			}
+			return _out, nil
 		})(a.StructPlain, _b)
 	}
 	return _b, nil

@@ -57,7 +57,7 @@ func (c *Circle) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Circle](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Circle)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -240,7 +240,7 @@ func (r *Rectangle) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Rectangle](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Rectangle)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -464,7 +464,7 @@ func (c *CanvasShapesItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[CanvasShapesItem](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*CanvasShapesItem)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -504,7 +504,13 @@ func (c *CanvasShapesItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			case "circle":
 				var candidate *Circle
 				if err := func(_p **Circle, _d *jsonDoc, _s jsonSpan) error {
-					return jsonDecodePtr[*Circle, Circle](_p, _d, _s, (*Circle).decodeJSONAt)
+					if _d.isNull(_s) {
+						*_p = nil
+						return nil
+					}
+					_v := new(Circle)
+					*_p = _v
+					return _v.decodeJSONAt(_d, _s)
 				}(&candidate, _d, _ov); err != nil {
 					return oneofWrapf(err, "variant Circle: ")
 				}
@@ -512,7 +518,13 @@ func (c *CanvasShapesItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			case "rectangle":
 				var candidate *Rectangle
 				if err := func(_p **Rectangle, _d *jsonDoc, _s jsonSpan) error {
-					return jsonDecodePtr[*Rectangle, Rectangle](_p, _d, _s, (*Rectangle).decodeJSONAt)
+					if _d.isNull(_s) {
+						*_p = nil
+						return nil
+					}
+					_v := new(Rectangle)
+					*_p = _v
+					return _v.decodeJSONAt(_d, _s)
 				}(&candidate, _d, _ov); err != nil {
 					return oneofWrapf(err, "variant Rectangle: ")
 				}
@@ -553,15 +565,25 @@ func (c CanvasShapesItem) appendJSON(_b []byte) ([]byte, error) {
 		switch _sel := c.Value.(type) {
 		case *CanvasShapesItem_Circle:
 			return (func(_v *Circle, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*Circle, Circle](_v, _b, func(_v Circle, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[Circle](_v, _b, Circle.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*Circle)(nil), true)
+				}
+				return _out, nil
 			})(_sel.Circle, _b)
 		case *CanvasShapesItem_Rectangle:
 			return (func(_v *Rectangle, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*Rectangle, Rectangle](_v, _b, func(_v Rectangle, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[Rectangle](_v, _b, Rectangle.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*Rectangle)(nil), true)
+				}
+				return _out, nil
 			})(_sel.Rectangle, _b)
 		}
 	}
@@ -796,7 +818,7 @@ func (c *Canvas) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Canvas](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Canvas)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -913,7 +935,11 @@ func (c Canvas) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, erro
 	case 1:
 		return (func(_v []CanvasShapesItem, _b []byte) ([]byte, error) {
 			return jsonEncSlice[[]CanvasShapesItem, CanvasShapesItem](_v, _b, func(_v CanvasShapesItem, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[CanvasShapesItem](_v, _b, CanvasShapesItem.appendJSON, false)
+				_out, _err := _v.appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*CanvasShapesItem)(nil), false)
+				}
+				return _out, nil
 			})
 		})(c.Shapes, _b)
 	}

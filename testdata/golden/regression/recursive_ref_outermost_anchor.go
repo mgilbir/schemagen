@@ -44,7 +44,7 @@ func (i *Inner) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Inner](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Inner)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -74,7 +74,13 @@ func (i *Inner) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				}
 				var val *Inner
 				if err := func(_p **Inner, _d *jsonDoc, _s jsonSpan) error {
-					return jsonDecodePtr[*Inner, Inner](_p, _d, _s, (*Inner).decodeJSONAt)
+					if _d.isNull(_s) {
+						*_p = nil
+						return nil
+					}
+					_v := new(Inner)
+					*_p = _v
+					return _v.decodeJSONAt(_d, _s)
 				}(&val, _d, rawVal); err != nil {
 					return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 				}
@@ -142,9 +148,14 @@ func (i Inner) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error
 	switch _idx {
 	case 1073741824:
 		_out, _err := (func(_v *Inner, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*Inner, Inner](_v, _b, func(_v Inner, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[Inner](_v, _b, Inner.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*Inner)(nil), true)
+			}
+			return _out, nil
 		})(i.AdditionalProperties[_key], _b)
 		if _err != nil {
 			return _b, fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), _err)
@@ -290,7 +301,7 @@ func (r Root) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(r._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict

@@ -139,7 +139,7 @@ func (f *ForbiddenWhenK) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ForbiddenWhenK](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ForbiddenWhenK)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -297,7 +297,7 @@ func (n *NoNameAllowed) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[NoNameAllowed](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*NoNameAllowed)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -846,7 +846,7 @@ func (e EnumOutsideDeclaredTypeConstOutsideOneOf) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(e._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -893,7 +893,7 @@ func (e *EnumOutsideDeclaredTypeConstOutsidePattern) decodeJSONAt(_d *jsonDoc, _
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[EnumOutsideDeclaredTypeConstOutsidePattern](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*EnumOutsideDeclaredTypeConstOutsidePattern)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1062,7 +1062,7 @@ func (e *EnumOutsideDeclaredTypeConstOutsideUnevalProps) decodeJSONAt(_d *jsonDo
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[EnumOutsideDeclaredTypeConstOutsideUnevalProps](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*EnumOutsideDeclaredTypeConstOutsideUnevalProps)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1439,7 +1439,7 @@ func (e *EnumOutsideDeclaredTypeEnumPartialPattern) decodeJSONAt(_d *jsonDoc, _s
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[EnumOutsideDeclaredTypeEnumPartialPattern](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*EnumOutsideDeclaredTypeEnumPartialPattern)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1742,7 +1742,7 @@ func (e EnumOutsideDeclaredTypeNotConstOutside) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(e._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -2091,7 +2091,7 @@ func (e *EnumOutsideDeclaredType) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[EnumOutsideDeclaredType](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*EnumOutsideDeclaredType)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -2160,7 +2160,13 @@ func (e *EnumOutsideDeclaredType) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 	if _v, _ok := _raw["constOutsideDependent"]; _ok {
 		if _err := func(_p **ForbiddenWhenK, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ForbiddenWhenK, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ForbiddenWhenK, ForbiddenWhenK](_p, _d, _s, (*ForbiddenWhenK).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ForbiddenWhenK)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&e.ConstOutsideDependent, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "constOutsideDependent")
@@ -2178,7 +2184,13 @@ func (e *EnumOutsideDeclaredType) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 	if _v, _ok := _raw["constOutsideNames"]; _ok {
 		if _err := func(_p **NoNameAllowed, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **NoNameAllowed, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*NoNameAllowed, NoNameAllowed](_p, _d, _s, (*NoNameAllowed).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(NoNameAllowed)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&e.ConstOutsideNames, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "constOutsideNames")
@@ -2194,7 +2206,13 @@ func (e *EnumOutsideDeclaredType) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 	if _v, _ok := _raw["constOutsidePattern"]; _ok {
 		if _err := func(_p **EnumOutsideDeclaredTypeConstOutsidePattern, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **EnumOutsideDeclaredTypeConstOutsidePattern, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*EnumOutsideDeclaredTypeConstOutsidePattern, EnumOutsideDeclaredTypeConstOutsidePattern](_p, _d, _s, (*EnumOutsideDeclaredTypeConstOutsidePattern).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(EnumOutsideDeclaredTypeConstOutsidePattern)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&e.ConstOutsidePattern, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "constOutsidePattern")
@@ -2231,7 +2249,13 @@ func (e *EnumOutsideDeclaredType) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 	if _v, _ok := _raw["constOutsideUnevalProps"]; _ok {
 		if _err := func(_p **EnumOutsideDeclaredTypeConstOutsideUnevalProps, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **EnumOutsideDeclaredTypeConstOutsideUnevalProps, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*EnumOutsideDeclaredTypeConstOutsideUnevalProps, EnumOutsideDeclaredTypeConstOutsideUnevalProps](_p, _d, _s, (*EnumOutsideDeclaredTypeConstOutsideUnevalProps).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(EnumOutsideDeclaredTypeConstOutsideUnevalProps)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&e.ConstOutsideUnevalProps, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "constOutsideUnevalProps")
@@ -2270,7 +2294,13 @@ func (e *EnumOutsideDeclaredType) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 	if _v, _ok := _raw["enumPartialPattern"]; _ok {
 		if _err := func(_p **EnumOutsideDeclaredTypeEnumPartialPattern, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **EnumOutsideDeclaredTypeEnumPartialPattern, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*EnumOutsideDeclaredTypeEnumPartialPattern, EnumOutsideDeclaredTypeEnumPartialPattern](_p, _d, _s, (*EnumOutsideDeclaredTypeEnumPartialPattern).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(EnumOutsideDeclaredTypeEnumPartialPattern)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&e.EnumPartialPattern, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "enumPartialPattern")
@@ -2912,33 +2942,58 @@ func (e EnumOutsideDeclaredType) appendMemberJSON(_idx int, _key string, _b []by
 	switch _idx {
 	case 1:
 		return (func(_v *ForbiddenWhenK, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ForbiddenWhenK, ForbiddenWhenK](_v, _b, func(_v ForbiddenWhenK, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ForbiddenWhenK](_v, _b, ForbiddenWhenK.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ForbiddenWhenK)(nil), true)
+			}
+			return _out, nil
 		})(e.ConstOutsideDependent, _b)
 	case 2:
 		return (func(_v *NoNameAllowed, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*NoNameAllowed, NoNameAllowed](_v, _b, func(_v NoNameAllowed, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[NoNameAllowed](_v, _b, NoNameAllowed.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*NoNameAllowed)(nil), true)
+			}
+			return _out, nil
 		})(e.ConstOutsideNames, _b)
 	case 3:
 		return (func(_v *EnumOutsideDeclaredTypeConstOutsidePattern, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*EnumOutsideDeclaredTypeConstOutsidePattern, EnumOutsideDeclaredTypeConstOutsidePattern](_v, _b, func(_v EnumOutsideDeclaredTypeConstOutsidePattern, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[EnumOutsideDeclaredTypeConstOutsidePattern](_v, _b, EnumOutsideDeclaredTypeConstOutsidePattern.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*EnumOutsideDeclaredTypeConstOutsidePattern)(nil), true)
+			}
+			return _out, nil
 		})(e.ConstOutsidePattern, _b)
 	case 5:
 		return (func(_v *EnumOutsideDeclaredTypeConstOutsideUnevalProps, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*EnumOutsideDeclaredTypeConstOutsideUnevalProps, EnumOutsideDeclaredTypeConstOutsideUnevalProps](_v, _b, func(_v EnumOutsideDeclaredTypeConstOutsideUnevalProps, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[EnumOutsideDeclaredTypeConstOutsideUnevalProps](_v, _b, EnumOutsideDeclaredTypeConstOutsideUnevalProps.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*EnumOutsideDeclaredTypeConstOutsideUnevalProps)(nil), true)
+			}
+			return _out, nil
 		})(e.ConstOutsideUnevalProps, _b)
 	case 7:
 		return (func(_v *EnumOutsideDeclaredTypeEnumPartialPattern, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*EnumOutsideDeclaredTypeEnumPartialPattern, EnumOutsideDeclaredTypeEnumPartialPattern](_v, _b, func(_v EnumOutsideDeclaredTypeEnumPartialPattern, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[EnumOutsideDeclaredTypeEnumPartialPattern](_v, _b, EnumOutsideDeclaredTypeEnumPartialPattern.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*EnumOutsideDeclaredTypeEnumPartialPattern)(nil), true)
+			}
+			return _out, nil
 		})(e.EnumPartialPattern, _b)
 	}
 	return _b, nil

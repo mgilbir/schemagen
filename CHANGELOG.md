@@ -365,6 +365,14 @@
   its code calls: the runtime evaluator and the dynamic checks, which compare
   decoded documents, take none of the reader of Go values, and a schema
   stating no `const`, `enum` or `uniqueItems` for the evaluator takes nothing.
+- The helper file a package is given holds only the declarations its generated
+  code reaches, found by following what each declaration names from what the
+  generated files name; before, it held every declaration of every block the
+  package touched. Over the 625 packages the test corpus generates, the helper
+  files are 858k lines rather than 1.65M, and a cold build of the corpus takes
+  about a quarter less CPU. A struct's decode and encode no longer instantiate
+  a generic helper per struct type, and the helpers they call on every member
+  are not inlined into each type's methods.
 - An element held as decoded JSON whose sub-schema has a type of its own -- a
   tuple position of a `[]any`, an element `contains` counts, an inferred
   array's items and tail -- is judged as it is held, by that schema compiled for

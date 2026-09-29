@@ -39,7 +39,7 @@ func (o *OneOfRootScalarBranchValueOption0) decodeJSONAt(_d *jsonDoc, _sp jsonSp
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OneOfRootScalarBranchValueOption0](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfRootScalarBranchValueOption0)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -269,7 +269,13 @@ func (o *OneOfRootScalarBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				if oneofHasRequiredFields(_d, _ov, "k") {
 					var candidate *OneOfRootScalarBranchValueOption0
 					if err := func(_p **OneOfRootScalarBranchValueOption0, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*OneOfRootScalarBranchValueOption0, OneOfRootScalarBranchValueOption0](_p, _d, _s, (*OneOfRootScalarBranchValueOption0).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(OneOfRootScalarBranchValueOption0)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						o.Value = &OneOfRootScalarBranch_OneOfRootScalarBranchValueOption0{OneOfRootScalarBranchValueOption0: candidate}
 						oneofMatched++
@@ -368,9 +374,14 @@ func (o OneOfRootScalarBranch) appendJSON(_b []byte) ([]byte, error) {
 		switch _sel := o.Value.(type) {
 		case *OneOfRootScalarBranch_OneOfRootScalarBranchValueOption0:
 			return (func(_v *OneOfRootScalarBranchValueOption0, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*OneOfRootScalarBranchValueOption0, OneOfRootScalarBranchValueOption0](_v, _b, func(_v OneOfRootScalarBranchValueOption0, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[OneOfRootScalarBranchValueOption0](_v, _b, OneOfRootScalarBranchValueOption0.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*OneOfRootScalarBranchValueOption0)(nil), true)
+				}
+				return _out, nil
 			})(_sel.OneOfRootScalarBranchValueOption0, _b)
 		case *OneOfRootScalarBranch_String:
 			return (jsonAppendLeaf[string])(_sel.String, _b)

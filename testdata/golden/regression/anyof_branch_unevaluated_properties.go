@@ -41,7 +41,7 @@ func (a *AnyOfBranchUnevaluatedProperties) decodeJSONAt(_d *jsonDoc, _sp jsonSpa
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AnyOfBranchUnevaluatedProperties](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AnyOfBranchUnevaluatedProperties)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an

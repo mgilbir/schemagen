@@ -26,9 +26,9 @@ func sharedHelpersFor(content string) generator.HelperSet {
 	return generator.HelpersReferencedBy(content)
 }
 
-// packageNameOf reads the package clause from generated source, so the helper
+// PackageNameOf reads the package clause from generated source, so the helper
 // file lands in the same package as the file it accompanies.
-func packageNameOf(content string) string {
+func PackageNameOf(content string) string {
 	for _, line := range strings.Split(content, "\n") {
 		if rest, ok := strings.CutPrefix(strings.TrimSpace(line), "package "); ok {
 			return strings.TrimSpace(rest)
@@ -53,7 +53,7 @@ func WriteSharedHelpersErr(dir, content string) error {
 	if err != nil {
 		return fmt.Errorf("creating emitter for helpers: %w", err)
 	}
-	src, needed, err := em.EmitHelpers(packageNameOf(content), set)
+	src, needed, err := em.EmitHelpers(PackageNameOf(content), set)
 	if err != nil {
 		return fmt.Errorf("emitting helpers: %w", err)
 	}

@@ -142,7 +142,7 @@ func (f *ForbiddingSubschemaSpellingsAnyOfNames) decodeJSONAt(_d *jsonDoc, _sp j
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsAnyOfNames](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ForbiddingSubschemaSpellingsAnyOfNames)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -986,7 +986,7 @@ func (f *ForbiddingSubschemaSpellingsInlineDepRequired) decodeJSONAt(_d *jsonDoc
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsInlineDepRequired](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ForbiddingSubschemaSpellingsInlineDepRequired)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1096,7 +1096,7 @@ func (f *ForbiddingSubschemaSpellingsInlineFalseDependent) decodeJSONAt(_d *json
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsInlineFalseDependent](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ForbiddingSubschemaSpellingsInlineFalseDependent)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1204,7 +1204,7 @@ func (f *ForbiddingSubschemaSpellingsInlineFalseNames) decodeJSONAt(_d *jsonDoc,
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsInlineFalseNames](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ForbiddingSubschemaSpellingsInlineFalseNames)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1326,7 +1326,7 @@ func (f *ForbiddingSubschemaSpellingsInlineMaxProps) decodeJSONAt(_d *jsonDoc, _
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsInlineMaxProps](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ForbiddingSubschemaSpellingsInlineMaxProps)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1442,7 +1442,7 @@ func (f *ForbiddingSubschemaSpellingsInlineMinProps) decodeJSONAt(_d *jsonDoc, _
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsInlineMinProps](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ForbiddingSubschemaSpellingsInlineMinProps)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1555,7 +1555,7 @@ func (f *ForbiddingSubschemaSpellingsInlineNotDependent) decodeJSONAt(_d *jsonDo
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsInlineNotDependent](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ForbiddingSubschemaSpellingsInlineNotDependent)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1663,7 +1663,7 @@ func (f *ForbiddingSubschemaSpellingsInlineNotNames) decodeJSONAt(_d *jsonDoc, _
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsInlineNotNames](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ForbiddingSubschemaSpellingsInlineNotNames)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1785,7 +1785,7 @@ func (f *ForbiddingSubschemaSpellingsInlineRequired) decodeJSONAt(_d *jsonDoc, _
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsInlineRequired](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ForbiddingSubschemaSpellingsInlineRequired)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1900,7 +1900,7 @@ func (f *ForbiddingSubschemaSpellingsNotDependent) decodeJSONAt(_d *jsonDoc, _sp
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsNotDependent](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ForbiddingSubschemaSpellingsNotDependent)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -2038,7 +2038,7 @@ func (f ForbiddingSubschemaSpellingsNotEnumBranch) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(f._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -2113,7 +2113,7 @@ func (f ForbiddingSubschemaSpellingsNotFalse) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(f._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -2158,7 +2158,7 @@ func (f *ForbiddingSubschemaSpellingsNotNames) decodeJSONAt(_d *jsonDoc, _sp jso
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsNotNames](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ForbiddingSubschemaSpellingsNotNames)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -2312,7 +2312,7 @@ func (f ForbiddingSubschemaSpellingsNotShallowEnum) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(f._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -2390,7 +2390,7 @@ func (f ForbiddingSubschemaSpellingsNotTypedConst) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(f._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -2438,7 +2438,7 @@ func (f *ForbiddingSubschemaSpellingsNotUnevalProps) decodeJSONAt(_d *jsonDoc, _
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsNotUnevalProps](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ForbiddingSubschemaSpellingsNotUnevalProps)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -2515,11 +2515,11 @@ func (f ForbiddingSubschemaSpellingsNotUnevalProps) appendJSON(_b []byte) ([]byt
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range f._jsonNulls {
-				_cur, _present, _err := _o.value(_k, f.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, f.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -2636,7 +2636,7 @@ func (f *ForbiddingSubschemaSpellingsNullableInlineNames) decodeJSONAt(_d *jsonD
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsNullableInlineNames](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ForbiddingSubschemaSpellingsNullableInlineNames)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -2821,7 +2821,7 @@ func (f *ForbiddingSubschemaSpellingsOkNames) decodeJSONAt(_d *jsonDoc, _sp json
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsOkNames](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ForbiddingSubschemaSpellingsOkNames)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -2946,7 +2946,7 @@ func (f *ForbiddingSubschemaSpellingsOneOfDependent) decodeJSONAt(_d *jsonDoc, _
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsOneOfDependent](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ForbiddingSubschemaSpellingsOneOfDependent)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -3054,7 +3054,7 @@ func (f *ForbiddingSubschemaSpellingsOneOfNames) decodeJSONAt(_d *jsonDoc, _sp j
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsOneOfNames](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ForbiddingSubschemaSpellingsOneOfNames)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -3211,7 +3211,7 @@ func (f ForbiddingSubschemaSpellingsOneOfOneFalse) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(f._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -3259,7 +3259,7 @@ func (f *ForbiddingSubschemaSpellingsOneOfUnevalProps) decodeJSONAt(_d *jsonDoc,
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsOneOfUnevalProps](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ForbiddingSubschemaSpellingsOneOfUnevalProps)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -3336,11 +3336,11 @@ func (f ForbiddingSubschemaSpellingsOneOfUnevalProps) appendJSON(_b []byte) ([]b
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range f._jsonNulls {
-				_cur, _present, _err := _o.value(_k, f.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, f.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -3450,7 +3450,7 @@ func (f *ForbiddingSubschemaSpellingsRefNotNames) decodeJSONAt(_d *jsonDoc, _sp 
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellingsRefNotNames](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ForbiddingSubschemaSpellingsRefNotNames)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -3610,7 +3610,7 @@ func (f ForbiddingSubschemaSpellingsUnionBranchRequired) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(f._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -3740,7 +3740,7 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ForbiddingSubschemaSpellings](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ForbiddingSubschemaSpellings)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -3774,7 +3774,13 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	if _v, _ok := _raw["anyOfNames"]; _ok {
 		if _err := func(_p **ForbiddingSubschemaSpellingsAnyOfNames, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsAnyOfNames, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ForbiddingSubschemaSpellingsAnyOfNames, ForbiddingSubschemaSpellingsAnyOfNames](_p, _d, _s, (*ForbiddingSubschemaSpellingsAnyOfNames).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ForbiddingSubschemaSpellingsAnyOfNames)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&f.AnyOfNames, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "anyOfNames")
@@ -3832,7 +3838,13 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	if _v, _ok := _raw["inlineDepRequired"]; _ok {
 		if _err := func(_p **ForbiddingSubschemaSpellingsInlineDepRequired, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsInlineDepRequired, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ForbiddingSubschemaSpellingsInlineDepRequired, ForbiddingSubschemaSpellingsInlineDepRequired](_p, _d, _s, (*ForbiddingSubschemaSpellingsInlineDepRequired).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ForbiddingSubschemaSpellingsInlineDepRequired)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&f.InlineDepRequired, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "inlineDepRequired")
@@ -3841,7 +3853,13 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	if _v, _ok := _raw["inlineFalseDependent"]; _ok {
 		if _err := func(_p **ForbiddingSubschemaSpellingsInlineFalseDependent, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsInlineFalseDependent, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ForbiddingSubschemaSpellingsInlineFalseDependent, ForbiddingSubschemaSpellingsInlineFalseDependent](_p, _d, _s, (*ForbiddingSubschemaSpellingsInlineFalseDependent).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ForbiddingSubschemaSpellingsInlineFalseDependent)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&f.InlineFalseDependent, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "inlineFalseDependent")
@@ -3850,7 +3868,13 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	if _v, _ok := _raw["inlineFalseNames"]; _ok {
 		if _err := func(_p **ForbiddingSubschemaSpellingsInlineFalseNames, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsInlineFalseNames, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ForbiddingSubschemaSpellingsInlineFalseNames, ForbiddingSubschemaSpellingsInlineFalseNames](_p, _d, _s, (*ForbiddingSubschemaSpellingsInlineFalseNames).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ForbiddingSubschemaSpellingsInlineFalseNames)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&f.InlineFalseNames, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "inlineFalseNames")
@@ -3859,7 +3883,13 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	if _v, _ok := _raw["inlineMaxProps"]; _ok {
 		if _err := func(_p **ForbiddingSubschemaSpellingsInlineMaxProps, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsInlineMaxProps, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ForbiddingSubschemaSpellingsInlineMaxProps, ForbiddingSubschemaSpellingsInlineMaxProps](_p, _d, _s, (*ForbiddingSubschemaSpellingsInlineMaxProps).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ForbiddingSubschemaSpellingsInlineMaxProps)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&f.InlineMaxProps, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "inlineMaxProps")
@@ -3868,7 +3898,13 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	if _v, _ok := _raw["inlineMinProps"]; _ok {
 		if _err := func(_p **ForbiddingSubschemaSpellingsInlineMinProps, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsInlineMinProps, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ForbiddingSubschemaSpellingsInlineMinProps, ForbiddingSubschemaSpellingsInlineMinProps](_p, _d, _s, (*ForbiddingSubschemaSpellingsInlineMinProps).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ForbiddingSubschemaSpellingsInlineMinProps)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&f.InlineMinProps, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "inlineMinProps")
@@ -3877,7 +3913,13 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	if _v, _ok := _raw["inlineNotDependent"]; _ok {
 		if _err := func(_p **ForbiddingSubschemaSpellingsInlineNotDependent, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsInlineNotDependent, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ForbiddingSubschemaSpellingsInlineNotDependent, ForbiddingSubschemaSpellingsInlineNotDependent](_p, _d, _s, (*ForbiddingSubschemaSpellingsInlineNotDependent).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ForbiddingSubschemaSpellingsInlineNotDependent)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&f.InlineNotDependent, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "inlineNotDependent")
@@ -3886,7 +3928,13 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	if _v, _ok := _raw["inlineNotNames"]; _ok {
 		if _err := func(_p **ForbiddingSubschemaSpellingsInlineNotNames, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsInlineNotNames, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ForbiddingSubschemaSpellingsInlineNotNames, ForbiddingSubschemaSpellingsInlineNotNames](_p, _d, _s, (*ForbiddingSubschemaSpellingsInlineNotNames).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ForbiddingSubschemaSpellingsInlineNotNames)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&f.InlineNotNames, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "inlineNotNames")
@@ -3895,7 +3943,13 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	if _v, _ok := _raw["inlineRequired"]; _ok {
 		if _err := func(_p **ForbiddingSubschemaSpellingsInlineRequired, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsInlineRequired, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ForbiddingSubschemaSpellingsInlineRequired, ForbiddingSubschemaSpellingsInlineRequired](_p, _d, _s, (*ForbiddingSubschemaSpellingsInlineRequired).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ForbiddingSubschemaSpellingsInlineRequired)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&f.InlineRequired, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "inlineRequired")
@@ -3918,7 +3972,13 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	if _v, _ok := _raw["notDependent"]; _ok {
 		if _err := func(_p **ForbiddingSubschemaSpellingsNotDependent, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsNotDependent, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ForbiddingSubschemaSpellingsNotDependent, ForbiddingSubschemaSpellingsNotDependent](_p, _d, _s, (*ForbiddingSubschemaSpellingsNotDependent).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ForbiddingSubschemaSpellingsNotDependent)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&f.NotDependent, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "notDependent")
@@ -3941,7 +4001,13 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	if _v, _ok := _raw["notNames"]; _ok {
 		if _err := func(_p **ForbiddingSubschemaSpellingsNotNames, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsNotNames, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ForbiddingSubschemaSpellingsNotNames, ForbiddingSubschemaSpellingsNotNames](_p, _d, _s, (*ForbiddingSubschemaSpellingsNotNames).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ForbiddingSubschemaSpellingsNotNames)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&f.NotNames, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "notNames")
@@ -3971,7 +4037,13 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	if _v, _ok := _raw["notUnevalProps"]; _ok {
 		if _err := func(_p **ForbiddingSubschemaSpellingsNotUnevalProps, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsNotUnevalProps, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ForbiddingSubschemaSpellingsNotUnevalProps, ForbiddingSubschemaSpellingsNotUnevalProps](_p, _d, _s, (*ForbiddingSubschemaSpellingsNotUnevalProps).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ForbiddingSubschemaSpellingsNotUnevalProps)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&f.NotUnevalProps, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "notUnevalProps")
@@ -3980,7 +4052,13 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	if _v, _ok := _raw["nullableInlineNames"]; _ok {
 		if _err := func(_p **ForbiddingSubschemaSpellingsNullableInlineNames, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsNullableInlineNames, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ForbiddingSubschemaSpellingsNullableInlineNames, ForbiddingSubschemaSpellingsNullableInlineNames](_p, _d, _s, (*ForbiddingSubschemaSpellingsNullableInlineNames).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ForbiddingSubschemaSpellingsNullableInlineNames)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&f.NullableInlineNames, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "nullableInlineNames")
@@ -3996,7 +4074,13 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	if _v, _ok := _raw["okNames"]; _ok {
 		if _err := func(_p **ForbiddingSubschemaSpellingsOkNames, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsOkNames, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ForbiddingSubschemaSpellingsOkNames, ForbiddingSubschemaSpellingsOkNames](_p, _d, _s, (*ForbiddingSubschemaSpellingsOkNames).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ForbiddingSubschemaSpellingsOkNames)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&f.OkNames, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "okNames")
@@ -4012,7 +4096,13 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	if _v, _ok := _raw["oneOfDependent"]; _ok {
 		if _err := func(_p **ForbiddingSubschemaSpellingsOneOfDependent, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsOneOfDependent, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ForbiddingSubschemaSpellingsOneOfDependent, ForbiddingSubschemaSpellingsOneOfDependent](_p, _d, _s, (*ForbiddingSubschemaSpellingsOneOfDependent).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ForbiddingSubschemaSpellingsOneOfDependent)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&f.OneOfDependent, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "oneOfDependent")
@@ -4021,7 +4111,13 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	if _v, _ok := _raw["oneOfNames"]; _ok {
 		if _err := func(_p **ForbiddingSubschemaSpellingsOneOfNames, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsOneOfNames, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ForbiddingSubschemaSpellingsOneOfNames, ForbiddingSubschemaSpellingsOneOfNames](_p, _d, _s, (*ForbiddingSubschemaSpellingsOneOfNames).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ForbiddingSubschemaSpellingsOneOfNames)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&f.OneOfNames, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "oneOfNames")
@@ -4044,7 +4140,13 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	if _v, _ok := _raw["oneOfUnevalProps"]; _ok {
 		if _err := func(_p **ForbiddingSubschemaSpellingsOneOfUnevalProps, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsOneOfUnevalProps, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ForbiddingSubschemaSpellingsOneOfUnevalProps, ForbiddingSubschemaSpellingsOneOfUnevalProps](_p, _d, _s, (*ForbiddingSubschemaSpellingsOneOfUnevalProps).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ForbiddingSubschemaSpellingsOneOfUnevalProps)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&f.OneOfUnevalProps, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "oneOfUnevalProps")
@@ -4060,7 +4162,13 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	if _v, _ok := _raw["refNotNames"]; _ok {
 		if _err := func(_p **ForbiddingSubschemaSpellingsRefNotNames, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ForbiddingSubschemaSpellingsRefNotNames, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ForbiddingSubschemaSpellingsRefNotNames, ForbiddingSubschemaSpellingsRefNotNames](_p, _d, _s, (*ForbiddingSubschemaSpellingsRefNotNames).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ForbiddingSubschemaSpellingsRefNotNames)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&f.RefNotNames, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "refNotNames")
@@ -4273,11 +4381,11 @@ func (f ForbiddingSubschemaSpellings) appendJSON(_b []byte) ([]byte, error) {
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range f._jsonNulls {
-				_cur, _present, _err := _o.value(_k, f.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, f.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -4597,111 +4705,201 @@ func (f ForbiddingSubschemaSpellings) appendMemberJSON(_idx int, _key string, _b
 	switch _idx {
 	case 0:
 		return (func(_v *ForbiddingSubschemaSpellingsAnyOfNames, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ForbiddingSubschemaSpellingsAnyOfNames, ForbiddingSubschemaSpellingsAnyOfNames](_v, _b, func(_v ForbiddingSubschemaSpellingsAnyOfNames, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ForbiddingSubschemaSpellingsAnyOfNames](_v, _b, ForbiddingSubschemaSpellingsAnyOfNames.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ForbiddingSubschemaSpellingsAnyOfNames)(nil), true)
+			}
+			return _out, nil
 		})(f.AnyOfNames, _b)
 	case 6:
 		return (func(_v *ForbiddingSubschemaSpellingsInlineDepRequired, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ForbiddingSubschemaSpellingsInlineDepRequired, ForbiddingSubschemaSpellingsInlineDepRequired](_v, _b, func(_v ForbiddingSubschemaSpellingsInlineDepRequired, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ForbiddingSubschemaSpellingsInlineDepRequired](_v, _b, ForbiddingSubschemaSpellingsInlineDepRequired.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ForbiddingSubschemaSpellingsInlineDepRequired)(nil), true)
+			}
+			return _out, nil
 		})(f.InlineDepRequired, _b)
 	case 7:
 		return (func(_v *ForbiddingSubschemaSpellingsInlineFalseDependent, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ForbiddingSubschemaSpellingsInlineFalseDependent, ForbiddingSubschemaSpellingsInlineFalseDependent](_v, _b, func(_v ForbiddingSubschemaSpellingsInlineFalseDependent, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ForbiddingSubschemaSpellingsInlineFalseDependent](_v, _b, ForbiddingSubschemaSpellingsInlineFalseDependent.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ForbiddingSubschemaSpellingsInlineFalseDependent)(nil), true)
+			}
+			return _out, nil
 		})(f.InlineFalseDependent, _b)
 	case 8:
 		return (func(_v *ForbiddingSubschemaSpellingsInlineFalseNames, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ForbiddingSubschemaSpellingsInlineFalseNames, ForbiddingSubschemaSpellingsInlineFalseNames](_v, _b, func(_v ForbiddingSubschemaSpellingsInlineFalseNames, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ForbiddingSubschemaSpellingsInlineFalseNames](_v, _b, ForbiddingSubschemaSpellingsInlineFalseNames.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ForbiddingSubschemaSpellingsInlineFalseNames)(nil), true)
+			}
+			return _out, nil
 		})(f.InlineFalseNames, _b)
 	case 9:
 		return (func(_v *ForbiddingSubschemaSpellingsInlineMaxProps, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ForbiddingSubschemaSpellingsInlineMaxProps, ForbiddingSubschemaSpellingsInlineMaxProps](_v, _b, func(_v ForbiddingSubschemaSpellingsInlineMaxProps, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ForbiddingSubschemaSpellingsInlineMaxProps](_v, _b, ForbiddingSubschemaSpellingsInlineMaxProps.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ForbiddingSubschemaSpellingsInlineMaxProps)(nil), true)
+			}
+			return _out, nil
 		})(f.InlineMaxProps, _b)
 	case 10:
 		return (func(_v *ForbiddingSubschemaSpellingsInlineMinProps, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ForbiddingSubschemaSpellingsInlineMinProps, ForbiddingSubschemaSpellingsInlineMinProps](_v, _b, func(_v ForbiddingSubschemaSpellingsInlineMinProps, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ForbiddingSubschemaSpellingsInlineMinProps](_v, _b, ForbiddingSubschemaSpellingsInlineMinProps.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ForbiddingSubschemaSpellingsInlineMinProps)(nil), true)
+			}
+			return _out, nil
 		})(f.InlineMinProps, _b)
 	case 11:
 		return (func(_v *ForbiddingSubschemaSpellingsInlineNotDependent, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ForbiddingSubschemaSpellingsInlineNotDependent, ForbiddingSubschemaSpellingsInlineNotDependent](_v, _b, func(_v ForbiddingSubschemaSpellingsInlineNotDependent, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ForbiddingSubschemaSpellingsInlineNotDependent](_v, _b, ForbiddingSubschemaSpellingsInlineNotDependent.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ForbiddingSubschemaSpellingsInlineNotDependent)(nil), true)
+			}
+			return _out, nil
 		})(f.InlineNotDependent, _b)
 	case 12:
 		return (func(_v *ForbiddingSubschemaSpellingsInlineNotNames, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ForbiddingSubschemaSpellingsInlineNotNames, ForbiddingSubschemaSpellingsInlineNotNames](_v, _b, func(_v ForbiddingSubschemaSpellingsInlineNotNames, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ForbiddingSubschemaSpellingsInlineNotNames](_v, _b, ForbiddingSubschemaSpellingsInlineNotNames.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ForbiddingSubschemaSpellingsInlineNotNames)(nil), true)
+			}
+			return _out, nil
 		})(f.InlineNotNames, _b)
 	case 13:
 		return (func(_v *ForbiddingSubschemaSpellingsInlineRequired, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ForbiddingSubschemaSpellingsInlineRequired, ForbiddingSubschemaSpellingsInlineRequired](_v, _b, func(_v ForbiddingSubschemaSpellingsInlineRequired, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ForbiddingSubschemaSpellingsInlineRequired](_v, _b, ForbiddingSubschemaSpellingsInlineRequired.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ForbiddingSubschemaSpellingsInlineRequired)(nil), true)
+			}
+			return _out, nil
 		})(f.InlineRequired, _b)
 	case 15:
 		return (func(_v *ForbiddingSubschemaSpellingsNotDependent, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ForbiddingSubschemaSpellingsNotDependent, ForbiddingSubschemaSpellingsNotDependent](_v, _b, func(_v ForbiddingSubschemaSpellingsNotDependent, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ForbiddingSubschemaSpellingsNotDependent](_v, _b, ForbiddingSubschemaSpellingsNotDependent.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ForbiddingSubschemaSpellingsNotDependent)(nil), true)
+			}
+			return _out, nil
 		})(f.NotDependent, _b)
 	case 16:
 		return (func(_v *ForbiddingSubschemaSpellingsNotNames, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ForbiddingSubschemaSpellingsNotNames, ForbiddingSubschemaSpellingsNotNames](_v, _b, func(_v ForbiddingSubschemaSpellingsNotNames, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ForbiddingSubschemaSpellingsNotNames](_v, _b, ForbiddingSubschemaSpellingsNotNames.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ForbiddingSubschemaSpellingsNotNames)(nil), true)
+			}
+			return _out, nil
 		})(f.NotNames, _b)
 	case 17:
 		return (func(_v *ForbiddingSubschemaSpellingsNotUnevalProps, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ForbiddingSubschemaSpellingsNotUnevalProps, ForbiddingSubschemaSpellingsNotUnevalProps](_v, _b, func(_v ForbiddingSubschemaSpellingsNotUnevalProps, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ForbiddingSubschemaSpellingsNotUnevalProps](_v, _b, ForbiddingSubschemaSpellingsNotUnevalProps.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ForbiddingSubschemaSpellingsNotUnevalProps)(nil), true)
+			}
+			return _out, nil
 		})(f.NotUnevalProps, _b)
 	case 18:
 		return (func(_v *ForbiddingSubschemaSpellingsNullableInlineNames, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ForbiddingSubschemaSpellingsNullableInlineNames, ForbiddingSubschemaSpellingsNullableInlineNames](_v, _b, func(_v ForbiddingSubschemaSpellingsNullableInlineNames, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ForbiddingSubschemaSpellingsNullableInlineNames](_v, _b, ForbiddingSubschemaSpellingsNullableInlineNames.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ForbiddingSubschemaSpellingsNullableInlineNames)(nil), true)
+			}
+			return _out, nil
 		})(f.NullableInlineNames, _b)
 	case 19:
 		return (func(_v *ForbiddingSubschemaSpellingsOkNames, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ForbiddingSubschemaSpellingsOkNames, ForbiddingSubschemaSpellingsOkNames](_v, _b, func(_v ForbiddingSubschemaSpellingsOkNames, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ForbiddingSubschemaSpellingsOkNames](_v, _b, ForbiddingSubschemaSpellingsOkNames.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ForbiddingSubschemaSpellingsOkNames)(nil), true)
+			}
+			return _out, nil
 		})(f.OkNames, _b)
 	case 20:
 		return (func(_v *ForbiddingSubschemaSpellingsOneOfDependent, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ForbiddingSubschemaSpellingsOneOfDependent, ForbiddingSubschemaSpellingsOneOfDependent](_v, _b, func(_v ForbiddingSubschemaSpellingsOneOfDependent, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ForbiddingSubschemaSpellingsOneOfDependent](_v, _b, ForbiddingSubschemaSpellingsOneOfDependent.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ForbiddingSubschemaSpellingsOneOfDependent)(nil), true)
+			}
+			return _out, nil
 		})(f.OneOfDependent, _b)
 	case 21:
 		return (func(_v *ForbiddingSubschemaSpellingsOneOfNames, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ForbiddingSubschemaSpellingsOneOfNames, ForbiddingSubschemaSpellingsOneOfNames](_v, _b, func(_v ForbiddingSubschemaSpellingsOneOfNames, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ForbiddingSubschemaSpellingsOneOfNames](_v, _b, ForbiddingSubschemaSpellingsOneOfNames.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ForbiddingSubschemaSpellingsOneOfNames)(nil), true)
+			}
+			return _out, nil
 		})(f.OneOfNames, _b)
 	case 22:
 		return (func(_v *ForbiddingSubschemaSpellingsOneOfUnevalProps, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ForbiddingSubschemaSpellingsOneOfUnevalProps, ForbiddingSubschemaSpellingsOneOfUnevalProps](_v, _b, func(_v ForbiddingSubschemaSpellingsOneOfUnevalProps, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ForbiddingSubschemaSpellingsOneOfUnevalProps](_v, _b, ForbiddingSubschemaSpellingsOneOfUnevalProps.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ForbiddingSubschemaSpellingsOneOfUnevalProps)(nil), true)
+			}
+			return _out, nil
 		})(f.OneOfUnevalProps, _b)
 	case 23:
 		return (func(_v *ForbiddingSubschemaSpellingsRefNotNames, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ForbiddingSubschemaSpellingsRefNotNames, ForbiddingSubschemaSpellingsRefNotNames](_v, _b, func(_v ForbiddingSubschemaSpellingsRefNotNames, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ForbiddingSubschemaSpellingsRefNotNames](_v, _b, ForbiddingSubschemaSpellingsRefNotNames.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ForbiddingSubschemaSpellingsRefNotNames)(nil), true)
+			}
+			return _out, nil
 		})(f.RefNotNames, _b)
 	case 40:
 		switch _sel := f.StrBranchRequired.(type) {

@@ -138,7 +138,7 @@ func (n *NeverWithK) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[NeverWithK](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*NeverWithK)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -246,7 +246,7 @@ func (n *NoNames) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[NoNames](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*NoNames)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -507,7 +507,7 @@ func (i InlineForbiddingPositionsEmptyEnumBranch) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(i._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -606,7 +606,7 @@ func (i *InlineForbiddingPositionsEmptyEnumPattern) decodeJSONAt(_d *jsonDoc, _s
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[InlineForbiddingPositionsEmptyEnumPattern](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*InlineForbiddingPositionsEmptyEnumPattern)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -776,7 +776,7 @@ func (i *InlineForbiddingPositionsEmptyEnumUnevalProps) decodeJSONAt(_d *jsonDoc
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[InlineForbiddingPositionsEmptyEnumUnevalProps](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*InlineForbiddingPositionsEmptyEnumUnevalProps)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -853,11 +853,11 @@ func (i InlineForbiddingPositionsEmptyEnumUnevalProps) appendJSON(_b []byte) ([]
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range i._jsonNulls {
-				_cur, _present, _err := _o.value(_k, i.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, i.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -1422,7 +1422,7 @@ func (i InlineForbiddingPositionsNotAnyOfEmptyEnum) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(i._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -1497,7 +1497,7 @@ func (i InlineForbiddingPositionsNotEmptyEnum) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(i._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -1572,7 +1572,7 @@ func (i InlineForbiddingPositionsNotEmptyEnumBound) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(i._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -1702,7 +1702,7 @@ func (i InlineForbiddingPositionsNotTypedConst) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(i._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -1777,7 +1777,7 @@ func (i InlineForbiddingPositionsNotTypedEmptyEnum) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(i._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -2080,7 +2080,7 @@ func (i *InlineForbiddingPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) erro
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[InlineForbiddingPositions](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*InlineForbiddingPositions)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -2128,7 +2128,13 @@ func (i *InlineForbiddingPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) erro
 	if _v, _ok := _raw["emptyEnumDependent"]; _ok {
 		if _err := func(_p **NeverWithK, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **NeverWithK, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*NeverWithK, NeverWithK](_p, _d, _s, (*NeverWithK).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(NeverWithK)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&i.EmptyEnumDependent, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "emptyEnumDependent")
@@ -2146,7 +2152,13 @@ func (i *InlineForbiddingPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) erro
 	if _v, _ok := _raw["emptyEnumNames"]; _ok {
 		if _err := func(_p **NoNames, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **NoNames, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*NoNames, NoNames](_p, _d, _s, (*NoNames).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(NoNames)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&i.EmptyEnumNames, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "emptyEnumNames")
@@ -2155,7 +2167,13 @@ func (i *InlineForbiddingPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) erro
 	if _v, _ok := _raw["emptyEnumPattern"]; _ok {
 		if _err := func(_p **InlineForbiddingPositionsEmptyEnumPattern, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **InlineForbiddingPositionsEmptyEnumPattern, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*InlineForbiddingPositionsEmptyEnumPattern, InlineForbiddingPositionsEmptyEnumPattern](_p, _d, _s, (*InlineForbiddingPositionsEmptyEnumPattern).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(InlineForbiddingPositionsEmptyEnumPattern)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&i.EmptyEnumPattern, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "emptyEnumPattern")
@@ -2178,7 +2196,13 @@ func (i *InlineForbiddingPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) erro
 	if _v, _ok := _raw["emptyEnumUnevalProps"]; _ok {
 		if _err := func(_p **InlineForbiddingPositionsEmptyEnumUnevalProps, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **InlineForbiddingPositionsEmptyEnumUnevalProps, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*InlineForbiddingPositionsEmptyEnumUnevalProps, InlineForbiddingPositionsEmptyEnumUnevalProps](_p, _d, _s, (*InlineForbiddingPositionsEmptyEnumUnevalProps).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(InlineForbiddingPositionsEmptyEnumUnevalProps)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&i.EmptyEnumUnevalProps, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "emptyEnumUnevalProps")
@@ -2484,11 +2508,11 @@ func (i InlineForbiddingPositions) appendJSON(_b []byte) ([]byte, error) {
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range i._jsonNulls {
-				_cur, _present, _err := _o.value(_k, i.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, i.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -2783,27 +2807,47 @@ func (i InlineForbiddingPositions) appendMemberJSON(_idx int, _key string, _b []
 	switch _idx {
 	case 0:
 		return (func(_v *NeverWithK, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*NeverWithK, NeverWithK](_v, _b, func(_v NeverWithK, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[NeverWithK](_v, _b, NeverWithK.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*NeverWithK)(nil), true)
+			}
+			return _out, nil
 		})(i.EmptyEnumDependent, _b)
 	case 1:
 		return (func(_v *NoNames, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*NoNames, NoNames](_v, _b, func(_v NoNames, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[NoNames](_v, _b, NoNames.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*NoNames)(nil), true)
+			}
+			return _out, nil
 		})(i.EmptyEnumNames, _b)
 	case 2:
 		return (func(_v *InlineForbiddingPositionsEmptyEnumPattern, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*InlineForbiddingPositionsEmptyEnumPattern, InlineForbiddingPositionsEmptyEnumPattern](_v, _b, func(_v InlineForbiddingPositionsEmptyEnumPattern, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[InlineForbiddingPositionsEmptyEnumPattern](_v, _b, InlineForbiddingPositionsEmptyEnumPattern.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*InlineForbiddingPositionsEmptyEnumPattern)(nil), true)
+			}
+			return _out, nil
 		})(i.EmptyEnumPattern, _b)
 	case 3:
 		return (func(_v *InlineForbiddingPositionsEmptyEnumUnevalProps, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*InlineForbiddingPositionsEmptyEnumUnevalProps, InlineForbiddingPositionsEmptyEnumUnevalProps](_v, _b, func(_v InlineForbiddingPositionsEmptyEnumUnevalProps, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[InlineForbiddingPositionsEmptyEnumUnevalProps](_v, _b, InlineForbiddingPositionsEmptyEnumUnevalProps.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*InlineForbiddingPositionsEmptyEnumUnevalProps)(nil), true)
+			}
+			return _out, nil
 		})(i.EmptyEnumUnevalProps, _b)
 	}
 	return _b, nil

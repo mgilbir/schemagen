@@ -48,7 +48,7 @@ func (o *Obj) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Obj](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Obj)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -333,7 +333,7 @@ func (p *PresentNullPositionsNullableObject) decodeJSONAt(_d *jsonDoc, _sp jsonS
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[PresentNullPositionsNullableObject](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*PresentNullPositionsNullableObject)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -623,7 +623,7 @@ func (p *PresentNullPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[PresentNullPositions](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*PresentNullPositions)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -657,7 +657,13 @@ func (p *PresentNullPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["nullableObject"]; _ok {
 		if _err := func(_p **PresentNullPositionsNullableObject, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **PresentNullPositionsNullableObject, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*PresentNullPositionsNullableObject, PresentNullPositionsNullableObject](_p, _d, _s, (*PresentNullPositionsNullableObject).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(PresentNullPositionsNullableObject)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&p.NullableObject, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "nullableObject")
@@ -680,7 +686,13 @@ func (p *PresentNullPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["refObject"]; _ok {
 		if _err := func(_p **Obj, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **Obj, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*Obj, Obj](_p, _d, _s, (*Obj).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(Obj)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&p.RefObject, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "refObject")
@@ -788,11 +800,11 @@ func (p PresentNullPositions) appendJSON(_b []byte) ([]byte, error) {
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range p._jsonNulls {
-				_cur, _present, _err := _o.value(_k, p.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, p.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -895,13 +907,25 @@ func (p PresentNullPositions) appendMemberJSON(_idx int, _key string, _b []byte)
 	switch _idx {
 	case 2:
 		return (func(_v *PresentNullPositionsNullableObject, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*PresentNullPositionsNullableObject, PresentNullPositionsNullableObject](_v, _b, func(_v PresentNullPositionsNullableObject, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[PresentNullPositionsNullableObject](_v, _b, PresentNullPositionsNullableObject.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*PresentNullPositionsNullableObject)(nil), true)
+			}
+			return _out, nil
 		})(p.NullableObject, _b)
 	case 4:
 		return (func(_v *Obj, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*Obj, Obj](_v, _b, func(_v Obj, _b []byte) ([]byte, error) { return jsonEncMarshaler[Obj](_v, _b, Obj.appendJSON, true) })
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*Obj)(nil), true)
+			}
+			return _out, nil
 		})(p.RefObject, _b)
 	}
 	return _b, nil

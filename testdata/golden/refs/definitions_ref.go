@@ -40,7 +40,7 @@ func (m *Member) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Member](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Member)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -205,7 +205,7 @@ func (t *Team) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Team](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Team)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -320,7 +320,11 @@ func (t Team) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error)
 	case 1:
 		return (func(_v []Member, _b []byte) ([]byte, error) {
 			return jsonEncSlice[[]Member, Member](_v, _b, func(_v Member, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[Member](_v, _b, Member.appendJSON, false)
+				_out, _err := _v.appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*Member)(nil), false)
+				}
+				return _out, nil
 			})
 		})(t.Members, _b)
 	}

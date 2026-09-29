@@ -117,7 +117,7 @@ func (c *CapBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[CapBranch](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*CapBranch)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -209,11 +209,11 @@ func (c CapBranch) appendJSON(_b []byte) ([]byte, error) {
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range c._jsonNulls {
-				_cur, _present, _err := _o.value(_k, c.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, c.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -680,7 +680,7 @@ func (a *AllOfPropertyConjunctionNested) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfPropertyConjunctionNested](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfPropertyConjunctionNested)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1113,7 +1113,7 @@ func (a *AllOfPropertyConjunction) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfPropertyConjunction](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfPropertyConjunction)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1217,7 +1217,13 @@ func (a *AllOfPropertyConjunction) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	if _v, _ok := _raw["nested"]; _ok {
 		if _err := func(_p **AllOfPropertyConjunctionNested, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfPropertyConjunctionNested, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfPropertyConjunctionNested, AllOfPropertyConjunctionNested](_p, _d, _s, (*AllOfPropertyConjunctionNested).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfPropertyConjunctionNested)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.Nested, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "nested")
@@ -1550,9 +1556,14 @@ func (a AllOfPropertyConjunction) appendMemberJSON(_idx int, _key string, _b []b
 	switch _idx {
 	case 12:
 		return (func(_v *AllOfPropertyConjunctionNested, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfPropertyConjunctionNested, AllOfPropertyConjunctionNested](_v, _b, func(_v AllOfPropertyConjunctionNested, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfPropertyConjunctionNested](_v, _b, AllOfPropertyConjunctionNested.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfPropertyConjunctionNested)(nil), true)
+			}
+			return _out, nil
 		})(a.Nested, _b)
 	}
 	return _b, nil

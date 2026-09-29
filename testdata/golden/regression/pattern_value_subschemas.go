@@ -149,7 +149,7 @@ func (p *PatternValueSubschemasPattern2) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[PatternValueSubschemasPattern2](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*PatternValueSubschemasPattern2)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -265,7 +265,7 @@ func (p *PatternValueSubschemasPattern3) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[PatternValueSubschemasPattern3](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*PatternValueSubschemasPattern3)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -576,7 +576,7 @@ func (p *PatternValueSubschemasPattern9) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[PatternValueSubschemasPattern9](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*PatternValueSubschemasPattern9)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -694,7 +694,7 @@ func (p *PatternValueSubschemasPattern10) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[PatternValueSubschemasPattern10](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*PatternValueSubschemasPattern10)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -904,7 +904,7 @@ func (p *PatternValueSubschemasPattern11) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[PatternValueSubschemasPattern11](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*PatternValueSubschemasPattern11)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1188,7 +1188,7 @@ func (p *PatternValueSubschemasPattern14) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[PatternValueSubschemasPattern14](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*PatternValueSubschemasPattern14)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1315,7 +1315,7 @@ func (p *PatternValueSubschemasPattern15) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[PatternValueSubschemasPattern15](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*PatternValueSubschemasPattern15)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1424,7 +1424,7 @@ func (p *PatternValueSubschemasPattern16) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[PatternValueSubschemasPattern16](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*PatternValueSubschemasPattern16)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1610,7 +1610,7 @@ func (p *PatternValueSubschemas) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[PatternValueSubschemas](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*PatternValueSubschemas)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an

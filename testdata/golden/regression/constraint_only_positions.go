@@ -292,7 +292,7 @@ func (c ConstraintOnlyPositionsListItem) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(c._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -515,7 +515,7 @@ func (c ConstraintOnlyPositionsProp) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(c._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -570,7 +570,7 @@ func (c *ConstraintOnlyPositionsUnevaluated) decodeJSONAt(_d *jsonDoc, _sp jsonS
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ConstraintOnlyPositionsUnevaluated](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ConstraintOnlyPositionsUnevaluated)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -947,7 +947,7 @@ func (c *ConstraintOnlyPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ConstraintOnlyPositions](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ConstraintOnlyPositions)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1017,7 +1017,13 @@ func (c *ConstraintOnlyPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 	if _v, _ok := _raw["unevaluated"]; _ok {
 		if _err := func(_p **ConstraintOnlyPositionsUnevaluated, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ConstraintOnlyPositionsUnevaluated, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ConstraintOnlyPositionsUnevaluated, ConstraintOnlyPositionsUnevaluated](_p, _d, _s, (*ConstraintOnlyPositionsUnevaluated).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ConstraintOnlyPositionsUnevaluated)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&c.Unevaluated, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "unevaluated")
@@ -1104,11 +1110,11 @@ func (c ConstraintOnlyPositions) appendJSON(_b []byte) ([]byte, error) {
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range c._jsonNulls {
-				_cur, _present, _err := _o.value(_k, c.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, c.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -1208,9 +1214,14 @@ func (c ConstraintOnlyPositions) appendMemberJSON(_idx int, _key string, _b []by
 	switch _idx {
 	case 1:
 		return (func(_v *ConstraintOnlyPositionsUnevaluated, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ConstraintOnlyPositionsUnevaluated, ConstraintOnlyPositionsUnevaluated](_v, _b, func(_v ConstraintOnlyPositionsUnevaluated, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ConstraintOnlyPositionsUnevaluated](_v, _b, ConstraintOnlyPositionsUnevaluated.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ConstraintOnlyPositionsUnevaluated)(nil), true)
+			}
+			return _out, nil
 		})(c.Unevaluated, _b)
 	}
 	return _b, nil

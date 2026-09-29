@@ -41,7 +41,7 @@ func (s *StrictBase) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[StrictBase](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*StrictBase)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -203,7 +203,7 @@ func (a *AllOfBranchOverflowAdjacent) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) er
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfBranchOverflowAdjacent](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfBranchOverflowAdjacent)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -562,7 +562,7 @@ func (a *AllOfBranchOverflowBare) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfBranchOverflowBare](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfBranchOverflowBare)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -777,7 +777,7 @@ func (a *AllOfBranchOverflowBranchUnevaluated) decodeJSONAt(_d *jsonDoc, _sp jso
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfBranchOverflowBranchUnevaluated](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfBranchOverflowBranchUnevaluated)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1001,7 +1001,7 @@ func (a *AllOfBranchOverflowBranchUnevaluatedFalse) decodeJSONAt(_d *jsonDoc, _s
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfBranchOverflowBranchUnevaluatedFalse](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfBranchOverflowBranchUnevaluatedFalse)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1214,7 +1214,7 @@ func (a *AllOfBranchOverflowForbid) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) erro
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfBranchOverflowForbid](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfBranchOverflowForbid)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1437,7 +1437,7 @@ func (a *AllOfBranchOverflowNestedAllOf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfBranchOverflowNestedAllOf](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfBranchOverflowNestedAllOf)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1627,7 +1627,7 @@ func (a *AllOfBranchOverflowObjectValueA) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfBranchOverflowObjectValueA](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfBranchOverflowObjectValueA)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1767,7 +1767,7 @@ func (a *AllOfBranchOverflowObjectValueBranch0Value) decodeJSONAt(_d *jsonDoc, _
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfBranchOverflowObjectValueBranch0Value](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfBranchOverflowObjectValueBranch0Value)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1926,7 +1926,7 @@ func (a *AllOfBranchOverflowObjectValue) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfBranchOverflowObjectValue](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfBranchOverflowObjectValue)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1946,7 +1946,13 @@ func (a *AllOfBranchOverflowObjectValue) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 	if _v, _ok := _raw["a"]; _ok {
 		if _err := func(_p **AllOfBranchOverflowObjectValueA, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfBranchOverflowObjectValueA, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfBranchOverflowObjectValueA, AllOfBranchOverflowObjectValueA](_p, _d, _s, (*AllOfBranchOverflowObjectValueA).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfBranchOverflowObjectValueA)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.A, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "a")
@@ -2033,9 +2039,14 @@ func (a AllOfBranchOverflowObjectValue) appendMemberJSON(_idx int, _key string, 
 	switch _idx {
 	case 0:
 		return (func(_v *AllOfBranchOverflowObjectValueA, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfBranchOverflowObjectValueA, AllOfBranchOverflowObjectValueA](_v, _b, func(_v AllOfBranchOverflowObjectValueA, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfBranchOverflowObjectValueA](_v, _b, AllOfBranchOverflowObjectValueA.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfBranchOverflowObjectValueA)(nil), true)
+			}
+			return _out, nil
 		})(a.A, _b)
 	}
 	return _b, nil
@@ -2120,7 +2131,7 @@ func (a *AllOfBranchOverflowOwnAdditional) decodeJSONAt(_d *jsonDoc, _sp jsonSpa
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfBranchOverflowOwnAdditional](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfBranchOverflowOwnAdditional)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -2323,7 +2334,7 @@ func (a *AllOfBranchOverflowPlain) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfBranchOverflowPlain](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfBranchOverflowPlain)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -2474,7 +2485,7 @@ func (a *AllOfBranchOverflowSoleBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) 
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfBranchOverflowSoleBranch](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfBranchOverflowSoleBranch)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -2706,7 +2717,7 @@ func (a *AllOfBranchOverflowTwoBranches) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfBranchOverflowTwoBranches](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfBranchOverflowTwoBranches)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -2935,7 +2946,7 @@ func (a *AllOfBranchOverflowViaRef) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) erro
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfBranchOverflowViaRef](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfBranchOverflowViaRef)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -3155,7 +3166,7 @@ func (a *AllOfBranchOverflow) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfBranchOverflow](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfBranchOverflow)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -3175,7 +3186,13 @@ func (a *AllOfBranchOverflow) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["adjacent"]; _ok {
 		if _err := func(_p **AllOfBranchOverflowAdjacent, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfBranchOverflowAdjacent, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfBranchOverflowAdjacent, AllOfBranchOverflowAdjacent](_p, _d, _s, (*AllOfBranchOverflowAdjacent).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfBranchOverflowAdjacent)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.Adjacent, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "adjacent")
@@ -3184,7 +3201,13 @@ func (a *AllOfBranchOverflow) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["bare"]; _ok {
 		if _err := func(_p **AllOfBranchOverflowBare, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfBranchOverflowBare, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfBranchOverflowBare, AllOfBranchOverflowBare](_p, _d, _s, (*AllOfBranchOverflowBare).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfBranchOverflowBare)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.Bare, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "bare")
@@ -3193,7 +3216,13 @@ func (a *AllOfBranchOverflow) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["branchUnevaluated"]; _ok {
 		if _err := func(_p **AllOfBranchOverflowBranchUnevaluated, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfBranchOverflowBranchUnevaluated, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfBranchOverflowBranchUnevaluated, AllOfBranchOverflowBranchUnevaluated](_p, _d, _s, (*AllOfBranchOverflowBranchUnevaluated).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfBranchOverflowBranchUnevaluated)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.BranchUnevaluated, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "branchUnevaluated")
@@ -3202,7 +3231,13 @@ func (a *AllOfBranchOverflow) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["branchUnevaluatedFalse"]; _ok {
 		if _err := func(_p **AllOfBranchOverflowBranchUnevaluatedFalse, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfBranchOverflowBranchUnevaluatedFalse, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfBranchOverflowBranchUnevaluatedFalse, AllOfBranchOverflowBranchUnevaluatedFalse](_p, _d, _s, (*AllOfBranchOverflowBranchUnevaluatedFalse).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfBranchOverflowBranchUnevaluatedFalse)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.BranchUnevaluatedFalse, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "branchUnevaluatedFalse")
@@ -3211,7 +3246,13 @@ func (a *AllOfBranchOverflow) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["forbid"]; _ok {
 		if _err := func(_p **AllOfBranchOverflowForbid, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfBranchOverflowForbid, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfBranchOverflowForbid, AllOfBranchOverflowForbid](_p, _d, _s, (*AllOfBranchOverflowForbid).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfBranchOverflowForbid)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.Forbid, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "forbid")
@@ -3220,7 +3261,13 @@ func (a *AllOfBranchOverflow) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["nestedAllOf"]; _ok {
 		if _err := func(_p **AllOfBranchOverflowNestedAllOf, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfBranchOverflowNestedAllOf, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfBranchOverflowNestedAllOf, AllOfBranchOverflowNestedAllOf](_p, _d, _s, (*AllOfBranchOverflowNestedAllOf).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfBranchOverflowNestedAllOf)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.NestedAllOf, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "nestedAllOf")
@@ -3229,7 +3276,13 @@ func (a *AllOfBranchOverflow) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["objectValue"]; _ok {
 		if _err := func(_p **AllOfBranchOverflowObjectValue, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfBranchOverflowObjectValue, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfBranchOverflowObjectValue, AllOfBranchOverflowObjectValue](_p, _d, _s, (*AllOfBranchOverflowObjectValue).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfBranchOverflowObjectValue)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.ObjectValue, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "objectValue")
@@ -3238,7 +3291,13 @@ func (a *AllOfBranchOverflow) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["ownAdditional"]; _ok {
 		if _err := func(_p **AllOfBranchOverflowOwnAdditional, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfBranchOverflowOwnAdditional, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfBranchOverflowOwnAdditional, AllOfBranchOverflowOwnAdditional](_p, _d, _s, (*AllOfBranchOverflowOwnAdditional).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfBranchOverflowOwnAdditional)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.OwnAdditional, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "ownAdditional")
@@ -3247,7 +3306,13 @@ func (a *AllOfBranchOverflow) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["plain"]; _ok {
 		if _err := func(_p **AllOfBranchOverflowPlain, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfBranchOverflowPlain, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfBranchOverflowPlain, AllOfBranchOverflowPlain](_p, _d, _s, (*AllOfBranchOverflowPlain).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfBranchOverflowPlain)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.Plain, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "plain")
@@ -3256,7 +3321,13 @@ func (a *AllOfBranchOverflow) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["soleBranch"]; _ok {
 		if _err := func(_p **AllOfBranchOverflowSoleBranch, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfBranchOverflowSoleBranch, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfBranchOverflowSoleBranch, AllOfBranchOverflowSoleBranch](_p, _d, _s, (*AllOfBranchOverflowSoleBranch).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfBranchOverflowSoleBranch)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.SoleBranch, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "soleBranch")
@@ -3265,7 +3336,13 @@ func (a *AllOfBranchOverflow) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["twoBranches"]; _ok {
 		if _err := func(_p **AllOfBranchOverflowTwoBranches, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfBranchOverflowTwoBranches, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfBranchOverflowTwoBranches, AllOfBranchOverflowTwoBranches](_p, _d, _s, (*AllOfBranchOverflowTwoBranches).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfBranchOverflowTwoBranches)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.TwoBranches, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "twoBranches")
@@ -3274,7 +3351,13 @@ func (a *AllOfBranchOverflow) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["viaRef"]; _ok {
 		if _err := func(_p **AllOfBranchOverflowViaRef, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AllOfBranchOverflowViaRef, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AllOfBranchOverflowViaRef, AllOfBranchOverflowViaRef](_p, _d, _s, (*AllOfBranchOverflowViaRef).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AllOfBranchOverflowViaRef)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.ViaRef, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "viaRef")
@@ -3413,75 +3496,135 @@ func (a AllOfBranchOverflow) appendMemberJSON(_idx int, _key string, _b []byte) 
 	switch _idx {
 	case 0:
 		return (func(_v *AllOfBranchOverflowAdjacent, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfBranchOverflowAdjacent, AllOfBranchOverflowAdjacent](_v, _b, func(_v AllOfBranchOverflowAdjacent, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfBranchOverflowAdjacent](_v, _b, AllOfBranchOverflowAdjacent.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfBranchOverflowAdjacent)(nil), true)
+			}
+			return _out, nil
 		})(a.Adjacent, _b)
 	case 1:
 		return (func(_v *AllOfBranchOverflowBare, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfBranchOverflowBare, AllOfBranchOverflowBare](_v, _b, func(_v AllOfBranchOverflowBare, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfBranchOverflowBare](_v, _b, AllOfBranchOverflowBare.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfBranchOverflowBare)(nil), true)
+			}
+			return _out, nil
 		})(a.Bare, _b)
 	case 2:
 		return (func(_v *AllOfBranchOverflowBranchUnevaluated, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfBranchOverflowBranchUnevaluated, AllOfBranchOverflowBranchUnevaluated](_v, _b, func(_v AllOfBranchOverflowBranchUnevaluated, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfBranchOverflowBranchUnevaluated](_v, _b, AllOfBranchOverflowBranchUnevaluated.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfBranchOverflowBranchUnevaluated)(nil), true)
+			}
+			return _out, nil
 		})(a.BranchUnevaluated, _b)
 	case 3:
 		return (func(_v *AllOfBranchOverflowBranchUnevaluatedFalse, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfBranchOverflowBranchUnevaluatedFalse, AllOfBranchOverflowBranchUnevaluatedFalse](_v, _b, func(_v AllOfBranchOverflowBranchUnevaluatedFalse, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfBranchOverflowBranchUnevaluatedFalse](_v, _b, AllOfBranchOverflowBranchUnevaluatedFalse.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfBranchOverflowBranchUnevaluatedFalse)(nil), true)
+			}
+			return _out, nil
 		})(a.BranchUnevaluatedFalse, _b)
 	case 4:
 		return (func(_v *AllOfBranchOverflowForbid, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfBranchOverflowForbid, AllOfBranchOverflowForbid](_v, _b, func(_v AllOfBranchOverflowForbid, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfBranchOverflowForbid](_v, _b, AllOfBranchOverflowForbid.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfBranchOverflowForbid)(nil), true)
+			}
+			return _out, nil
 		})(a.Forbid, _b)
 	case 5:
 		return (func(_v *AllOfBranchOverflowNestedAllOf, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfBranchOverflowNestedAllOf, AllOfBranchOverflowNestedAllOf](_v, _b, func(_v AllOfBranchOverflowNestedAllOf, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfBranchOverflowNestedAllOf](_v, _b, AllOfBranchOverflowNestedAllOf.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfBranchOverflowNestedAllOf)(nil), true)
+			}
+			return _out, nil
 		})(a.NestedAllOf, _b)
 	case 6:
 		return (func(_v *AllOfBranchOverflowObjectValue, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfBranchOverflowObjectValue, AllOfBranchOverflowObjectValue](_v, _b, func(_v AllOfBranchOverflowObjectValue, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfBranchOverflowObjectValue](_v, _b, AllOfBranchOverflowObjectValue.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfBranchOverflowObjectValue)(nil), true)
+			}
+			return _out, nil
 		})(a.ObjectValue, _b)
 	case 7:
 		return (func(_v *AllOfBranchOverflowOwnAdditional, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfBranchOverflowOwnAdditional, AllOfBranchOverflowOwnAdditional](_v, _b, func(_v AllOfBranchOverflowOwnAdditional, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfBranchOverflowOwnAdditional](_v, _b, AllOfBranchOverflowOwnAdditional.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfBranchOverflowOwnAdditional)(nil), true)
+			}
+			return _out, nil
 		})(a.OwnAdditional, _b)
 	case 8:
 		return (func(_v *AllOfBranchOverflowPlain, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfBranchOverflowPlain, AllOfBranchOverflowPlain](_v, _b, func(_v AllOfBranchOverflowPlain, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfBranchOverflowPlain](_v, _b, AllOfBranchOverflowPlain.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfBranchOverflowPlain)(nil), true)
+			}
+			return _out, nil
 		})(a.Plain, _b)
 	case 9:
 		return (func(_v *AllOfBranchOverflowSoleBranch, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfBranchOverflowSoleBranch, AllOfBranchOverflowSoleBranch](_v, _b, func(_v AllOfBranchOverflowSoleBranch, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfBranchOverflowSoleBranch](_v, _b, AllOfBranchOverflowSoleBranch.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfBranchOverflowSoleBranch)(nil), true)
+			}
+			return _out, nil
 		})(a.SoleBranch, _b)
 	case 10:
 		return (func(_v *AllOfBranchOverflowTwoBranches, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfBranchOverflowTwoBranches, AllOfBranchOverflowTwoBranches](_v, _b, func(_v AllOfBranchOverflowTwoBranches, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfBranchOverflowTwoBranches](_v, _b, AllOfBranchOverflowTwoBranches.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfBranchOverflowTwoBranches)(nil), true)
+			}
+			return _out, nil
 		})(a.TwoBranches, _b)
 	case 11:
 		return (func(_v *AllOfBranchOverflowViaRef, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AllOfBranchOverflowViaRef, AllOfBranchOverflowViaRef](_v, _b, func(_v AllOfBranchOverflowViaRef, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AllOfBranchOverflowViaRef](_v, _b, AllOfBranchOverflowViaRef.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AllOfBranchOverflowViaRef)(nil), true)
+			}
+			return _out, nil
 		})(a.ViaRef, _b)
 	}
 	return _b, nil

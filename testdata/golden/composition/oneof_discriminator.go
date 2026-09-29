@@ -41,7 +41,7 @@ func (c *ClickEvent) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ClickEvent](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ClickEvent)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -241,7 +241,7 @@ func (k *KeypressEvent) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[KeypressEvent](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*KeypressEvent)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -414,7 +414,7 @@ func (s *ScrollEvent) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ScrollEvent](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ScrollEvent)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -647,7 +647,7 @@ func (e *Event) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Event](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Event)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -703,7 +703,13 @@ func (e *Event) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			case "click":
 				var candidate *ClickEvent
 				if err := func(_p **ClickEvent, _d *jsonDoc, _s jsonSpan) error {
-					return jsonDecodePtr[*ClickEvent, ClickEvent](_p, _d, _s, (*ClickEvent).decodeJSONAt)
+					if _d.isNull(_s) {
+						*_p = nil
+						return nil
+					}
+					_v := new(ClickEvent)
+					*_p = _v
+					return _v.decodeJSONAt(_d, _s)
 				}(&candidate, _d, _ov); err != nil {
 					return oneofWrapf(err, "variant ClickEvent: ")
 				}
@@ -711,7 +717,13 @@ func (e *Event) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			case "keypress":
 				var candidate *KeypressEvent
 				if err := func(_p **KeypressEvent, _d *jsonDoc, _s jsonSpan) error {
-					return jsonDecodePtr[*KeypressEvent, KeypressEvent](_p, _d, _s, (*KeypressEvent).decodeJSONAt)
+					if _d.isNull(_s) {
+						*_p = nil
+						return nil
+					}
+					_v := new(KeypressEvent)
+					*_p = _v
+					return _v.decodeJSONAt(_d, _s)
 				}(&candidate, _d, _ov); err != nil {
 					return oneofWrapf(err, "variant KeypressEvent: ")
 				}
@@ -719,7 +731,13 @@ func (e *Event) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			case "scroll":
 				var candidate *ScrollEvent
 				if err := func(_p **ScrollEvent, _d *jsonDoc, _s jsonSpan) error {
-					return jsonDecodePtr[*ScrollEvent, ScrollEvent](_p, _d, _s, (*ScrollEvent).decodeJSONAt)
+					if _d.isNull(_s) {
+						*_p = nil
+						return nil
+					}
+					_v := new(ScrollEvent)
+					*_p = _v
+					return _v.decodeJSONAt(_d, _s)
 				}(&candidate, _d, _ov); err != nil {
 					return oneofWrapf(err, "variant ScrollEvent: ")
 				}
@@ -811,9 +829,14 @@ func (e Event) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error
 		switch _sel := e.Payload.(type) {
 		case *Event_ClickEvent:
 			_out, _err := (func(_v *ClickEvent, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*ClickEvent, ClickEvent](_v, _b, func(_v ClickEvent, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[ClickEvent](_v, _b, ClickEvent.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*ClickEvent)(nil), true)
+				}
+				return _out, nil
 			})(_sel.ClickEvent, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling Event.Payload: %w", _err)
@@ -821,9 +844,14 @@ func (e Event) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error
 			return _out, nil
 		case *Event_KeypressEvent:
 			_out, _err := (func(_v *KeypressEvent, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*KeypressEvent, KeypressEvent](_v, _b, func(_v KeypressEvent, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[KeypressEvent](_v, _b, KeypressEvent.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*KeypressEvent)(nil), true)
+				}
+				return _out, nil
 			})(_sel.KeypressEvent, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling Event.Payload: %w", _err)
@@ -831,9 +859,14 @@ func (e Event) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error
 			return _out, nil
 		case *Event_ScrollEvent:
 			_out, _err := (func(_v *ScrollEvent, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*ScrollEvent, ScrollEvent](_v, _b, func(_v ScrollEvent, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[ScrollEvent](_v, _b, ScrollEvent.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*ScrollEvent)(nil), true)
+				}
+				return _out, nil
 			})(_sel.ScrollEvent, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling Event.Payload: %w", _err)

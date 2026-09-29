@@ -686,6 +686,7 @@ func TestStrippedAndNulledValuesAreReadWithoutWriting(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			rewriteHelperFile(t, filepath.Join(out, "sn"))
 			writes, executed := validateUnderCoverage(t, out, "sn", nil, "PASS")
 			if executed < 50 {
 				t.Fatalf("only %d blocks of the generated package ran during Validate; the counters are not reading it", executed)

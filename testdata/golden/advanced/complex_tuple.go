@@ -100,7 +100,7 @@ func (e *EventRecordItem2) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[EventRecordItem2](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*EventRecordItem2)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -247,9 +247,9 @@ func (e *EventRecordItem2) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 		}
 	}
 	for _key, _member := range e.AdditionalProperties {
-		_o.held(_key, _member)
+		_o.idHeld(_key, _member)
 	}
-	return _o.id(e.jsonIdentityMember, _m)
+	return _o.idOf(e.jsonIdentityMember, _m)
 }
 
 // jsonIdentityMember reads the member of e numbered idx, as

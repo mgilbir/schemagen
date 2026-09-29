@@ -535,11 +535,11 @@ func _accessStripTreeAt(t any, path []_accessStep) (any, error) {
 	return t, nil
 }
 
-// stripWriteOnly is jsonObj.stripWriteOnly for an identity, over trees: a member
+// idStripWriteOnly is jsonObj.stripWriteOnly for an identity, over trees: a member
 // matched by a one-step rule is taken out, and a member a longer rule reaches
 // into is read as its tree and has the rest of the path taken out of that. m
 // reads trees, so every member read so far holds one.
-func (o *jsonIDObj) stripWriteOnly(rules []_accessRule, member jsonIDMemberFunc, m *jsonValidation) error {
+func (o *jsonIDObj) idStripWriteOnly(rules []_accessRule, member jsonIDMemberFunc, m *jsonValidation) error {
 	for _, rule := range rules {
 		if !rule.WriteOnly || len(rule.Path) == 0 {
 			continue
@@ -554,6 +554,7 @@ func (o *jsonIDObj) stripWriteOnly(rules []_accessRule, member jsonIDMemberFunc,
 			}
 		}
 		sort.Slice(live, func(i, j int) bool { return live[i].key < live[j].key })
+		{{- /* maporder: not a map: ranges a slice. */}}
 		for _, mb := range live {
 			matched, mErr := _accessKeyMatches(step, mb.key)
 			if mErr != nil {
@@ -566,7 +567,7 @@ func (o *jsonIDObj) stripWriteOnly(rules []_accessRule, member jsonIDMemberFunc,
 				mb.gone = true
 				continue
 			}
-			t, _, err := o.tree(mb, member, m)
+			t, _, err := o.idTree(mb, member, m)
 			if err != nil {
 				return err
 			}

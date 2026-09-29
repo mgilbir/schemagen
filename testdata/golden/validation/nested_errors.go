@@ -42,7 +42,7 @@ func (c *CompanyAddress) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[CompanyAddress](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*CompanyAddress)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -237,7 +237,7 @@ func (c *CompanyEmployeesItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[CompanyEmployeesItem](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*CompanyEmployeesItem)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -423,7 +423,7 @@ func (c *Company) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Company](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Company)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -550,12 +550,20 @@ func (c Company) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, err
 	switch _idx {
 	case 0:
 		return (func(_v CompanyAddress, _b []byte) ([]byte, error) {
-			return jsonEncMarshaler[CompanyAddress](_v, _b, CompanyAddress.appendJSON, false)
+			_out, _err := _v.appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*CompanyAddress)(nil), false)
+			}
+			return _out, nil
 		})(c.Address, _b)
 	case 2:
 		return (func(_v []CompanyEmployeesItem, _b []byte) ([]byte, error) {
 			return jsonEncSlice[[]CompanyEmployeesItem, CompanyEmployeesItem](_v, _b, func(_v CompanyEmployeesItem, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[CompanyEmployeesItem](_v, _b, CompanyEmployeesItem.appendJSON, false)
+				_out, _err := _v.appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*CompanyEmployeesItem)(nil), false)
+				}
+				return _out, nil
 			})
 		})(c.Employees, _b)
 	}

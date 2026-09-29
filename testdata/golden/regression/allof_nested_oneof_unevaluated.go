@@ -51,7 +51,7 @@ func (p *PickOneValueOption0) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[PickOneValueOption0](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*PickOneValueOption0)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -181,11 +181,11 @@ func (p PickOneValueOption0) appendJSON(_b []byte) ([]byte, error) {
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range p._jsonNulls {
-				_cur, _present, _err := _o.value(_k, p.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, p.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -336,7 +336,7 @@ func (p *PickOneValueOption1) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[PickOneValueOption1](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*PickOneValueOption1)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -549,7 +549,7 @@ func (p *PickOne) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[PickOne](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*PickOne)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -613,7 +613,13 @@ func (p *PickOne) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				if oneofHasRequiredFields(_d, _ov, "b") {
 					var candidate *PickOneValueOption0
 					if err := func(_p **PickOneValueOption0, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*PickOneValueOption0, PickOneValueOption0](_p, _d, _s, (*PickOneValueOption0).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(PickOneValueOption0)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						p.Value = &PickOne_PickOneValueOption0{PickOneValueOption0: candidate}
 						oneofMatched++
@@ -636,7 +642,13 @@ func (p *PickOne) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				if oneofHasRequiredFields(_d, _ov, "a") {
 					var candidate *PickOneValueOption1
 					if err := func(_p **PickOneValueOption1, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*PickOneValueOption1, PickOneValueOption1](_p, _d, _s, (*PickOneValueOption1).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(PickOneValueOption1)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						p.Value = &PickOne_PickOneValueOption1{PickOneValueOption1: candidate}
 						oneofMatched++
@@ -745,15 +757,25 @@ func (p PickOne) appendJSON(_b []byte) ([]byte, error) {
 		switch _sel := p.Value.(type) {
 		case *PickOne_PickOneValueOption0:
 			return (func(_v *PickOneValueOption0, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*PickOneValueOption0, PickOneValueOption0](_v, _b, func(_v PickOneValueOption0, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[PickOneValueOption0](_v, _b, PickOneValueOption0.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*PickOneValueOption0)(nil), true)
+				}
+				return _out, nil
 			})(_sel.PickOneValueOption0, _b)
 		case *PickOne_PickOneValueOption1:
 			return (func(_v *PickOneValueOption1, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*PickOneValueOption1, PickOneValueOption1](_v, _b, func(_v PickOneValueOption1, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[PickOneValueOption1](_v, _b, PickOneValueOption1.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*PickOneValueOption1)(nil), true)
+				}
+				return _out, nil
 			})(_sel.PickOneValueOption1, _b)
 		}
 	}
@@ -884,7 +906,7 @@ func (a *AllOfNestedOneOfUnevaluated) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) er
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AllOfNestedOneOfUnevaluated](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfNestedOneOfUnevaluated)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1031,11 +1053,11 @@ func (a AllOfNestedOneOfUnevaluated) appendJSON(_b []byte) ([]byte, error) {
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range a._jsonNulls {
-				_cur, _present, _err := _o.value(_k, a.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, a.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}

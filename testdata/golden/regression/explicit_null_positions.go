@@ -40,7 +40,7 @@ func (l *Leaf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Leaf](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Leaf)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -211,7 +211,7 @@ func (n *Numbered) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Numbered](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Numbered)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -363,7 +363,7 @@ func (o *Overflow) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Overflow](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Overflow)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -547,7 +547,7 @@ func (t *Tagged) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Tagged](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Tagged)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -783,7 +783,7 @@ func (e *ExplicitNullPositionsInline) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) er
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ExplicitNullPositionsInline](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ExplicitNullPositionsInline)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -986,7 +986,7 @@ func (e *ExplicitNullPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ExplicitNullPositions](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ExplicitNullPositions)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1054,7 +1054,13 @@ func (e *ExplicitNullPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["inline"]; _ok {
 		if _err := func(_p **ExplicitNullPositionsInline, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ExplicitNullPositionsInline, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ExplicitNullPositionsInline, ExplicitNullPositionsInline](_p, _d, _s, (*ExplicitNullPositionsInline).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ExplicitNullPositionsInline)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&e.Inline, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "inline")
@@ -1126,7 +1132,13 @@ func (e *ExplicitNullPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["overflow"]; _ok {
 		if _err := func(_p **Overflow, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **Overflow, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*Overflow, Overflow](_p, _d, _s, (*Overflow).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(Overflow)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&e.Overflow, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "overflow")
@@ -1170,7 +1182,13 @@ func (e *ExplicitNullPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["struct"]; _ok {
 		if _err := func(_p **Leaf, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **Leaf, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*Leaf, Leaf](_p, _d, _s, (*Leaf).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(Leaf)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&e.Struct, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "struct")
@@ -1246,7 +1264,13 @@ func (e *ExplicitNullPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				if oneofHasRequiredFields(_d, _ov, "tag") {
 					var candidate *Tagged
 					if err := func(_p **Tagged, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*Tagged, Tagged](_p, _d, _s, (*Tagged).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(Tagged)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						e.Union = &ExplicitNullPositions_Tagged{Tagged: candidate}
 						oneofMatched++
@@ -1269,7 +1293,13 @@ func (e *ExplicitNullPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				if oneofHasRequiredFields(_d, _ov, "num") {
 					var candidate *Numbered
 					if err := func(_p **Numbered, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*Numbered, Numbered](_p, _d, _s, (*Numbered).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(Numbered)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						e.Union = &ExplicitNullPositions_Numbered{Numbered: candidate}
 						oneofMatched++
@@ -1474,11 +1504,11 @@ func (e ExplicitNullPositions) appendJSON(_b []byte) ([]byte, error) {
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range e._jsonNulls {
-				_cur, _present, _err := _o.value(_k, e.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, e.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -1711,31 +1741,57 @@ func (e ExplicitNullPositions) appendMemberJSON(_idx int, _key string, _b []byte
 	switch _idx {
 	case 0:
 		return (func(_v Leaf, _b []byte) ([]byte, error) {
-			return jsonEncMarshaler[Leaf](_v, _b, Leaf.appendJSON, false)
+			_out, _err := _v.appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*Leaf)(nil), false)
+			}
+			return _out, nil
 		})(e.ReqStruct, _b)
 	case 6:
 		return (func(_v *ExplicitNullPositionsInline, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ExplicitNullPositionsInline, ExplicitNullPositionsInline](_v, _b, func(_v ExplicitNullPositionsInline, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ExplicitNullPositionsInline](_v, _b, ExplicitNullPositionsInline.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ExplicitNullPositionsInline)(nil), true)
+			}
+			return _out, nil
 		})(e.Inline, _b)
 	case 12:
 		return (func(_v *Overflow, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*Overflow, Overflow](_v, _b, func(_v Overflow, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[Overflow](_v, _b, Overflow.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*Overflow)(nil), true)
+			}
+			return _out, nil
 		})(e.Overflow, _b)
 	case 14:
 		return (func(_v *Leaf, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*Leaf, Leaf](_v, _b, func(_v Leaf, _b []byte) ([]byte, error) { return jsonEncMarshaler[Leaf](_v, _b, Leaf.appendJSON, true) })
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*Leaf)(nil), true)
+			}
+			return _out, nil
 		})(e.Struct, _b)
 	case 25:
 		switch _sel := e.Union.(type) {
 		case *ExplicitNullPositions_Tagged:
 			_out, _err := (func(_v *Tagged, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*Tagged, Tagged](_v, _b, func(_v Tagged, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[Tagged](_v, _b, Tagged.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*Tagged)(nil), true)
+				}
+				return _out, nil
 			})(_sel.Tagged, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling ExplicitNullPositions.Union: %w", _err)
@@ -1743,9 +1799,14 @@ func (e ExplicitNullPositions) appendMemberJSON(_idx int, _key string, _b []byte
 			return _out, nil
 		case *ExplicitNullPositions_Numbered:
 			_out, _err := (func(_v *Numbered, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*Numbered, Numbered](_v, _b, func(_v Numbered, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[Numbered](_v, _b, Numbered.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*Numbered)(nil), true)
+				}
+				return _out, nil
 			})(_sel.Numbered, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling ExplicitNullPositions.Union: %w", _err)

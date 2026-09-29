@@ -45,7 +45,7 @@ func (t *TreeNode) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[TreeNode](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*TreeNode)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -66,7 +66,13 @@ func (t *TreeNode) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 		if _err := func(_p *[]*TreeNode, _d *jsonDoc, _s jsonSpan) error {
 			return jsonProbeSlice[*TreeNode](_p, _d, _s, func(_p **TreeNode, _d *jsonDoc, _s jsonSpan) error {
 				return jsonDecodeRefusal(func(_p **TreeNode, _d *jsonDoc, _s jsonSpan) error {
-					return jsonDecodePtr[*TreeNode, TreeNode](_p, _d, _s, (*TreeNode).decodeJSONAt)
+					if _d.isNull(_s) {
+						*_p = nil
+						return nil
+					}
+					_v := new(TreeNode)
+					*_p = _v
+					return _v.decodeJSONAt(_d, _s)
 				}(_p, _d, _s))
 			})
 		}(&t.Children, _d, _v); _err != nil {
@@ -76,7 +82,13 @@ func (t *TreeNode) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["parent"]; _ok {
 		if _err := func(_p **TreeNode, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **TreeNode, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*TreeNode, TreeNode](_p, _d, _s, (*TreeNode).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(TreeNode)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&t.Parent, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "parent")
@@ -178,16 +190,26 @@ func (t TreeNode) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, er
 	switch _idx {
 	case 0:
 		return (func(_v *TreeNode, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*TreeNode, TreeNode](_v, _b, func(_v TreeNode, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[TreeNode](_v, _b, TreeNode.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*TreeNode)(nil), true)
+			}
+			return _out, nil
 		})(t.Parent, _b)
 	case 2:
 		return (func(_v []*TreeNode, _b []byte) ([]byte, error) {
 			return jsonEncSlice[[]*TreeNode, *TreeNode](_v, _b, func(_v *TreeNode, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*TreeNode, TreeNode](_v, _b, func(_v TreeNode, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[TreeNode](_v, _b, TreeNode.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*TreeNode)(nil), true)
+				}
+				return _out, nil
 			})
 		})(t.Children, _b)
 	}

@@ -63,7 +63,7 @@ func (o *OneOfOptionalConstPOption0) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) err
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OneOfOptionalConstPOption0](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfOptionalConstPOption0)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -275,7 +275,7 @@ func (o *OneOfOptionalConstPOption1) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) err
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OneOfOptionalConstPOption1](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfOptionalConstPOption1)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -505,7 +505,7 @@ func (o *OneOfOptionalConst) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OneOfOptionalConst](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfOptionalConst)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -578,7 +578,13 @@ func (o *OneOfOptionalConst) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				if oneofHasRequiredFields(_d, _ov, "x") {
 					var candidate *OneOfOptionalConstPOption0
 					if err := func(_p **OneOfOptionalConstPOption0, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*OneOfOptionalConstPOption0, OneOfOptionalConstPOption0](_p, _d, _s, (*OneOfOptionalConstPOption0).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(OneOfOptionalConstPOption0)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						o.P = &OneOfOptionalConst_OneOfOptionalConstPOption0{OneOfOptionalConstPOption0: candidate}
 						oneofMatched++
@@ -601,7 +607,13 @@ func (o *OneOfOptionalConst) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				if oneofHasRequiredFields(_d, _ov, "y") {
 					var candidate *OneOfOptionalConstPOption1
 					if err := func(_p **OneOfOptionalConstPOption1, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*OneOfOptionalConstPOption1, OneOfOptionalConstPOption1](_p, _d, _s, (*OneOfOptionalConstPOption1).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(OneOfOptionalConstPOption1)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						o.P = &OneOfOptionalConst_OneOfOptionalConstPOption1{OneOfOptionalConstPOption1: candidate}
 						oneofMatched++
@@ -736,11 +748,11 @@ func (o OneOfOptionalConst) appendJSON(_b []byte) ([]byte, error) {
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range o._jsonNulls {
-				_cur, _present, _err := _o.value(_k, o.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, o.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -774,9 +786,14 @@ func (o OneOfOptionalConst) appendMemberJSON(_idx int, _key string, _b []byte) (
 		switch _sel := o.P.(type) {
 		case *OneOfOptionalConst_OneOfOptionalConstPOption0:
 			_out, _err := (func(_v *OneOfOptionalConstPOption0, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*OneOfOptionalConstPOption0, OneOfOptionalConstPOption0](_v, _b, func(_v OneOfOptionalConstPOption0, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[OneOfOptionalConstPOption0](_v, _b, OneOfOptionalConstPOption0.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*OneOfOptionalConstPOption0)(nil), true)
+				}
+				return _out, nil
 			})(_sel.OneOfOptionalConstPOption0, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling OneOfOptionalConst.P: %w", _err)
@@ -784,9 +801,14 @@ func (o OneOfOptionalConst) appendMemberJSON(_idx int, _key string, _b []byte) (
 			return _out, nil
 		case *OneOfOptionalConst_OneOfOptionalConstPOption1:
 			_out, _err := (func(_v *OneOfOptionalConstPOption1, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*OneOfOptionalConstPOption1, OneOfOptionalConstPOption1](_v, _b, func(_v OneOfOptionalConstPOption1, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[OneOfOptionalConstPOption1](_v, _b, OneOfOptionalConstPOption1.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*OneOfOptionalConstPOption1)(nil), true)
+				}
+				return _out, nil
 			})(_sel.OneOfOptionalConstPOption1, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling OneOfOptionalConst.P: %w", _err)

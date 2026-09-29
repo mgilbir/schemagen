@@ -57,7 +57,7 @@ func (l *Leaf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Leaf](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Leaf)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -309,7 +309,7 @@ func (d *DefaultPresencePositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[DefaultPresencePositions](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*DefaultPresencePositions)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -357,7 +357,13 @@ func (d *DefaultPresencePositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	if _v, _ok := _raw["leaf"]; _ok {
 		if _err := func(_p **Leaf, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **Leaf, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*Leaf, Leaf](_p, _d, _s, (*Leaf).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(Leaf)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&d.Leaf, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "leaf")
@@ -529,7 +535,13 @@ func (d *DefaultPresencePositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	if _v, _ok := _raw["structDflt"]; _ok {
 		if _err := func(_p **Leaf, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **Leaf, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*Leaf, Leaf](_p, _d, _s, (*Leaf).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(Leaf)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&d.StructDflt, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "structDflt")
@@ -669,11 +681,11 @@ func (d DefaultPresencePositions) appendJSON(_b []byte) ([]byte, error) {
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range d._jsonNulls {
-				_cur, _present, _err := _o.value(_k, d.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, d.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -900,22 +912,44 @@ func (d DefaultPresencePositions) appendMemberJSON(_idx int, _key string, _b []b
 	switch _idx {
 	case 1:
 		return (func(_v *Leaf, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*Leaf, Leaf](_v, _b, func(_v Leaf, _b []byte) ([]byte, error) { return jsonEncMarshaler[Leaf](_v, _b, Leaf.appendJSON, true) })
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*Leaf)(nil), true)
+			}
+			return _out, nil
 		})(d.Leaf, _b)
 	case 2:
 		return (func(_v map[string]Leaf, _b []byte) ([]byte, error) {
 			return jsonEncMap[map[string]Leaf, Leaf](_v, _b, func(_v Leaf, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[Leaf](_v, _b, Leaf.appendJSON, false)
+				_out, _err := _v.appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*Leaf)(nil), false)
+				}
+				return _out, nil
 			})
 		})(d.LeafMap, _b)
 	case 11:
 		return (func(_v *Leaf, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*Leaf, Leaf](_v, _b, func(_v Leaf, _b []byte) ([]byte, error) { return jsonEncMarshaler[Leaf](_v, _b, Leaf.appendJSON, true) })
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*Leaf)(nil), true)
+			}
+			return _out, nil
 		})(d.StructDflt, _b)
 	case 17:
 		return (func(_v []Leaf, _b []byte) ([]byte, error) {
 			return jsonEncSlice[[]Leaf, Leaf](_v, _b, func(_v Leaf, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[Leaf](_v, _b, Leaf.appendJSON, false)
+				_out, _err := _v.appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*Leaf)(nil), false)
+				}
+				return _out, nil
 			})
 		})(d.LeafArr, _b)
 	}

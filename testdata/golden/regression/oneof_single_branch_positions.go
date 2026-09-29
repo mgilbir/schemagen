@@ -73,7 +73,7 @@ func (o OneOfSingleBranchPositionsConstBranch) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(o._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -257,7 +257,7 @@ func (o OneOfSingleBranchPositionsListItem) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(o._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -337,7 +337,7 @@ func (o OneOfSingleBranchPositionsMapValue) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(o._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -383,7 +383,7 @@ func (o *OneOfSingleBranchPositionsObjBranchOption0) decodeJSONAt(_d *jsonDoc, _
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OneOfSingleBranchPositionsObjBranchOption0](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfSingleBranchPositionsObjBranchOption0)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -567,7 +567,7 @@ func (o OneOfSingleBranchPositionsTwoBranch) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(o._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -695,7 +695,7 @@ func (o *OneOfSingleBranchPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) err
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OneOfSingleBranchPositions](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfSingleBranchPositions)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -895,7 +895,13 @@ func (o *OneOfSingleBranchPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) err
 				if oneofHasRequiredFields(_d, _ov, "k") {
 					var candidate *OneOfSingleBranchPositionsObjBranchOption0
 					if err := func(_p **OneOfSingleBranchPositionsObjBranchOption0, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*OneOfSingleBranchPositionsObjBranchOption0, OneOfSingleBranchPositionsObjBranchOption0](_p, _d, _s, (*OneOfSingleBranchPositionsObjBranchOption0).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(OneOfSingleBranchPositionsObjBranchOption0)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						o.ObjBranch = &OneOfSingleBranchPositions_OneOfSingleBranchPositionsObjBranchOption0{OneOfSingleBranchPositionsObjBranchOption0: candidate}
 						oneofMatched++
@@ -1185,9 +1191,14 @@ func (o OneOfSingleBranchPositions) appendMemberJSON(_idx int, _key string, _b [
 		switch _sel := o.ObjBranch.(type) {
 		case *OneOfSingleBranchPositions_OneOfSingleBranchPositionsObjBranchOption0:
 			_out, _err := (func(_v *OneOfSingleBranchPositionsObjBranchOption0, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*OneOfSingleBranchPositionsObjBranchOption0, OneOfSingleBranchPositionsObjBranchOption0](_v, _b, func(_v OneOfSingleBranchPositionsObjBranchOption0, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[OneOfSingleBranchPositionsObjBranchOption0](_v, _b, OneOfSingleBranchPositionsObjBranchOption0.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*OneOfSingleBranchPositionsObjBranchOption0)(nil), true)
+				}
+				return _out, nil
 			})(_sel.OneOfSingleBranchPositionsObjBranchOption0, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling OneOfSingleBranchPositions.ObjBranch: %w", _err)

@@ -48,7 +48,7 @@ func (n *NullableArrayItemsRowsItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) err
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[NullableArrayItemsRowsItem](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*NullableArrayItemsRowsItem)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -284,7 +284,7 @@ func (n *NullableArrayItems) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[NullableArrayItems](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*NullableArrayItems)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -305,7 +305,13 @@ func (n *NullableArrayItems) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 		if _err := func(_p *[]*NullableArrayItemsRowsItem, _d *jsonDoc, _s jsonSpan) error {
 			return jsonProbeSlice[*NullableArrayItemsRowsItem](_p, _d, _s, func(_p **NullableArrayItemsRowsItem, _d *jsonDoc, _s jsonSpan) error {
 				return jsonDecodeRefusal(func(_p **NullableArrayItemsRowsItem, _d *jsonDoc, _s jsonSpan) error {
-					return jsonDecodePtr[*NullableArrayItemsRowsItem, NullableArrayItemsRowsItem](_p, _d, _s, (*NullableArrayItemsRowsItem).decodeJSONAt)
+					if _d.isNull(_s) {
+						*_p = nil
+						return nil
+					}
+					_v := new(NullableArrayItemsRowsItem)
+					*_p = _v
+					return _v.decodeJSONAt(_d, _s)
 				}(_p, _d, _s))
 			})
 		}(&n.Rows, _d, _v); _err != nil {
@@ -386,11 +392,11 @@ func (n NullableArrayItems) appendJSON(_b []byte) ([]byte, error) {
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range n._jsonNulls {
-				_cur, _present, _err := _o.value(_k, n.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, n.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -446,9 +452,14 @@ func (n NullableArrayItems) appendMemberJSON(_idx int, _key string, _b []byte) (
 	case 0:
 		return (func(_v []*NullableArrayItemsRowsItem, _b []byte) ([]byte, error) {
 			return jsonEncSlice[[]*NullableArrayItemsRowsItem, *NullableArrayItemsRowsItem](_v, _b, func(_v *NullableArrayItemsRowsItem, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*NullableArrayItemsRowsItem, NullableArrayItemsRowsItem](_v, _b, func(_v NullableArrayItemsRowsItem, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[NullableArrayItemsRowsItem](_v, _b, NullableArrayItemsRowsItem.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*NullableArrayItemsRowsItem)(nil), true)
+				}
+				return _out, nil
 			})
 		})(n.Rows, _b)
 	}

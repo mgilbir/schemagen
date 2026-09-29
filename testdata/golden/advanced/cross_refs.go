@@ -41,7 +41,7 @@ func (m *Metadata) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Metadata](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Metadata)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -225,7 +225,7 @@ func (p *Person) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Person](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Person)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -391,7 +391,7 @@ func (s *Section) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Section](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Section)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -525,7 +525,11 @@ func (s Section) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, err
 	case 2:
 		return (func(_v []Section, _b []byte) ([]byte, error) {
 			return jsonEncSlice[[]Section, Section](_v, _b, func(_v Section, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[Section](_v, _b, Section.appendJSON, false)
+				_out, _err := _v.appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*Section)(nil), false)
+				}
+				return _out, nil
 			})
 		})(s.Subsections, _b)
 	}
@@ -588,7 +592,7 @@ func (d *Document) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Document](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Document)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -608,7 +612,13 @@ func (d *Document) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["author"]; _ok {
 		if _err := func(_p **Person, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **Person, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*Person, Person](_p, _d, _s, (*Person).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(Person)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&d.Author, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "author")
@@ -713,18 +723,31 @@ func (d Document) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, er
 	switch _idx {
 	case 0:
 		return (func(_v *Person, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*Person, Person](_v, _b, func(_v Person, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[Person](_v, _b, Person.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*Person)(nil), true)
+			}
+			return _out, nil
 		})(d.Author, _b)
 	case 1:
 		return (func(_v Metadata, _b []byte) ([]byte, error) {
-			return jsonEncMarshaler[Metadata](_v, _b, Metadata.appendJSON, false)
+			_out, _err := _v.appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*Metadata)(nil), false)
+			}
+			return _out, nil
 		})(d.Metadata, _b)
 	case 2:
 		return (func(_v []Section, _b []byte) ([]byte, error) {
 			return jsonEncSlice[[]Section, Section](_v, _b, func(_v Section, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[Section](_v, _b, Section.appendJSON, false)
+				_out, _err := _v.appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*Section)(nil), false)
+				}
+				return _out, nil
 			})
 		})(d.Sections, _b)
 	}

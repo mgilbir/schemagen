@@ -89,7 +89,7 @@ func (f *FalsePropertyExplicitNullListItem) decodeJSONAt(_d *jsonDoc, _sp jsonSp
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[FalsePropertyExplicitNullListItem](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*FalsePropertyExplicitNullListItem)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -231,7 +231,7 @@ func (f *FalsePropertyExplicitNullNested) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[FalsePropertyExplicitNullNested](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*FalsePropertyExplicitNullNested)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -394,7 +394,7 @@ func (f *FalsePropertyExplicitNull) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) erro
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[FalsePropertyExplicitNull](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*FalsePropertyExplicitNull)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -430,7 +430,13 @@ func (f *FalsePropertyExplicitNull) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) erro
 	if _v, _ok := _raw["nested"]; _ok {
 		if _err := func(_p **FalsePropertyExplicitNullNested, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **FalsePropertyExplicitNullNested, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*FalsePropertyExplicitNullNested, FalsePropertyExplicitNullNested](_p, _d, _s, (*FalsePropertyExplicitNullNested).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(FalsePropertyExplicitNullNested)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&f.Nested, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "nested")
@@ -559,14 +565,23 @@ func (f FalsePropertyExplicitNull) appendMemberJSON(_idx int, _key string, _b []
 	switch _idx {
 	case 1:
 		return (func(_v *FalsePropertyExplicitNullNested, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*FalsePropertyExplicitNullNested, FalsePropertyExplicitNullNested](_v, _b, func(_v FalsePropertyExplicitNullNested, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[FalsePropertyExplicitNullNested](_v, _b, FalsePropertyExplicitNullNested.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*FalsePropertyExplicitNullNested)(nil), true)
+			}
+			return _out, nil
 		})(f.Nested, _b)
 	case 3:
 		return (func(_v []FalsePropertyExplicitNullListItem, _b []byte) ([]byte, error) {
 			return jsonEncSlice[[]FalsePropertyExplicitNullListItem, FalsePropertyExplicitNullListItem](_v, _b, func(_v FalsePropertyExplicitNullListItem, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[FalsePropertyExplicitNullListItem](_v, _b, FalsePropertyExplicitNullListItem.appendJSON, false)
+				_out, _err := _v.appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*FalsePropertyExplicitNullListItem)(nil), false)
+				}
+				return _out, nil
 			})
 		})(f.List, _b)
 	}

@@ -321,7 +321,19 @@ func (g *Generator) jsonDecoder(t GoType) string {
 // are only checked for identity, which has no such limit.
 
 func (g *Generator) pointerDecoder(self, inner GoType) string {
-	return jsonAtLiteral(self, "jsonDecodePtr["+self.GoTypeName()+", "+inner.GoTypeName()+"](_p, _d, _s, "+g.jsonDecoder(inner)+")")
+	dec := g.jsonDecoder(inner)
+	if own := "(*" + inner.GoTypeName() + ").decodeJSONAt"; dec == own {
+		// A pointer to one of this package's types that decodes in place,
+		// written out rather than through jsonDecodePtr: the helper is
+		// instantiated over what the pointer points to, and a struct is a shape
+		// of its own, so it was compiled once per struct type of the package.
+		// The same steps: a null leaves the pointer nil, and anything else is
+		// decoded into a newly allocated value.
+		return "func(_p *" + self.GoTypeName() + ", _d *jsonDoc, _s jsonSpan) error {\n" +
+			"if _d.isNull(_s) {\n*_p = nil\nreturn nil\n}\n" +
+			"_v := new(" + inner.GoTypeName() + ")\n*_p = _v\nreturn _v.decodeJSONAt(_d, _s)\n}"
+	}
+	return jsonAtLiteral(self, "jsonDecodePtr["+self.GoTypeName()+", "+inner.GoTypeName()+"](_p, _d, _s, "+dec+")")
 }
 
 func (g *Generator) sliceDecoder(self, elem GoType) string {

@@ -376,7 +376,7 @@ func (u *UntypedFormatPositionsBuckets) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) 
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[UntypedFormatPositionsBuckets](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*UntypedFormatPositionsBuckets)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1090,7 +1090,7 @@ func (u *UntypedFormatPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[UntypedFormatPositions](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*UntypedFormatPositions)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1110,7 +1110,13 @@ func (u *UntypedFormatPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["buckets"]; _ok {
 		if _err := func(_p **UntypedFormatPositionsBuckets, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **UntypedFormatPositionsBuckets, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*UntypedFormatPositionsBuckets, UntypedFormatPositionsBuckets](_p, _d, _s, (*UntypedFormatPositionsBuckets).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(UntypedFormatPositionsBuckets)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&u.Buckets, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "buckets")
@@ -1384,11 +1390,11 @@ func (u UntypedFormatPositions) appendJSON(_b []byte) ([]byte, error) {
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range u._jsonNulls {
-				_cur, _present, _err := _o.value(_k, u.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, u.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -1506,9 +1512,14 @@ func (u UntypedFormatPositions) appendMemberJSON(_idx int, _key string, _b []byt
 	switch _idx {
 	case 0:
 		return (func(_v *UntypedFormatPositionsBuckets, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*UntypedFormatPositionsBuckets, UntypedFormatPositionsBuckets](_v, _b, func(_v UntypedFormatPositionsBuckets, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[UntypedFormatPositionsBuckets](_v, _b, UntypedFormatPositionsBuckets.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*UntypedFormatPositionsBuckets)(nil), true)
+			}
+			return _out, nil
 		})(u.Buckets, _b)
 	case 10:
 		switch _sel := u.Branch.(type) {

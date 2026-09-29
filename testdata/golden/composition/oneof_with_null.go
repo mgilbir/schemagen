@@ -40,7 +40,7 @@ func (d *DatabaseConfig) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[DatabaseConfig](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*DatabaseConfig)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -212,7 +212,7 @@ func (c *Config) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Config](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Config)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -232,7 +232,13 @@ func (c *Config) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["database"]; _ok {
 		if _err := func(_p **DatabaseConfig, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **DatabaseConfig, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*DatabaseConfig, DatabaseConfig](_p, _d, _s, (*DatabaseConfig).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(DatabaseConfig)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&c.Database, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "database")
@@ -315,11 +321,11 @@ func (c Config) appendJSON(_b []byte) ([]byte, error) {
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range c._jsonNulls {
-				_cur, _present, _err := _o.value(_k, c.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, c.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -363,9 +369,14 @@ func (c Config) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, erro
 	switch _idx {
 	case 0:
 		return (func(_v *DatabaseConfig, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*DatabaseConfig, DatabaseConfig](_v, _b, func(_v DatabaseConfig, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[DatabaseConfig](_v, _b, DatabaseConfig.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*DatabaseConfig)(nil), true)
+			}
+			return _out, nil
 		})(c.Database, _b)
 	}
 	return _b, nil

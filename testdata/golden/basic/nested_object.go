@@ -40,7 +40,7 @@ func (a *AddressLocation) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AddressLocation](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AddressLocation)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -206,7 +206,7 @@ func (a *Address) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Address](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Address)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -233,7 +233,13 @@ func (a *Address) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["location"]; _ok {
 		if _err := func(_p **AddressLocation, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **AddressLocation, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*AddressLocation, AddressLocation](_p, _d, _s, (*AddressLocation).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AddressLocation)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.Location, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "location")
@@ -367,9 +373,14 @@ func (a Address) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, err
 	switch _idx {
 	case 0:
 		return (func(_v *AddressLocation, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*AddressLocation, AddressLocation](_v, _b, func(_v AddressLocation, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[AddressLocation](_v, _b, AddressLocation.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AddressLocation)(nil), true)
+			}
+			return _out, nil
 		})(a.Location, _b)
 	}
 	return _b, nil

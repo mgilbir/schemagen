@@ -37,7 +37,7 @@ func (e *Extended) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Extended](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Extended)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -57,7 +57,13 @@ func (e *Extended) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["bar"]; _ok {
 		if _err := func(_p **Bar, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **Bar, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*Bar, Bar](_p, _d, _s, (*Bar).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(Bar)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&e.Bar, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "bar")
@@ -130,7 +136,14 @@ func (e Extended) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, er
 	switch _idx {
 	case 0:
 		return (func(_v *Bar, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*Bar, Bar](_v, _b, func(_v Bar, _b []byte) ([]byte, error) { return jsonEncMarshaler[Bar](_v, _b, Bar.appendJSON, true) })
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*Bar)(nil), true)
+			}
+			return _out, nil
 		})(e.Bar, _b)
 	}
 	return _b, nil
@@ -177,7 +190,7 @@ func (b *Bar) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Bar](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Bar)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -197,7 +210,13 @@ func (b *Bar) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["baz"]; _ok {
 		if _err := func(_p **Extended, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **Extended, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*Extended, Extended](_p, _d, _s, (*Extended).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(Extended)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&b.Baz, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "baz")
@@ -270,9 +289,14 @@ func (b Bar) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) 
 	switch _idx {
 	case 0:
 		return (func(_v *Extended, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*Extended, Extended](_v, _b, func(_v Extended, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[Extended](_v, _b, Extended.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*Extended)(nil), true)
+			}
+			return _out, nil
 		})(b.Baz, _b)
 	}
 	return _b, nil
@@ -336,7 +360,7 @@ func (r *Root) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Root](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Root)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -356,7 +380,13 @@ func (r *Root) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["bar"]; _ok {
 		if _err := func(_p **Bar, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **Bar, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*Bar, Bar](_p, _d, _s, (*Bar).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(Bar)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&r.Bar, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "bar")
@@ -446,7 +476,14 @@ func (r Root) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error)
 	switch _idx {
 	case 0:
 		return (func(_v *Bar, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*Bar, Bar](_v, _b, func(_v Bar, _b []byte) ([]byte, error) { return jsonEncMarshaler[Bar](_v, _b, Bar.appendJSON, true) })
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*Bar)(nil), true)
+			}
+			return _out, nil
 		})(r.Bar, _b)
 	}
 	return _b, nil

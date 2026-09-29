@@ -143,11 +143,11 @@ func ({{$recv}} {{.Name}}) appendJSON(_b []byte) ([]byte, error) {
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			{{- /* maporder: each iteration reads and writes only its own key. */}}
 			for _k := range {{$recv}}._jsonNulls {
-				_cur, _present, _err := _o.value(_k, {{$recv}}.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, {{$recv}}.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -501,7 +501,7 @@ func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 	if {{$recv}}.{{.OneOf.FieldName}} != nil {
 		switch {{$recv}}.{{.OneOf.FieldName}}.(type) {
 		case {{range $i, $v := .OneOf.Variants}}{{if $i}}, {{end}}*{{$v.WrapperName}}{{end}}:
-			_o.deferred({{printf "%q" .JSONName}}, {{.Index}})
+			_o.idDeferred({{printf "%q" .JSONName}}, {{.Index}})
 		}
 	}
 	{{- end}}
@@ -511,7 +511,7 @@ func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 	if {{$recv}}.{{.OneOf.FieldName}} != nil {
 		switch {{$recv}}.{{.OneOf.FieldName}}.(type) {
 		case {{range $i, $v := .OneOf.Variants}}{{if $i}}, {{end}}*{{$v.WrapperName}}{{end}}:
-			_o.deferred({{printf "%q" .JSONName}}, {{.Index}})
+			_o.idDeferred({{printf "%q" .JSONName}}, {{.Index}})
 		}
 	}
 	{{- end}}
@@ -552,7 +552,7 @@ func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 		}
 		_o.computed({{printf "%q" .JSONName}}, _id)
 		{{- else}}
-		_o.deferred({{printf "%q" .JSONName}}, {{$mm.Index}})
+		_o.idDeferred({{printf "%q" .JSONName}}, {{$mm.Index}})
 		{{- end}}
 	}
 	{{- end}}
@@ -561,7 +561,7 @@ func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 	{{- if .HasPatternProperties}}
 	{{- /* maporder: sets members under their own keys, which are distinct, into an object whose identity is a sum over its members. */}}
 	for _key, _member := range {{$recv}}.PatternProperties {
-		_o.held(_key, _member)
+		_o.idHeld(_key, _member)
 	}
 	{{- end}}
 	{{- if .NeedsJSONNulls}}
@@ -576,11 +576,11 @@ func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 		if _, _zerr := _zero.jsonIdentityFields(&_zo, _zm); _zerr == nil {
 			{{- /* maporder: each iteration reads and writes only its own key. */}}
 			for _k := range {{$recv}}._jsonNulls {
-				_cur, _present, _empty, _err := _o.value(_k, {{$recv}}.jsonIdentityMember, _m)
+				_cur, _present, _empty, _err := _o.idValue(_k, {{$recv}}.jsonIdentityMember, _m)
 				if _err != nil {
 					return jsonID{}, _err
 				}
-				_zv, _zpresent, _, _zerr := _zo.value(_k, _zero.jsonIdentityMember, _zm)
+				_zv, _zpresent, _, _zerr := _zo.idValue(_k, _zero.jsonIdentityMember, _zm)
 				if _zerr != nil {
 					continue
 				}
@@ -595,7 +595,7 @@ func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 	{{- if isRawMessage .AdditionalProperties.ValueType}}
 	{{- /* maporder: sets members under their own keys, which are distinct, into an object whose identity is a sum over its members. */}}
 	for _key, _member := range {{$recv}}.AdditionalProperties {
-		_o.held(_key, _member)
+		_o.idHeld(_key, _member)
 	}
 	{{- else if .AdditionalProperties.ValueEncodeLeaf}}
 	{
@@ -613,7 +613,7 @@ func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 	{{- else}}
 	{{- /* maporder: sets members under their own keys, which are distinct, into an object whose identity is a sum over its members. */}}
 	for _key := range {{$recv}}.AdditionalProperties {
-		_o.deferred(_key, {{.EncodeAdditionalMember}})
+		_o.idDeferred(_key, {{.EncodeAdditionalMember}})
 	}
 	{{- end}}
 	{{- end}}
@@ -624,24 +624,24 @@ func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 		{{printf "%q" .}},
 		{{- end}}
 	} {
-		_o.del(_woKey)
+		_o.idDel(_woKey)
 	}
 	{{- end}}
 	{{- if .StripRulesVar}}
 	// The same, for the locations no Go field answers for. See
 	// _accessStripTree.
-	if _err := _o.stripWriteOnly({{.StripRulesVar}}, {{$recv}}.jsonIdentityMember, _m); _err != nil {
+	if _err := _o.idStripWriteOnly({{.StripRulesVar}}, {{$recv}}.jsonIdentityMember, _m); _err != nil {
 		return jsonID{}, _err
 	}
 	{{- end}}
 	{{- if or .StripRulesVar .NeedsJSONNulls}}
-	_id, _err := _o.id({{$recv}}.jsonIdentityMember, _m)
+	_id, _err := _o.idOf({{$recv}}.jsonIdentityMember, _m)
 	if _err != nil || _m == _in {
 		return _id, _err
 	}
 	return jsonIDAny(_m.pop(), _in)
 	{{- else}}
-	return _o.id({{$recv}}.jsonIdentityMember, _m)
+	return _o.idOf({{$recv}}.jsonIdentityMember, _m)
 	{{- end}}
 	{{- else}}
 	_o := jsonIDObject{m: _m}
@@ -770,10 +770,10 @@ jsonIdentityMember to read once the object is complete.
 		{{- else}}
 		{{- if $mem.Omit}}
 		if !{{if eq $mem.Omit "zero"}}jsonIsZero{{else}}jsonIsEmpty{{end}}({{$recv}}.{{.Name}}) {
-			_o.deferred({{printf "%q" .JSONName}}, {{$mem.Index}})
+			_o.idDeferred({{printf "%q" .JSONName}}, {{$mem.Index}})
 		}
 		{{- else}}
-		_o.deferred({{printf "%q" .JSONName}}, {{$mem.Index}})
+		_o.idDeferred({{printf "%q" .JSONName}}, {{$mem.Index}})
 		{{- end}}
 		{{- end}}
 	}

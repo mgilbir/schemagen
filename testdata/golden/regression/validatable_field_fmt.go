@@ -44,7 +44,7 @@ func (b *Base) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Base](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Base)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -203,7 +203,7 @@ func (i *Inner) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Inner](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Inner)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -364,7 +364,7 @@ func (v *ValidatableFieldFmt) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ValidatableFieldFmt](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ValidatableFieldFmt)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -384,7 +384,13 @@ func (v *ValidatableFieldFmt) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["foo"]; _ok {
 		if _err := func(_p **Inner, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **Inner, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*Inner, Inner](_p, _d, _s, (*Inner).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(Inner)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&v.Foo, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "foo")
@@ -478,11 +484,11 @@ func (v ValidatableFieldFmt) appendJSON(_b []byte) ([]byte, error) {
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range v._jsonNulls {
-				_cur, _present, _err := _o.value(_k, v.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, v.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -528,9 +534,14 @@ func (v ValidatableFieldFmt) appendMemberJSON(_idx int, _key string, _b []byte) 
 	switch _idx {
 	case 0:
 		return (func(_v *Inner, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*Inner, Inner](_v, _b, func(_v Inner, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[Inner](_v, _b, Inner.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*Inner)(nil), true)
+			}
+			return _out, nil
 		})(v.Foo, _b)
 	}
 	return _b, nil

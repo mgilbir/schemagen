@@ -40,7 +40,7 @@ func (o *OneOfObjectVariantConstraintsAOption0) decodeJSONAt(_d *jsonDoc, _sp js
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OneOfObjectVariantConstraintsAOption0](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfObjectVariantConstraintsAOption0)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -190,7 +190,7 @@ func (o *OneOfObjectVariantConstraintsAOption1) decodeJSONAt(_d *jsonDoc, _sp js
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OneOfObjectVariantConstraintsAOption1](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfObjectVariantConstraintsAOption1)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -390,7 +390,7 @@ func (o *OneOfObjectVariantConstraints) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) 
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OneOfObjectVariantConstraints](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfObjectVariantConstraints)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -463,7 +463,13 @@ func (o *OneOfObjectVariantConstraints) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) 
 				if oneofHasRequiredFields(_d, _ov, "x") {
 					var candidate *OneOfObjectVariantConstraintsAOption0
 					if err := func(_p **OneOfObjectVariantConstraintsAOption0, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*OneOfObjectVariantConstraintsAOption0, OneOfObjectVariantConstraintsAOption0](_p, _d, _s, (*OneOfObjectVariantConstraintsAOption0).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(OneOfObjectVariantConstraintsAOption0)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						o.A = &OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption0{OneOfObjectVariantConstraintsAOption0: candidate}
 						oneofMatched++
@@ -486,7 +492,13 @@ func (o *OneOfObjectVariantConstraints) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) 
 				if oneofHasRequiredFields(_d, _ov, "y") {
 					var candidate *OneOfObjectVariantConstraintsAOption1
 					if err := func(_p **OneOfObjectVariantConstraintsAOption1, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*OneOfObjectVariantConstraintsAOption1, OneOfObjectVariantConstraintsAOption1](_p, _d, _s, (*OneOfObjectVariantConstraintsAOption1).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(OneOfObjectVariantConstraintsAOption1)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						o.A = &OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption1{OneOfObjectVariantConstraintsAOption1: candidate}
 						oneofMatched++
@@ -636,9 +648,14 @@ func (o OneOfObjectVariantConstraints) appendMemberJSON(_idx int, _key string, _
 		switch _sel := o.A.(type) {
 		case *OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption0:
 			_out, _err := (func(_v *OneOfObjectVariantConstraintsAOption0, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*OneOfObjectVariantConstraintsAOption0, OneOfObjectVariantConstraintsAOption0](_v, _b, func(_v OneOfObjectVariantConstraintsAOption0, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[OneOfObjectVariantConstraintsAOption0](_v, _b, OneOfObjectVariantConstraintsAOption0.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*OneOfObjectVariantConstraintsAOption0)(nil), true)
+				}
+				return _out, nil
 			})(_sel.OneOfObjectVariantConstraintsAOption0, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling OneOfObjectVariantConstraints.A: %w", _err)
@@ -646,9 +663,14 @@ func (o OneOfObjectVariantConstraints) appendMemberJSON(_idx int, _key string, _
 			return _out, nil
 		case *OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption1:
 			_out, _err := (func(_v *OneOfObjectVariantConstraintsAOption1, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*OneOfObjectVariantConstraintsAOption1, OneOfObjectVariantConstraintsAOption1](_v, _b, func(_v OneOfObjectVariantConstraintsAOption1, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[OneOfObjectVariantConstraintsAOption1](_v, _b, OneOfObjectVariantConstraintsAOption1.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*OneOfObjectVariantConstraintsAOption1)(nil), true)
+				}
+				return _out, nil
 			})(_sel.OneOfObjectVariantConstraintsAOption1, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling OneOfObjectVariantConstraints.A: %w", _err)

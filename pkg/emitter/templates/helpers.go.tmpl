@@ -401,6 +401,7 @@ func newJSONDoc(data []byte) *jsonDoc {
 // judges its held parts later keeps the document (see jsonDecodeHeld), and from
 // here on the document reads its own copy, which is all those parts are views
 // of: data is the caller's, and a decoded value never keeps it.
+//go:noinline
 func (d *jsonDoc) finish(err error) error {
 	d.data = d.own
 	if d.refusal != nil {
@@ -942,6 +943,7 @@ func (d *jsonDoc) isNull(sp jsonSpan) bool { return d.data[sp.start] == 'n' }
 // such bytes to a caller hands a copy of them: the copy is shared by every value
 // this document decoded into, so no caller may be given a way to write to it.
 // An exported field is given copyOf instead.
+//go:noinline
 func (d *jsonDoc) keep(sp jsonSpan) json.RawMessage {
 	if d.own == nil {
 		d.own = append([]byte(nil), d.data...)
@@ -961,6 +963,7 @@ func (d *jsonDoc) keep(sp jsonSpan) json.RawMessage {
 // document that is a copy of the rest of it: quadratic in the depth. A trial
 // takes a view of the document's own copy instead, which costs nothing; the
 // branch that is kept keeps the view, and with it the document.
+//go:noinline
 func (d *jsonDoc) copyOf(sp jsonSpan) json.RawMessage {
 	if d.trial > 0 || d.views > 0 {
 		return d.keep(sp)
@@ -968,9 +971,10 @@ func (d *jsonDoc) copyOf(sp jsonSpan) json.RawMessage {
 	return append(json.RawMessage(nil), d.data[sp.start:sp.end]...)
 }
 
-// kind names the JSON kind of the value at sp the way encoding/json names it in
+// kindOf names the JSON kind of the value at sp the way encoding/json names it in
 // an UnmarshalTypeError.
-func (d *jsonDoc) kind(sp jsonSpan) string {
+//go:noinline
+func (d *jsonDoc) kindOf(sp jsonSpan) string {
 	switch d.data[sp.start] {
 	case '{':
 		return "object"
@@ -995,6 +999,7 @@ type jsonIter struct {
 }
 
 // iter starts a walk over the object or array at sp.
+//go:noinline
 func (d *jsonDoc) iter(sp jsonSpan) jsonIter {
 	return jsonIter{d: d, pos: sp.start + 1, stop: sp.end - 1}
 }
@@ -1180,7 +1185,7 @@ func jsonScalarRefusal[T any](p *T, d *jsonDoc, sp jsonSpan) (error, bool) {
 	} else if !jsonIsScalarKind(t) {
 		return nil, false
 	}
-	return &json.UnmarshalTypeError{Value: d.kind(sp), Type: t, Offset: int64(sp.start)}, true
+	return &json.UnmarshalTypeError{Value: d.kindOf(sp), Type: t, Offset: int64(sp.start)}, true
 }
 
 // jsonIsScalarKind reports whether encoding/json reads a JSON scalar into t and
@@ -1216,8 +1221,18 @@ var (
 // JSON kind decoded into a T, built without handing the value to encoding/json
 // to find that out: the value may be an object the size of the rest of the
 // document, and asking would scan it.
+//go:noinline
 func jsonTypeError[T any](d *jsonDoc, sp jsonSpan) error {
-	return &json.UnmarshalTypeError{Value: d.kind(sp), Type: reflect.TypeFor[T](), Offset: int64(sp.start)}
+	return &json.UnmarshalTypeError{Value: d.kindOf(sp), Type: reflect.TypeFor[T](), Offset: int64(sp.start)}
+}
+
+// jsonTypeErrorFor is jsonTypeError for the type ptr points to, for a struct's
+// own decode: not generic, so it is compiled once rather than once per struct
+// type of the package.
+//
+//go:noinline
+func jsonTypeErrorFor(d *jsonDoc, sp jsonSpan, ptr any) error {
+	return &json.UnmarshalTypeError{Value: d.kindOf(sp), Type: reflect.TypeOf(ptr).Elem(), Offset: int64(sp.start)}
 }
 
 // jsonKindError is the refusal encoding/json gives a value whose JSON kind a T
@@ -1246,6 +1261,7 @@ func jsonKindError[T any](d *jsonDoc, sp jsonSpan) error {
 // jsonDecodePtr decodes a value into a pointer, as encoding/json does: a null
 // leaves the pointer nil without consulting the type it points to, and anything
 // else is decoded into a newly allocated value.
+//go:noinline
 func jsonDecodePtr[P ~*T, T any](p *P, d *jsonDoc, sp jsonSpan, inner jsonAt[T]) error {
 	if d.data[sp.start] == 'n' {
 		*p = nil
@@ -1518,6 +1534,7 @@ func jsonKeyText(key string) string {
 // the way encoding/json does -- null for a nil one, a map's keys sorted -- with
 // enc for what they hold. Their type arguments are written out at every call,
 // for the reason the decode helpers' are.
+//go:noinline
 func jsonEncPtr[P ~*E, E any](v P, b []byte, enc jsonEnc[E]) ([]byte, error) {
 	if v == nil {
 		return append(b, "null"...), nil
@@ -1576,12 +1593,24 @@ func jsonSortedKeys[M ~map[string]V, V any](m M) []string {
 // a MarshalJSON it called: "json: error calling MarshalJSON for type T: ...".
 // viaPointer says the value was reached through a pointer, which encoding/json
 // names the type by.
+//go:noinline
 func jsonEncMarshaler[T any](v T, b []byte, enc jsonEnc[T], viaPointer bool) ([]byte, error) {
 	out, err := enc(v, b)
 	if err != nil {
 		return b, jsonMarshalerErr{typ: reflect.TypeFor[T](), ptr: viaPointer || jsonMarshalerNamesPointer, err: err}
 	}
 	return out, nil
+}
+
+// jsonMarshalerErrFor is jsonEncMarshaler's refusal for a value of the type ptr
+// points to. A position holding one of this package's types writes it through
+// its appendJSON directly and asks for this only when that fails: a generic
+// helper instantiated over each struct type is compiled once per struct, which
+// in a package of many types was a large part of its compile time.
+//
+//go:noinline
+func jsonMarshalerErrFor(err error, ptr any, viaPointer bool) error {
+	return jsonMarshalerErr{typ: reflect.TypeOf(ptr).Elem(), ptr: viaPointer || jsonMarshalerNamesPointer, err: err}
 }
 
 // jsonMarshalerNamesPointer says whether the encoding/json this program links
@@ -1710,11 +1739,13 @@ func (o *jsonObj) encoded(key string, val []byte) {
 }
 
 // held sets a member to raw JSON a caller holds.
+//go:noinline
 func (o *jsonObj) held(key string, raw []byte) {
 	o.set(jsonMember{key: key, val: raw, idx: -1, raw: true})
 }
 
 // deferred sets a member to the one appendMemberJSON writes as idx.
+//go:noinline
 func (o *jsonObj) deferred(key string, idx int) {
 	o.set(jsonMember{key: key, idx: idx})
 }
@@ -1725,9 +1756,9 @@ func (o *jsonObj) del(key string) {
 	}
 }
 
-// value is the member's bytes as they stand in the object: a deferred member is
+// memberBytes is the member's bytes as they stand in the object: a deferred member is
 // written out for the asking, and the member now holds them.
-func (o *jsonObj) value(key string, member jsonMemberEnc) ([]byte, bool, error) {
+func (o *jsonObj) memberBytes(key string, member jsonMemberEnc) ([]byte, bool, error) {
 	i := o.find(key)
 	if i < 0 || o.ms[i].gone {
 		return nil, false, nil
@@ -2711,6 +2742,7 @@ func _jsonCanonical(data []byte) (string, error) {
 // ever match a document that reads back the same way.
 func _jsonCanonicalTexts(raw []string) []string {
 	_out := make([]string, len(raw))
+	{{- /* maporder: not a map: ranges a slice. */}}
 	for _i, _r := range raw {
 		if _c, _err := _jsonCanonical([]byte(_r)); _err == nil {
 			_out[_i] = _c
@@ -3284,7 +3316,7 @@ func jsonIDRawAsDecoded(b []byte) (jsonID, error) {
 
 func jsonIDReadAll(r jsonIDReader) (jsonID, error) {
 	r.skip()
-	id, err := r.value(0)
+	id, err := r.readValue(0)
 	if err != nil {
 		return jsonID{}, err
 	}
@@ -3329,7 +3361,7 @@ func (r *jsonIDReader) literal(s string, kind byte) (jsonID, error) {
 	return jsonIDOfKind(kind), nil
 }
 
-func (r *jsonIDReader) value(depth int) (jsonID, error) {
+func (r *jsonIDReader) readValue(depth int) (jsonID, error) {
 	if depth > jsonIDMaxDepth {
 		return jsonID{}, errors.New("json: exceeded max depth")
 	}
@@ -3380,7 +3412,7 @@ func (r *jsonIDReader) value(depth int) (jsonID, error) {
 		}
 		for {
 			r.skip()
-			id, err := r.value(depth + 1)
+			id, err := r.readValue(depth + 1)
 			if err != nil {
 				return jsonID{}, err
 			}
@@ -3439,7 +3471,7 @@ func (r *jsonIDReader) object(depth int) (jsonID, error) {
 		}
 		r.pos++
 		r.skip()
-		vid, err := r.value(depth + 1)
+		vid, err := r.readValue(depth + 1)
 		if err != nil {
 			return jsonID{}, err
 		}
@@ -4159,7 +4191,7 @@ const (
 // which all share one index.
 type jsonIDMemberFunc func(idx int, key string, m *jsonValidation) (jsonID, error)
 
-func (o *jsonIDObj) find(key string) int {
+func (o *jsonIDObj) idFind(key string) int {
 	if o.at != nil {
 		if i, ok := o.at[key]; ok {
 			return i
@@ -4174,8 +4206,8 @@ func (o *jsonIDObj) find(key string) int {
 	return -1
 }
 
-func (o *jsonIDObj) set(m jsonIDObjMember) {
-	if i := o.find(m.key); i >= 0 {
+func (o *jsonIDObj) idSet(m jsonIDObjMember) {
+	if i := o.idFind(m.key); i >= 0 {
 		o.ms[i] = m
 		return
 	}
@@ -4200,32 +4232,32 @@ func (o *jsonIDObj) computed(key string, id jsonID) {
 	if o.m.reading() {
 		mb.tree = o.m.pop()
 	}
-	o.set(mb)
+	o.idSet(mb)
 }
 
-func (o *jsonIDObj) held(key string, raw []byte) {
-	o.set(jsonIDObjMember{key: key, raw: raw, kind: jsonIDObjRaw})
+func (o *jsonIDObj) idHeld(key string, raw []byte) {
+	o.idSet(jsonIDObjMember{key: key, raw: raw, kind: jsonIDObjRaw})
 }
 
-func (o *jsonIDObj) deferred(key string, idx int) {
-	o.set(jsonIDObjMember{key: key, idx: idx, kind: jsonIDObjDeferred})
+func (o *jsonIDObj) idDeferred(key string, idx int) {
+	o.idSet(jsonIDObjMember{key: key, idx: idx, kind: jsonIDObjDeferred})
 }
 
-func (o *jsonIDObj) del(key string) {
-	if i := o.find(key); i >= 0 {
+func (o *jsonIDObj) idDel(key string) {
+	if i := o.idFind(key); i >= 0 {
 		o.ms[i].gone = true
 	}
 }
 
 // nulled sets a member to null.
 func (o *jsonIDObj) nulled(key string) {
-	o.set(jsonIDObjMember{key: key, id: jsonIDOfKind(jsonIDNullKind), kind: jsonIDObjComputed})
+	o.idSet(jsonIDObjMember{key: key, id: jsonIDOfKind(jsonIDNullKind), kind: jsonIDObjComputed})
 }
 
-// tree is the tree of a member, m reading trees: a deferred member is read for
+// idTree is the tree of a member, m reading trees: a deferred member is read for
 // the asking, and holds its tree from then on. empty says the member is raw JSON
-// of no bytes at all, which jsonObj.value hands back as it is.
-func (o *jsonIDObj) tree(mb *jsonIDObjMember, member jsonIDMemberFunc, m *jsonValidation) (any, bool, error) {
+// of no bytes at all, which jsonObj.memberBytes hands back as it is.
+func (o *jsonIDObj) idTree(mb *jsonIDObjMember, member jsonIDMemberFunc, m *jsonValidation) (any, bool, error) {
 	switch mb.kind {
 	case jsonIDObjDeferred:
 		if _, err := member(mb.idx, mb.key, m); err != nil {
@@ -4245,14 +4277,14 @@ func (o *jsonIDObj) tree(mb *jsonIDObjMember, member jsonIDMemberFunc, m *jsonVa
 	return mb.tree, false, nil
 }
 
-// value is jsonObj.value for an identity, m reading trees: the member's tree,
+// idValue is jsonObj.memberBytes for an identity, m reading trees: the member's tree,
 // whether it is there, and whether it is raw JSON of no bytes.
-func (o *jsonIDObj) value(key string, member jsonIDMemberFunc, m *jsonValidation) (any, bool, bool, error) {
-	i := o.find(key)
+func (o *jsonIDObj) idValue(key string, member jsonIDMemberFunc, m *jsonValidation) (any, bool, bool, error) {
+	i := o.idFind(key)
 	if i < 0 || o.ms[i].gone {
 		return nil, false, false, nil
 	}
-	t, empty, err := o.tree(&o.ms[i], member, m)
+	t, empty, err := o.idTree(&o.ms[i], member, m)
 	return t, true, empty, err
 }
 
@@ -4320,8 +4352,8 @@ func jsonTreeWrittenNumber(v any) (string, bool) {
 	return "", false
 }
 
-// id is the object's identity, its deferred and raw members read now.
-func (o *jsonIDObj) id(member jsonIDMemberFunc, m *jsonValidation) (jsonID, error) {
+// idOf is the object's identity, its deferred and raw members read now.
+func (o *jsonIDObj) idOf(member jsonIDMemberFunc, m *jsonValidation) (jsonID, error) {
 	obj := jsonIDObject{m: m}
 	for i := range o.ms {
 		mb := &o.ms[i]
@@ -4490,6 +4522,7 @@ func jsonIDSliceKept[S ~[]E, E any](s S, m *jsonValidation, f jsonIdentify[E]) (
 		return jsonID{}, err
 	}
 	var a jsonIDArray
+	{{- /* maporder: not a map: ranges a slice. */}}
 	for _, id := range ids {
 		a.add(id)
 	}

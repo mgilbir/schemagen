@@ -113,7 +113,7 @@ func (n NamedConst) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(n._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -196,7 +196,7 @@ func (n NamedEnum) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(n._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -281,7 +281,7 @@ func (r RefSiblingTarget2020ConstForbidden) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(r._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -366,7 +366,7 @@ func (r RefSiblingTarget2020ConstSatisfied) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(r._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -467,7 +467,7 @@ func (r RefSiblingTarget2020EnumSibling) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(r._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -552,7 +552,7 @@ func (r RefSiblingTarget2020ListSiblingItem) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(r._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -637,7 +637,7 @@ func (r RefSiblingTarget2020MapSiblingValue) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(r._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -710,7 +710,7 @@ func (r *RefSiblingTarget2020) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[RefSiblingTarget2020](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*RefSiblingTarget2020)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an

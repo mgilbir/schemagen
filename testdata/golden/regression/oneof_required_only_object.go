@@ -45,7 +45,7 @@ func (o *OneOfRequiredOnlyObjectValueOption0) decodeJSONAt(_d *jsonDoc, _sp json
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OneOfRequiredOnlyObjectValueOption0](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfRequiredOnlyObjectValueOption0)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -186,7 +186,7 @@ func (o *OneOfRequiredOnlyObjectValueOption1) decodeJSONAt(_d *jsonDoc, _sp json
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OneOfRequiredOnlyObjectValueOption1](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfRequiredOnlyObjectValueOption1)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -367,7 +367,7 @@ func (o *OneOfRequiredOnlyObject) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OneOfRequiredOnlyObject](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfRequiredOnlyObject)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -431,7 +431,13 @@ func (o *OneOfRequiredOnlyObject) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 				if oneofHasRequiredFields(_d, _ov, "foo", "bar") {
 					var candidate *OneOfRequiredOnlyObjectValueOption0
 					if err := func(_p **OneOfRequiredOnlyObjectValueOption0, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*OneOfRequiredOnlyObjectValueOption0, OneOfRequiredOnlyObjectValueOption0](_p, _d, _s, (*OneOfRequiredOnlyObjectValueOption0).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(OneOfRequiredOnlyObjectValueOption0)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						o.Value = &OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption0{OneOfRequiredOnlyObjectValueOption0: candidate}
 						oneofMatched++
@@ -454,7 +460,13 @@ func (o *OneOfRequiredOnlyObject) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 				if oneofHasRequiredFields(_d, _ov, "foo", "baz") {
 					var candidate *OneOfRequiredOnlyObjectValueOption1
 					if err := func(_p **OneOfRequiredOnlyObjectValueOption1, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*OneOfRequiredOnlyObjectValueOption1, OneOfRequiredOnlyObjectValueOption1](_p, _d, _s, (*OneOfRequiredOnlyObjectValueOption1).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(OneOfRequiredOnlyObjectValueOption1)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						o.Value = &OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption1{OneOfRequiredOnlyObjectValueOption1: candidate}
 						oneofMatched++
@@ -561,15 +573,25 @@ func (o OneOfRequiredOnlyObject) appendJSON(_b []byte) ([]byte, error) {
 		switch _sel := o.Value.(type) {
 		case *OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption0:
 			return (func(_v *OneOfRequiredOnlyObjectValueOption0, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*OneOfRequiredOnlyObjectValueOption0, OneOfRequiredOnlyObjectValueOption0](_v, _b, func(_v OneOfRequiredOnlyObjectValueOption0, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[OneOfRequiredOnlyObjectValueOption0](_v, _b, OneOfRequiredOnlyObjectValueOption0.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*OneOfRequiredOnlyObjectValueOption0)(nil), true)
+				}
+				return _out, nil
 			})(_sel.OneOfRequiredOnlyObjectValueOption0, _b)
 		case *OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption1:
 			return (func(_v *OneOfRequiredOnlyObjectValueOption1, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*OneOfRequiredOnlyObjectValueOption1, OneOfRequiredOnlyObjectValueOption1](_v, _b, func(_v OneOfRequiredOnlyObjectValueOption1, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[OneOfRequiredOnlyObjectValueOption1](_v, _b, OneOfRequiredOnlyObjectValueOption1.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*OneOfRequiredOnlyObjectValueOption1)(nil), true)
+				}
+				return _out, nil
 			})(_sel.OneOfRequiredOnlyObjectValueOption1, _b)
 		}
 	}

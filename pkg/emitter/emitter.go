@@ -515,6 +515,15 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	if err := e.tmpl.ExecuteTemplate(&buf, "helpers_file.go.tmpl", data); err != nil {
 		return nil, false, fmt.Errorf("emitter: executing helper template: %w", err)
 	}
+	// A set read from source is pruned to what its roots reach, which takes
+	// the imports nothing kept names with it; see pruneHelpers.
+	if helpers.Roots != nil {
+		pruned, err := pruneHelpers(buf.Bytes(), helpers.Roots)
+		if err != nil {
+			return nil, false, err
+		}
+		return formatHelpers(pruned)
+	}
 	if kept, dropped := keepReferencedImports(buf.Bytes(), data.Imports); dropped {
 		data.Imports = kept
 		buf.Reset()
@@ -522,11 +531,38 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 			return nil, false, fmt.Errorf("emitter: executing helper template: %w", err)
 		}
 	}
-	src, err := format.Source(buf.Bytes())
-	if err != nil {
-		return nil, false, fmt.Errorf("emitter: formatting helper output: %w\nraw output:\n%s", err, buf.String())
+	return formatHelpers(buf.Bytes())
+}
+
+// formattedHelpers keeps the formatted text of the last helper files: the same
+// file is written for package after package. Bounded as preparedCache is.
+var formattedHelpers struct {
+	sync.Mutex
+	m map[string][]byte
+}
+
+const formattedHelpersSize = 256
+
+// formatHelpers is the rendered helper file, gofmt'ed.
+func formatHelpers(rendered []byte) ([]byte, bool, error) {
+	key := string(rendered)
+	formattedHelpers.Lock()
+	src, ok := formattedHelpers.m[key]
+	formattedHelpers.Unlock()
+	if ok {
+		return append([]byte(nil), src...), true, nil
 	}
-	return src, true, nil
+	src, err := format.Source(rendered)
+	if err != nil {
+		return nil, false, fmt.Errorf("emitter: formatting helper output: %w\nraw output:\n%s", err, rendered)
+	}
+	formattedHelpers.Lock()
+	if formattedHelpers.m == nil || len(formattedHelpers.m) >= formattedHelpersSize {
+		formattedHelpers.m = make(map[string][]byte)
+	}
+	formattedHelpers.m[key] = src
+	formattedHelpers.Unlock()
+	return append([]byte(nil), src...), true, nil
 }
 
 // helperFileData is the data passed to the shared helper file template.

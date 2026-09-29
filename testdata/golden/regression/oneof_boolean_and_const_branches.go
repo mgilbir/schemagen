@@ -79,7 +79,7 @@ func (o OneOfBooleanAndConstBranchesFalseBranch) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(o._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -168,7 +168,7 @@ func (o OneOfBooleanAndConstBranchesMixed) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(o._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -214,7 +214,7 @@ func (o *OneOfBooleanAndConstBranchesObjectsOnlyOption0) decodeJSONAt(_d *jsonDo
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OneOfBooleanAndConstBranchesObjectsOnlyOption0](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfBooleanAndConstBranchesObjectsOnlyOption0)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -361,7 +361,7 @@ func (o *OneOfBooleanAndConstBranchesObjectsOnlyOption1) decodeJSONAt(_d *jsonDo
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OneOfBooleanAndConstBranchesObjectsOnlyOption1](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfBooleanAndConstBranchesObjectsOnlyOption1)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -508,7 +508,7 @@ func (o *OneOfBooleanAndConstBranchesTrueBranchOption0) decodeJSONAt(_d *jsonDoc
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OneOfBooleanAndConstBranchesTrueBranchOption0](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfBooleanAndConstBranchesTrueBranchOption0)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -699,7 +699,7 @@ func (o OneOfBooleanAndConstBranchesTypedEnumBranch) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(o._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -881,7 +881,7 @@ func (o *OneOfBooleanAndConstBranches) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OneOfBooleanAndConstBranches](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfBooleanAndConstBranches)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -975,7 +975,13 @@ func (o *OneOfBooleanAndConstBranches) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 				if oneofHasRequiredFields(_d, _ov, "k") {
 					var candidate *OneOfBooleanAndConstBranchesObjectsOnlyOption0
 					if err := func(_p **OneOfBooleanAndConstBranchesObjectsOnlyOption0, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*OneOfBooleanAndConstBranchesObjectsOnlyOption0, OneOfBooleanAndConstBranchesObjectsOnlyOption0](_p, _d, _s, (*OneOfBooleanAndConstBranchesObjectsOnlyOption0).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(OneOfBooleanAndConstBranchesObjectsOnlyOption0)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						o.ObjectsOnly = &OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption0{OneOfBooleanAndConstBranchesObjectsOnlyOption0: candidate}
 						oneofMatched++
@@ -998,7 +1004,13 @@ func (o *OneOfBooleanAndConstBranches) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 				if oneofHasRequiredFields(_d, _ov, "j") {
 					var candidate *OneOfBooleanAndConstBranchesObjectsOnlyOption1
 					if err := func(_p **OneOfBooleanAndConstBranchesObjectsOnlyOption1, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*OneOfBooleanAndConstBranchesObjectsOnlyOption1, OneOfBooleanAndConstBranchesObjectsOnlyOption1](_p, _d, _s, (*OneOfBooleanAndConstBranchesObjectsOnlyOption1).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(OneOfBooleanAndConstBranchesObjectsOnlyOption1)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						o.ObjectsOnly = &OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption1{OneOfBooleanAndConstBranchesObjectsOnlyOption1: candidate}
 						oneofMatched++
@@ -1208,7 +1220,13 @@ func (o *OneOfBooleanAndConstBranches) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 				if oneofHasRequiredFields(_d, _ov, "k") {
 					var candidate *OneOfBooleanAndConstBranchesTrueBranchOption0
 					if err := func(_p **OneOfBooleanAndConstBranchesTrueBranchOption0, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*OneOfBooleanAndConstBranchesTrueBranchOption0, OneOfBooleanAndConstBranchesTrueBranchOption0](_p, _d, _s, (*OneOfBooleanAndConstBranchesTrueBranchOption0).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(OneOfBooleanAndConstBranchesTrueBranchOption0)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						o.TrueBranch = &OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesTrueBranchOption0{OneOfBooleanAndConstBranchesTrueBranchOption0: candidate}
 						oneofMatched++
@@ -1382,11 +1400,11 @@ func (o OneOfBooleanAndConstBranches) appendJSON(_b []byte) ([]byte, error) {
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range o._jsonNulls {
-				_cur, _present, _err := _o.value(_k, o.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, o.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -1447,9 +1465,14 @@ func (o OneOfBooleanAndConstBranches) appendMemberJSON(_idx int, _key string, _b
 		switch _sel := o.ObjectsOnly.(type) {
 		case *OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption0:
 			_out, _err := (func(_v *OneOfBooleanAndConstBranchesObjectsOnlyOption0, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*OneOfBooleanAndConstBranchesObjectsOnlyOption0, OneOfBooleanAndConstBranchesObjectsOnlyOption0](_v, _b, func(_v OneOfBooleanAndConstBranchesObjectsOnlyOption0, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[OneOfBooleanAndConstBranchesObjectsOnlyOption0](_v, _b, OneOfBooleanAndConstBranchesObjectsOnlyOption0.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*OneOfBooleanAndConstBranchesObjectsOnlyOption0)(nil), true)
+				}
+				return _out, nil
 			})(_sel.OneOfBooleanAndConstBranchesObjectsOnlyOption0, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.ObjectsOnly: %w", _err)
@@ -1457,9 +1480,14 @@ func (o OneOfBooleanAndConstBranches) appendMemberJSON(_idx int, _key string, _b
 			return _out, nil
 		case *OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption1:
 			_out, _err := (func(_v *OneOfBooleanAndConstBranchesObjectsOnlyOption1, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*OneOfBooleanAndConstBranchesObjectsOnlyOption1, OneOfBooleanAndConstBranchesObjectsOnlyOption1](_v, _b, func(_v OneOfBooleanAndConstBranchesObjectsOnlyOption1, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[OneOfBooleanAndConstBranchesObjectsOnlyOption1](_v, _b, OneOfBooleanAndConstBranchesObjectsOnlyOption1.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*OneOfBooleanAndConstBranchesObjectsOnlyOption1)(nil), true)
+				}
+				return _out, nil
 			})(_sel.OneOfBooleanAndConstBranchesObjectsOnlyOption1, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.ObjectsOnly: %w", _err)
@@ -1485,9 +1513,14 @@ func (o OneOfBooleanAndConstBranches) appendMemberJSON(_idx int, _key string, _b
 		switch _sel := o.TrueBranch.(type) {
 		case *OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesTrueBranchOption0:
 			_out, _err := (func(_v *OneOfBooleanAndConstBranchesTrueBranchOption0, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*OneOfBooleanAndConstBranchesTrueBranchOption0, OneOfBooleanAndConstBranchesTrueBranchOption0](_v, _b, func(_v OneOfBooleanAndConstBranchesTrueBranchOption0, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[OneOfBooleanAndConstBranchesTrueBranchOption0](_v, _b, OneOfBooleanAndConstBranchesTrueBranchOption0.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*OneOfBooleanAndConstBranchesTrueBranchOption0)(nil), true)
+				}
+				return _out, nil
 			})(_sel.OneOfBooleanAndConstBranchesTrueBranchOption0, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.TrueBranch: %w", _err)

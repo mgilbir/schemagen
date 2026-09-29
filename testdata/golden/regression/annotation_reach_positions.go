@@ -110,7 +110,7 @@ func (b *ByID) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ByID](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ByID)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -263,7 +263,7 @@ func (b *ByName) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ByName](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ByName)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -499,7 +499,7 @@ func (d *DefaultedObject) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[DefaultedObject](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*DefaultedObject)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1030,7 +1030,7 @@ func (a *AnnotationReachPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[AnnotationReachPositions](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AnnotationReachPositions)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1204,7 +1204,13 @@ func (a *AnnotationReachPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	if _v, _ok := _raw["dfltObjectViaRef"]; _ok {
 		if _err := func(_p **DefaultedObject, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **DefaultedObject, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*DefaultedObject, DefaultedObject](_p, _d, _s, (*DefaultedObject).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(DefaultedObject)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&a.DfltObjectViaRef, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "dfltObjectViaRef")
@@ -1355,7 +1361,13 @@ func (a *AnnotationReachPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 				if oneofHasRequiredFields(_d, _ov, "name") {
 					var candidate *ByName
 					if err := func(_p **ByName, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*ByName, ByName](_p, _d, _s, (*ByName).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(ByName)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						a.AnnCondGroup = &AnnotationReachPositions_ByName{ByName: candidate}
 						oneofMatched++
@@ -1378,7 +1390,13 @@ func (a *AnnotationReachPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 				if oneofHasRequiredFields(_d, _ov, "id") {
 					var candidate *ByID
 					if err := func(_p **ByID, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*ByID, ByID](_p, _d, _s, (*ByID).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(ByID)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						a.AnnCondGroup = &AnnotationReachPositions_ByID{ByID: candidate}
 						oneofMatched++
@@ -1510,7 +1528,13 @@ func (a *AnnotationReachPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 				if oneofHasRequiredFields(_d, _ov, "name") {
 					var candidate *ByName
 					if err := func(_p **ByName, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*ByName, ByName](_p, _d, _s, (*ByName).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(ByName)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						a.AnnGroupPlain = &AnnotationReachPositions_ByName2{ByName2: candidate}
 						oneofMatched++
@@ -1533,7 +1557,13 @@ func (a *AnnotationReachPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 				if oneofHasRequiredFields(_d, _ov, "id") {
 					var candidate *ByID
 					if err := func(_p **ByID, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*ByID, ByID](_p, _d, _s, (*ByID).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(ByID)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						a.AnnGroupPlain = &AnnotationReachPositions_ByID2{ByID2: candidate}
 						oneofMatched++
@@ -1735,11 +1765,11 @@ func (a AnnotationReachPositions) appendJSON(_b []byte) ([]byte, error) {
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range a._jsonNulls {
-				_cur, _present, _err := _o.value(_k, a.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, a.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -2071,17 +2101,27 @@ func (a AnnotationReachPositions) appendMemberJSON(_idx int, _key string, _b []b
 	switch _idx {
 	case 21:
 		return (func(_v *DefaultedObject, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*DefaultedObject, DefaultedObject](_v, _b, func(_v DefaultedObject, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[DefaultedObject](_v, _b, DefaultedObject.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*DefaultedObject)(nil), true)
+			}
+			return _out, nil
 		})(a.DfltObjectViaRef, _b)
 	case 34:
 		switch _sel := a.AnnCondGroup.(type) {
 		case *AnnotationReachPositions_ByName:
 			_out, _err := (func(_v *ByName, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*ByName, ByName](_v, _b, func(_v ByName, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[ByName](_v, _b, ByName.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*ByName)(nil), true)
+				}
+				return _out, nil
 			})(_sel.ByName, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling AnnotationReachPositions.AnnCondGroup: %w", _err)
@@ -2089,7 +2129,14 @@ func (a AnnotationReachPositions) appendMemberJSON(_idx int, _key string, _b []b
 			return _out, nil
 		case *AnnotationReachPositions_ByID:
 			_out, _err := (func(_v *ByID, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*ByID, ByID](_v, _b, func(_v ByID, _b []byte) ([]byte, error) { return jsonEncMarshaler[ByID](_v, _b, ByID.appendJSON, true) })
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*ByID)(nil), true)
+				}
+				return _out, nil
 			})(_sel.ByID, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling AnnotationReachPositions.AnnCondGroup: %w", _err)
@@ -2100,9 +2147,14 @@ func (a AnnotationReachPositions) appendMemberJSON(_idx int, _key string, _b []b
 		switch _sel := a.AnnGroupPlain.(type) {
 		case *AnnotationReachPositions_ByName2:
 			_out, _err := (func(_v *ByName, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*ByName, ByName](_v, _b, func(_v ByName, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[ByName](_v, _b, ByName.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*ByName)(nil), true)
+				}
+				return _out, nil
 			})(_sel.ByName2, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling AnnotationReachPositions.AnnGroupPlain: %w", _err)
@@ -2110,7 +2162,14 @@ func (a AnnotationReachPositions) appendMemberJSON(_idx int, _key string, _b []b
 			return _out, nil
 		case *AnnotationReachPositions_ByID2:
 			_out, _err := (func(_v *ByID, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*ByID, ByID](_v, _b, func(_v ByID, _b []byte) ([]byte, error) { return jsonEncMarshaler[ByID](_v, _b, ByID.appendJSON, true) })
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*ByID)(nil), true)
+				}
+				return _out, nil
 			})(_sel.ByID2, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling AnnotationReachPositions.AnnGroupPlain: %w", _err)

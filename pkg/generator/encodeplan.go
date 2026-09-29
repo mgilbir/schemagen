@@ -425,12 +425,23 @@ func ownEncoder(name string, td TypeDef, viaPointer bool) string {
 	if !defHasMarshalJSON(td) {
 		return name + ".appendJSON"
 	}
+	// Written out rather than through jsonEncMarshaler, which is instantiated
+	// over the type and so compiled once per struct type of the package; the
+	// refusal is built only on the failure.
+	return "func(_v " + name + ", _b []byte) ([]byte, error) {\n" + ownEncodeBody("_v", name, viaPointer) + "}"
+}
+
+// ownEncodeBody writes the value v, of this package's type name that has a
+// MarshalJSON, into _b, as statements ending in a return: jsonEncMarshaler's
+// steps, spelled out.
+func ownEncodeBody(v, name string, viaPointer bool) string {
 	via := "false"
 	if viaPointer {
 		via = "true"
 	}
-	return "func(_v " + name + ", _b []byte) ([]byte, error) { return jsonEncMarshaler[" + name + "](_v, _b, " +
-		name + ".appendJSON, " + via + ") }"
+	return "_out, _err := " + v + ".appendJSON(_b)\n" +
+		"if _err != nil {\nreturn _b, jsonMarshalerErrFor(_err, (*" + name + ")(nil), " + via + ")\n}\n" +
+		"return _out, nil\n"
 }
 
 // The three container helpers, instantiated over a position's own type and
@@ -438,6 +449,20 @@ func ownEncoder(name string, td TypeDef, viaPointer bool) string {
 // reason the decode helpers' are (see decodeplan.go).
 
 func (g *Generator) pointerEncoder(self, inner GoType) string {
+	if n, ok := inner.(*NamedType); ok && !n.Pointer && n.PkgAlias == "" {
+		if td := g.typeDefInScope(n.Name); td != nil && defEncodes(td) && g.reachesEncoder(inner) {
+			// A pointer to one of this package's types, written out rather than
+			// through jsonEncPtr, which is instantiated over what the pointer
+			// points to and so compiled once per struct type: null for a nil
+			// one, and the value's own writing otherwise.
+			body := "return (*_v).appendJSON(_b)\n"
+			if defHasMarshalJSON(td) {
+				body = ownEncodeBody("(*_v)", n.Name, true)
+			}
+			return "func(_v " + self.GoTypeName() + ", _b []byte) ([]byte, error) {\n" +
+				"if _v == nil {\nreturn append(_b, \"null\"...), nil\n}\n" + body + "}"
+		}
+	}
 	return jsonEncLiteral(self, "jsonEncPtr["+self.GoTypeName()+", "+inner.GoTypeName()+"](_v, _b, "+g.jsonEncoderVia(inner, true)+")")
 }
 

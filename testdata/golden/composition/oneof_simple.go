@@ -39,7 +39,7 @@ func (c *Circle) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Circle](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Circle)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -187,7 +187,7 @@ func (r *Rectangle) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Rectangle](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Rectangle)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -392,7 +392,7 @@ func (d *Drawing) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Drawing](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Drawing)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -472,7 +472,13 @@ func (d *Drawing) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				if oneofHasRequiredFields(_d, _ov, "radius") {
 					var candidate *Circle
 					if err := func(_p **Circle, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*Circle, Circle](_p, _d, _s, (*Circle).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(Circle)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						d.Shape = &Drawing_Circle{Circle: candidate}
 						oneofMatched++
@@ -495,7 +501,13 @@ func (d *Drawing) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				if oneofHasRequiredFields(_d, _ov, "width", "height") {
 					var candidate *Rectangle
 					if err := func(_p **Rectangle, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*Rectangle, Rectangle](_p, _d, _s, (*Rectangle).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(Rectangle)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						d.Shape = &Drawing_Rectangle{Rectangle: candidate}
 						oneofMatched++
@@ -653,9 +665,14 @@ func (d Drawing) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, err
 		switch _sel := d.Shape.(type) {
 		case *Drawing_Circle:
 			_out, _err := (func(_v *Circle, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*Circle, Circle](_v, _b, func(_v Circle, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[Circle](_v, _b, Circle.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*Circle)(nil), true)
+				}
+				return _out, nil
 			})(_sel.Circle, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling Drawing.Shape: %w", _err)
@@ -663,9 +680,14 @@ func (d Drawing) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, err
 			return _out, nil
 		case *Drawing_Rectangle:
 			_out, _err := (func(_v *Rectangle, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*Rectangle, Rectangle](_v, _b, func(_v Rectangle, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[Rectangle](_v, _b, Rectangle.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*Rectangle)(nil), true)
+				}
+				return _out, nil
 			})(_sel.Rectangle, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling Drawing.Shape: %w", _err)

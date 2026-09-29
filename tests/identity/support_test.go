@@ -8,6 +8,7 @@ import "github.com/mgilbir/schemagen/tests/internal/testsupport"
 var (
 	cycloneDXModule     = testsupport.CycloneDXModule
 	identityCheckSource = testsupport.IdentityCheckSource
+	rewriteHelperFile   = testsupport.RewriteHelperFile
 	runSchemagen        = testsupport.RunSchemagen
 	schemagenBinary     = testsupport.SchemagenBinary
 	writeTestGoMod      = testsupport.WriteTestGoMod

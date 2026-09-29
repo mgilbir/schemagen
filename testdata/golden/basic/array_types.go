@@ -40,7 +40,7 @@ func (a *ArrayTypesMetadataItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ArrayTypesMetadataItem](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ArrayTypesMetadataItem)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -203,7 +203,7 @@ func (a *ArrayTypes) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ArrayTypes](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ArrayTypes)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -331,7 +331,11 @@ func (a ArrayTypes) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, 
 	case 0:
 		return (func(_v []ArrayTypesMetadataItem, _b []byte) ([]byte, error) {
 			return jsonEncSlice[[]ArrayTypesMetadataItem, ArrayTypesMetadataItem](_v, _b, func(_v ArrayTypesMetadataItem, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ArrayTypesMetadataItem](_v, _b, ArrayTypesMetadataItem.appendJSON, false)
+				_out, _err := _v.appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*ArrayTypesMetadataItem)(nil), false)
+				}
+				return _out, nil
 			})
 		})(a.Metadata, _b)
 	}

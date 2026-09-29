@@ -39,7 +39,7 @@ func (b *Base) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Base](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Base)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -190,7 +190,7 @@ func (t *TriggerToolItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[TriggerToolItem](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*TriggerToolItem)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -364,7 +364,7 @@ func (t *Trigger) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Trigger](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Trigger)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -521,11 +521,11 @@ func (t Trigger) appendJSON(_b []byte) ([]byte, error) {
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range t._jsonNulls {
-				_cur, _present, _err := _o.value(_k, t.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, t.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -626,7 +626,11 @@ func (t Trigger) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, err
 	case 7:
 		return (func(_v []TriggerToolItem, _b []byte) ([]byte, error) {
 			return jsonEncSlice[[]TriggerToolItem, TriggerToolItem](_v, _b, func(_v TriggerToolItem, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[TriggerToolItem](_v, _b, TriggerToolItem.appendJSON, false)
+				_out, _err := _v.appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*TriggerToolItem)(nil), false)
+				}
+				return _out, nil
 			})
 		})(t.Tool, _b)
 	}

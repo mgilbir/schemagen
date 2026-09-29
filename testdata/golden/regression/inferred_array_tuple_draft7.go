@@ -38,7 +38,7 @@ func (n *NeedsA) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[NeedsA](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*NeedsA)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -111,9 +111,9 @@ func (n NeedsA) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, erro
 func (n *NeedsA) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 	_o := jsonIDObj{m: _m}
 	for _key, _member := range n.AdditionalProperties {
-		_o.held(_key, _member)
+		_o.idHeld(_key, _member)
 	}
-	return _o.id(n.jsonIdentityMember, _m)
+	return _o.idOf(n.jsonIdentityMember, _m)
 }
 
 // jsonIdentityMember reads the member of n numbered idx, as
@@ -173,7 +173,7 @@ func (i *InferredArrayTupleDraft7OneItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[InferredArrayTupleDraft7OneItem](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*InferredArrayTupleDraft7OneItem)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -246,9 +246,9 @@ func (i InferredArrayTupleDraft7OneItem) appendMemberJSON(_idx int, _key string,
 func (i *InferredArrayTupleDraft7OneItem) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 	_o := jsonIDObj{m: _m}
 	for _key, _member := range i.AdditionalProperties {
-		_o.held(_key, _member)
+		_o.idHeld(_key, _member)
 	}
-	return _o.id(i.jsonIdentityMember, _m)
+	return _o.idOf(i.jsonIdentityMember, _m)
 }
 
 // jsonIdentityMember reads the member of i numbered idx, as
@@ -462,7 +462,7 @@ func (i *InferredArrayTupleDraft7TupItem0) decodeJSONAt(_d *jsonDoc, _sp jsonSpa
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[InferredArrayTupleDraft7TupItem0](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*InferredArrayTupleDraft7TupItem0)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -535,9 +535,9 @@ func (i InferredArrayTupleDraft7TupItem0) appendMemberJSON(_idx int, _key string
 func (i *InferredArrayTupleDraft7TupItem0) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 	_o := jsonIDObj{m: _m}
 	for _key, _member := range i.AdditionalProperties {
-		_o.held(_key, _member)
+		_o.idHeld(_key, _member)
 	}
-	return _o.id(i.jsonIdentityMember, _m)
+	return _o.idOf(i.jsonIdentityMember, _m)
 }
 
 // jsonIdentityMember reads the member of i numbered idx, as
@@ -597,7 +597,7 @@ func (i *InferredArrayTupleDraft7TupRest) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[InferredArrayTupleDraft7TupRest](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*InferredArrayTupleDraft7TupRest)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -670,9 +670,9 @@ func (i InferredArrayTupleDraft7TupRest) appendMemberJSON(_idx int, _key string,
 func (i *InferredArrayTupleDraft7TupRest) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 	_o := jsonIDObj{m: _m}
 	for _key, _member := range i.AdditionalProperties {
-		_o.held(_key, _member)
+		_o.idHeld(_key, _member)
 	}
-	return _o.id(i.jsonIdentityMember, _m)
+	return _o.idOf(i.jsonIdentityMember, _m)
 }
 
 // jsonIdentityMember reads the member of i numbered idx, as
@@ -824,7 +824,7 @@ func (i *InferredArrayTupleDraft7) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[InferredArrayTupleDraft7](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*InferredArrayTupleDraft7)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -917,11 +917,11 @@ func (i InferredArrayTupleDraft7) appendJSON(_b []byte) ([]byte, error) {
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range i._jsonNulls {
-				_cur, _present, _err := _o.value(_k, i.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, i.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}

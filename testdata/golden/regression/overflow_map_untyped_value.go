@@ -256,7 +256,7 @@ func (o *OverflowMapUntypedValueObjReqValue) decodeJSONAt(_d *jsonDoc, _sp jsonS
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OverflowMapUntypedValueObjReqValue](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OverflowMapUntypedValueObjReqValue)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -536,7 +536,7 @@ func (o *OverflowMapUntypedValue) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[OverflowMapUntypedValue](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OverflowMapUntypedValue)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -746,7 +746,11 @@ func (o OverflowMapUntypedValue) appendMemberJSON(_idx int, _key string, _b []by
 	case 2:
 		return (func(_v map[string]OverflowMapUntypedValueObjReqValue, _b []byte) ([]byte, error) {
 			return jsonEncMap[map[string]OverflowMapUntypedValueObjReqValue, OverflowMapUntypedValueObjReqValue](_v, _b, func(_v OverflowMapUntypedValueObjReqValue, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[OverflowMapUntypedValueObjReqValue](_v, _b, OverflowMapUntypedValueObjReqValue.appendJSON, false)
+				_out, _err := _v.appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*OverflowMapUntypedValueObjReqValue)(nil), false)
+				}
+				return _out, nil
 			})
 		})(o.ObjReq, _b)
 	}

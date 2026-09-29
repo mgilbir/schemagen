@@ -41,7 +41,7 @@ func (a *Address) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Address](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Address)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -222,7 +222,7 @@ func (i *Item) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Item](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Item)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -408,7 +408,7 @@ func (o *Order) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[Order](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Order)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -428,7 +428,13 @@ func (o *Order) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["billing_address"]; _ok {
 		if _err := func(_p **Address, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **Address, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*Address, Address](_p, _d, _s, (*Address).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(Address)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&o.BillingAddress, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "billing_address")
@@ -548,18 +554,31 @@ func (o Order) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error
 	switch _idx {
 	case 0:
 		return (func(_v *Address, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*Address, Address](_v, _b, func(_v Address, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[Address](_v, _b, Address.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*Address)(nil), true)
+			}
+			return _out, nil
 		})(o.BillingAddress, _b)
 	case 1:
 		return (func(_v Address, _b []byte) ([]byte, error) {
-			return jsonEncMarshaler[Address](_v, _b, Address.appendJSON, false)
+			_out, _err := _v.appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*Address)(nil), false)
+			}
+			return _out, nil
 		})(o.ShippingAddress, _b)
 	case 3:
 		return (func(_v []Item, _b []byte) ([]byte, error) {
 			return jsonEncSlice[[]Item, Item](_v, _b, func(_v Item, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[Item](_v, _b, Item.appendJSON, false)
+				_out, _err := _v.appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*Item)(nil), false)
+				}
+				return _out, nil
 			})
 		})(o.Items, _b)
 	}

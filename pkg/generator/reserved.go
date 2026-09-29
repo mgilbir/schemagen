@@ -262,6 +262,8 @@ var helperIdentifiers = []string{
 	"jsonTreeRaw",
 	"jsonTreeEqual",
 	"jsonIDJSON",
+	"jsonTypeErrorFor",
+	"jsonMarshalerErrFor",
 	"jsonIDObjectOf",
 	"jsonNotJSON",
 	"jsonTreeJSON",

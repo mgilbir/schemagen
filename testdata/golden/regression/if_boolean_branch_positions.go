@@ -71,7 +71,7 @@ func (i IfFalse) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(i._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -150,7 +150,7 @@ func (i IfBooleanBranchPositionsElseFalse) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(i._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -231,7 +231,7 @@ func (i IfBooleanBranchPositionsIfFalse) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(i._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -309,7 +309,7 @@ func (i IfBooleanBranchPositionsIfTrue) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(i._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -390,7 +390,7 @@ func (i IfBooleanBranchPositionsListItem) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(i._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -468,7 +468,7 @@ func (i IfBooleanBranchPositionsThenFalse) Validate() error {
 	// level. Decoded whole, the value was an any the evaluator's checks that
 	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
 	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonIdentity).
+	// kept there for the next (see jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(i._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -520,7 +520,7 @@ func (i *IfBooleanBranchPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[IfBooleanBranchPositions](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*IfBooleanBranchPositions)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an

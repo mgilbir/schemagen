@@ -127,7 +127,7 @@ func (p *ProseBesideAllOf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ProseBesideAllOf](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ProseBesideAllOf)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -377,7 +377,7 @@ func (p *ProseViaAllOfStruct) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ProseViaAllOfStruct](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ProseViaAllOfStruct)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -515,7 +515,7 @@ func (p *ProseViaAnyOf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ProseViaAnyOf](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ProseViaAnyOf)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -839,7 +839,7 @@ func (p *ProseViaThen) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ProseViaThen](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ProseViaThen)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1054,7 +1054,7 @@ func (t *TitledDeprecatedStruct) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[TitledDeprecatedStruct](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*TitledDeprecatedStruct)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1208,7 +1208,7 @@ func (d *DocProsePositionsTitledElementItem) decodeJSONAt(_d *jsonDoc, _sp jsonS
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[DocProsePositionsTitledElementItem](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*DocProsePositionsTitledElementItem)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1343,7 +1343,7 @@ func (b *ByLabel) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ByLabel](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ByLabel)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1490,7 +1490,7 @@ func (b *ByOrdinal) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[ByOrdinal](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ByOrdinal)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1643,7 +1643,7 @@ func (d *DocProsePositionsTitledValueValue) decodeJSONAt(_d *jsonDoc, _sp jsonSp
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[DocProsePositionsTitledValueValue](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*DocProsePositionsTitledValueValue)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1867,7 +1867,7 @@ func (d *DocProsePositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeError[DocProsePositions](_d, _sp))
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*DocProsePositions)(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
@@ -1936,7 +1936,13 @@ func (d *DocProsePositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["proseBesideAllOf"]; _ok {
 		if _err := func(_p **ProseBesideAllOf, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ProseBesideAllOf, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ProseBesideAllOf, ProseBesideAllOf](_p, _d, _s, (*ProseBesideAllOf).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ProseBesideAllOf)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&d.ProseBesideAllOf, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "proseBesideAllOf")
@@ -1973,7 +1979,13 @@ func (d *DocProsePositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["proseViaAllOfStruct"]; _ok {
 		if _err := func(_p **ProseViaAllOfStruct, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ProseViaAllOfStruct, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ProseViaAllOfStruct, ProseViaAllOfStruct](_p, _d, _s, (*ProseViaAllOfStruct).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ProseViaAllOfStruct)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&d.ProseViaAllOfStruct, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "proseViaAllOfStruct")
@@ -1982,7 +1994,13 @@ func (d *DocProsePositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["proseViaAnyOf"]; _ok {
 		if _err := func(_p **ProseViaAnyOf, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ProseViaAnyOf, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ProseViaAnyOf, ProseViaAnyOf](_p, _d, _s, (*ProseViaAnyOf).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ProseViaAnyOf)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&d.ProseViaAnyOf, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "proseViaAnyOf")
@@ -2005,7 +2023,13 @@ func (d *DocProsePositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["proseViaThen"]; _ok {
 		if _err := func(_p **ProseViaThen, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **ProseViaThen, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*ProseViaThen, ProseViaThen](_p, _d, _s, (*ProseViaThen).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(ProseViaThen)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&d.ProseViaThen, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "proseViaThen")
@@ -2091,7 +2115,13 @@ func (d *DocProsePositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	if _v, _ok := _raw["titledDeprecatedStruct"]; _ok {
 		if _err := func(_p **TitledDeprecatedStruct, _d *jsonDoc, _s jsonSpan) error {
 			return jsonDecodeRefusal(func(_p **TitledDeprecatedStruct, _d *jsonDoc, _s jsonSpan) error {
-				return jsonDecodePtr[*TitledDeprecatedStruct, TitledDeprecatedStruct](_p, _d, _s, (*TitledDeprecatedStruct).decodeJSONAt)
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(TitledDeprecatedStruct)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
 			}(_p, _d, _s))
 		}(&d.TitledDeprecatedStruct, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "titledDeprecatedStruct")
@@ -2171,7 +2201,13 @@ func (d *DocProsePositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				if oneofHasRequiredFields(_d, _ov, "label") {
 					var candidate *ByLabel
 					if err := func(_p **ByLabel, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*ByLabel, ByLabel](_p, _d, _s, (*ByLabel).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(ByLabel)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						d.TitledUnion = &DocProsePositions_ByLabel{ByLabel: candidate}
 						oneofMatched++
@@ -2194,7 +2230,13 @@ func (d *DocProsePositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				if oneofHasRequiredFields(_d, _ov, "ordinal") {
 					var candidate *ByOrdinal
 					if err := func(_p **ByOrdinal, _d *jsonDoc, _s jsonSpan) error {
-						return jsonDecodePtr[*ByOrdinal, ByOrdinal](_p, _d, _s, (*ByOrdinal).decodeJSONAt)
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(ByOrdinal)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
 					}(&candidate, _d, _ov); err == nil {
 						d.TitledUnion = &DocProsePositions_ByOrdinal{ByOrdinal: candidate}
 						oneofMatched++
@@ -2394,11 +2436,11 @@ func (d DocProsePositions) appendJSON(_b []byte) ([]byte, error) {
 		var _zo jsonObj
 		if _zero.encodeFieldsJSON(&_zo) == nil {
 			for _k := range d._jsonNulls {
-				_cur, _present, _err := _o.value(_k, d.appendMemberJSON)
+				_cur, _present, _err := _o.memberBytes(_k, d.appendMemberJSON)
 				if _err != nil {
 					return _b, _err
 				}
-				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
 				if _zerr != nil {
 					continue
 				}
@@ -2681,53 +2723,91 @@ func (d DocProsePositions) appendMemberJSON(_idx int, _key string, _b []byte) ([
 	switch _idx {
 	case 7:
 		return (func(_v *ProseBesideAllOf, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ProseBesideAllOf, ProseBesideAllOf](_v, _b, func(_v ProseBesideAllOf, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ProseBesideAllOf](_v, _b, ProseBesideAllOf.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ProseBesideAllOf)(nil), true)
+			}
+			return _out, nil
 		})(d.ProseBesideAllOf, _b)
 	case 11:
 		return (func(_v *ProseViaAllOfStruct, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ProseViaAllOfStruct, ProseViaAllOfStruct](_v, _b, func(_v ProseViaAllOfStruct, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ProseViaAllOfStruct](_v, _b, ProseViaAllOfStruct.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ProseViaAllOfStruct)(nil), true)
+			}
+			return _out, nil
 		})(d.ProseViaAllOfStruct, _b)
 	case 12:
 		return (func(_v *ProseViaAnyOf, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ProseViaAnyOf, ProseViaAnyOf](_v, _b, func(_v ProseViaAnyOf, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ProseViaAnyOf](_v, _b, ProseViaAnyOf.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ProseViaAnyOf)(nil), true)
+			}
+			return _out, nil
 		})(d.ProseViaAnyOf, _b)
 	case 15:
 		return (func(_v *ProseViaThen, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*ProseViaThen, ProseViaThen](_v, _b, func(_v ProseViaThen, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[ProseViaThen](_v, _b, ProseViaThen.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ProseViaThen)(nil), true)
+			}
+			return _out, nil
 		})(d.ProseViaThen, _b)
 	case 27:
 		return (func(_v *TitledDeprecatedStruct, _b []byte) ([]byte, error) {
-			return jsonEncPtr[*TitledDeprecatedStruct, TitledDeprecatedStruct](_v, _b, func(_v TitledDeprecatedStruct, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[TitledDeprecatedStruct](_v, _b, TitledDeprecatedStruct.appendJSON, true)
-			})
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*TitledDeprecatedStruct)(nil), true)
+			}
+			return _out, nil
 		})(d.TitledDeprecatedStruct, _b)
 	case 28:
 		return (func(_v map[string]DocProsePositionsTitledValueValue, _b []byte) ([]byte, error) {
 			return jsonEncMap[map[string]DocProsePositionsTitledValueValue, DocProsePositionsTitledValueValue](_v, _b, func(_v DocProsePositionsTitledValueValue, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[DocProsePositionsTitledValueValue](_v, _b, DocProsePositionsTitledValueValue.appendJSON, false)
+				_out, _err := _v.appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*DocProsePositionsTitledValueValue)(nil), false)
+				}
+				return _out, nil
 			})
 		})(d.TitledValue, _b)
 	case 30:
 		return (func(_v []DocProsePositionsTitledElementItem, _b []byte) ([]byte, error) {
 			return jsonEncSlice[[]DocProsePositionsTitledElementItem, DocProsePositionsTitledElementItem](_v, _b, func(_v DocProsePositionsTitledElementItem, _b []byte) ([]byte, error) {
-				return jsonEncMarshaler[DocProsePositionsTitledElementItem](_v, _b, DocProsePositionsTitledElementItem.appendJSON, false)
+				_out, _err := _v.appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*DocProsePositionsTitledElementItem)(nil), false)
+				}
+				return _out, nil
 			})
 		})(d.TitledElement, _b)
 	case 31:
 		switch _sel := d.TitledUnion.(type) {
 		case *DocProsePositions_ByLabel:
 			_out, _err := (func(_v *ByLabel, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*ByLabel, ByLabel](_v, _b, func(_v ByLabel, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[ByLabel](_v, _b, ByLabel.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*ByLabel)(nil), true)
+				}
+				return _out, nil
 			})(_sel.ByLabel, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling DocProsePositions.TitledUnion: %w", _err)
@@ -2735,9 +2815,14 @@ func (d DocProsePositions) appendMemberJSON(_idx int, _key string, _b []byte) ([
 			return _out, nil
 		case *DocProsePositions_ByOrdinal:
 			_out, _err := (func(_v *ByOrdinal, _b []byte) ([]byte, error) {
-				return jsonEncPtr[*ByOrdinal, ByOrdinal](_v, _b, func(_v ByOrdinal, _b []byte) ([]byte, error) {
-					return jsonEncMarshaler[ByOrdinal](_v, _b, ByOrdinal.appendJSON, true)
-				})
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*ByOrdinal)(nil), true)
+				}
+				return _out, nil
 			})(_sel.ByOrdinal, _b)
 			if _err != nil {
 				return _b, fmt.Errorf("marshaling DocProsePositions.TitledUnion: %w", _err)
