@@ -281,8 +281,8 @@ func (e EnumAliasDelegation) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range e.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range e.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

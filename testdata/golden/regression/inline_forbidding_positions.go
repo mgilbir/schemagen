@@ -140,8 +140,8 @@ func (n NeverWithK) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range n.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range n.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -214,8 +214,8 @@ func (n NoNames) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range n.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range n.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -482,11 +482,11 @@ func (i InlineForbiddingPositionsEmptyEnumPattern) MarshalJSON() ([]byte, error)
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range i.PatternProperties {
-		obj[k] = v
+	for _key, _member := range i.PatternProperties {
+		obj[_key] = _member
 	}
-	for k, v := range i.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range i.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -501,18 +501,18 @@ func (i InlineForbiddingPositionsEmptyEnumPattern) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, v := range i.PatternProperties { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _member := range i.PatternProperties { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
-					_ = v
-					if ppRegexps[0].MatchString(k) {
-						return fmt.Errorf("patternProperties: key %q matches forbidden pattern %s", k, "^a")
+					_ = _member
+					if ppRegexps[0].MatchString(_key) {
+						return fmt.Errorf("patternProperties: key %q matches forbidden pattern %s", _key, "^a")
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -642,8 +642,8 @@ func (i InlineForbiddingPositionsEmptyEnumUnevalProps) MarshalJSON() ([]byte, er
 			}
 		}
 	}
-	for k, v := range i.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range i.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -658,22 +658,22 @@ func (i InlineForbiddingPositionsEmptyEnumUnevalProps) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, v := range i.AdditionalProperties { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _member := range i.AdditionalProperties { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
 					evaluated := false
-					_ = v
-					if evaluatedNames[k] {
+					_ = _member
+					if evaluatedNames[_key] {
 						evaluated = true
 					}
 					if !evaluated {
-						return jsonValueErrorf("unevaluated property %q is not allowed", k)
+						return jsonValueErrorf("unevaluated property %q is not allowed", _key)
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -1814,8 +1814,8 @@ func (i InlineForbiddingPositions) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range i.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range i.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

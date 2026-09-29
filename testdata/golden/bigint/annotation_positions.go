@@ -612,8 +612,8 @@ func (a AnnStruct) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -863,10 +863,10 @@ func (d DepDynamic) Validate() error {
 	}
 	{
 		_matches := 0
-		if _dynIsString(_v) && _dynStrOK(_v, func(s string) bool { return utf8.RuneCountInString(s) >= 2 }) {
+		if _dynIsString(_v) && _dynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) >= 2 }) {
 			_matches++
 		}
-		if _dynIsInteger(_v) && _dynNumOK(_v, func(f float64) bool { return f >= 5.0 }) {
+		if _dynIsInteger(_v) && _dynNumOK(_v, func(_n float64) bool { return _n >= 5.0 }) {
 			_matches++
 		}
 		if _matches != 1 {
@@ -1221,8 +1221,8 @@ func (d DepStruct) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range d.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range d.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1454,10 +1454,10 @@ func (p PlainDynamic) Validate() error {
 	}
 	{
 		_matches := 0
-		if _dynIsString(_v) && _dynStrOK(_v, func(s string) bool { return utf8.RuneCountInString(s) >= 2 }) {
+		if _dynIsString(_v) && _dynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) >= 2 }) {
 			_matches++
 		}
-		if _dynIsInteger(_v) && _dynNumOK(_v, func(f float64) bool { return f >= 5.0 }) {
+		if _dynIsInteger(_v) && _dynNumOK(_v, func(_n float64) bool { return _n >= 5.0 }) {
 			_matches++
 		}
 		if _matches != 1 {
@@ -1755,8 +1755,8 @@ func (p PlainStruct) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range p.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range p.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -2057,8 +2057,8 @@ func (a AnnotationPositions) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

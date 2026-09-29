@@ -177,8 +177,8 @@ func (p ProseBesideAllOf) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range p.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range p.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -370,8 +370,8 @@ func (p ProseViaAllOfStruct) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range p.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range p.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -484,8 +484,8 @@ func (p ProseViaAnyOf) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range p.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range p.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -738,8 +738,8 @@ func (p ProseViaThen) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range p.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range p.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -912,8 +912,8 @@ func (t TitledDeprecatedStruct) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range t.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range t.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1031,8 +1031,8 @@ func (d DocProsePositionsTitledElementItem) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range d.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range d.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1138,8 +1138,8 @@ func (b ByLabel) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range b.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range b.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1264,8 +1264,8 @@ func (b ByOrdinal) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range b.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range b.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1376,8 +1376,8 @@ func (d DocProsePositionsTitledValueValue) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range d.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range d.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1462,8 +1462,8 @@ func (*DocProsePositions_ByOrdinal) isDocProsePositions_TitledUnion() {}
 // GetByLabel returns the ByLabel variant value, or the zero value if not set.
 func (d *DocProsePositions) GetByLabel() *ByLabel {
 	if d != nil {
-		if v, ok := d.TitledUnion.(*DocProsePositions_ByLabel); ok {
-			return v.ByLabel
+		if _sel, ok := d.TitledUnion.(*DocProsePositions_ByLabel); ok {
+			return _sel.ByLabel
 		}
 	}
 	var zero *ByLabel
@@ -1473,8 +1473,8 @@ func (d *DocProsePositions) GetByLabel() *ByLabel {
 // GetByOrdinal returns the ByOrdinal variant value, or the zero value if not set.
 func (d *DocProsePositions) GetByOrdinal() *ByOrdinal {
 	if d != nil {
-		if v, ok := d.TitledUnion.(*DocProsePositions_ByOrdinal); ok {
-			return v.ByOrdinal
+		if _sel, ok := d.TitledUnion.(*DocProsePositions_ByOrdinal); ok {
+			return _sel.ByOrdinal
 		}
 	}
 	var zero *ByOrdinal
@@ -1822,15 +1822,15 @@ func (d DocProsePositions) MarshalJSON() ([]byte, error) {
 	}
 
 	if d.TitledUnion != nil {
-		switch v := d.TitledUnion.(type) {
+		switch _sel := d.TitledUnion.(type) {
 		case *DocProsePositions_ByLabel:
-			raw, err := json.Marshal(v.ByLabel)
+			raw, err := json.Marshal(_sel.ByLabel)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling DocProsePositions.TitledUnion: %w", err)
 			}
 			aux.TitledUnion = raw
 		case *DocProsePositions_ByOrdinal:
-			raw, err := json.Marshal(v.ByOrdinal)
+			raw, err := json.Marshal(_sel.ByOrdinal)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling DocProsePositions.TitledUnion: %w", err)
 			}
@@ -1870,8 +1870,8 @@ func (d DocProsePositions) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range d.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range d.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

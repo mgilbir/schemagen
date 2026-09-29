@@ -176,8 +176,8 @@ func (b ByID) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range b.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range b.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -293,8 +293,8 @@ func (b ByName) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range b.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range b.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -486,8 +486,8 @@ func (d DefaultedObject) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range d.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range d.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -807,8 +807,8 @@ func (*AnnotationReachPositions_ByID) isAnnotationReachPositions_AnnCondGroup() 
 // GetByName returns the ByName variant value, or the zero value if not set.
 func (a *AnnotationReachPositions) GetByName() *ByName {
 	if a != nil {
-		if v, ok := a.AnnCondGroup.(*AnnotationReachPositions_ByName); ok {
-			return v.ByName
+		if _sel, ok := a.AnnCondGroup.(*AnnotationReachPositions_ByName); ok {
+			return _sel.ByName
 		}
 	}
 	var zero *ByName
@@ -818,8 +818,8 @@ func (a *AnnotationReachPositions) GetByName() *ByName {
 // GetByID returns the ByID variant value, or the zero value if not set.
 func (a *AnnotationReachPositions) GetByID() *ByID {
 	if a != nil {
-		if v, ok := a.AnnCondGroup.(*AnnotationReachPositions_ByID); ok {
-			return v.ByID
+		if _sel, ok := a.AnnCondGroup.(*AnnotationReachPositions_ByID); ok {
+			return _sel.ByID
 		}
 	}
 	var zero *ByID
@@ -849,8 +849,8 @@ func (*AnnotationReachPositions_ByID2) isAnnotationReachPositions_AnnGroupPlain(
 // GetByName2 returns the ByName2 variant value, or the zero value if not set.
 func (a *AnnotationReachPositions) GetByName2() *ByName {
 	if a != nil {
-		if v, ok := a.AnnGroupPlain.(*AnnotationReachPositions_ByName2); ok {
-			return v.ByName2
+		if _sel, ok := a.AnnGroupPlain.(*AnnotationReachPositions_ByName2); ok {
+			return _sel.ByName2
 		}
 	}
 	var zero *ByName
@@ -860,8 +860,8 @@ func (a *AnnotationReachPositions) GetByName2() *ByName {
 // GetByID2 returns the ByID2 variant value, or the zero value if not set.
 func (a *AnnotationReachPositions) GetByID2() *ByID {
 	if a != nil {
-		if v, ok := a.AnnGroupPlain.(*AnnotationReachPositions_ByID2); ok {
-			return v.ByID2
+		if _sel, ok := a.AnnGroupPlain.(*AnnotationReachPositions_ByID2); ok {
+			return _sel.ByID2
 		}
 	}
 	var zero *ByID
@@ -1339,15 +1339,15 @@ func (a AnnotationReachPositions) MarshalJSON() ([]byte, error) {
 	}
 
 	if a.AnnCondGroup != nil {
-		switch v := a.AnnCondGroup.(type) {
+		switch _sel := a.AnnCondGroup.(type) {
 		case *AnnotationReachPositions_ByName:
-			raw, err := json.Marshal(v.ByName)
+			raw, err := json.Marshal(_sel.ByName)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling AnnotationReachPositions.AnnCondGroup: %w", err)
 			}
 			aux.AnnCondGroup = raw
 		case *AnnotationReachPositions_ByID:
-			raw, err := json.Marshal(v.ByID)
+			raw, err := json.Marshal(_sel.ByID)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling AnnotationReachPositions.AnnCondGroup: %w", err)
 			}
@@ -1356,15 +1356,15 @@ func (a AnnotationReachPositions) MarshalJSON() ([]byte, error) {
 	}
 
 	if a.AnnGroupPlain != nil {
-		switch v := a.AnnGroupPlain.(type) {
+		switch _sel := a.AnnGroupPlain.(type) {
 		case *AnnotationReachPositions_ByName2:
-			raw, err := json.Marshal(v.ByName2)
+			raw, err := json.Marshal(_sel.ByName2)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling AnnotationReachPositions.AnnGroupPlain: %w", err)
 			}
 			aux.AnnGroupPlain = raw
 		case *AnnotationReachPositions_ByID2:
-			raw, err := json.Marshal(v.ByID2)
+			raw, err := json.Marshal(_sel.ByID2)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling AnnotationReachPositions.AnnGroupPlain: %w", err)
 			}
@@ -1404,8 +1404,8 @@ func (a AnnotationReachPositions) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

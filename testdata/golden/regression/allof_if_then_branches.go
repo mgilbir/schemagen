@@ -101,8 +101,8 @@ func (b Base) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range b.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range b.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -207,8 +207,8 @@ func (t TriggerToolItem) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range t.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range t.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -415,8 +415,8 @@ func (t Trigger) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range t.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range t.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

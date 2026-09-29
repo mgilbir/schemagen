@@ -235,8 +235,8 @@ func (o OneOfBooleanAndConstBranchesObjectsOnlyOption0) MarshalJSON() ([]byte, e
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range o.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range o.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -352,8 +352,8 @@ func (o OneOfBooleanAndConstBranchesObjectsOnlyOption1) MarshalJSON() ([]byte, e
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range o.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range o.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -469,8 +469,8 @@ func (o OneOfBooleanAndConstBranchesTrueBranchOption0) MarshalJSON() ([]byte, er
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range o.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range o.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -598,8 +598,8 @@ func (*OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOptio
 // GetOneOfBooleanAndConstBranchesObjectsOnlyOption0 returns the OneOfBooleanAndConstBranchesObjectsOnlyOption0 variant value, or the zero value if not set.
 func (o *OneOfBooleanAndConstBranches) GetOneOfBooleanAndConstBranchesObjectsOnlyOption0() *OneOfBooleanAndConstBranchesObjectsOnlyOption0 {
 	if o != nil {
-		if v, ok := o.ObjectsOnly.(*OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption0); ok {
-			return v.OneOfBooleanAndConstBranchesObjectsOnlyOption0
+		if _sel, ok := o.ObjectsOnly.(*OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption0); ok {
+			return _sel.OneOfBooleanAndConstBranchesObjectsOnlyOption0
 		}
 	}
 	var zero *OneOfBooleanAndConstBranchesObjectsOnlyOption0
@@ -609,8 +609,8 @@ func (o *OneOfBooleanAndConstBranches) GetOneOfBooleanAndConstBranchesObjectsOnl
 // GetOneOfBooleanAndConstBranchesObjectsOnlyOption1 returns the OneOfBooleanAndConstBranchesObjectsOnlyOption1 variant value, or the zero value if not set.
 func (o *OneOfBooleanAndConstBranches) GetOneOfBooleanAndConstBranchesObjectsOnlyOption1() *OneOfBooleanAndConstBranchesObjectsOnlyOption1 {
 	if o != nil {
-		if v, ok := o.ObjectsOnly.(*OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption1); ok {
-			return v.OneOfBooleanAndConstBranchesObjectsOnlyOption1
+		if _sel, ok := o.ObjectsOnly.(*OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption1); ok {
+			return _sel.OneOfBooleanAndConstBranchesObjectsOnlyOption1
 		}
 	}
 	var zero *OneOfBooleanAndConstBranchesObjectsOnlyOption1
@@ -640,8 +640,8 @@ func (*OneOfBooleanAndConstBranches_Integer) isOneOfBooleanAndConstBranches_Scal
 // GetString returns the String variant value, or the zero value if not set.
 func (o *OneOfBooleanAndConstBranches) GetString() string {
 	if o != nil {
-		if v, ok := o.ScalarsOnly.(*OneOfBooleanAndConstBranches_String); ok {
-			return v.String
+		if _sel, ok := o.ScalarsOnly.(*OneOfBooleanAndConstBranches_String); ok {
+			return _sel.String
 		}
 	}
 	var zero string
@@ -651,8 +651,8 @@ func (o *OneOfBooleanAndConstBranches) GetString() string {
 // GetInteger returns the Integer variant value, or the zero value if not set.
 func (o *OneOfBooleanAndConstBranches) GetInteger() int64 {
 	if o != nil {
-		if v, ok := o.ScalarsOnly.(*OneOfBooleanAndConstBranches_Integer); ok {
-			return v.Integer
+		if _sel, ok := o.ScalarsOnly.(*OneOfBooleanAndConstBranches_Integer); ok {
+			return _sel.Integer
 		}
 	}
 	var zero int64
@@ -683,8 +683,8 @@ func (*OneOfBooleanAndConstBranches_Any) isOneOfBooleanAndConstBranches_TrueBran
 // GetOneOfBooleanAndConstBranchesTrueBranchOption0 returns the OneOfBooleanAndConstBranchesTrueBranchOption0 variant value, or the zero value if not set.
 func (o *OneOfBooleanAndConstBranches) GetOneOfBooleanAndConstBranchesTrueBranchOption0() *OneOfBooleanAndConstBranchesTrueBranchOption0 {
 	if o != nil {
-		if v, ok := o.TrueBranch.(*OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesTrueBranchOption0); ok {
-			return v.OneOfBooleanAndConstBranchesTrueBranchOption0
+		if _sel, ok := o.TrueBranch.(*OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesTrueBranchOption0); ok {
+			return _sel.OneOfBooleanAndConstBranchesTrueBranchOption0
 		}
 	}
 	var zero *OneOfBooleanAndConstBranchesTrueBranchOption0
@@ -694,8 +694,8 @@ func (o *OneOfBooleanAndConstBranches) GetOneOfBooleanAndConstBranchesTrueBranch
 // GetAny returns the Any variant value, or the zero value if not set.
 func (o *OneOfBooleanAndConstBranches) GetAny() any {
 	if o != nil {
-		if v, ok := o.TrueBranch.(*OneOfBooleanAndConstBranches_Any); ok {
-			return v.Any
+		if _sel, ok := o.TrueBranch.(*OneOfBooleanAndConstBranches_Any); ok {
+			return _sel.Any
 		}
 	}
 	var zero any
@@ -1096,15 +1096,15 @@ func (o OneOfBooleanAndConstBranches) MarshalJSON() ([]byte, error) {
 	}
 
 	if o.ObjectsOnly != nil {
-		switch v := o.ObjectsOnly.(type) {
+		switch _sel := o.ObjectsOnly.(type) {
 		case *OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption0:
-			raw, err := json.Marshal(v.OneOfBooleanAndConstBranchesObjectsOnlyOption0)
+			raw, err := json.Marshal(_sel.OneOfBooleanAndConstBranchesObjectsOnlyOption0)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.ObjectsOnly: %w", err)
 			}
 			aux.ObjectsOnly = raw
 		case *OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption1:
-			raw, err := json.Marshal(v.OneOfBooleanAndConstBranchesObjectsOnlyOption1)
+			raw, err := json.Marshal(_sel.OneOfBooleanAndConstBranchesObjectsOnlyOption1)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.ObjectsOnly: %w", err)
 			}
@@ -1113,15 +1113,15 @@ func (o OneOfBooleanAndConstBranches) MarshalJSON() ([]byte, error) {
 	}
 
 	if o.ScalarsOnly != nil {
-		switch v := o.ScalarsOnly.(type) {
+		switch _sel := o.ScalarsOnly.(type) {
 		case *OneOfBooleanAndConstBranches_String:
-			raw, err := json.Marshal(v.String)
+			raw, err := json.Marshal(_sel.String)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.ScalarsOnly: %w", err)
 			}
 			aux.ScalarsOnly = raw
 		case *OneOfBooleanAndConstBranches_Integer:
-			raw, err := json.Marshal(v.Integer)
+			raw, err := json.Marshal(_sel.Integer)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.ScalarsOnly: %w", err)
 			}
@@ -1130,15 +1130,15 @@ func (o OneOfBooleanAndConstBranches) MarshalJSON() ([]byte, error) {
 	}
 
 	if o.TrueBranch != nil {
-		switch v := o.TrueBranch.(type) {
+		switch _sel := o.TrueBranch.(type) {
 		case *OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesTrueBranchOption0:
-			raw, err := json.Marshal(v.OneOfBooleanAndConstBranchesTrueBranchOption0)
+			raw, err := json.Marshal(_sel.OneOfBooleanAndConstBranchesTrueBranchOption0)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.TrueBranch: %w", err)
 			}
 			aux.TrueBranch = raw
 		case *OneOfBooleanAndConstBranches_Any:
-			raw, err := json.Marshal(v.Any)
+			raw, err := json.Marshal(_sel.Any)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.TrueBranch: %w", err)
 			}
@@ -1178,8 +1178,8 @@ func (o OneOfBooleanAndConstBranches) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range o.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range o.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

@@ -102,8 +102,8 @@ func (o OneOfRootScalarBranchValueOption0) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range o.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range o.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -152,8 +152,8 @@ func (*OneOfRootScalarBranch_String) isOneOfRootScalarBranch_Value() {}
 // GetOneOfRootScalarBranchValueOption0 returns the OneOfRootScalarBranchValueOption0 variant value, or the zero value if not set.
 func (o *OneOfRootScalarBranch) GetOneOfRootScalarBranchValueOption0() *OneOfRootScalarBranchValueOption0 {
 	if o != nil {
-		if v, ok := o.Value.(*OneOfRootScalarBranch_OneOfRootScalarBranchValueOption0); ok {
-			return v.OneOfRootScalarBranchValueOption0
+		if _sel, ok := o.Value.(*OneOfRootScalarBranch_OneOfRootScalarBranchValueOption0); ok {
+			return _sel.OneOfRootScalarBranchValueOption0
 		}
 	}
 	var zero *OneOfRootScalarBranchValueOption0
@@ -163,8 +163,8 @@ func (o *OneOfRootScalarBranch) GetOneOfRootScalarBranchValueOption0() *OneOfRoo
 // GetString returns the String variant value, or the zero value if not set.
 func (o *OneOfRootScalarBranch) GetString() string {
 	if o != nil {
-		if v, ok := o.Value.(*OneOfRootScalarBranch_String); ok {
-			return v.String
+		if _sel, ok := o.Value.(*OneOfRootScalarBranch_String); ok {
+			return _sel.String
 		}
 	}
 	var zero string
@@ -280,11 +280,11 @@ func (o *OneOfRootScalarBranch) UnmarshalJSON(data []byte) error {
 func (o OneOfRootScalarBranch) MarshalJSON() ([]byte, error) {
 	// Top-level oneOf: marshal the selected variant directly as the root object.
 	if o.Value != nil {
-		switch v := o.Value.(type) {
+		switch _sel := o.Value.(type) {
 		case *OneOfRootScalarBranch_OneOfRootScalarBranchValueOption0:
-			return json.Marshal(v.OneOfRootScalarBranchValueOption0)
+			return json.Marshal(_sel.OneOfRootScalarBranchValueOption0)
 		case *OneOfRootScalarBranch_String:
-			return json.Marshal(v.String)
+			return json.Marshal(_sel.String)
 		}
 	}
 	return []byte("null"), nil

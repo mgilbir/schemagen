@@ -34,7 +34,7 @@ package {{.PackageName}}
 
 import (
 {{- range .Imports}}
-	{{if .Alias}}{{.Alias}} {{end}}"{{.Path}}"
+	{{if .Alias}}{{.Alias}} {{end}}{{goStringQuote .Path}}
 {{- end}}
 )
 {{- end}}

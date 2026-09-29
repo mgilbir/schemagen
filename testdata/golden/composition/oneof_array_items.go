@@ -124,8 +124,8 @@ func (c Circle) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range c.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range c.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -270,8 +270,8 @@ func (r Rectangle) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range r.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range r.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -324,8 +324,8 @@ func (*CanvasShapesItem_Rectangle) isCanvasShapesItem_Value() {}
 // GetCircle returns the Circle variant value, or the zero value if not set.
 func (c *CanvasShapesItem) GetCircle() *Circle {
 	if c != nil {
-		if v, ok := c.Value.(*CanvasShapesItem_Circle); ok {
-			return v.Circle
+		if _sel, ok := c.Value.(*CanvasShapesItem_Circle); ok {
+			return _sel.Circle
 		}
 	}
 	var zero *Circle
@@ -335,8 +335,8 @@ func (c *CanvasShapesItem) GetCircle() *Circle {
 // GetRectangle returns the Rectangle variant value, or the zero value if not set.
 func (c *CanvasShapesItem) GetRectangle() *Rectangle {
 	if c != nil {
-		if v, ok := c.Value.(*CanvasShapesItem_Rectangle); ok {
-			return v.Rectangle
+		if _sel, ok := c.Value.(*CanvasShapesItem_Rectangle); ok {
+			return _sel.Rectangle
 		}
 	}
 	var zero *Rectangle
@@ -411,11 +411,11 @@ func (c *CanvasShapesItem) UnmarshalJSON(data []byte) error {
 func (c CanvasShapesItem) MarshalJSON() ([]byte, error) {
 	// Top-level oneOf: marshal the selected variant directly as the root object.
 	if c.Value != nil {
-		switch v := c.Value.(type) {
+		switch _sel := c.Value.(type) {
 		case *CanvasShapesItem_Circle:
-			return json.Marshal(v.Circle)
+			return json.Marshal(_sel.Circle)
 		case *CanvasShapesItem_Rectangle:
-			return json.Marshal(v.Rectangle)
+			return json.Marshal(_sel.Rectangle)
 		}
 	}
 	return []byte("null"), nil
@@ -720,8 +720,8 @@ func (c Canvas) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range c.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range c.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

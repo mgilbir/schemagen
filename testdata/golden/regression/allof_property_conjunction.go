@@ -205,8 +205,8 @@ func (c CapBranch) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range c.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range c.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -687,8 +687,8 @@ func (a AllOfPropertyConjunctionNested) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1131,8 +1131,8 @@ func (a AllOfPropertyConjunction) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

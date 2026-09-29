@@ -435,8 +435,8 @@ func (r RefSiblingType) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range r.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range r.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

@@ -12,21 +12,21 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 		return []byte("null"), nil
 	}
 	{{- end}}
-	{{- /* Check if we have any top-level oneOfs (empty JSONName) */}}
+	{{- /* Check if we have any top-level oneOfs (see OneOfDef.IsProperty) */}}
 	{{- $hasTopLevelOneOf := false}}
 	{{- range $struct.OneOfs}}
-	{{- if not .JSONName}}{{$hasTopLevelOneOf = true}}{{end}}
+	{{- if not .IsProperty}}{{$hasTopLevelOneOf = true}}{{end}}
 	{{- end}}
 
 	{{- if $hasTopLevelOneOf}}
 	// Top-level oneOf: marshal the selected variant directly as the root object.
 	{{- range $oof := $struct.OneOfs}}
-	{{- if not $oof.JSONName}}
+	{{- if not $oof.IsProperty}}
 	if {{$recv}}.{{$oof.FieldName}} != nil {
-		switch v := {{$recv}}.{{$oof.FieldName}}.(type) {
+		switch _sel := {{$recv}}.{{$oof.FieldName}}.(type) {
 		{{- range $oof.Variants}}
 		case *{{.WrapperName}}:
-			return json.Marshal(v.{{.FieldName}})
+			return json.Marshal(_sel.{{.FieldName}})
 		{{- end}}
 		}
 	}
@@ -42,13 +42,21 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	aux := struct {
 		{{- if $struct.MarshalAuxRawFirst}}
 		{{- range $struct.OneOfs}}
-		{{.FieldName}} json.RawMessage `json:"{{.JSONName}},omitempty"`
+		{{- if .ManualJSON}}
+		{{.FieldName}} json.RawMessage `json:"-"`
+		{{- else}}
+		{{.FieldName}} json.RawMessage `json:"{{jsonTagName .JSONName}},omitempty"`
+		{{- end}}
 		{{- end}}
 		Alias
 		{{- else}}
 		Alias
 		{{- range $struct.OneOfs}}
-		{{.FieldName}} json.RawMessage `json:"{{.JSONName}},omitempty"`
+		{{- if .ManualJSON}}
+		{{.FieldName}} json.RawMessage `json:"-"`
+		{{- else}}
+		{{.FieldName}} json.RawMessage `json:"{{jsonTagName .JSONName}},omitempty"`
+		{{- end}}
 		{{- end}}
 		{{- end}}
 	}{
@@ -57,10 +65,10 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	{{- range $oof := $struct.OneOfs}}
 
 	if {{$recv}}.{{$oof.FieldName}} != nil {
-		switch v := {{$recv}}.{{$oof.FieldName}}.(type) {
+		switch _sel := {{$recv}}.{{$oof.FieldName}}.(type) {
 		{{- range $oof.Variants}}
 		case *{{.WrapperName}}:
-			raw, err := json.Marshal(v.{{.FieldName}})
+			raw, err := json.Marshal(_sel.{{.FieldName}})
 			if err != nil {
 				return nil, fmt.Errorf("marshaling {{$struct.Name}}.{{$oof.FieldName}}: %w", err)
 			}
@@ -70,7 +78,7 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	}
 	{{- end}}
 
-	{{- if or (hasManualFields $struct.Fields) $struct.AdditionalProperties $struct.HasPatternProperties $struct.NeedsJSONNulls $struct.WriteOnlyKeys $struct.AccessRules}}
+	{{- if or (hasManualFields $struct.Fields) $struct.HasManualJSONOneOf $struct.AdditionalProperties $struct.HasPatternProperties $struct.NeedsJSONNulls $struct.WriteOnlyKeys $struct.AccessRules}}
 	data, err := json.Marshal(aux)
 	if err != nil {
 		return nil, err
@@ -79,6 +87,15 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
+	{{- range $struct.OneOfs}}
+	{{- if .ManualJSON}}
+	// The union's property name cannot go in a struct tag, so its member is
+	// written by hand; an unset union writes nothing, as omitempty would have.
+	if len(aux.{{.FieldName}}) > 0 {
+		obj[{{printf "%q" .JSONName}}] = aux.{{.FieldName}}
+	}
+	{{- end}}
+	{{- end}}
 	{{- range $struct.Fields}}
 	{{- if .ManualJSON}}
 	{{- if eq .ManualOmit "nil"}}
@@ -133,8 +150,8 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	{{- end}}
 	{{- if $struct.HasPatternProperties}}
 	{{- /* maporder: copies members under their own keys, which are distinct; json.Marshal writes obj in key order. */}}
-	for k, v := range {{$recv}}.PatternProperties {
-		obj[k] = v
+	for _key, _member := range {{$recv}}.PatternProperties {
+		obj[_key] = _member
 	}
 	{{- end}}
 	{{- if $struct.NeedsJSONNulls}}
@@ -169,19 +186,19 @@ func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	{{- if isRawMessage $struct.AdditionalProperties.ValueType}}
 	{{- /* maporder: a copy into obj under the same keys, which are distinct, so
 	       no order of the loop writes a different obj. */}}
-	for k, v := range {{$recv}}.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range {{$recv}}.AdditionalProperties {
+		obj[_key] = _member
 	}
 	{{- else}}
 	{{- /* A member that fails to marshal is reported for the least key, not for
 	       whichever the randomised map order reached first. */}}
-	{{- $lk := leastKey "k" "v" (printf "%s.AdditionalProperties" $recv) "nil, _failed"}}
+	{{- $lk := leastKey "_key" "_member" (printf "%s.AdditionalProperties" $recv) "nil, _failed"}}
 	{{- template "least_key_open" $lk}}
-		raw, err := json.Marshal(v)
+		raw, err := json.Marshal(_member)
 		if err != nil {
-			return fmt.Errorf("marshaling additional property %q: %w", k, err)
+			return fmt.Errorf("marshaling additional property %q: %w", _key, err)
 		}
-		obj[k] = raw
+		obj[_key] = raw
 		return nil
 	{{- template "least_key_close" $lk}}
 	{{- end}}

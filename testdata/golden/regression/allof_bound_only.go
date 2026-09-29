@@ -646,8 +646,8 @@ func (*AllOfBoundOnly_Boolean) isAllOfBoundOnly_Union() {}
 // GetAllOfBoundOnlyUnionOption0 returns the AllOfBoundOnlyUnionOption0 variant value, or the zero value if not set.
 func (a *AllOfBoundOnly) GetAllOfBoundOnlyUnionOption0() AllOfBoundOnlyUnionOption0 {
 	if a != nil {
-		if v, ok := a.Union.(*AllOfBoundOnly_AllOfBoundOnlyUnionOption0); ok {
-			return v.AllOfBoundOnlyUnionOption0
+		if _sel, ok := a.Union.(*AllOfBoundOnly_AllOfBoundOnlyUnionOption0); ok {
+			return _sel.AllOfBoundOnlyUnionOption0
 		}
 	}
 	var zero AllOfBoundOnlyUnionOption0
@@ -657,8 +657,8 @@ func (a *AllOfBoundOnly) GetAllOfBoundOnlyUnionOption0() AllOfBoundOnlyUnionOpti
 // GetBoolean returns the Boolean variant value, or the zero value if not set.
 func (a *AllOfBoundOnly) GetBoolean() bool {
 	if a != nil {
-		if v, ok := a.Union.(*AllOfBoundOnly_Boolean); ok {
-			return v.Boolean
+		if _sel, ok := a.Union.(*AllOfBoundOnly_Boolean); ok {
+			return _sel.Boolean
 		}
 	}
 	var zero bool
@@ -885,15 +885,15 @@ func (a AllOfBoundOnly) MarshalJSON() ([]byte, error) {
 	}
 
 	if a.Union != nil {
-		switch v := a.Union.(type) {
+		switch _sel := a.Union.(type) {
 		case *AllOfBoundOnly_AllOfBoundOnlyUnionOption0:
-			raw, err := json.Marshal(v.AllOfBoundOnlyUnionOption0)
+			raw, err := json.Marshal(_sel.AllOfBoundOnlyUnionOption0)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling AllOfBoundOnly.Union: %w", err)
 			}
 			aux.Union = raw
 		case *AllOfBoundOnly_Boolean:
-			raw, err := json.Marshal(v.Boolean)
+			raw, err := json.Marshal(_sel.Boolean)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling AllOfBoundOnly.Union: %w", err)
 			}
@@ -933,8 +933,8 @@ func (a AllOfBoundOnly) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

@@ -41,19 +41,19 @@ func (a *AnythingList) UnmarshalJSON(data []byte) error {
 func (a AnythingList) Validate() error {
 	{
 		seen := make(map[string]bool, len(a))
-		for i, item := range a {
-			b, err := json.Marshal(item)
+		for _at, item := range a {
+			_enc, err := json.Marshal(item)
 			if err != nil {
-				return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", i, err)
+				return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", _at, err)
 			}
 			// Raw elements, compared as JSON values rather than as the bytes
 			// json.Marshal writes back unchanged. See _jsonCanonical.
-			key, err := _jsonCanonical(b)
+			key, err := _jsonCanonical(_enc)
 			if err != nil {
-				return jsonValueErrorf("uniqueItems check: invalid JSON at index %d: %w", i, err)
+				return jsonValueErrorf("uniqueItems check: invalid JSON at index %d: %w", _at, err)
 			}
 			if seen[key] {
-				return jsonValueErrorf("items are not unique (duplicate at index %d)", i)
+				return jsonValueErrorf("items are not unique (duplicate at index %d)", _at)
 			}
 			seen[key] = true
 		}
@@ -488,8 +488,8 @@ func (u UntypedPositions) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range u.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range u.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -511,20 +511,20 @@ func (u UntypedPositions) Validate() error {
 		{
 			arr := u.Unique
 			seen := make(map[string]bool, len(arr))
-			for i, item := range arr {
-				b, err := json.Marshal(item)
+			for _at, item := range arr {
+				_enc, err := json.Marshal(item)
 				if err != nil {
-					return fmt.Errorf("unique: uniqueItems check: marshal error at index %d: %w", i, err)
+					return fmt.Errorf("unique: uniqueItems check: marshal error at index %d: %w", _at, err)
 				}
 				// The elements are the document's own bytes, and the bytes are not
 				// the value: 1 and 1.0 are one element to uniqueItems. Reduced to
 				// the one text every equal JSON value shares. See _jsonCanonical.
-				key, err := _jsonCanonical(b)
+				key, err := _jsonCanonical(_enc)
 				if err != nil {
-					return fmt.Errorf("unique: uniqueItems check: invalid JSON at index %d: %w", i, err)
+					return fmt.Errorf("unique: uniqueItems check: invalid JSON at index %d: %w", _at, err)
 				}
 				if seen[key] {
-					return fmt.Errorf("unique: items are not unique (duplicate at index %d)", i)
+					return fmt.Errorf("unique: items are not unique (duplicate at index %d)", _at)
 				}
 				seen[key] = true
 			}

@@ -351,8 +351,8 @@ func (o OneOfSingleBranchPositionsObjBranchOption0) MarshalJSON() ([]byte, error
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range o.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range o.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -466,8 +466,8 @@ func (*OneOfSingleBranchPositions_Integer) isOneOfSingleBranchPositions_BoundBra
 // GetInteger returns the Integer variant value, or the zero value if not set.
 func (o *OneOfSingleBranchPositions) GetInteger() int64 {
 	if o != nil {
-		if v, ok := o.BoundBranch.(*OneOfSingleBranchPositions_Integer); ok {
-			return v.Integer
+		if _sel, ok := o.BoundBranch.(*OneOfSingleBranchPositions_Integer); ok {
+			return _sel.Integer
 		}
 	}
 	var zero int64
@@ -491,8 +491,8 @@ func (*OneOfSingleBranchPositions_OneOfSingleBranchPositionsObjBranchOption0) is
 // GetOneOfSingleBranchPositionsObjBranchOption0 returns the OneOfSingleBranchPositionsObjBranchOption0 variant value, or the zero value if not set.
 func (o *OneOfSingleBranchPositions) GetOneOfSingleBranchPositionsObjBranchOption0() *OneOfSingleBranchPositionsObjBranchOption0 {
 	if o != nil {
-		if v, ok := o.ObjBranch.(*OneOfSingleBranchPositions_OneOfSingleBranchPositionsObjBranchOption0); ok {
-			return v.OneOfSingleBranchPositionsObjBranchOption0
+		if _sel, ok := o.ObjBranch.(*OneOfSingleBranchPositions_OneOfSingleBranchPositionsObjBranchOption0); ok {
+			return _sel.OneOfSingleBranchPositionsObjBranchOption0
 		}
 	}
 	var zero *OneOfSingleBranchPositionsObjBranchOption0
@@ -515,8 +515,8 @@ func (*OneOfSingleBranchPositions_String) isOneOfSingleBranchPositions_TypedBran
 // GetString returns the String variant value, or the zero value if not set.
 func (o *OneOfSingleBranchPositions) GetString() string {
 	if o != nil {
-		if v, ok := o.TypedBranch.(*OneOfSingleBranchPositions_String); ok {
-			return v.String
+		if _sel, ok := o.TypedBranch.(*OneOfSingleBranchPositions_String); ok {
+			return _sel.String
 		}
 	}
 	var zero string
@@ -851,9 +851,9 @@ func (o OneOfSingleBranchPositions) MarshalJSON() ([]byte, error) {
 	}
 
 	if o.BoundBranch != nil {
-		switch v := o.BoundBranch.(type) {
+		switch _sel := o.BoundBranch.(type) {
 		case *OneOfSingleBranchPositions_Integer:
-			raw, err := json.Marshal(v.Integer)
+			raw, err := json.Marshal(_sel.Integer)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling OneOfSingleBranchPositions.BoundBranch: %w", err)
 			}
@@ -862,9 +862,9 @@ func (o OneOfSingleBranchPositions) MarshalJSON() ([]byte, error) {
 	}
 
 	if o.ObjBranch != nil {
-		switch v := o.ObjBranch.(type) {
+		switch _sel := o.ObjBranch.(type) {
 		case *OneOfSingleBranchPositions_OneOfSingleBranchPositionsObjBranchOption0:
-			raw, err := json.Marshal(v.OneOfSingleBranchPositionsObjBranchOption0)
+			raw, err := json.Marshal(_sel.OneOfSingleBranchPositionsObjBranchOption0)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling OneOfSingleBranchPositions.ObjBranch: %w", err)
 			}
@@ -873,9 +873,9 @@ func (o OneOfSingleBranchPositions) MarshalJSON() ([]byte, error) {
 	}
 
 	if o.TypedBranch != nil {
-		switch v := o.TypedBranch.(type) {
+		switch _sel := o.TypedBranch.(type) {
 		case *OneOfSingleBranchPositions_String:
-			raw, err := json.Marshal(v.String)
+			raw, err := json.Marshal(_sel.String)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling OneOfSingleBranchPositions.TypedBranch: %w", err)
 			}
@@ -890,8 +890,8 @@ func (o OneOfSingleBranchPositions) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range o.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range o.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

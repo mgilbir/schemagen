@@ -463,6 +463,18 @@ func (d *StructDef) HasOwnPropertyNames() bool {
 }
 
 // HasPatternProperties returns true if the struct has pattern properties.
+// HasManualJSONOneOf reports whether a union on this struct sits at a property
+// whose name a struct tag cannot carry, which the emitted MarshalJSON writes
+// by hand. See OneOfDef.ManualJSON.
+func (d *StructDef) HasManualJSONOneOf() bool {
+	for _, o := range d.OneOfs {
+		if o.ManualJSON {
+			return true
+		}
+	}
+	return false
+}
+
 func (d *StructDef) HasPatternProperties() bool {
 	return len(d.PatternProperties) > 0
 }
@@ -747,7 +759,7 @@ func (d *StructDef) HasObjectConditionals() bool { return len(d.ObjectConditiona
 // means the document really is being read as an object, and the opening decode
 // is doing work.
 func (d *StructDef) OneOfIsWholeValue() bool {
-	if len(d.Fields) != 0 || len(d.OneOfs) != 1 || d.OneOfs[0].JSONName != "" {
+	if len(d.Fields) != 0 || len(d.OneOfs) != 1 || d.OneOfs[0].IsProperty() {
 		return false
 	}
 	if d.AcceptNonObject || d.NeedsNullCheck {
@@ -819,6 +831,9 @@ func (d *StructDef) DecodeJSONNames() []string {
 		add(d.Fields[i].JSONName)
 	}
 	for i := range d.OneOfs {
+		if d.OneOfs[i].ManualJSON {
+			continue
+		}
 		add(d.OneOfs[i].JSONName)
 	}
 	return names
@@ -1651,6 +1666,20 @@ type OneOfDef struct {
 	InterfaceName string // unexported: isTypeName_FieldName
 	FieldName     string // exported field name on parent struct
 	JSONName      string // JSON property name
+	// PropertyNamedEmpty is set on a union at a property whose name is the
+	// empty string. JSONName is "" there too, and "" is also how the union
+	// standing for the whole value is told apart, so without this the two
+	// were one: a property named "" was decoded as if it were the whole
+	// document. IsProperty is the question to ask.
+	PropertyNamedEmpty bool
+	// ManualJSON is set on a union at a property whose name a `json:"..."`
+	// tag cannot carry (see needsManualJSON). The emitted unmarshal and
+	// marshal read and write the union's raw member through an auxiliary
+	// struct, and the member is found by that struct's tag; for such a name it
+	// is looked up and written by hand instead, the way a FieldDef with
+	// ManualJSON is. A tag would otherwise be either uncompilable -- a quote or
+	// a backtick in the name -- or read by encoding/json as some other name.
+	ManualJSON bool
 	Doc
 	Variants           []OneOfVariant
 	DiscriminatorField string         // JSON property name used as discriminator (empty = use required-fields heuristic)
@@ -1676,6 +1705,12 @@ type OneOfDef struct {
 	// strings the schema admits, which is the defect that method exists to
 	// prevent.
 	RejectNull bool
+}
+
+// IsProperty reports whether the union sits at a property of its parent,
+// rather than standing for the parent's whole value.
+func (d OneOfDef) IsProperty() bool {
+	return d.JSONName != "" || d.PropertyNamedEmpty
 }
 
 // HasDiscriminator returns true if this oneOf uses discriminator-based dispatch.

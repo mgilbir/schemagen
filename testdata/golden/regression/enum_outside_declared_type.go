@@ -141,8 +141,8 @@ func (f ForbiddenWhenK) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -251,8 +251,8 @@ func (n NoNameAllowed) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range n.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range n.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -696,11 +696,11 @@ func (e EnumOutsideDeclaredTypeConstOutsidePattern) MarshalJSON() ([]byte, error
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range e.PatternProperties {
-		obj[k] = v
+	for _key, _member := range e.PatternProperties {
+		obj[_key] = _member
 	}
-	for k, v := range e.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range e.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -715,18 +715,18 @@ func (e EnumOutsideDeclaredTypeConstOutsidePattern) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, v := range e.PatternProperties { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _member := range e.PatternProperties { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
-					_ = v
-					if ppRegexps[0].MatchString(k) {
-						return fmt.Errorf("patternProperties: key %q matches forbidden pattern %s", k, "^a")
+					_ = _member
+					if ppRegexps[0].MatchString(_key) {
+						return fmt.Errorf("patternProperties: key %q matches forbidden pattern %s", _key, "^a")
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -835,8 +835,8 @@ func (e EnumOutsideDeclaredTypeConstOutsideUnevalProps) MarshalJSON() ([]byte, e
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range e.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range e.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -851,22 +851,22 @@ func (e EnumOutsideDeclaredTypeConstOutsideUnevalProps) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, v := range e.AdditionalProperties { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _member := range e.AdditionalProperties { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
 					evaluated := false
-					_ = v
-					if evaluatedNames[k] {
+					_ = _member
+					if evaluatedNames[_key] {
 						evaluated = true
 					}
 					if !evaluated {
-						return jsonValueErrorf("unevaluated property %q is not allowed", k)
+						return jsonValueErrorf("unevaluated property %q is not allowed", _key)
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -1104,11 +1104,11 @@ func (e EnumOutsideDeclaredTypeEnumPartialPattern) MarshalJSON() ([]byte, error)
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range e.PatternProperties {
-		obj[k] = v
+	for _key, _member := range e.PatternProperties {
+		obj[_key] = _member
 	}
-	for k, v := range e.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range e.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1123,29 +1123,29 @@ func (e EnumOutsideDeclaredTypeEnumPartialPattern) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, v := range e.PatternProperties { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _member := range e.PatternProperties { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
-					_ = v
-					if ppRegexps[0].MatchString(k) {
+					_ = _member
+					if ppRegexps[0].MatchString(_key) {
 						{
 							// The sub-schema's own type answers for it: the value is
 							// decoded into it, so the decode enforces shape and the
 							// Validate enforces everything beyond it.
 							var _pv EnumOutsideDeclaredTypeEnumPartialPatternPattern0
-							if _uErr := json.Unmarshal(v, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^a", k, _uErr)
+							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^a", _key, _uErr)
 							}
 							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^a", k, _vErr)
+								return fmt.Errorf("patternProperties %s: key %q: %w", "^a", _key, _vErr)
 							}
 						}
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -1849,8 +1849,8 @@ func (e EnumOutsideDeclaredType) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range e.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range e.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

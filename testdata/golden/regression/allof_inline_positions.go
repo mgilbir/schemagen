@@ -391,8 +391,8 @@ func (*AllOfInlinePositions_Integer) isAllOfInlinePositions_Union() {}
 // GetAllOfInlinePositionsUnionOption0 returns the AllOfInlinePositionsUnionOption0 variant value, or the zero value if not set.
 func (a *AllOfInlinePositions) GetAllOfInlinePositionsUnionOption0() AllOfInlinePositionsUnionOption0 {
 	if a != nil {
-		if v, ok := a.Union.(*AllOfInlinePositions_AllOfInlinePositionsUnionOption0); ok {
-			return v.AllOfInlinePositionsUnionOption0
+		if _sel, ok := a.Union.(*AllOfInlinePositions_AllOfInlinePositionsUnionOption0); ok {
+			return _sel.AllOfInlinePositionsUnionOption0
 		}
 	}
 	var zero AllOfInlinePositionsUnionOption0
@@ -402,8 +402,8 @@ func (a *AllOfInlinePositions) GetAllOfInlinePositionsUnionOption0() AllOfInline
 // GetInteger returns the Integer variant value, or the zero value if not set.
 func (a *AllOfInlinePositions) GetInteger() int64 {
 	if a != nil {
-		if v, ok := a.Union.(*AllOfInlinePositions_Integer); ok {
-			return v.Integer
+		if _sel, ok := a.Union.(*AllOfInlinePositions_Integer); ok {
+			return _sel.Integer
 		}
 	}
 	var zero int64
@@ -656,15 +656,15 @@ func (a AllOfInlinePositions) MarshalJSON() ([]byte, error) {
 	}
 
 	if a.Union != nil {
-		switch v := a.Union.(type) {
+		switch _sel := a.Union.(type) {
 		case *AllOfInlinePositions_AllOfInlinePositionsUnionOption0:
-			raw, err := json.Marshal(v.AllOfInlinePositionsUnionOption0)
+			raw, err := json.Marshal(_sel.AllOfInlinePositionsUnionOption0)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling AllOfInlinePositions.Union: %w", err)
 			}
 			aux.Union = raw
 		case *AllOfInlinePositions_Integer:
-			raw, err := json.Marshal(v.Integer)
+			raw, err := json.Marshal(_sel.Integer)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling AllOfInlinePositions.Union: %w", err)
 			}
@@ -704,8 +704,8 @@ func (a AllOfInlinePositions) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range a.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range a.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

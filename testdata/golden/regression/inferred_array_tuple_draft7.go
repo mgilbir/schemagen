@@ -66,8 +66,8 @@ func (n NeedsA) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range n.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range n.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -147,8 +147,8 @@ func (i InferredArrayTupleDraft7OneItem) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range i.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range i.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -370,8 +370,8 @@ func (i InferredArrayTupleDraft7TupItem0) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range i.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range i.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -451,8 +451,8 @@ func (i InferredArrayTupleDraft7TupRest) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range i.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range i.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -689,8 +689,8 @@ func (i InferredArrayTupleDraft7) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range i.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range i.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

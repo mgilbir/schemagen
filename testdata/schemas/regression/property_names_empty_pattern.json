@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PropertyNamesEmptyPattern",
+  "type": "object",
+  "properties": {
+    "anyKey": {"type": "object", "propertyNames": {"pattern": ""}},
+    "shortKey": {"type": "object", "propertyNames": {"pattern": "", "maxLength": 3}}
+  }
+}

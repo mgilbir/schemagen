@@ -149,25 +149,25 @@ func (r Record) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range r.PatternProperties {
-		obj[k] = v
+	for _key, _member := range r.PatternProperties {
+		obj[_key] = _member
 	}
 	{
 		var _least string
 		var _failed error
-		for k, v := range r.AdditionalProperties { // refused for the least failing key
-			if _failed != nil && k >= _least {
+		for _key, _member := range r.AdditionalProperties { // refused for the least failing key
+			if _failed != nil && _key >= _least {
 				continue
 			}
 			if _err := func() error {
-				raw, err := json.Marshal(v)
+				raw, err := json.Marshal(_member)
 				if err != nil {
-					return fmt.Errorf("marshaling additional property %q: %w", k, err)
+					return fmt.Errorf("marshaling additional property %q: %w", _key, err)
 				}
-				obj[k] = raw
+				obj[_key] = raw
 				return nil
 			}(); _err != nil {
-				_least, _failed = k, _err
+				_least, _failed = _key, _err
 			}
 		}
 		if _failed != nil {
@@ -199,20 +199,20 @@ func (r Record) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, v := range r.PatternProperties { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _member := range r.PatternProperties { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
-					_ = v
-					if ppRegexps[0].MatchString(k) {
+					_ = _member
+					if ppRegexps[0].MatchString(_key) {
 						{
-							b := bytes.TrimSpace(v)
+							_trim := bytes.TrimSpace(_member)
 							var jt string
-							if len(b) == 0 {
+							if len(_trim) == 0 {
 								jt = "unknown"
 							} else {
-								switch b[0] {
+								switch _trim[0] {
 								case '"':
 									jt = "string"
 								case '{':
@@ -230,25 +230,25 @@ func (r Record) Validate() error {
 									// below that accepts "number" also accepts "integer", so
 									// widening this classification narrows nothing.
 									var _ppNum float64
-									if json.Unmarshal(b, &_ppNum) == nil &&
+									if json.Unmarshal(_trim, &_ppNum) == nil &&
 										!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
 										jt = "integer"
 									}
 								}
 							}
 							if jt != "integer" {
-								return fmt.Errorf("patternProperties %s: key %q value must be integer", "^num_", k)
+								return fmt.Errorf("patternProperties %s: key %q value must be integer", "^num_", _key)
 							}
 						}
 					}
-					if ppRegexps[1].MatchString(k) {
+					if ppRegexps[1].MatchString(_key) {
 						{
-							b := bytes.TrimSpace(v)
+							_trim := bytes.TrimSpace(_member)
 							var jt string
-							if len(b) == 0 {
+							if len(_trim) == 0 {
 								jt = "unknown"
 							} else {
-								switch b[0] {
+								switch _trim[0] {
 								case '"':
 									jt = "string"
 								case '{':
@@ -266,20 +266,20 @@ func (r Record) Validate() error {
 									// below that accepts "number" also accepts "integer", so
 									// widening this classification narrows nothing.
 									var _ppNum float64
-									if json.Unmarshal(b, &_ppNum) == nil &&
+									if json.Unmarshal(_trim, &_ppNum) == nil &&
 										!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
 										jt = "integer"
 									}
 								}
 							}
 							if jt != "string" {
-								return fmt.Errorf("patternProperties %s: key %q value must be string", "^x-", k)
+								return fmt.Errorf("patternProperties %s: key %q value must be string", "^x-", _key)
 							}
 						}
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {

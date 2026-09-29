@@ -100,8 +100,8 @@ func (d DefaultSoleKeyword) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range d.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range d.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

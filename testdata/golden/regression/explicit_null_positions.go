@@ -98,8 +98,8 @@ func (l Leaf) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range l.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range l.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -233,8 +233,8 @@ func (n Numbered) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range n.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range n.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -369,19 +369,19 @@ func (o Overflow) MarshalJSON() ([]byte, error) {
 	{
 		var _least string
 		var _failed error
-		for k, v := range o.AdditionalProperties { // refused for the least failing key
-			if _failed != nil && k >= _least {
+		for _key, _member := range o.AdditionalProperties { // refused for the least failing key
+			if _failed != nil && _key >= _least {
 				continue
 			}
 			if _err := func() error {
-				raw, err := json.Marshal(v)
+				raw, err := json.Marshal(_member)
 				if err != nil {
-					return fmt.Errorf("marshaling additional property %q: %w", k, err)
+					return fmt.Errorf("marshaling additional property %q: %w", _key, err)
 				}
-				obj[k] = raw
+				obj[_key] = raw
 				return nil
 			}(); _err != nil {
-				_least, _failed = k, _err
+				_least, _failed = _key, _err
 			}
 		}
 		if _failed != nil {
@@ -509,8 +509,8 @@ func (t Tagged) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range t.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range t.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -698,8 +698,8 @@ func (e ExplicitNullPositionsInline) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range e.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range e.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -765,8 +765,8 @@ func (*ExplicitNullPositions_Numbered) isExplicitNullPositions_Union() {}
 // GetTagged returns the Tagged variant value, or the zero value if not set.
 func (e *ExplicitNullPositions) GetTagged() *Tagged {
 	if e != nil {
-		if v, ok := e.Union.(*ExplicitNullPositions_Tagged); ok {
-			return v.Tagged
+		if _sel, ok := e.Union.(*ExplicitNullPositions_Tagged); ok {
+			return _sel.Tagged
 		}
 	}
 	var zero *Tagged
@@ -776,8 +776,8 @@ func (e *ExplicitNullPositions) GetTagged() *Tagged {
 // GetNumbered returns the Numbered variant value, or the zero value if not set.
 func (e *ExplicitNullPositions) GetNumbered() *Numbered {
 	if e != nil {
-		if v, ok := e.Union.(*ExplicitNullPositions_Numbered); ok {
-			return v.Numbered
+		if _sel, ok := e.Union.(*ExplicitNullPositions_Numbered); ok {
+			return _sel.Numbered
 		}
 	}
 	var zero *Numbered
@@ -1129,15 +1129,15 @@ func (e ExplicitNullPositions) MarshalJSON() ([]byte, error) {
 	}
 
 	if e.Union != nil {
-		switch v := e.Union.(type) {
+		switch _sel := e.Union.(type) {
 		case *ExplicitNullPositions_Tagged:
-			raw, err := json.Marshal(v.Tagged)
+			raw, err := json.Marshal(_sel.Tagged)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling ExplicitNullPositions.Union: %w", err)
 			}
 			aux.Union = raw
 		case *ExplicitNullPositions_Numbered:
-			raw, err := json.Marshal(v.Numbered)
+			raw, err := json.Marshal(_sel.Numbered)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling ExplicitNullPositions.Union: %w", err)
 			}
@@ -1177,8 +1177,8 @@ func (e ExplicitNullPositions) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range e.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range e.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

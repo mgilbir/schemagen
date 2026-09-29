@@ -135,12 +135,12 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		       over an embedded one, so encoding/json fills this instead and the
 		       declared int64, json.Number or time.Time is never the decode
 		       destination. See jsonInteger, jsonNumber and jsonDateTime. */}}
-		{{.Name}} *{{goType .LeafDecode.ShadowType}} `json:"{{.JSONName}}"`
+		{{.Name}} *{{goType .LeafDecode.ShadowType}} `json:"{{jsonTagName .JSONName}}"`
 		{{- end}}
 		{{- end}}
 		{{- range $struct.OneOfs}}
-		{{- if .JSONName}}
-		{{.FieldName}} json.RawMessage `json:"{{.JSONName}}"`
+		{{- if and .IsProperty (not .ManualJSON)}}
+		{{.FieldName}} json.RawMessage `json:"{{jsonTagName .JSONName}}"`
 		{{- end}}
 		{{- end}}
 	}{
@@ -230,7 +230,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		{{- end}}
 		{{- range $struct.Fields}}
 		{{- if .ManualJSON}}
-		if v, ok := raw[{{printf "%q" .JSONName}}]; ok {
+		if _member, ok := raw[{{printf "%q" .JSONName}}]; ok {
 			{{- if .LeafDecode}}
 			{{- if .LeafDecode.Integers}}
 			// Decoded through the shadow for the reason the aux fields above are:
@@ -248,7 +248,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			// but its date-times are the same date-times.
 			{{- end}}
 			var _iv {{goType .LeafDecode.ShadowType}}
-			if err := json.Unmarshal(v, &_iv); err != nil {
+			if err := json.Unmarshal(_member, &_iv); err != nil {
 				return jsonPathf(jsonDecodeRefusal(err), "%s", {{printf "%q" .JSONName}})
 			}
 			{{$recv}}.{{.Name}} = {{.LeafDecode.Convert}}
@@ -257,7 +257,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			       field it lands in: this block exists precisely because that name
 			       cannot be spelled in a struct tag, and `unmarshaling Root.AB1`
 			       is a name the caller has no way to find. Issue #282. */}}
-			if err := json.Unmarshal(v, &{{$recv}}.{{.Name}}); err != nil {
+			if err := json.Unmarshal(_member, &{{$recv}}.{{.Name}}); err != nil {
 				return jsonPathf(jsonDecodeRefusal(err), "%s", {{printf "%q" .JSONName}})
 			}
 			{{- end}}
@@ -269,8 +269,27 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	{{- range $oof := $struct.OneOfs}}
 
 	{
-		{{- if $oof.JSONName}}
+		{{- if $oof.IsProperty}}
+		{{- if $oof.ManualJSON}}
+		// The property name cannot go in a struct tag, so the union's member is
+		// looked up by hand rather than through the aux struct above.
+		var oneofData json.RawMessage
+		{
+			{{- if $struct.NeedsExactPropertyDecode}}
+			if _rawErr != nil {
+				return _rawErr
+			}
+			{{- else}}
+			var raw map[string]json.RawMessage
+			if err := json.Unmarshal(data, &raw); err != nil {
+				return err
+			}
+			{{- end}}
+			oneofData = raw[{{printf "%q" $oof.JSONName}}]
+		}
+		{{- else}}
 		oneofData := aux.{{$oof.FieldName}}
+		{{- end}}
 		// Every refusal this union raises is a sentence about the value the union
 		// holds, and the property that reaches it goes in front of that sentence
 		// by the rule every other message is joined by (see jsonPathError).
@@ -304,7 +323,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 		if len(oneofData) > 0 && string(oneofData) != "null" {
 			{{- if $oof.HasDiscriminator}}
 			// Discriminator-based dispatch on "{{$oof.DiscriminatorField}}"
-			discVal, discErr := oneofDiscriminatorValue(oneofData, "{{$oof.DiscriminatorField}}")
+			discVal, discErr := oneofDiscriminatorValue(oneofData, {{printf "%q" $oof.DiscriminatorField}})
 			if discErr != nil {
 				return oneofErrf("%w", discErr)
 			}
@@ -384,10 +403,10 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 						oneofOK := true
 						{{- range $v.Checks}}
 						{{- if eq .RuleType "minLength"}}
-						if utf8.RuneCountInString(candidate) < {{.Value}} { oneofOK = false }
+						if utf8.RuneCountInString(candidate) < {{numLit .Value}} { oneofOK = false }
 						{{- end}}
 						{{- if eq .RuleType "maxLength"}}
-						if utf8.RuneCountInString(candidate) > {{.Value}} { oneofOK = false }
+						if utf8.RuneCountInString(candidate) > {{numLit .Value}} { oneofOK = false }
 						{{- end}}
 						{{- if eq .RuleType "pattern"}}
 						if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, candidate); !matched { oneofOK = false }
@@ -396,28 +415,28 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 						{{- if .ExactCompare}}
 						if {{numOperand . "candidate"}} < {{numBound .}} { oneofOK = false }
 						{{- else}}
-						if float64(candidate) < {{.Value}} { oneofOK = false }
+						if float64(candidate) < {{numLit .Value}} { oneofOK = false }
 						{{- end}}
 						{{- end}}
 						{{- if eq .RuleType "maximum"}}
 						{{- if .ExactCompare}}
 						if {{numOperand . "candidate"}} > {{numBound .}} { oneofOK = false }
 						{{- else}}
-						if float64(candidate) > {{.Value}} { oneofOK = false }
+						if float64(candidate) > {{numLit .Value}} { oneofOK = false }
 						{{- end}}
 						{{- end}}
 						{{- if eq .RuleType "exclusiveMinimum"}}
 						{{- if .ExactCompare}}
 						if {{numOperand . "candidate"}} <= {{numBound .}} { oneofOK = false }
 						{{- else}}
-						if float64(candidate) <= {{.Value}} { oneofOK = false }
+						if float64(candidate) <= {{numLit .Value}} { oneofOK = false }
 						{{- end}}
 						{{- end}}
 						{{- if eq .RuleType "exclusiveMaximum"}}
 						{{- if .ExactCompare}}
 						if {{numOperand . "candidate"}} >= {{numBound .}} { oneofOK = false }
 						{{- else}}
-						if float64(candidate) >= {{.Value}} { oneofOK = false }
+						if float64(candidate) >= {{numLit .Value}} { oneofOK = false }
 						{{- end}}
 						{{- end}}
 						{{- if eq .RuleType "multipleOf"}}
@@ -425,16 +444,16 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 						if !{{exactMultipleOf . "candidate"}} { oneofOK = false }
 						{{- else}}
 						{
-							_q := float64(candidate) / {{.Value}}
+							_q := float64(candidate) / {{numLit .Value}}
 							if math.Abs(_q - math.Round(_q)) > 1e-9 { oneofOK = false }
 						}
 						{{- end}}
 						{{- end}}
 						{{- if eq .RuleType "minItems"}}
-						if len(candidate) < {{.Value}} { oneofOK = false }
+						if len(candidate) < {{numLit .Value}} { oneofOK = false }
 						{{- end}}
 						{{- if eq .RuleType "maxItems"}}
-						if len(candidate) > {{.Value}} { oneofOK = false }
+						if len(candidate) > {{numLit .Value}} { oneofOK = false }
 						{{- end}}
 						{{- end}}
 						if oneofOK {
@@ -645,7 +664,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			{{- end}}
 			{{- end}}
 			{{- range $struct.OneOfs}}
-			{{- if .JSONName}}
+			{{- if .IsProperty}}
 			{{printf "%q" .JSONName}}: true,
 			{{- end}}
 			{{- end}}

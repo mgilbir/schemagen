@@ -49,7 +49,7 @@ func (n NullableCompositionBranchesAnyBound) Validate() error {
 	}
 	{
 		_matches := 0
-		if _dynIsInteger(_v) && _dynNumOK(_v, func(f float64) bool { return f >= 5.0 }) {
+		if _dynIsInteger(_v) && _dynNumOK(_v, func(_n float64) bool { return _n >= 5.0 }) {
 			_matches++
 		}
 		if _v == nil {
@@ -365,7 +365,7 @@ func (n NullableCompositionBranchesAnyLen) Validate() error {
 	}
 	{
 		_matches := 0
-		if _dynIsString(_v) && _dynStrOK(_v, func(s string) bool { return utf8.RuneCountInString(s) >= 3 }) {
+		if _dynIsString(_v) && _dynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) >= 3 }) {
 			_matches++
 		}
 		if _v == nil {
@@ -535,8 +535,8 @@ func (n NullableCompositionBranchesAnyObj) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range n.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range n.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -861,8 +861,8 @@ func (n NullableCompositionBranches) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range n.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range n.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

@@ -103,8 +103,8 @@ func (o OneOfObjectVariantConstraintsAOption0) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range o.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range o.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -232,8 +232,8 @@ func (o OneOfObjectVariantConstraintsAOption1) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range o.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range o.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -288,8 +288,8 @@ func (*OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption1) isOn
 // GetOneOfObjectVariantConstraintsAOption0 returns the OneOfObjectVariantConstraintsAOption0 variant value, or the zero value if not set.
 func (o *OneOfObjectVariantConstraints) GetOneOfObjectVariantConstraintsAOption0() *OneOfObjectVariantConstraintsAOption0 {
 	if o != nil {
-		if v, ok := o.A.(*OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption0); ok {
-			return v.OneOfObjectVariantConstraintsAOption0
+		if _sel, ok := o.A.(*OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption0); ok {
+			return _sel.OneOfObjectVariantConstraintsAOption0
 		}
 	}
 	var zero *OneOfObjectVariantConstraintsAOption0
@@ -299,8 +299,8 @@ func (o *OneOfObjectVariantConstraints) GetOneOfObjectVariantConstraintsAOption0
 // GetOneOfObjectVariantConstraintsAOption1 returns the OneOfObjectVariantConstraintsAOption1 variant value, or the zero value if not set.
 func (o *OneOfObjectVariantConstraints) GetOneOfObjectVariantConstraintsAOption1() *OneOfObjectVariantConstraintsAOption1 {
 	if o != nil {
-		if v, ok := o.A.(*OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption1); ok {
-			return v.OneOfObjectVariantConstraintsAOption1
+		if _sel, ok := o.A.(*OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption1); ok {
+			return _sel.OneOfObjectVariantConstraintsAOption1
 		}
 	}
 	var zero *OneOfObjectVariantConstraintsAOption1
@@ -497,15 +497,15 @@ func (o OneOfObjectVariantConstraints) MarshalJSON() ([]byte, error) {
 	}
 
 	if o.A != nil {
-		switch v := o.A.(type) {
+		switch _sel := o.A.(type) {
 		case *OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption0:
-			raw, err := json.Marshal(v.OneOfObjectVariantConstraintsAOption0)
+			raw, err := json.Marshal(_sel.OneOfObjectVariantConstraintsAOption0)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling OneOfObjectVariantConstraints.A: %w", err)
 			}
 			aux.A = raw
 		case *OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption1:
-			raw, err := json.Marshal(v.OneOfObjectVariantConstraintsAOption1)
+			raw, err := json.Marshal(_sel.OneOfObjectVariantConstraintsAOption1)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling OneOfObjectVariantConstraints.A: %w", err)
 			}
@@ -520,8 +520,8 @@ func (o OneOfObjectVariantConstraints) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range o.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range o.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

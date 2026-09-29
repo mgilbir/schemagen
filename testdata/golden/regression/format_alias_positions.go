@@ -215,8 +215,8 @@ func (f FormatAliasPositions) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

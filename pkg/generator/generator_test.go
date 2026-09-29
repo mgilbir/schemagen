@@ -9866,3 +9866,23 @@ func TestConditionalOnlyNarrowingStandsDownWhereNothingElseChecksTheGroup(t *tes
 		t.Errorf("branchOnly rules = %v, want minLength -- the anyOf reduction does not check it", got)
 	}
 }
+
+// TestPropertyNamesEmptyPatternConstrainsNothing: the empty pattern matches
+// every string. It was counted as a constraint and then read by the template as
+// no pattern, so {"propertyNames":{"pattern":""}} emitted a loop over the keys
+// with an empty body -- `declared and not used: _pnKey`, a package that does
+// not compile. It constrains nothing, so it builds nothing; beside a keyword
+// that does constrain, the other keyword is kept and the pattern is not.
+func TestPropertyNamesEmptyPatternConstrainsNothing(t *testing.T) {
+	alone := structNamed(t, generateForItemTest(t, `{"title":"Doc","type":"object","propertyNames":{"pattern":""}}`), "Doc")
+	if alone.PropertyNames != nil {
+		t.Fatalf("an empty pattern built a propertyNames check: %+v", alone.PropertyNames)
+	}
+	beside := structNamed(t, generateForItemTest(t, `{"title":"Doc","type":"object","propertyNames":{"pattern":"","maxLength":3}}`), "Doc")
+	if beside.PropertyNames == nil || beside.PropertyNames.MaxLength == nil || *beside.PropertyNames.MaxLength != 3 {
+		t.Fatalf("maxLength beside an empty pattern was lost: %+v", beside.PropertyNames)
+	}
+	if beside.PropertyNames.Pattern != "" {
+		t.Fatalf("Pattern = %q, want none", beside.PropertyNames.Pattern)
+	}
+}

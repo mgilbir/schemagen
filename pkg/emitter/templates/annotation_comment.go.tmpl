@@ -20,6 +20,6 @@ condition at every call site.
 */}}
 {{define "annotation_comment"}}
 {{- range .Lines}}
-{{$.Indent}}//{{if .}} {{end}}{{.}}
+{{$.Indent}}//{{if .}} {{.}}{{end}}
 {{- end}}
 {{- end}}

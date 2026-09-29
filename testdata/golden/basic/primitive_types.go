@@ -166,8 +166,8 @@ func (p PrimitiveTypes) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range p.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range p.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

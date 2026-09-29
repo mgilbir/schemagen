@@ -140,8 +140,8 @@ func (f ForbiddingSubschemaSpellingsAnyOfNames) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -799,8 +799,8 @@ func (f ForbiddingSubschemaSpellingsInlineDepRequired) MarshalJSON() ([]byte, er
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -875,8 +875,8 @@ func (f ForbiddingSubschemaSpellingsInlineFalseDependent) MarshalJSON() ([]byte,
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -949,8 +949,8 @@ func (f ForbiddingSubschemaSpellingsInlineFalseNames) MarshalJSON() ([]byte, err
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1037,8 +1037,8 @@ func (f ForbiddingSubschemaSpellingsInlineMaxProps) MarshalJSON() ([]byte, error
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1119,8 +1119,8 @@ func (f ForbiddingSubschemaSpellingsInlineMinProps) MarshalJSON() ([]byte, error
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1198,8 +1198,8 @@ func (f ForbiddingSubschemaSpellingsInlineNotDependent) MarshalJSON() ([]byte, e
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1272,8 +1272,8 @@ func (f ForbiddingSubschemaSpellingsInlineNotNames) MarshalJSON() ([]byte, error
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1360,8 +1360,8 @@ func (f ForbiddingSubschemaSpellingsInlineRequired) MarshalJSON() ([]byte, error
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1441,8 +1441,8 @@ func (f ForbiddingSubschemaSpellingsNotDependent) MarshalJSON() ([]byte, error) 
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1623,8 +1623,8 @@ func (f ForbiddingSubschemaSpellingsNotNames) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1884,8 +1884,8 @@ func (f ForbiddingSubschemaSpellingsNotUnevalProps) MarshalJSON() ([]byte, error
 			}
 		}
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -1900,22 +1900,22 @@ func (f ForbiddingSubschemaSpellingsNotUnevalProps) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, v := range f.AdditionalProperties { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _member := range f.AdditionalProperties { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
 					evaluated := false
-					_ = v
-					if evaluatedNames[k] {
+					_ = _member
+					if evaluatedNames[_key] {
 						evaluated = true
 					}
 					if !evaluated {
-						return jsonValueErrorf("unevaluated property %q is not allowed", k)
+						return jsonValueErrorf("unevaluated property %q is not allowed", _key)
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -2001,8 +2001,8 @@ func (f ForbiddingSubschemaSpellingsNullableInlineNames) MarshalJSON() ([]byte, 
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -2011,15 +2011,15 @@ func (f ForbiddingSubschemaSpellingsNullableInlineNames) MarshalJSON() ([]byte, 
 func (f ForbiddingSubschemaSpellingsNullableInlineNames) Validate() error {
 	// Non-object data was silently accepted — validate non-object constraints if any.
 	if f._nonObject {
-		v := f._rawNonObject
-		_ = v
+		_nonObj := f._rawNonObject
+		_ = _nonObj
 		{
-			b := bytes.TrimSpace(v)
+			_trim := bytes.TrimSpace(_nonObj)
 			var jt string
-			if len(b) == 0 {
+			if len(_trim) == 0 {
 				jt = "unknown"
 			} else {
-				switch b[0] {
+				switch _trim[0] {
 				case '"':
 					jt = "string"
 				case '{':
@@ -2033,8 +2033,8 @@ func (f ForbiddingSubschemaSpellingsNullableInlineNames) Validate() error {
 				default:
 					jt = "number"
 					isInt := true
-					for _, c := range b {
-						if c == '.' || c == 'e' || c == 'E' {
+					for _, _ch := range _trim {
+						if _ch == '.' || _ch == 'e' || _ch == 'E' {
 							isInt = false
 							break
 						}
@@ -2137,8 +2137,8 @@ func (f ForbiddingSubschemaSpellingsOkNames) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -2228,8 +2228,8 @@ func (f ForbiddingSubschemaSpellingsOneOfDependent) MarshalJSON() ([]byte, error
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -2302,8 +2302,8 @@ func (f ForbiddingSubschemaSpellingsOneOfNames) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -2509,8 +2509,8 @@ func (f ForbiddingSubschemaSpellingsOneOfUnevalProps) MarshalJSON() ([]byte, err
 			}
 		}
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -2525,22 +2525,22 @@ func (f ForbiddingSubschemaSpellingsOneOfUnevalProps) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, v := range f.AdditionalProperties { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _member := range f.AdditionalProperties { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
 					evaluated := false
-					_ = v
-					if evaluatedNames[k] {
+					_ = _member
+					if evaluatedNames[_key] {
 						evaluated = true
 					}
 					if !evaluated {
-						return jsonValueErrorf("unevaluated property %q is not allowed", k)
+						return jsonValueErrorf("unevaluated property %q is not allowed", _key)
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {
@@ -2610,8 +2610,8 @@ func (f ForbiddingSubschemaSpellingsRefNotNames) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -2772,8 +2772,8 @@ func (*ForbiddingSubschemaSpellings_Integer) isForbiddingSubschemaSpellings_StrB
 // GetString returns the String variant value, or the zero value if not set.
 func (f *ForbiddingSubschemaSpellings) GetString() string {
 	if f != nil {
-		if v, ok := f.StrBranchRequired.(*ForbiddingSubschemaSpellings_String); ok {
-			return v.String
+		if _sel, ok := f.StrBranchRequired.(*ForbiddingSubschemaSpellings_String); ok {
+			return _sel.String
 		}
 	}
 	var zero string
@@ -2783,8 +2783,8 @@ func (f *ForbiddingSubschemaSpellings) GetString() string {
 // GetInteger returns the Integer variant value, or the zero value if not set.
 func (f *ForbiddingSubschemaSpellings) GetInteger() int64 {
 	if f != nil {
-		if v, ok := f.StrBranchRequired.(*ForbiddingSubschemaSpellings_Integer); ok {
-			return v.Integer
+		if _sel, ok := f.StrBranchRequired.(*ForbiddingSubschemaSpellings_Integer); ok {
+			return _sel.Integer
 		}
 	}
 	var zero int64
@@ -3118,15 +3118,15 @@ func (f ForbiddingSubschemaSpellings) MarshalJSON() ([]byte, error) {
 	}
 
 	if f.StrBranchRequired != nil {
-		switch v := f.StrBranchRequired.(type) {
+		switch _sel := f.StrBranchRequired.(type) {
 		case *ForbiddingSubschemaSpellings_String:
-			raw, err := json.Marshal(v.String)
+			raw, err := json.Marshal(_sel.String)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling ForbiddingSubschemaSpellings.StrBranchRequired: %w", err)
 			}
 			aux.StrBranchRequired = raw
 		case *ForbiddingSubschemaSpellings_Integer:
-			raw, err := json.Marshal(v.Integer)
+			raw, err := json.Marshal(_sel.Integer)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling ForbiddingSubschemaSpellings.StrBranchRequired: %w", err)
 			}
@@ -3166,8 +3166,8 @@ func (f ForbiddingSubschemaSpellings) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range f.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range f.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

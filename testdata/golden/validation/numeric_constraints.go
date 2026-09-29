@@ -122,8 +122,8 @@ func (m Measurement) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range m.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range m.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -157,8 +157,8 @@ func (m Measurement) Validate() error {
 	if m._jsonKeys["rating"] {
 		{
 			if m.Rating != nil {
-				q := float64(*m.Rating) / 0.5
-				if math.Abs(q-math.Round(q)) > 1e-9 {
+				_quot := float64(*m.Rating) / 0.5
+				if math.Abs(_quot-math.Round(_quot)) > 1e-9 {
 					return fmt.Errorf("rating: value %v is not a multiple of 0.5", *m.Rating)
 				}
 			}

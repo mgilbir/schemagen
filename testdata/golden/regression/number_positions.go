@@ -345,8 +345,8 @@ func (n NumberPositions) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range n.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range n.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -399,8 +399,8 @@ func (n NumberPositions) Validate() error {
 	if n._jsonKeys["bounded"] {
 		{
 			if n.Bounded != nil {
-				q := float64(*n.Bounded) / 0.5
-				if math.Abs(q-math.Round(q)) > 1e-9 {
+				_quot := float64(*n.Bounded) / 0.5
+				if math.Abs(_quot-math.Round(_quot)) > 1e-9 {
 					return fmt.Errorf("bounded: value %v is not a multiple of 0.5", *n.Bounded)
 				}
 			}

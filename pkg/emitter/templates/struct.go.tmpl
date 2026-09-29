@@ -14,7 +14,7 @@ type {{.Name}} struct {
 	{{- if .ManualJSON}}
 	{{.Name}} {{goType .Type}} `json:"-"`
 	{{- else}}
-	{{.Name}} {{goType .Type}} `json:"{{.JSONName}}{{if .OmitZero}},omitzero{{else if .OmitEmpty}},omitempty{{end}}"`
+	{{.Name}} {{goType .Type}} `json:"{{jsonTagName .JSONName}}{{if .OmitZero}},omitzero{{else if .OmitEmpty}},omitempty{{end}}"`
 	{{- end}}
 {{- end}}
 {{- else if .IsUnion}}{{with .OneOf}}
@@ -23,7 +23,7 @@ type {{.Name}} struct {
 	{{.FieldName}} {{.InterfaceName}} `json:"-"`
 {{- end}}
 {{- else}}
-	{{.Name}} {{goType .Type}}{{if .Tag}} `{{.Tag}}`{{end}}{{if .Comment}} // {{.Comment}}{{end}}
+	{{.Name}} {{goType .Type}}{{if .Tag}} {{rawString .Tag}}{{end}}{{if .Comment}} // {{.Comment}}{{end}}
 {{- end}}
 {{- end}}
 }

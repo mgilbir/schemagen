@@ -24,8 +24,8 @@ func (*{{.WrapperName}}) {{$oneof.InterfaceName}}() {}
 // Get{{.FieldName}} returns the {{.FieldName}} variant value, or the zero value if not set.
 func ({{$recv}} *{{$parent}}) Get{{.FieldName}}() {{goType .Type}} {
 	if {{$recv}} != nil {
-		if v, ok := {{$recv}}.{{$oneof.FieldName}}.(*{{.WrapperName}}); ok {
-			return v.{{.FieldName}}
+		if _sel, ok := {{$recv}}.{{$oneof.FieldName}}.(*{{.WrapperName}}); ok {
+			return _sel.{{.FieldName}}
 		}
 	}
 	var zero {{goType .Type}}

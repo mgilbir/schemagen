@@ -97,8 +97,8 @@ func (r Root) MarshalJSON() ([]byte, error) {
 	if err := json.Unmarshal(data, &obj); err != nil {
 		return nil, err
 	}
-	for k, v := range r.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range r.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
@@ -113,30 +113,30 @@ func (r Root) Validate() error {
 		{
 			var _least string
 			var _failed error
-			for k, v := range r.AdditionalProperties { // refused for the least failing key
-				if _failed != nil && k >= _least {
+			for _key, _member := range r.AdditionalProperties { // refused for the least failing key
+				if _failed != nil && _key >= _least {
 					continue
 				}
 				if _err := func() error {
 					evaluated := false
-					_ = v
-					if evaluatedNames[k] {
+					_ = _member
+					if evaluatedNames[_key] {
 						evaluated = true
 					}
 					if !evaluated {
 						var _uVal string
-						if _uErr := json.Unmarshal(v, &_uVal); _uErr != nil {
-							return jsonValueErrorf("unevaluated property %q: %w", k, _uErr)
+						if _uErr := json.Unmarshal(_member, &_uVal); _uErr != nil {
+							return jsonValueErrorf("unevaluated property %q: %w", _key, _uErr)
 						}
 						{
 							if matched, _ := ecma262.MatchString("^x", ecmaflags.Unicode, _uVal); !matched {
-								return jsonValueErrorf("unevaluated property %q: value does not match pattern %s", k, "^x")
+								return jsonValueErrorf("unevaluated property %q: value does not match pattern %s", _key, "^x")
 							}
 						}
 					}
 					return nil
 				}(); _err != nil {
-					_least, _failed = k, _err
+					_least, _failed = _key, _err
 				}
 			}
 			if _failed != nil {

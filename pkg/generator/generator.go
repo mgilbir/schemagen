@@ -3175,7 +3175,7 @@ func (g *Generator) applyNullRejection(name string, s *schema.Schema) {
 		// in. See OneOfDef.RejectNull.
 		if d.OneOfIsWholeValue() {
 			for j := range d.OneOfs {
-				if d.OneOfs[j].JSONName == "" {
+				if !d.OneOfs[j].IsProperty() {
 					d.OneOfs[j].RejectNull = true
 				}
 			}
@@ -4568,6 +4568,8 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			}
 			if oneOfDef != nil {
 				oneOfDef.Required = required
+				oneOfDef.ManualJSON = needsManualJSON(propName)
+				oneOfDef.PropertyNamedEmpty = propName == ""
 				// What the property schema says about itself, which a group
 				// carries for the same reasons a FieldDef does: the comment
 				// documents the field, and the annotations are what
@@ -4913,7 +4915,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		}
 	}
 	for i := range oneOfs {
-		if oneOfs[i].Required && oneOfs[i].JSONName != "" {
+		if oneOfs[i].Required && oneOfs[i].IsProperty() {
 			requiredJSON = append(requiredJSON, oneOfs[i].JSONName)
 		}
 	}
@@ -5548,7 +5550,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		for _, o := range oneOfs {
 			// The top-level union has no property name: the struct is the value.
 			// Its annotations reached StructDef instead.
-			if o.JSONName == "" {
+			if !o.IsProperty() {
 				continue
 			}
 			readOnly, writeOnly := g.readWriteBindingAt(s, o.JSONName)
@@ -8697,7 +8699,7 @@ func extractDiscriminatorValue(propSchema *schema.Schema) string {
 // (it carries a JSON name) rather than one standing for the type itself.
 func hasPropertyOneOf(oneOfs []OneOfDef) bool {
 	for _, o := range oneOfs {
-		if o.JSONName != "" {
+		if o.IsProperty() {
 			return true
 		}
 	}
@@ -12521,6 +12523,13 @@ func needsManualJSON(jsonName string) bool {
 // reserved by reflect.StructTag's unquoting, the backtick that would end the raw
 // string literal, and the apostrophe.
 const validTagPunctuation = "!#$%&()*+-./:;<=>?@[]^_{|}~ "
+
+// TagNameIsRepresentable is tagNameIsRepresentable for the emitter, whose
+// struct-tag escaper refuses exactly the names this generator routes to the
+// hand-written JSON path. One predicate, so the two cannot disagree.
+func TagNameIsRepresentable(jsonName string) bool {
+	return tagNameIsRepresentable(jsonName)
+}
 
 // tagNameIsRepresentable reports whether encoding/json, handed a struct tag
 // whose name is jsonName, uses exactly jsonName as the JSON member name. See
@@ -19524,7 +19533,11 @@ func (g *Generator) extractPropertyNamesDef(pn *schema.Schema) *PropertyNamesDef
 		def.MinLength = &v
 		hasConstraint = true
 	}
-	if pn.Pattern != nil {
+	// The empty pattern matches every string, so it constrains nothing; and
+	// the template reads an empty Pattern as no pattern, so counting it as a
+	// constraint emitted a loop over the keys with nothing in it, which
+	// declares a variable it never uses and does not compile.
+	if pn.Pattern != nil && *pn.Pattern != "" {
 		def.Pattern = *pn.Pattern
 		hasConstraint = true
 	}

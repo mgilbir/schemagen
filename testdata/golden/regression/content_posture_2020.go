@@ -272,8 +272,8 @@ func (*ContentPosture2020_Boolean) isContentPosture2020_Branch() {}
 // GetString returns the String variant value, or the zero value if not set.
 func (c *ContentPosture2020) GetString() string {
 	if c != nil {
-		if v, ok := c.Branch.(*ContentPosture2020_String); ok {
-			return v.String
+		if _sel, ok := c.Branch.(*ContentPosture2020_String); ok {
+			return _sel.String
 		}
 	}
 	var zero string
@@ -283,8 +283,8 @@ func (c *ContentPosture2020) GetString() string {
 // GetBoolean returns the Boolean variant value, or the zero value if not set.
 func (c *ContentPosture2020) GetBoolean() bool {
 	if c != nil {
-		if v, ok := c.Branch.(*ContentPosture2020_Boolean); ok {
-			return v.Boolean
+		if _sel, ok := c.Branch.(*ContentPosture2020_Boolean); ok {
+			return _sel.Boolean
 		}
 	}
 	var zero bool
@@ -475,15 +475,15 @@ func (c ContentPosture2020) MarshalJSON() ([]byte, error) {
 	}
 
 	if c.Branch != nil {
-		switch v := c.Branch.(type) {
+		switch _sel := c.Branch.(type) {
 		case *ContentPosture2020_String:
-			raw, err := json.Marshal(v.String)
+			raw, err := json.Marshal(_sel.String)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling ContentPosture2020.Branch: %w", err)
 			}
 			aux.Branch = raw
 		case *ContentPosture2020_Boolean:
-			raw, err := json.Marshal(v.Boolean)
+			raw, err := json.Marshal(_sel.Boolean)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling ContentPosture2020.Branch: %w", err)
 			}
@@ -523,8 +523,8 @@ func (c ContentPosture2020) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range c.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range c.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }

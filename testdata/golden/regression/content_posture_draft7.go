@@ -383,8 +383,8 @@ func (*ContentPostureDraft7_Boolean) isContentPostureDraft7_Branch() {}
 // GetContentPostureDraft7BranchOption0 returns the ContentPostureDraft7BranchOption0 variant value, or the zero value if not set.
 func (c *ContentPostureDraft7) GetContentPostureDraft7BranchOption0() ContentPostureDraft7BranchOption0 {
 	if c != nil {
-		if v, ok := c.Branch.(*ContentPostureDraft7_ContentPostureDraft7BranchOption0); ok {
-			return v.ContentPostureDraft7BranchOption0
+		if _sel, ok := c.Branch.(*ContentPostureDraft7_ContentPostureDraft7BranchOption0); ok {
+			return _sel.ContentPostureDraft7BranchOption0
 		}
 	}
 	var zero ContentPostureDraft7BranchOption0
@@ -394,8 +394,8 @@ func (c *ContentPostureDraft7) GetContentPostureDraft7BranchOption0() ContentPos
 // GetBoolean returns the Boolean variant value, or the zero value if not set.
 func (c *ContentPostureDraft7) GetBoolean() bool {
 	if c != nil {
-		if v, ok := c.Branch.(*ContentPostureDraft7_Boolean); ok {
-			return v.Boolean
+		if _sel, ok := c.Branch.(*ContentPostureDraft7_Boolean); ok {
+			return _sel.Boolean
 		}
 	}
 	var zero bool
@@ -631,15 +631,15 @@ func (c ContentPostureDraft7) MarshalJSON() ([]byte, error) {
 	}
 
 	if c.Branch != nil {
-		switch v := c.Branch.(type) {
+		switch _sel := c.Branch.(type) {
 		case *ContentPostureDraft7_ContentPostureDraft7BranchOption0:
-			raw, err := json.Marshal(v.ContentPostureDraft7BranchOption0)
+			raw, err := json.Marshal(_sel.ContentPostureDraft7BranchOption0)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling ContentPostureDraft7.Branch: %w", err)
 			}
 			aux.Branch = raw
 		case *ContentPostureDraft7_Boolean:
-			raw, err := json.Marshal(v.Boolean)
+			raw, err := json.Marshal(_sel.Boolean)
 			if err != nil {
 				return nil, fmt.Errorf("marshaling ContentPostureDraft7.Branch: %w", err)
 			}
@@ -679,8 +679,8 @@ func (c ContentPostureDraft7) MarshalJSON() ([]byte, error) {
 			}
 		}
 	}
-	for k, v := range c.AdditionalProperties {
-		obj[k] = v
+	for _key, _member := range c.AdditionalProperties {
+		obj[_key] = _member
 	}
 	return json.Marshal(obj)
 }
