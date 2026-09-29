@@ -38,6 +38,7 @@ var inertFields = map[string]string{
 	"Name":                    "a Go identifier: a type, field, constant or getter name",
 	"FieldName":               "a Go field identifier",
 	"TypeName":                "a Go type identifier",
+	"InPlaceType":             "a Go type identifier: a type wrapper this package declares",
 	"WrapperName":             "a Go type identifier",
 	"InterfaceName":           "a Go type identifier",
 	"ItemsTypeName":           "a Go type identifier",

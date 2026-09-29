@@ -2621,6 +2621,10 @@ type TypeOnlySchemaDef struct {
 	Doc
 	AllowedTypes []string           // JSON types: "null", "integer", "number", "string", "boolean", "array", "object"
 	TypeBranches []TypeSchemaBranch // one per alternative: draft-3 schema-valued type entries, anyOf variants, or the types of a multi-type union
+	// VisitTarget is set when some wrapper's branch is judged through this
+	// one on the same value, which then carries validateVisiting. See
+	// resolveTypeBranchesInPlace.
+	VisitTarget bool
 }
 
 type TypeSchemaBranch struct {
@@ -2633,6 +2637,14 @@ type TypeSchemaBranch struct {
 	// type or properties to check, so without this the branch would enforce
 	// nothing.
 	TypeName string
+
+	// InPlaceType is the schema-valued type wrapper TypeName names, followed to
+	// the end of its chain of names, where that is one this package declares:
+	// a wrapper that judges the same value against its own branches, and so
+	// can lead back to this one without descending into the value. Such a
+	// branch is judged through validateVisiting, which fails a branch that
+	// re-enters a wrapper already judging this value. See resolveTypeBranchesInPlace.
+	InPlaceType string
 }
 
 type TypeSchemaProperty struct {

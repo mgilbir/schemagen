@@ -120,7 +120,9 @@ var typeNameEmissionSites = map[string]emissionSite{
 	"oneof.go.tmpl | .GetterName":             {Kind: nameNotAType, Why: "the getter method being declared, named by the generator's name registry"},
 
 	// ---- a declaration in the file being emitted ----
-	"alias.go.tmpl | .Name":                  {Kind: nameLocalDecl, Why: "the alias this template is declaring"},
+	"alias.go.tmpl | .Name": {Kind: nameLocalDecl, Why: "the alias this template is declaring"},
+	"type_only_schema.go.tmpl | $branch.InPlaceType": {Kind: nameLocalDecl, Why: "a type wrapper this package declares -- " +
+		"resolveTypeBranchesInPlace sets it only where the branch's chain of names ends at one, and a foreign name ends the walk first"},
 	"annotation_schema.go.tmpl | .Name":      {Kind: nameLocalDecl, Why: "the type this template is declaring"},
 	"bigint_alias.go.tmpl | .Name":           {Kind: nameLocalDecl, Why: "the type this template is declaring"},
 	"enum.go.tmpl | .Name":                   {Kind: nameLocalDecl, Why: "the enum this template is declaring"},

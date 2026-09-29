@@ -595,6 +595,7 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// is: an alias that decodes in place carries an UnmarshalJSON of its own,
 	// and an alias over it has to know that to borrow it.
 	g.resolveDecodeAt()
+	g.resolveTypeBranchesInPlace()
 	g.populateAliasDelegates()
 	// Must run after resolveAliasMethodability: an alias that cannot carry
 	// methods has nowhere to put a tolerant decode. And after

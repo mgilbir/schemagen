@@ -325,6 +325,12 @@
   back as a zero its own type then refuses because two `oneOf` branches admit
   it, or because a `not` does: `{"oneOf":[{"minimum":1},{"maximum":0}]}` wrote
   `null`, which both branches admit.
+- A draft 3 schema-valued `type` entry that leads back to its own definition no
+  longer overflows the stack. `{"type":[{"$ref":"#/$defs/C"}]}` as the whole of
+  `C` made `Validate` call itself on the same value until the goroutine's stack
+  ran out, on any document. A branch that re-enters a definition already
+  judging the same value now contributes nothing, so such a definition admits
+  what its other alternatives admit.
 
 ### Changed
 

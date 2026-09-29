@@ -6,7 +6,7 @@ package emitter
 // guardTableTemplatesHash is gocontext.TemplatesHash of the templates this
 // table was computed from. New refuses to start if the embedded templates
 // hash to anything else.
-const guardTableTemplatesHash = "crc32c:c6efe519"
+const guardTableTemplatesHash = "crc32c:d5cb9668"
 
 // guardTable is every output action of every template and the guard for the
 // Go context it writes into. See internal/gocontext.
@@ -1139,14 +1139,26 @@ var guardTable = []guardEntry{
 	{"type_only_schema", 572, "_goCode"},
 	{"type_only_schema", 582, "_goCode"},
 	{"type_only_schema", 625, "_goCode"},
-	{"type_only_schema", 663, "_goComment"},
-	{"type_only_schema", 720, "_goCode"},
-	{"type_only_schema", 730, "_goCode"},
-	{"type_only_schema", 931, "_goCode"},
-	{"type_only_schema", 1009, "_goCode"},
-	{"type_only_schema", 1513, "_goCode"},
-	{"type_only_schema", 1563, "_goCode"},
-	{"type_only_schema", 3079, "_goCode"},
+	{"type_only_schema", 685, "_goComment"},
+	{"type_only_schema", 742, "_goCode"},
+	{"type_only_schema", 752, "_goCode"},
+	{"type_only_schema", 789, "_goCode"},
+	{"type_only_schema", 1083, "_goCode"},
+	{"type_only_schema", 1093, "_goCode"},
+	{"type_only_schema", 1180, "_goCode"},
+	{"type_only_schema", 1233, "_goComment"},
+	{"type_only_schema", 1290, "_goCode"},
+	{"type_only_schema", 1300, "_goCode"},
+	{"type_only_schema", 1384, "_goCode"},
+	{"type_only_schema", 1602, "_goCode"},
+	{"type_only_schema", 1680, "_goCode"},
+	{"type_only_schema", 2171, "_goCode"},
+	{"type_only_schema", 2254, "_goCode"},
+	{"type_only_schema", 2357, "_goCode"},
+	{"type_only_schema", 2442, "_goCode"},
+	{"type_only_schema", 2863, "_goCode"},
+	{"type_only_schema", 2913, "_goCode"},
+	{"type_only_schema", 4429, "_goCode"},
 	{"uneval_item_checks", 101961, "_goCode"},
 	{"uneval_item_checks", 101996, "_goCode"},
 	{"uneval_item_checks", 102007, "_goFormat"},

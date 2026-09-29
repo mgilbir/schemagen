@@ -15,8 +15,23 @@ func ({{$recv}} {{.Name}}) IsZero() bool { return len({{$recv}}._raw) == 0 }
 
 func ({{$recv}} {{.Name}}) String() string { return string({{$recv}}._raw) }
 
+{{- if .VisitTarget}}
+// Validate checks {{.Name}} against its JSON Schema type constraint.
+func ({{$recv}} {{.Name}}) Validate() error { return {{$recv}}.validateVisiting(nil) }
+
+// validateVisiting is Validate, told which type wrappers are already judging
+// this same value. A branch that would re-enter one of them never gets further
+// into the value, and contributes nothing; see the generator's
+// resolveTypeBranchesInPlace.
+func ({{$recv}} {{.Name}}) validateVisiting(_visiting []string) error {
+	_visiting = append(_visiting, {{printf "%q" .Name}})
+{{- else}}
 // Validate checks {{.Name}} against its JSON Schema type constraint.
 func ({{$recv}} {{.Name}}) Validate() error {
+	{{- if .HasInPlaceBranch}}
+	_visiting := []string{ {{- printf "%q" .Name -}} }
+	{{- end}}
+{{- end}}
 	// No value was present. A constraint applies to a value that is there; an
 	// absent optional property is the parent's business (required), not this
 	// type's.
@@ -31,7 +46,27 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- range $bi, $branch := .TypeBranches}}
 	{
 		_branchMatches := true
-		{{- if $branch.TypeName}}
+		{{- if $branch.InPlaceType}}
+		{
+			// The alternative is another type wrapper, which judges this same
+			// value; one already judging it answers nothing new here.
+			_reentered := false
+			{{- /* maporder: not a map: ranges a slice. */}}
+			for _, _name := range _visiting {
+				if _name == {{printf "%q" $branch.InPlaceType}} {
+					_reentered = true
+				}
+			}
+			var _bv {{$branch.TypeName}}
+			if _reentered {
+				_branchMatches = false
+			} else if _err := json.Unmarshal({{$recv}}._raw, &_bv); _err != nil {
+				_branchMatches = false
+			} else if _err := {{$branch.InPlaceType}}(_bv).validateVisiting(_visiting); _err != nil {
+				_branchMatches = false
+			}
+		}
+		{{- else if $branch.TypeName}}
 		{
 			// The alternative is a reference; the value matches it when it
 			// decodes into the referenced type and that type accepts it.

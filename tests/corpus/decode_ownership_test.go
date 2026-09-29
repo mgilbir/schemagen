@@ -148,12 +148,11 @@ func TestDecodedValueIsExactlyTheDocument(t *testing.T) {
 // change started from. A crash is fatal and ends the schema's checks, so these
 // are pinned rather than counted as passes, and one that stops crashing fails
 // the test until it is taken out of the list and checked like the rest.
-var ownershipKnownCrashes = map[string]string{
-	"adversarial/cycle/typeschema-ref-mutual-defs-draft3.json":   "Validate recurses without end through a $ref cycle of schema-valued types",
-	"adversarial/cycle/typeschema-ref-mutual-defs.json":          "Validate recurses without end through a $ref cycle of schema-valued types",
-	"adversarial/cycle/typeschema-ref-self-def-root-draft3.json": "Validate recurses without end through a $ref cycle of schema-valued types",
-	"adversarial/cycle/typeschema-ref-self-def-root.json":        "Validate recurses without end through a $ref cycle of schema-valued types",
-}
+//
+// None is left: the type-schema $ref cycles no longer recurse (see
+// TestTypeSchemaCyclesAreJudgedWithoutLooping), and a pattern that is not a
+// regular expression is no longer compiled with MustCompile.
+var ownershipKnownCrashes = map[string]string{}
 
 // ownershipDocuments builds the documents one schema is driven with. The same
 // seed builds the same documents, so a failure reproduces by name.
