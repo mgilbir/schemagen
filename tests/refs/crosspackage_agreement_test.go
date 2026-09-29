@@ -3,17 +3,13 @@ package refs
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/mgilbir/schemagen/internal/testgo"
-	"github.com/mgilbir/schemagen/tests/internal/testsupport"
 )
 
 // The multi-package / shared-types differential.
@@ -630,13 +626,6 @@ func sharedTypesFlags(tc crossPackageCase) []string {
 	return out
 }
 
-func writeCrossFile(t *testing.T, path, body string) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		t.Fatalf("writing %s: %v", path, err)
-	}
-}
-
 func readPackageSource(t *testing.T, dir string) string {
 	t.Helper()
 	entries, err := os.ReadDir(dir)
@@ -659,53 +648,6 @@ func readPackageSource(t *testing.T, dir string) string {
 
 // strconvQuote is strconv.Quote without the import, for the one needle above.
 func strconvQuote(s string) string { return `"` + s + `"` }
-
-var (
-	schemagenBinOnce sync.Once
-	schemagenBinPath string
-	schemagenBinErr  error
-)
-
-// schemagenBinary builds the CLI once for the whole test binary. The
-// differential is driven through the command line rather than through the
-// library because that is where multi-package generation is wired -- the
-// package assignment, the generation order derived from the $refs, and the one
-// registry shared by every document of the run.
-func schemagenBinary(t *testing.T) string {
-	t.Helper()
-	schemagenBinOnce.Do(func() {
-		// Removed by testgo.Main when this binary's tests finish, and swept by
-		// name if it is killed first; see testgo.MkdirProcessTemp.
-		dir, err := testgo.MkdirProcessTemp()
-		if err != nil {
-			schemagenBinErr = err
-			return
-		}
-		bin := filepath.Join(dir, "schemagen")
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-		defer cancel()
-		cmd := testgo.Command(ctx, testsupport.Root, "build", "-o", bin, ".")
-		if out, err := cmd.CombinedOutput(); err != nil {
-			schemagenBinErr = fmt.Errorf("building schemagen: %w\n%s", err, out)
-			return
-		}
-		schemagenBinPath = bin
-	})
-	if schemagenBinErr != nil {
-		t.Fatal(schemagenBinErr)
-	}
-	return schemagenBinPath
-}
-
-func runSchemagen(t *testing.T, bin string, args ...string) {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, args...)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("schemagen %s: %v\n%s", strings.Join(args, " "), err, out)
-	}
-}
 
 type driverSpec struct {
 	// Root is the directory the generated tree was written into; it becomes the

@@ -11,6 +11,8 @@ var (
 	generateRoundTripMain        = testsupport.GenerateRoundTripMain
 	generateWithRootName         = testsupport.GenerateWithRootName
 	programOutput                = testsupport.ProgramOutput
+	runSchemagen                 = testsupport.RunSchemagen
+	schemagenBinary              = testsupport.SchemagenBinary
 	writeSharedHelpers           = testsupport.WriteSharedHelpers
 	writeTestGoMod               = testsupport.WriteTestGoMod
 )

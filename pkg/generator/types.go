@@ -788,6 +788,19 @@ func (d *StructDef) OneOfIsWholeValue() bool {
 		!d.HasNullChecks()
 }
 
+// hasWholeValueOneOf reports whether a oneOf on this struct stands for the whole
+// value rather than for one property. MarshalJSON then writes the selected
+// variant as the document, and a value with none selected -- the zero value --
+// as null.
+func (d *StructDef) hasWholeValueOneOf() bool {
+	for i := range d.OneOfs {
+		if !d.OneOfs[i].IsProperty() {
+			return true
+		}
+	}
+	return false
+}
+
 // HasIntegerLeafDecodes, HasNumberLeafDecodes and HasDateTimeLeafDecodes report
 // which kind of leaf the shadows above are for, which is what the emitted
 // commentary has to say: the integer shadow exists so a number written 1.0

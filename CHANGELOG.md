@@ -287,6 +287,18 @@
   generator cannot judge that two definitions agree, and sharing a name between
   two nodes is what it no longer does unasked. The CLI judges agreement and pins
   agreeing definitions to one name, so `--shared-types` still shares them.
+- An optional property reached through a chain of `$ref`s round-trips as
+  absent. `{"$ref":"#/$defs/A"}` with `A` a `$ref` to an object became a value
+  field that `omitempty` never omits, so `{"name":"x"}` was written back as
+  `{"name":"x","sig":{"q":""}}` -- a property the document never had, satisfying
+  the definition's own `required` -- or, where the object was a `oneOf`, as
+  `"sig":null`, which the same type then refused to read. Every CycloneDX 1.6
+  BOM has such a property (`signature`). Whether an optional field needs a
+  pointer, and whether it has a nil state, is now decided by the type at the end
+  of the chain of names, however long, across documents and across packages;
+  under `--schema-package` an alias over another package's alias over `any` or a
+  pointer, which did not compile, now does. Under `--omit-empty=false` a union
+  whose zero is written as `null` is omitted where the schema forbids `null`.
 
 ## 0.1.3
 

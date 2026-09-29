@@ -8,7 +8,10 @@ import "github.com/mgilbir/schemagen/tests/internal/testsupport"
 var (
 	goCmd              = testsupport.GoCmd
 	programOutput      = testsupport.ProgramOutput
+	runSchemagen       = testsupport.RunSchemagen
+	schemagenBinary    = testsupport.SchemagenBinary
 	writeCogenGoMod    = testsupport.WriteCogenGoMod
+	writeCrossFile     = testsupport.WriteCrossFile
 	writeSharedHelpers = testsupport.WriteSharedHelpers
 	writeTestGoMod     = testsupport.WriteTestGoMod
 )

@@ -259,6 +259,13 @@ null, and a present empty collection comes back as `[]` or `{}`. All three are
 distinguishable. A value built in Go rather than decoded carries no such record,
 and its nil fields are simply omitted.
 
+It holds however the property reaches its definition. An optional property whose
+type has no absent state of its own — a struct, a scalar, an enum, a wrapper —
+is held behind a pointer, and that is decided by what the property's value *is*
+at the end of its chain of `$ref`s, through any number of them and across
+documents and Go packages: `{"$ref":"#/$defs/A"}` with `A` a `$ref` to an
+object is the same optional object as `{"$ref":"#/$defs/B"}`.
+
 ### Numbers: exact, or `float64`
 
 A JSON number has no precision limit and a `float64` has two. By default a

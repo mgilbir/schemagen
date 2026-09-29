@@ -1,0 +1,15 @@
+CycloneDX Specification is Copyright (c) OWASP Foundation. All Rights Reserved.
+
+Permission to modify and redistribute is granted under the terms of the Apache
+License 2.0, a copy of which is in LICENSE beside this file.
+
+The files in this directory are unmodified copies from
+https://github.com/CycloneDX/specification at commit
+1ce97b2a7b8cf2429da248560d2aa671c6bce74a:
+
+  schema/bom-1.6.schema.json    <- schema/bom-1.6.schema.json
+  schema/spdx.schema.json       <- schema/spdx.schema.json
+  schema/jsf-0.82.schema.json   <- schema/jsf-0.82.schema.json
+  boms/valid-*.json             <- tools/src/test/resources/1.6/valid-*.json
+
+They are read by tests/cyclonedx_roundtrip_test.go.

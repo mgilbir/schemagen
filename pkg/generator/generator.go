@@ -642,6 +642,10 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 				Struct:            g.isStructTypeNamed(nt),
 				Collection:        g.isCollectionType(nt),
 				Interface:         g.isInterfaceType(nt),
+				NilState:          g.hasNilState(nt),
+				StringBacked:      g.isStringBackedNamedType(nt),
+				NoMethods:         !g.canHaveMethods(nt),
+				ZeroJSONKind:      g.zeroJSONKindName(nt),
 				RawWrapper:        g.isRawValueWrapperType(nt),
 				AliasDropsMethods: g.aliasDropsMethods(nt),
 				Unmarshaler:       unmarshalers[name],
@@ -735,13 +739,12 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 // in cmd/schemagen/crossdocument_test.go or pkg/generator/sharedtypes_test.go
 // that fails without it, or is one of a group asked in a single expression with
 // a site that has (the wrapper-kind chain generateTypeDef asks of a $ref target,
-// the alias-chain
-// resolution canHaveMethodsResolved performs in two places, and the
-// collection/interface pair behind the omitzero decision). The lookups left on
-// g.output.TypeDefs are ones no input reached: isEnumType only suppresses a
-// check another already makes, typeRejectsNull's answer is reached only for a
-// null the decoder has already refused, and primitiveUnderlyingOf and
-// isStringBackedTypeName produced identical output either way. They are the same
+// and every question aliasEndOf answers by walking a chain of names, which
+// looks declarations up through typeDefInScope in this same order). The
+// lookups left on g.output.TypeDefs are ones no input reached: isEnumType only
+// suppresses a check another already makes, typeRejectsNull's answer is
+// reached only for a null the decoder has already refused, and
+// primitiveUnderlyingOf produced identical output either way. They are the same
 // blindness and would want the same treatment the moment a shape reaches them --
 // but a change nothing can make fail is not one to carry.
 func (g *Generator) typeDefsInScope() []TypeDef {
@@ -2333,68 +2336,21 @@ func (g *Generator) isInferredAliasType(t GoType) bool {
 // This handles cases like `type Root Bool` where Bool is `type Bool any` —
 // Go does not allow methods on types whose ultimate underlying type is
 // a pointer or interface type.
+//
+// Only the aliases *of this file* are settled here: an earlier call's aliases
+// already had their flag settled when they were emitted. The chain itself may
+// leave the file -- `type Root Common` where Common came from an earlier
+// schema of a shared-types package -- and the package; see canHaveMethods.
 func (g *Generator) resolveAliasMethodability() {
-	// Build a map of type name → AliasDef for cross-referencing. The chain may
-	// leave this file: `type Root Common` where Common came from an earlier
-	// schema of a shared-types package is resolved through that declaration, not
-	// treated as an unknown name (which canHaveMethodsResolvedImpl reads as
-	// method-bearing).
-	aliases := make(map[string]*AliasDef)
-	for _, td := range g.typeDefsInScope() {
-		if ad, ok := td.(*AliasDef); ok {
-			if _, seen := aliases[ad.Name]; !seen {
-				aliases[ad.Name] = ad
-			}
-		}
-	}
-
-	// For each alias *of this file*, walk the underlying type chain to check if
-	// it ultimately resolves to a pointer or interface. An earlier call's
-	// aliases already had their flag settled when they were emitted.
 	for _, td := range g.output.TypeDefs {
 		ad, ok := td.(*AliasDef)
 		if !ok {
 			continue
 		}
-		if !canHaveMethodsResolved(ad.Underlying, aliases) {
+		if !g.canHaveMethods(ad.Underlying) {
 			ad.NoMethods = true
 		}
 	}
-}
-
-// canHaveMethodsResolved checks if a GoType can be used as a method receiver,
-// following NamedType references through the alias map. The visited set
-// prevents infinite recursion on self-referencing alias cycles.
-func canHaveMethodsResolved(t GoType, aliases map[string]*AliasDef) bool {
-	visited := make(map[string]bool)
-	return canHaveMethodsResolvedImpl(t, aliases, visited)
-}
-
-func canHaveMethodsResolvedImpl(t GoType, aliases map[string]*AliasDef, visited map[string]bool) bool {
-	if t.IsPointer() {
-		return false
-	}
-	if pt, ok := t.(*PrimitiveType); ok && pt.Name == "any" {
-		return false
-	}
-	if nt, ok := t.(*NamedType); ok {
-		if nt.PkgAlias != "" {
-			// Another package's type. Its declaration is not in this map, and a
-			// local alias of the same name is a different type -- following that
-			// one would decide whether `type X other.T` may carry methods from a
-			// namesake. The owning generator ran this same walk and published
-			// the one thing it can turn on: an underlying that resolves to `any`.
-			return !nt.foreign.Interface
-		}
-		if visited[nt.Name] {
-			return true // cycle detected — assume safe
-		}
-		visited[nt.Name] = true
-		if ref, exists := aliases[nt.Name]; exists {
-			return canHaveMethodsResolvedImpl(ref.Underlying, aliases, visited)
-		}
-	}
-	return true
 }
 
 // usesTimeType returns true if the GoType references time.Time.
@@ -4876,31 +4832,30 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				omitEmpty = false
 			}
 		}
-		// Optional array/slice fields are left as []T: a slice is already nilable,
-		// so omitempty omits it when nil. (Absent and an explicit empty [] both
-		// serialize as omitted — they are not distinguished.)
-		// For optional struct fields with omitempty, wrap in a pointer (*T) so that
-		// absent → nil (omitted). encoding/json's omitempty never considers struct
-		// values as empty, and types with custom MarshalJSON are always marshaled
-		// (producing non-null output even when all fields are zero).
-		if omitEmpty && !goType.IsPointer() && g.isObjectProperty(goType, propSchema) {
-			goType = &PointerType{Inner: goType}
-		}
-		// For optional scalar fields with omitempty, wrap in a pointer so that the
-		// zero value ("", false, 0, 0.0) is distinguishable from
-		// absent. Without this, omitempty conflates "absent" with "zero value".
+		// An optional field whose type has no absent state of its own is held
+		// behind a pointer, so that absent is nil and omitempty drops exactly
+		// that. A struct is the first such type: encoding/json's omitempty never
+		// considers one empty, and a type with a custom MarshalJSON is always
+		// marshaled, producing a value even when every field is zero. A scalar is
+		// the second: omitempty drops a legitimate "", false, 0 or 0.0 as
+		// readily as an absent value.
 		//
-		// A name over the primitive changes nothing about that: a $ref to a
-		// "type":"integer" definition, or an inline enum or const, produces a
-		// named type whose underlying is still int64, and a legitimate 0 in it
-		// is just as invisible to omitempty. It is worse there, in fact —
-		// because the named type carries a Validate(), Validate() on the owner
-		// guards the call with `!= <zero>` (see populateValidatableFields and
-		// the validatable-field arm of the validation template), so the zero
-		// value both vanished from the output and skipped every constraint the
-		// definition declares. The pointer removes both: nil is the absent
-		// value omitempty drops, and the guard becomes a nil check.
-		if omitEmpty && !goType.IsPointer() && (isZeroLossyPrimitive(goType) || g.isZeroLossyNamedType(goType)) {
+		// A name over either changes nothing, however many names there are: a
+		// $ref to a "type":"integer" definition, an inline enum or const, and a
+		// $ref to a definition that is itself a $ref to an object each produce
+		// a named type whose value is still an int64 or a struct. It is worse
+		// there, in fact -- because the named type carries a Validate(),
+		// Validate() on the owner guards the call with `!= <zero>` (see
+		// populateValidatableFields and the validatable-field arm of the
+		// validation template), so the zero value both vanished from the output
+		// and skipped every constraint the definition declares. The pointer
+		// removes both: nil is the absent value omitempty drops, and the guard
+		// becomes a nil check.
+		//
+		// A slice, a map, an interface and raw bytes are nil when absent
+		// already, and a raw-value wrapper reports its absence through IsZero,
+		// so none of them is wrapped; see absenceNeedsPointer.
+		if omitEmpty && g.absenceNeedsPointer(goType, propSchema) {
 			goType = &PointerType{Inner: goType}
 		}
 		manualJSON := needsManualJSON(propName)
@@ -12716,64 +12671,6 @@ func tagNameIsRepresentable(jsonName string) bool {
 	return true
 }
 
-// isObjectProperty returns true if the Go type resolves to a struct (NamedType that
-// is not an array) or the schema is an object with properties. Used to wrap optional
-// struct fields in pointers for correct omitempty behavior.
-func (g *Generator) isObjectProperty(goType GoType, propSchema *schema.Schema) bool {
-	// A named type already emitted as a struct is an object property.
-	if nt, ok := goType.(*NamedType); ok && g.isStructTypeNamed(nt) {
-		return true
-	}
-	// Otherwise fall through to the property schema. The named type may be a
-	// struct that is still mid-generation — this happens with mutually recursive
-	// $ref/$dynamicRef chains (A → B → A), where the target struct has not been
-	// appended to output.TypeDefs yet. Inspecting the resolved schema still
-	// recognizes it as an optional object so the field is pointer-wrapped rather
-	// than materializing as an always-present value struct (which marshals to
-	// "{}" even when absent). Enum and slice/map aliases resolve to non-object
-	// schemas here, so they are correctly not treated as object properties.
-	if propSchema != nil {
-		if primarySchemaType(propSchema) == "object" && hasProperties(propSchema) {
-			return true
-		}
-		if _, resolved := g.referenceTarget(propSchema); resolved != nil {
-			if primarySchemaType(resolved) == "object" && hasProperties(resolved) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-// isRawValueWrapperType reports whether t names a generated type that keeps the
-// value as raw JSON and validates it after the fact: the wrappers built for a
-// draft-3 schema-valued "type", a multi-type union, and an anyOf across
-// unrelated representations (TypeOnlySchemaDef), for a bare "not"
-// (NotSchemaDef), and for a schema constrained only by oneOf / anyOf /
-// if-then-else (DynamicSchemaDef). Such a type is a struct with a custom
-// MarshalJSON, so it is never omitted by omitempty and needs omitzero instead --
-// without which an absent optional property of that type marshals as null and
-// the document no longer round-trips.
-func (g *Generator) isRawValueWrapperType(t GoType) bool {
-	nt, ok := t.(*NamedType)
-	if !ok {
-		return false
-	}
-	if nt.PkgAlias != "" {
-		return nt.foreign.RawWrapper
-	}
-	for _, td := range g.typeDefsInScope() {
-		if td.TypeName() == nt.Name {
-			switch td.(type) {
-			case *TypeOnlySchemaDef, *NotSchemaDef, *DynamicSchemaDef, *AnnotationSchemaDef:
-				return true
-			}
-			return false
-		}
-	}
-	return false
-}
-
 // ruleTakesStringValue reports whether a rule's emitted code hands the field
 // value to something declared to take a string (ecma262.MatchString,
 // utf8.RuneCountInString, url.Parse, time.Parse, ...). The ipv4/ipv6 formats
@@ -12802,45 +12699,23 @@ func (g *Generator) isStringBackedNamedType(t GoType) bool {
 		t = pt.Inner
 	}
 	nt, ok := t.(*NamedType)
-	if !ok {
+	if !ok || nt.Pointer {
 		return false
 	}
-	return g.isStringBackedTypeName(nt.Name, 0)
-}
-
-func (g *Generator) isStringBackedTypeName(name string, depth int) bool {
-	// Alias chains are short; the bound only stops a malformed cycle.
-	if depth > 16 {
-		return false
-	}
-	for _, td := range g.output.TypeDefs {
-		if td.TypeName() != name {
-			continue
-		}
-		switch def := td.(type) {
-		case *AliasDef:
-			return g.isStringBackedGoType(def.Underlying, depth)
-		case *EnumDef:
-			return g.isStringBackedGoType(def.BaseType, depth)
-		default:
-			return false
+	end := g.aliasEndOf(nt)
+	switch {
+	case end.Foreign != nil:
+		return end.Foreign.foreign.StringBacked
+	case end.Go != nil:
+		pt, isPrim := end.Go.(*PrimitiveType)
+		return isPrim && pt.Name == "string"
+	case end.Def != nil:
+		if d, isEnum := end.Def.(*EnumDef); isEnum {
+			pt, isPrim := d.BaseType.(*PrimitiveType)
+			return isPrim && pt.Name == "string"
 		}
 	}
 	return false
-}
-
-func (g *Generator) isStringBackedGoType(t GoType, depth int) bool {
-	switch u := t.(type) {
-	case *PrimitiveType:
-		return u.Name == "string"
-	case *NamedType:
-		if u.Pointer || u.PkgAlias != "" {
-			return false
-		}
-		return g.isStringBackedTypeName(u.Name, depth+1)
-	default:
-		return false
-	}
 }
 
 // isEnumType returns true if a type name corresponds to an already-generated enum.
@@ -12852,101 +12727,6 @@ func (g *Generator) isEnumType(name string) bool {
 		}
 	}
 	return false
-}
-
-// isStructType returns true if a type name corresponds to an already-generated struct.
-func (g *Generator) isStructType(name string) bool {
-	for _, td := range g.typeDefsInScope() {
-		if td.TypeName() == name {
-			_, isStruct := td.(*StructDef)
-			return isStruct
-		}
-	}
-	return false
-}
-
-// isZeroLossyPrimitive returns true if the Go type is a primitive whose zero value
-// would be lost with omitempty ("", false, int64=0, float64=0.0).
-//
-// time.Time and netip.Addr are worse off than the scalars, not better, and for
-// the reason the whole rule exists. omitempty never omits a struct, so an
-// optional property the document did not carry is not merely invisible -- it is
-// *invented into the output*: an absent `format: date-time` marshals as
-// "0001-01-01T00:00:00Z" through time.Time's own MarshalJSON, and an absent
-// `format: ipv4` as "" through netip.Addr's MarshalText. Both are values the
-// document never held and the schema never saw.
-//
-// ",omitzero" would omit them, since time.Time has IsZero and netip.Addr is
-// comparable, but it omits by *value*: a document that genuinely carries
-// "0001-01-01T00:00:00Z" would come back without the property. That trades
-// inventing a value for dropping one, which is the same round-trip break in the
-// other direction. The pointer distinguishes the two exactly -- nil is absent,
-// non-nil is present whatever the instant -- which is the contract every other
-// zero-lossy type here already has.
-func isZeroLossyPrimitive(goType GoType) bool {
-	pt, ok := goType.(*PrimitiveType)
-	if !ok {
-		return false
-	}
-	switch pt.Name {
-	case "string", "bool", "int64", "float64", GoNumberTypeName, "time.Time", "netip.Addr":
-		return true
-	}
-	return false
-}
-
-// isZeroLossyNamedType reports whether t names a generated type that has no
-// representation for "absent" of its own — either because its underlying Go
-// type is a zero-lossy primitive (a $ref to a "type":"string" definition, an
-// inline enum, a const promoted to a single-value enum), or because it is a
-// wrapper struct over one (see zeroLossyTypeName). The name does not give the
-// value a nil to be absent in, so such a field loses a legitimate "", 0 or
-// false to omitempty exactly as a bare primitive would.
-//
-// The answer comes from the generated type rather than from the property's
-// schema because a $ref says nothing about the shape of its target. Both are
-// available by the time this is asked: resolvePropertyType generates a ref
-// target, and generateEnumDef an inline enum, before returning a name for it.
-func (g *Generator) isZeroLossyNamedType(t GoType) bool {
-	nt, ok := t.(*NamedType)
-	if !ok || nt.Pointer {
-		return false
-	}
-	if nt.PkgAlias != "" {
-		// A type owned by another package of a cross-package run. The owning
-		// generator ran this same predicate over it and published the answer;
-		// a type whose owner has not been generated yet published nothing and
-		// answers no.
-		//
-		// The answer is carried rather than re-derived from the published zero
-		// literal, which is what this used to do. The two are not the same
-		// question, and reading one for the other made a change to the literal
-		// silently change which foreign fields got a pointer: an alias over
-		// time.Time has no zero literal at all -- it is a struct -- yet it is
-		// exactly the kind of type that needs one.
-		return nt.foreign.ZeroLossy
-	}
-	return g.zeroLossyTypeName(nt.Name, 0)
-}
-
-// isStructTypeNamed is isStructType for a named type as the IR carries it,
-// rather than for a bare name.
-//
-// A qualified name is answered from the owning package's record, on the terms
-// isZeroLossyNamedType states: this package's type table has never seen the
-// foreign declaration, and where it holds a type of the same name it answers
-// about that one. The answer decides whether an optional property is
-// pointer-wrapped, so getting it from a namesake -- or from nothing at all --
-// wrote a foreign struct out as an always-present value that omitempty could
-// not drop. See isObjectProperty and issue #296.
-func (g *Generator) isStructTypeNamed(nt *NamedType) bool {
-	if nt == nil {
-		return false
-	}
-	if nt.PkgAlias != "" {
-		return nt.foreign.Struct
-	}
-	return g.isStructType(nt.Name)
 }
 
 // aliasDropsMethods reports whether `type X T` would leave X without the methods
@@ -12981,59 +12761,6 @@ func (g *Generator) aliasDropsMethods(nt *NamedType) bool {
 			return true
 		}
 		return false
-	}
-	return false
-}
-
-func (g *Generator) zeroLossyTypeName(name string, depth int) bool {
-	// Alias chains are short; the bound only stops a malformed cycle.
-	if depth > 16 {
-		return false
-	}
-	for _, td := range g.typeDefsInScope() {
-		if td.TypeName() != name {
-			continue
-		}
-		switch def := td.(type) {
-		case *AliasDef:
-			return g.zeroLossyGoType(def.Underlying, depth)
-		case *EnumDef:
-			// A heterogeneous enum is backed by json.RawMessage, whose zero is
-			// nil — absent already has a representation there.
-			return g.zeroLossyGoType(def.BaseType, depth)
-		case *InferredAliasDef, *BigIntAliasDef:
-			// A wrapper struct over a scalar: the InferredAliasDef built for a
-			// definition that carries constraints but no "type", and the
-			// BigIntAliasDef that BigIntSupport puts over a named integer. It is
-			// worse off than a named primitive, not better — omitempty never
-			// omits a struct, so an absent optional property is fabricated into
-			// the output as the wrapper's zero and then measured against the
-			// definition's constraints. And unlike the raw-value wrappers below
-			// it carries no IsZero to hand ",omitzero": its zero is exactly what
-			// a present 0 or "" decodes to, so omitzero would drop a legitimate
-			// value. The pointer is the only representation of absence left.
-			return true
-		default:
-			// A struct is pointer-wrapped by isObjectProperty, and the raw-value
-			// wrappers (TypeOnlySchemaDef, NotSchemaDef, DynamicSchemaDef) keep
-			// the bytes they were handed: an absent one holds no bytes, which
-			// their IsZero reports to ",omitzero" and their Validate treats as
-			// nothing to check. Neither needs a pointer here.
-			return false
-		}
-	}
-	return false
-}
-
-func (g *Generator) zeroLossyGoType(t GoType, depth int) bool {
-	switch u := t.(type) {
-	case *PrimitiveType:
-		return isZeroLossyPrimitive(u)
-	case *NamedType:
-		if u.Pointer || u.PkgAlias != "" {
-			return false
-		}
-		return g.zeroLossyTypeName(u.Name, depth+1)
 	}
 	return false
 }
@@ -14260,58 +13987,61 @@ func (g *Generator) zeroValueForbidden(propSchema *schema.Schema, t GoType) bool
 //
 // A struct is where it gives up: its zero marshals to an object of further
 // zeros, and judging that against the schema is the zero-value invention this
-// deliberately leaves alone. So are time.Time and netip.Addr, whose zeros are
-// non-empty strings that no keyword this reads is about, and a foreign package's
-// type, whose definition is not in scope to be read.
+// deliberately leaves alone. The exception is a struct that stands for a
+// whole-value oneOf: its MarshalJSON writes the selected variant, and with none
+// selected it writes null -- a null its own UnmarshalJSON refuses wherever the
+// schema does. time.Time and netip.Addr are left alone too, whose zeros are
+// non-empty strings that no keyword this reads is about.
+//
+// A named type is followed to the end of its chain of names (see aliasEndOf),
+// and a foreign one is answered by the kind its owning package published.
 func (g *Generator) zeroJSONKind(t GoType, depth int) (string, bool) {
 	if t == nil || depth >= maxNullRefDepth {
 		return "", false
 	}
-	switch v := t.(type) {
-	case *PointerType, *ArrayType, *MapType:
-		return zeroKindNull, true
-	case *PrimitiveType:
-		switch v.Name {
-		case "string":
-			return zeroKindString, true
-		case "int64", "float64", GoNumberTypeName:
-			return zeroKindNumber, true
-		case "bool":
-			return zeroKindBoolean, true
-		case "any", GoRawTypeName:
-			// A nil interface and a nil json.RawMessage both marshal to null.
+	end := g.aliasEndOf(t)
+	switch {
+	case end.Foreign != nil:
+		kind := end.Foreign.foreign.ZeroJSONKind
+		return kind, kind != ""
+	case end.Go != nil:
+		switch v := end.Go.(type) {
+		case *PointerType, *ArrayType, *MapType, *NamedType:
+			// The NamedType is one spelled with its own pointer: nothing else
+			// ends a chain as an anonymous type.
 			return zeroKindNull, true
-		}
-		return "", false
-	case *NamedType:
-		if v.Pointer {
-			return zeroKindNull, true
-		}
-		if v.PkgAlias != "" {
-			return "", false
-		}
-		for _, td := range g.typeDefsInScope() {
-			if td.TypeName() != v.Name {
-				continue
-			}
-			switch def := td.(type) {
-			case *AliasDef:
-				return g.zeroJSONKind(def.Underlying, depth+1)
-			case *EnumDef:
-				if def.IsRaw {
-					// Backed by json.RawMessage, whose nil marshals to null.
-					return zeroKindNull, true
-				}
-				return g.zeroJSONKind(def.BaseType, depth+1)
-			case *InferredAliasDef:
-				// The wrapper holds a typed value and a raw fallback; its zero
-				// is the typed side untouched, which it marshals as the zero of
-				// the inferred Go type.
-				return g.zeroJSONKind(def.InferredGoType, depth+1)
-			case *TypeOnlySchemaDef, *NotSchemaDef, *DynamicSchemaDef, *AnnotationSchemaDef:
+		case *PrimitiveType:
+			switch v.Name {
+			case "string":
+				return zeroKindString, true
+			case "int64", "float64", GoNumberTypeName:
+				return zeroKindNumber, true
+			case "bool":
+				return zeroKindBoolean, true
+			case "any", GoRawTypeName:
+				// A nil interface and a nil json.RawMessage both marshal to null.
 				return zeroKindNull, true
 			}
-			return "", false
+		}
+	case end.Def != nil:
+		switch def := end.Def.(type) {
+		case *EnumDef:
+			if def.IsRaw {
+				// Backed by json.RawMessage, whose nil marshals to null.
+				return zeroKindNull, true
+			}
+			return g.zeroJSONKind(def.BaseType, depth+1)
+		case *InferredAliasDef:
+			// The wrapper holds a typed value and a raw fallback; its zero
+			// is the typed side untouched, which it marshals as the zero of
+			// the inferred Go type.
+			return g.zeroJSONKind(def.InferredGoType, depth+1)
+		case *TypeOnlySchemaDef, *NotSchemaDef, *DynamicSchemaDef, *AnnotationSchemaDef:
+			return zeroKindNull, true
+		case *StructDef:
+			if def.NeedsMarshal && def.hasWholeValueOneOf() {
+				return zeroKindNull, true
+			}
 		}
 	}
 	return "", false
@@ -17179,86 +16909,6 @@ func (g *Generator) isMapAlias(name string) bool {
 	return false
 }
 
-// isCollectionType reports whether a Go type is a slice or map (directly or via a
-// named alias). Such optional fields use ",omitzero" so a present-but-empty
-// collection is preserved on marshal.
-func (g *Generator) isCollectionType(t GoType) bool {
-	switch v := t.(type) {
-	case *ArrayType, *MapType:
-		return true
-	case *NamedType:
-		if v.PkgAlias != "" {
-			return v.foreign.Collection
-		}
-		return g.isArrayAlias(v.Name) || g.isMapAlias(v.Name)
-	}
-	return false
-}
-
-// isInterfaceType reports whether a Go type is the empty interface (directly or
-// via a named alias). Like a pointer or a collection, its nil is what unmarshal
-// leaves when the property was absent, and it marshals to null.
-func (g *Generator) isInterfaceType(t GoType) bool {
-	switch v := t.(type) {
-	case *PrimitiveType:
-		return v.Name == "any"
-	case *NamedType:
-		if v.PkgAlias != "" {
-			return v.foreign.Interface
-		}
-		for _, td := range g.typeDefsInScope() {
-			if d, ok := td.(*AliasDef); ok && d.Name == v.Name {
-				pt, isPrim := d.Underlying.(*PrimitiveType)
-				return isPrim && pt.Name == "any"
-			}
-		}
-	}
-	return false
-}
-
-// hasNilState reports whether a value of this Go type can be nil, so that
-// `x != nil` both compiles against it and says something.
-//
-// Three shapes have that state and no others: a pointer, a slice or map, and an
-// interface. Everything else a property can be typed as -- a string, an int64, a
-// time.Time, a generated struct, one of the wrappers -- has a zero and no
-// absence, and comparing one to nil is a compile error rather than a check that
-// answers badly.
-//
-// The question is asked wherever emitted code stands in a nil for "the caller
-// never set this": what an optional field is omitted by, and whether a forbidden
-// property can be caught in a value that was built in Go rather than decoded.
-// Which fields have it is a fact about the configuration as much as about the
-// schema -- under --omit-empty=false an optional scalar is no longer
-// pointer-wrapped -- so it has to be asked of the resolved type and not assumed.
-func (g *Generator) hasNilState(t GoType) bool {
-	return t != nil && (t.IsPointer() || g.isCollectionType(t) || g.isInterfaceType(t) || g.isRawBytesType(t))
-}
-
-// isRawBytesType reports whether a Go type is json.RawMessage, directly or via
-// a named alias over it -- the type an untyped position has under
-// Config.RawUntyped. Like an interface, its nil is what the decode leaves for an
-// absent property and it marshals to null; unlike one, a value it holds is the
-// document's own bytes, so a present null is held as the four bytes and not as
-// the nil.
-func (g *Generator) isRawBytesType(t GoType) bool {
-	switch v := t.(type) {
-	case *PrimitiveType:
-		return v.Name == GoRawTypeName
-	case *NamedType:
-		if v.PkgAlias != "" {
-			return false
-		}
-		for _, td := range g.typeDefsInScope() {
-			if d, ok := td.(*AliasDef); ok && d.Name == v.Name {
-				pt, isPrim := d.Underlying.(*PrimitiveType)
-				return isPrim && pt.Name == GoRawTypeName
-			}
-		}
-	}
-	return false
-}
-
 // namedTypeAt returns the NamedType a GoType names, looking through a pointer,
 // or nil when the position holds something else. It is the node namedTypeName
 // and emittedTypeName each read a different part of.
@@ -17499,52 +17149,52 @@ func mapValueIsPointer(t GoType) bool {
 }
 
 // zeroLiteralForType returns the Go zero value literal for a given type.
-// For named types, it looks up the generated type definition to find the underlying type.
+//
+// A named type is followed to the end of its chain of names (see aliasEndOf),
+// which is what decides the literal: an alias backed by a slice, a map or a
+// pointer -- `type Condition []any`, or `type A B` over one -- yields "nil"
+// rather than the "" fallback, which would emit an invalid `field != ""`
+// presence guard for a slice field. A chain that reaches another package's
+// type takes the literal that package published for it, rather than looking
+// the name up in this package's table, where it can only find nothing or a
+// namesake.
 func (g *Generator) zeroLiteralForType(t GoType) string {
-	switch v := t.(type) {
-	case *PointerType:
-		return "nil"
-	case *ArrayType, *MapType:
-		// Slices and maps have a nil zero value, not "".
-		return "nil"
-	case *PrimitiveType:
-		return zeroForPrimitive(v.Name)
-	case *NamedType:
-		// Look up the generated type to find the underlying type.
-		for _, td := range g.typeDefsInScope() {
-			if td.TypeName() == v.Name {
-				switch d := td.(type) {
-				case *EnumDef:
-					return zeroForPrimitive(d.BaseType.GoTypeName())
-				case *AliasDef:
-					// Recurse so an alias backed by a slice/map/pointer
-					// (e.g. `type Condition []any`) yields "nil" rather
-					// than the "" fallback, which would emit an invalid
-					// `field != ""` presence guard for a slice field.
-					return g.zeroLiteralForType(d.Underlying)
-				case *StructDef:
-					// Structs don't have a meaningful zero literal for comparison.
-					return ""
-				case *InferredAliasDef:
-					// InferredAliasDef is a wrapper struct — no meaningful zero literal.
-					return ""
-				case *BigIntAliasDef:
-					// BigIntAliasDef is a wrapper struct — no meaningful zero literal.
-					return ""
-				case *TypeOnlySchemaDef, *NotSchemaDef, *DynamicSchemaDef, *AnnotationSchemaDef:
-					// A raw-value wrapper struct — no meaningful zero literal.
-					// Its Validate accepts the absent value, so the caller does
-					// not need a presence guard. Without a case here the `""`
-					// fallback below would emit `field != ""` against a struct,
-					// which does not compile.
-					return ""
-				}
-			}
+	end := g.aliasEndOf(t)
+	switch {
+	case end.Foreign != nil:
+		zero, _ := crossPackageZeroLiteral(end.Foreign)
+		return zero
+	case end.Go != nil:
+		switch v := end.Go.(type) {
+		case *PointerType, *ArrayType, *MapType:
+			// Slices and maps have a nil zero value, not "".
+			return "nil"
+		case *NamedType:
+			// Only a NamedType spelled with its own pointer ends a chain as an
+			// anonymous type.
+			return "nil"
+		case *PrimitiveType:
+			return zeroForPrimitive(v.Name)
 		}
 		return `""`
-	default:
-		return `""`
+	case end.Def != nil:
+		switch d := end.Def.(type) {
+		case *EnumDef:
+			return zeroForPrimitive(d.BaseType.GoTypeName())
+		case *StructDef, *InferredAliasDef, *BigIntAliasDef:
+			// A struct, or a wrapper struct: no meaningful zero literal for
+			// comparison.
+			return ""
+		case *TypeOnlySchemaDef, *NotSchemaDef, *DynamicSchemaDef, *AnnotationSchemaDef:
+			// A raw-value wrapper struct — no meaningful zero literal.
+			// Its Validate accepts the absent value, so the caller does
+			// not need a presence guard. Without a case here the `""`
+			// fallback below would emit `field != ""` against a struct,
+			// which does not compile.
+			return ""
+		}
 	}
+	return `""`
 }
 
 // zeroForPrimitive returns the Go zero literal for a primitive type name.
@@ -19614,13 +19264,7 @@ func (g *Generator) namedTypeIsValidatable(name string) bool {
 		if !ok {
 			return localTypeIsValidatable(td)
 		}
-		aliases := make(map[string]*AliasDef, len(g.typeDefsInScope()))
-		for _, other := range g.typeDefsInScope() {
-			if oad, ok := other.(*AliasDef); ok {
-				aliases[oad.Name] = oad
-			}
-		}
-		return canHaveMethodsResolved(ad.Underlying, aliases)
+		return g.canHaveMethods(ad.Underlying)
 	}
 	return true
 }
