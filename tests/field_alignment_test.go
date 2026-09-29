@@ -7,13 +7,13 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/mgilbir/schemagen/internal/testgo"
 	"github.com/mgilbir/schemagen/pkg/emitter"
 )
 
@@ -68,11 +68,14 @@ func TestGeneratedCorpusIsFieldAligned(t *testing.T) {
 	pkgSchema := make(map[string]string, len(schemas))
 	var pkgs []string
 	measured := 0
+	refusals := newRefusalLedger(corpusDefaultSweep)
 	for i, path := range schemas {
-		src, helpers, ok := generateForCompile(t, em, path)
-		if !ok {
+		src, helpers, err := generateForCompile(em, path)
+		if err != nil {
+			refusals.refuse(path, err)
 			continue
 		}
+		refusals.generated()
 		name := fmt.Sprintf("p%04d", i)
 		sub := filepath.Join(dir, name)
 		if err := os.MkdirAll(sub, 0o755); err != nil {
@@ -102,6 +105,7 @@ func TestGeneratedCorpusIsFieldAligned(t *testing.T) {
 	if len(pkgs) == 0 {
 		t.Fatal("no package declared a struct; the gate is measuring nothing")
 	}
+	refusals.check(t)
 
 	checkDir := filepath.Join(dir, "aligncheck")
 	if err := os.MkdirAll(checkDir, 0o755); err != nil {
@@ -116,8 +120,7 @@ func TestGeneratedCorpusIsFieldAligned(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", "./aligncheck")
-	cmd.Dir = dir
+	cmd := testgo.Command(ctx, dir, "run", "./aligncheck")
 	output, err := cmd.CombinedOutput()
 	report := string(output)
 	for name, path := range pkgSchema {

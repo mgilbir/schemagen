@@ -11,6 +11,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/mgilbir/schemagen/internal/testgo"
 )
 
 // The multi-package / shared-types differential.
@@ -671,7 +673,9 @@ var (
 func schemagenBinary(t *testing.T) string {
 	t.Helper()
 	schemagenBinOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "schemagen-bin")
+		// Removed by testgo.Main when this binary's tests finish, and swept by
+		// name if it is killed first; see testgo.MkdirProcessTemp.
+		dir, err := testgo.MkdirProcessTemp()
 		if err != nil {
 			schemagenBinErr = err
 			return
@@ -679,8 +683,7 @@ func schemagenBinary(t *testing.T) string {
 		bin := filepath.Join(dir, "schemagen")
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		cmd := exec.CommandContext(ctx, "go", "build", "-o", bin, ".")
-		cmd.Dir = ".."
+		cmd := testgo.Command(ctx, "..", "build", "-o", bin, ".")
 		if out, err := cmd.CombinedOutput(); err != nil {
 			schemagenBinErr = fmt.Errorf("building schemagen: %w\n%s", err, out)
 			return
@@ -742,9 +745,7 @@ func runDifferentialDriver(t *testing.T, spec driverSpec) []string {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", "./differentialdriver")
-	cmd.Dir = spec.Root
-	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=mod", "GOWORK=off")
+	cmd := testgo.Command(ctx, spec.Root, "run", "-mod=mod", "./differentialdriver")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("driving the generated %s tree: %v\n%s", spec.Module, err, out)

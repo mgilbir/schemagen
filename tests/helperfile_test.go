@@ -107,30 +107,53 @@ func TestHelperFileDeclaresEveryHelperCalled(t *testing.T) {
 		t.Fatalf("creating emitter: %v", err)
 	}
 
+	// A schema the generator refuses under a configuration is skipped for that
+	// configuration, and the skips are pinned per configuration: see
+	// pinnedRefusals.
+	type helperCfg struct {
+		name    string
+		asserts bool
+	}
+	cfgs := []helperCfg{{"dialect", false}, {"format-assertion", true}}
+	refusals := map[string]*refusalLedger{}
+	for _, cfg := range cfgs {
+		refusals[cfg.name] = newRefusalLedger("helper-file/" + cfg.name)
+	}
 	for _, path := range schemaFiles {
-		for _, cfg := range []struct {
-			name    string
-			asserts bool
-		}{{"dialect", false}, {"format-assertion", true}} {
+		for _, cfg := range cfgs {
+			ledger := refusals[cfg.name]
 			t.Run(filepath.Base(path)+"/"+cfg.name, func(t *testing.T) {
 				s, err := schema.LoadFromFile(path)
 				if err != nil {
+					ledger.refuse(path, fmt.Errorf("load: %w", err))
 					t.Skipf("not loadable: %v", err)
 				}
 				s.Normalize()
+				// Resolved as the CLI resolves it, from the schema's own
+				// directory: without it a schema that $refs a sibling file is
+				// refused and never checked.
+				s.ComputeBaseURIs(nil, s)
+				abs, err := filepath.Abs(path)
+				if err != nil {
+					t.Fatal(err)
+				}
 				gen := generator.New(generator.Config{
 					PackageName:     "testpkg",
 					OmitEmpty:       true,
 					FormatAssertion: cfg.asserts,
+					Resolver:        schema.NewCompositeResolver(schema.NewFileResolver(filepath.Dir(abs))),
 				})
 				ir, err := gen.Generate(s)
 				if err != nil {
+					ledger.refuse(path, fmt.Errorf("generate: %w", err))
 					t.Skipf("not generatable: %v", err)
 				}
 				src, err := em.Emit(ir)
 				if err != nil {
+					ledger.refuse(path, fmt.Errorf("emit: %w", err))
 					t.Skipf("not emittable: %v", err)
 				}
+				ledger.generated()
 
 				helperSrc, needed, err := em.EmitHelpers("testpkg", generator.HelpersReferencedBy(string(src)))
 				if err != nil {
@@ -159,6 +182,9 @@ func TestHelperFileDeclaresEveryHelperCalled(t *testing.T) {
 				}
 			})
 		}
+	}
+	for _, cfg := range cfgs {
+		refusals[cfg.name].check(t)
 	}
 }
 

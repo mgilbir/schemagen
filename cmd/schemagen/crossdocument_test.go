@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mgilbir/schemagen/internal/testgo"
 )
 
 // The tests in this file are about a type declared by one input document and
@@ -104,9 +105,7 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GOFLAGS=-mod=mod", "GOWORK=off")
+	cmd := testgo.Command(ctx, dir, "run", "-mod=mod", ".")
 	out, err := cmd.CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "PASS") {
 		t.Fatalf("generated package did not enforce the cross-document schema: %v\n%s", err, out)

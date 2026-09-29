@@ -5,12 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mgilbir/schemagen/internal/testgo"
 )
 
 // caselessFixture is the schema both tests below are about.
@@ -266,8 +267,7 @@ func TestGeneratedCodeForCaselessNamesPassesGoVet(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "vet", ".")
-	cmd.Dir = dir
+	cmd := testgo.Command(ctx, dir, "vet", ".")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("go vet on the generated package for %s failed:\n%s", caselessFixture, strings.TrimSpace(string(out)))

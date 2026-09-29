@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/mgilbir/schemagen/internal/testgo"
 	"github.com/mgilbir/schemagen/pkg/emitter"
 	"github.com/mgilbir/schemagen/pkg/generator"
 	"github.com/mgilbir/schemagen/pkg/schema"
@@ -354,51 +354,46 @@ func allGoldenTests() []goldenTestCase {
 	}
 }
 
-func TestGoldenFiles(t *testing.T) {
-	for _, tc := range allGoldenTests() {
+func TestGoldenFiles(t *testing.T) { runGoldenSet(t, goldenSetNamed(t, "default")) }
+
+// goldenSet is one generator configuration and every golden generated under
+// it. goldenSets is the whole registry: the runners generate from it,
+// TestCompile compiles from it, and TestEveryGoldenFileHasAGenerator holds the
+// files on disk to it, so a golden cannot exist that nothing regenerates or
+// nothing compiles.
+type goldenSet struct {
+	name  string
+	cfg   generator.Config
+	cases []goldenTestCase
+}
+
+func goldenSets() []goldenSet {
+	return []goldenSet{
+		{"default", generator.Config{PackageName: "testpkg", OmitEmpty: true}, allGoldenTests()},
+		{"bigint", generator.Config{PackageName: "testpkg", OmitEmpty: true, BigIntSupport: true}, bigIntGoldenTests()},
+		{"exactnum", generator.Config{PackageName: "testpkg", OmitEmpty: true, ExactNumbers: true}, exactNumberGoldenTests()},
+		{"rawuntyped", generator.Config{PackageName: "testpkg", OmitEmpty: true, RawUntyped: true}, rawUntypedGoldenTests()},
+	}
+}
+
+func goldenSetNamed(t *testing.T, name string) goldenSet {
+	t.Helper()
+	for _, set := range goldenSets() {
+		if set.name == name {
+			return set
+		}
+	}
+	t.Fatalf("no golden set named %q", name)
+	return goldenSet{}
+}
+
+// runGoldenSet generates every golden of a set under the set's configuration
+// and compares it with the file, or rewrites it; see checkGolden.
+func runGoldenSet(t *testing.T, set goldenSet) {
+	for _, tc := range set.cases {
 		t.Run(tc.Name, func(t *testing.T) {
-			got := generateFromSchema(t, tc.SchemaPath)
-
-			goldenPath := filepath.Join("..", tc.GoldenPath)
-			if os.Getenv("UPDATE_GOLDEN") == "true" {
-				dir := filepath.Dir(goldenPath)
-				if err := os.MkdirAll(dir, 0o755); err != nil {
-					t.Fatalf("creating golden dir: %v", err)
-				}
-				if err := os.WriteFile(goldenPath, got, 0o644); err != nil {
-					t.Fatalf("updating golden file: %v", err)
-				}
-				t.Logf("Updated golden file: %s", goldenPath)
-				return
-			}
-
-			want, err := os.ReadFile(goldenPath)
-			if err != nil {
-				t.Fatalf("reading golden file %s: %v\nRun with UPDATE_GOLDEN=true to create it", goldenPath, err)
-			}
-
-			if string(got) != string(want) {
-				t.Errorf("generated output differs from golden file %s", tc.GoldenPath)
-				// Show a simple diff
-				gotLines := strings.Split(string(got), "\n")
-				wantLines := strings.Split(string(want), "\n")
-				maxLines := len(gotLines)
-				if len(wantLines) > maxLines {
-					maxLines = len(wantLines)
-				}
-				for i := 0; i < maxLines; i++ {
-					var gotLine, wantLine string
-					if i < len(gotLines) {
-						gotLine = gotLines[i]
-					}
-					if i < len(wantLines) {
-						wantLine = wantLines[i]
-					}
-					if gotLine != wantLine {
-						t.Errorf("  line %d:\n    got:  %q\n    want: %q", i+1, gotLine, wantLine)
-					}
-				}
-			}
+			got := generateFromSchemaWithConfig(t, tc.SchemaPath, set.cfg)
+			checkGolden(t, tc.GoldenPath, got)
 		})
 	}
 }
@@ -476,8 +471,11 @@ func generateWithRootName(t *testing.T, schemaPath, rootName string) string {
 }
 
 // TestGoldenBigInt tests golden output with --big-int enabled.
-func TestGoldenBigInt(t *testing.T) {
-	tests := []goldenTestCase{
+func TestGoldenBigInt(t *testing.T) { runGoldenSet(t, goldenSetNamed(t, "bigint")) }
+
+// bigIntGoldenTests are the goldens generated under the bigint configuration; see goldenSets.
+func bigIntGoldenTests() []goldenTestCase {
+	return []goldenTestCase{
 		{"bigint/integer_constraints", "testdata/schemas/bigint/integer_constraints.json", "testdata/golden/bigint/integer_constraints.go"},
 		// The big-int alias is the one named-type kind that needs a non-default
 		// configuration to exist at all -- under the default the same $defs entry
@@ -493,46 +491,6 @@ func TestGoldenBigInt(t *testing.T) {
 		{"bigint/root_null_merged_type", "testdata/schemas/regression/root_null_bigint_merged_type.json", "testdata/golden/bigint/root_null_merged_type.go"},
 		{"bigint/root_null_nullable", "testdata/schemas/regression/root_null_bigint_nullable.json", "testdata/golden/bigint/root_null_nullable.go"},
 	}
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			got := generateFromSchemaWithConfig(t, tc.SchemaPath, generator.Config{
-				PackageName:   "testpkg",
-				OmitEmpty:     true,
-				BigIntSupport: true,
-			})
-
-			goldenPath := filepath.Join("..", tc.GoldenPath)
-			if os.Getenv("UPDATE_GOLDEN") == "true" {
-				dir := filepath.Dir(goldenPath)
-				if err := os.MkdirAll(dir, 0o755); err != nil {
-					t.Fatalf("creating golden dir: %v", err)
-				}
-				if err := os.WriteFile(goldenPath, got, 0o644); err != nil {
-					t.Fatalf("updating golden file: %v", err)
-				}
-				t.Logf("Updated golden file: %s", goldenPath)
-				return
-			}
-			want, err := os.ReadFile(goldenPath)
-			if err != nil {
-				t.Fatalf("reading golden file %s: %v\nRun with UPDATE_GOLDEN=true to create it", goldenPath, err)
-			}
-			if string(got) != string(want) {
-				t.Errorf("generated output differs from golden file %s", tc.GoldenPath)
-				gotLines := strings.Split(string(got), "\n")
-				wantLines := strings.Split(string(want), "\n")
-				for i := range gotLines {
-					if i >= len(wantLines) {
-						t.Logf("  line %d:\n\tgot:  %q\n\twant: %q", i+1, gotLines[i], "")
-						continue
-					}
-					if gotLines[i] != wantLines[i] {
-						t.Logf("  line %d:\n\tgot:  %q\n\twant: %q", i+1, gotLines[i], wantLines[i])
-					}
-				}
-			}
-		})
-	}
 }
 
 // TestGoldenExactNumbers tests golden output with --exact-numbers enabled.
@@ -542,54 +500,17 @@ func TestGoldenBigInt(t *testing.T) {
 // literal the document wrote, every keyword on it compared exactly, and nothing
 // else moved. The integer property in the position matrix is the control -- it
 // is exact under every configuration and must read identically in both files.
-func TestGoldenExactNumbers(t *testing.T) {
-	tests := []goldenTestCase{
+func TestGoldenExactNumbers(t *testing.T) { runGoldenSet(t, goldenSetNamed(t, "exactnum")) }
+
+// exactNumberGoldenTests are the goldens generated under the exactnum configuration; see goldenSets.
+func exactNumberGoldenTests() []goldenTestCase {
+	return []goldenTestCase{
 		{"exactnum/number_positions", "testdata/schemas/regression/number_positions.json", "testdata/golden/exactnum/number_positions.go"},
 		// A document whose numbers are all integers and strings, to pin that a
 		// schema naming no "number" comes out of this flag unchanged. Compared
 		// against the default golden of the same document rather than a golden
 		// of its own; see the assertion below.
 		{"exactnum/numeric_constraints", "testdata/schemas/validation/numeric_constraints.json", "testdata/golden/exactnum/numeric_constraints.go"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			got := generateFromSchemaWithConfig(t, tc.SchemaPath, generator.Config{
-				PackageName:  "testpkg",
-				OmitEmpty:    true,
-				ExactNumbers: true,
-			})
-
-			goldenPath := filepath.Join("..", tc.GoldenPath)
-			if os.Getenv("UPDATE_GOLDEN") == "true" {
-				dir := filepath.Dir(goldenPath)
-				if err := os.MkdirAll(dir, 0o755); err != nil {
-					t.Fatalf("creating golden dir: %v", err)
-				}
-				if err := os.WriteFile(goldenPath, got, 0o644); err != nil {
-					t.Fatalf("updating golden file: %v", err)
-				}
-				t.Logf("Updated golden file: %s", goldenPath)
-				return
-			}
-			want, err := os.ReadFile(goldenPath)
-			if err != nil {
-				t.Fatalf("reading golden file %s: %v\nRun with UPDATE_GOLDEN=true to create it", goldenPath, err)
-			}
-			if string(got) != string(want) {
-				t.Errorf("generated output differs from golden file %s", tc.GoldenPath)
-				gotLines := strings.Split(string(got), "\n")
-				wantLines := strings.Split(string(want), "\n")
-				for i := range gotLines {
-					if i >= len(wantLines) {
-						t.Logf("  line %d:\n\tgot:  %q\n\twant: %q", i+1, gotLines[i], "")
-						continue
-					}
-					if gotLines[i] != wantLines[i] {
-						t.Logf("  line %d:\n\tgot:  %q\n\twant: %q", i+1, gotLines[i], wantLines[i])
-					}
-				}
-			}
-		})
 	}
 }
 
@@ -629,49 +550,12 @@ func TestExactNumbersLeavesNumberlessSchemasAlone(t *testing.T) {
 // an element made on its canonical text, and nothing else moved. The controls
 // in the matrix -- a tuple, a bare array, an untyped const and enum, a
 // constraint-only wrapper, a typed integer -- must read identically in both.
-func TestGoldenRawUntyped(t *testing.T) {
-	tests := []goldenTestCase{
-		{"rawuntyped/untyped_positions", "testdata/schemas/regression/untyped_positions.json", "testdata/golden/rawuntyped/untyped_positions.go"},
-	}
-	for _, tc := range tests {
-		t.Run(tc.Name, func(t *testing.T) {
-			got := generateFromSchemaWithConfig(t, tc.SchemaPath, generator.Config{
-				PackageName: "testpkg",
-				OmitEmpty:   true,
-				RawUntyped:  true,
-			})
+func TestGoldenRawUntyped(t *testing.T) { runGoldenSet(t, goldenSetNamed(t, "rawuntyped")) }
 
-			goldenPath := filepath.Join("..", tc.GoldenPath)
-			if os.Getenv("UPDATE_GOLDEN") == "true" {
-				dir := filepath.Dir(goldenPath)
-				if err := os.MkdirAll(dir, 0o755); err != nil {
-					t.Fatalf("creating golden dir: %v", err)
-				}
-				if err := os.WriteFile(goldenPath, got, 0o644); err != nil {
-					t.Fatalf("updating golden file: %v", err)
-				}
-				t.Logf("Updated golden file: %s", goldenPath)
-				return
-			}
-			want, err := os.ReadFile(goldenPath)
-			if err != nil {
-				t.Fatalf("reading golden file %s: %v\nRun with UPDATE_GOLDEN=true to create it", goldenPath, err)
-			}
-			if string(got) != string(want) {
-				t.Errorf("generated output differs from golden file %s", tc.GoldenPath)
-				gotLines := strings.Split(string(got), "\n")
-				wantLines := strings.Split(string(want), "\n")
-				for i := range gotLines {
-					if i >= len(wantLines) {
-						t.Logf("  line %d:\n\tgot:  %q\n\twant: %q", i+1, gotLines[i], "")
-						continue
-					}
-					if gotLines[i] != wantLines[i] {
-						t.Logf("  line %d:\n\tgot:  %q\n\twant: %q", i+1, gotLines[i], wantLines[i])
-					}
-				}
-			}
-		})
+// rawUntypedGoldenTests are the goldens generated under the rawuntyped configuration; see goldenSets.
+func rawUntypedGoldenTests() []goldenTestCase {
+	return []goldenTestCase{
+		{"rawuntyped/untyped_positions", "testdata/schemas/regression/untyped_positions.json", "testdata/golden/rawuntyped/untyped_positions.go"},
 	}
 }
 
@@ -803,14 +687,19 @@ func main() {
 		{"float", "3.14"},
 	}
 
+	// Every one of these is a document the schema refuses -- a null, a string
+	// and a fraction where an integer belongs -- so every one of them has to be
+	// refused, by the decoder or by Validate. This loop used to check only the
+	// float: null and "42" were decoded and nothing was asked of the result, so
+	// a wrapper that accepted strings passed, and UPDATE_GOLDEN then blessed
+	// the golden that showed it.
 	for _, tc := range invalidTypes {
 		var c Counter
-		if err := json.Unmarshal([]byte(tc.input), &c); err == nil {
-			// For float, check if it was accepted (it shouldn't be since 3.14 has fractional part)
-			if tc.name == "float" {
-				// 3.14 should fail because it's not an integer
-				errs = append(errs, fmt.Sprintf("%s: expected unmarshal error for non-integer float", tc.name))
-			}
+		if err := json.Unmarshal([]byte(tc.input), &c); err != nil {
+			continue
+		}
+		if err := c.Validate(); err == nil {
+			errs = append(errs, fmt.Sprintf("%s: %s decoded and validated; a %s is not an integer", tc.name, tc.input, tc.name))
 		}
 	}
 
@@ -833,8 +722,7 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
-	cmd.Dir = tmpDir
+	cmd := testgo.Command(ctx, tmpDir, "run", ".")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("BigInt round-trip test failed:\n%s\nerror: %v", string(output), err)
@@ -957,8 +845,7 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
-	cmd.Dir = tmpDir
+	cmd := testgo.Command(ctx, tmpDir, "run", ".")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("validation error path test failed:\n%s\nerror: %v", string(output), err)
@@ -1086,8 +973,7 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "go", "run", ".")
-	cmd.Dir = tmpDir
+	cmd := testgo.Command(ctx, tmpDir, "run", ".")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("nested remote items test failed:\n%s\nerror: %v", string(output), err)

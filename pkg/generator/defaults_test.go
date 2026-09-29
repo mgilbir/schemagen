@@ -191,6 +191,7 @@ func TestBigIntDefaultDeclinesAValuePastFloat64(t *testing.T) {
 		t.Fatalf("generate: %v", err)
 	}
 	var big, small FieldDef
+	var foundBig, foundSmall bool
 	for _, td := range ir.TypeDefs {
 		sd, ok := td.(*StructDef)
 		if !ok {
@@ -199,11 +200,16 @@ func TestBigIntDefaultDeclinesAValuePastFloat64(t *testing.T) {
 		for _, f := range sd.Fields {
 			switch f.JSONName {
 			case "big":
-				big = f
+				big, foundBig = f, true
 			case "small":
-				small = f
+				small, foundSmall = f, true
 			}
 		}
+	}
+	// A field that was never found would read as a zero FieldDef, and the
+	// empty default below would then pass for a field that does not exist.
+	if !foundBig || !foundSmall {
+		t.Fatalf("expected fields big and small; found big=%v small=%v", foundBig, foundSmall)
 	}
 	if big.DefaultLiteral != "" {
 		t.Errorf("the out-of-range default was written as %q; its digits are not the schema's", big.DefaultLiteral)

@@ -2062,19 +2062,11 @@ func TestGenerate_NestedObject(t *testing.T) {
 		t.Error("expected CompanyAddress type")
 	}
 
-	// Find Company struct and check that address field uses NamedType.
-	for _, td := range file.TypeDefs {
-		sd, ok := td.(*StructDef)
-		if !ok || sd.Name != "Company" {
-			continue
-		}
-		for _, f := range sd.Fields {
-			if f.JSONName == "address" {
-				if f.Type.GoTypeName() != "*CompanyAddress" {
-					t.Errorf("address field type = %q, want %q", f.Type.GoTypeName(), "*CompanyAddress")
-				}
-			}
-		}
+	// Find Company struct and check that address field uses NamedType. Both
+	// lookups fail when there is nothing to find, rather than skipping.
+	address := fieldNamedJSON(t, structNamed(t, file, "Company"), "address")
+	if address.Type.GoTypeName() != "*CompanyAddress" {
+		t.Errorf("address field type = %q, want %q", address.Type.GoTypeName(), "*CompanyAddress")
 	}
 }
 
@@ -2938,17 +2930,14 @@ func TestTypeLevelUnionGetsNoOverflowMap(t *testing.T) {
 		t.Fatalf("generate: %v", err)
 	}
 
-	for _, td := range ir.TypeDefs {
-		sd, ok := td.(*StructDef)
-		if !ok || sd.Name != "Root" {
-			continue
-		}
-		if len(sd.OneOfs) != 1 || sd.OneOfs[0].JSONName != "" {
-			t.Fatalf("Root.OneOfs = %#v, want one type-level union", sd.OneOfs)
-		}
-		if sd.AdditionalProperties != nil {
-			t.Fatalf("Root has an overflow map its MarshalJSON never emits")
-		}
+	// structNamed fails when there is no Root struct: a loop that skipped
+	// every definition that was not one would pass having asserted nothing.
+	sd := structNamed(t, ir, "Root")
+	if len(sd.OneOfs) != 1 || sd.OneOfs[0].JSONName != "" {
+		t.Fatalf("Root.OneOfs = %#v, want one type-level union", sd.OneOfs)
+	}
+	if sd.AdditionalProperties != nil {
+		t.Fatalf("Root has an overflow map its MarshalJSON never emits")
 	}
 }
 
@@ -9046,21 +9035,46 @@ func TestPresentNullIsRecordedWhereTheSchemaPermitsIt(t *testing.T) {
 	// The rule guard. A bound is vacuous for a null whether the property is
 	// optional or required, so both carry the key; the property that forbids a
 	// null must not, or the rejection would be skipped for the value it judges.
+	//
+	// It has a document of its own. It used to read the one above, where since
+	// #139 the constraint-only properties' bounds live on their inferred-alias
+	// wrappers rather than on Doc -- so Doc carried no rule at all, the loop
+	// below ran zero times for every row, and the forbidding row compared
+	// nothing even when it did run. Every row now has to find its rule, and the
+	// forbidding rows are held to carrying no key.
+	rules := structNamed(t, generateForItemTest(t, `{
+		"title": "Doc",
+		"type": "object",
+		"properties": {
+			"nullBound":     {"type": ["string","null"], "minLength": 2},
+			"reqNullBound":  {"type": ["string","null"], "minLength": 2},
+			"typedBound":    {"type": "string", "minLength": 2},
+			"reqTypedBound": {"type": "string", "minLength": 2}
+		},
+		"required": ["reqNullBound", "reqTypedBound"]
+	}`), "Doc")
 	for _, tc := range []struct {
 		jsonName string
 		wantKey  string
 	}{
-		{"boundOnly", "boundOnly"},
-		{"reqBound", "reqBound"},
-		{"nullable", ""},
+		{"nullBound", "nullBound"},
+		{"reqNullBound", "reqNullBound"},
+		{"typedBound", ""},
+		{"reqTypedBound", ""},
 	} {
-		for _, r := range doc.Validations {
+		found := 0
+		for _, r := range rules.Validations {
 			if r.JSONName != tc.jsonName || !ruleVacuousForNull(r.RuleType) {
 				continue
 			}
-			if r.NullKey != tc.wantKey && tc.wantKey != "" {
+			found++
+			if r.NullKey != tc.wantKey {
 				t.Errorf("%s rule %q has NullKey %q, want %q", tc.jsonName, r.RuleType, r.NullKey, tc.wantKey)
 			}
+		}
+		if found == 0 {
+			t.Errorf("%s carries no rule a null satisfies vacuously, so this row asserted nothing; the fixture no longer reaches the guard",
+				tc.jsonName)
 		}
 	}
 }

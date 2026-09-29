@@ -39,18 +39,39 @@ ANALYZER=golang.org/x/tools/go/analysis/passes/fieldalignment/cmd/fieldalignment
 # here because it changes the Go type of every optional property, which is
 # exactly how it came to emit a `!= nil` against a plain string and produce a
 # package that did not build for any schema forbidding a property.
+#
+# Every flag of `schemagen generate` that can change a Go type is here, and
+# TestLintAlignmentCoversEveryShapeFlag (tests/) holds this list to the CLI's
+# flags, so a new one is a test failure until it is added or its absence is
+# explained there. --raw-untyped was missing for a release: it turns every
+# untyped position into json.RawMessage, a different type in a different
+# place, and nothing compiled or measured that shape. --format-annotation takes
+# the time.Time and netip.Addr mapping away from the drafts that assert, and
+# --lenient-refs makes schemas generate that are otherwise refused, holding
+# their unresolvable refs as `any`.
 declare -a CONFIGS=(
 	"default"
 	"bigint|--big-int"
 	"exact|--exact-numbers"
+	"raw-untyped|--raw-untyped"
 	"no-omit-empty|--omit-empty=false"
 	"strict-properties|--strict-properties"
 	"strict-read-write|--strict-read-write"
 	"format-assertion|--format-assertion"
+	"format-annotation|--format-annotation"
+	"lenient-refs|--lenient-refs"
 	"hybrid|--validation|hybrid"
 	"runtime|--validation|runtime"
-	"combined|--big-int|--exact-numbers|--omit-empty=false|--strict-properties|--strict-read-write|--format-assertion|--validation|hybrid"
+	"combined|--big-int|--exact-numbers|--raw-untyped|--omit-empty=false|--strict-properties|--strict-read-write|--format-assertion|--lenient-refs|--validation|hybrid"
 )
+
+# The builds below are of throwaway modules, and the caller's GOFLAGS is a
+# setting for the builds they asked for, not for these: -mod=vendor fails every
+# one of them, and -race or a build tag changes what is measured. GOWORK is
+# off for the same reason, and -trimpath makes a second run's compilations
+# hits in the build cache rather than another copy of the corpus in it.
+export GOFLAGS=-trimpath
+export GOWORK=off
 
 workdir=${1:-}
 cleanup=false
@@ -66,7 +87,7 @@ binary="$workdir/schemagen"
 
 echo "fetching the analyzer..."
 analyzer="$workdir/fieldalignment"
-if ! (cd "$workdir" && GOFLAGS=-mod=mod GOBIN="$workdir" go install "$ANALYZER" 2>"$workdir/install.err"); then
+if ! (cd "$workdir" && GOFLAGS="-mod=mod -trimpath" GOBIN="$workdir" go install "$ANALYZER" 2>"$workdir/install.err"); then
 	echo "could not build $ANALYZER:"
 	cat "$workdir/install.err"
 	echo

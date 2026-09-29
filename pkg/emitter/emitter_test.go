@@ -1,13 +1,14 @@
 package emitter
 
 import (
+	"context"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/mgilbir/schemagen/internal/testgo"
 	"github.com/mgilbir/schemagen/pkg/generator"
 )
 
@@ -665,8 +666,7 @@ func main() {
 		t.Fatalf("write go.sum: %v", err)
 	}
 
-	cmd := exec.Command("go", "run", ".")
-	cmd.Dir = tmp
+	cmd := testgo.Command(context.Background(), tmp, "run", ".")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("generated code failed: %v\n%s", err, string(output))
@@ -1220,16 +1220,30 @@ func TestFormatHelpersAreDefinedForEveryName(t *testing.T) {
 		t.Fatalf("EmitHelpers() error: %v (ok=%v)", err, ok)
 	}
 	body := string(src)
+	checked := 0
 	for _, format := range append(append([]string{}, allFormatKeywords...), allInternalFormatNames...) {
 		for _, stringBacked := range []bool{true, false} {
+			// No name means the format emits no helper call in that shape
+			// (it is carried by a typed value instead), so there is no
+			// declaration to look for.
 			name := formatHelperNameFunc(format, stringBacked)
 			if name == "" {
+				// A format the generator checks on a string has to name its
+				// helper, or the skip above would hide the one case this
+				// test exists for.
+				if stringBacked && generator.FormatCheckableOnString(format) {
+					t.Errorf("format %q is checkable on a string, but formatHelperNameFunc names no helper for it", format)
+				}
 				continue
 			}
+			checked++
 			if !strings.Contains(body, "func "+name+"(") {
 				t.Errorf("format %q (stringBacked=%v) emits a call to %s, which the helper block does not declare", format, stringBacked, name)
 			}
 		}
+	}
+	if checked == 0 {
+		t.Errorf("no helper name checked; formatHelperNameFunc has stopped naming the helpers, and this test with it")
 	}
 }
 
@@ -1407,8 +1421,7 @@ func assertCompiles(t *testing.T, src string) {
 	if err := os.WriteFile(filepath.Join(tmp, "types.go"), []byte(src), 0o644); err != nil {
 		t.Fatalf("write types.go: %v", err)
 	}
-	cmd := exec.Command("go", "build", "./...")
-	cmd.Dir = tmp
+	cmd := testgo.Command(context.Background(), tmp, "build", "./...")
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("emitted source does not compile: %v\n%s\n%s", err, out, src)
 	}

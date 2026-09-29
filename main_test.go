@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/mgilbir/schemagen/internal/testgo"
 )
 
 // The guards for issue #322: a failing run prints its diagnostic once.
@@ -29,17 +32,27 @@ var (
 	binErr  error
 )
 
+// TestMain claims the module's shared build cache for this binary, and on the
+// way out removes the CLI schemagenBinary built and hands the cache back.
+func TestMain(m *testing.M) { testgo.Main(m) }
+
 // schemagenBinary builds the command once per test binary and returns its path.
+//
+// The directory it builds into lives exactly as long as this test binary:
+// testgo.Main removes it when the tests finish, and its name is one the sweep
+// reclaims if the binary is killed first. It used to be a MkdirTemp nothing
+// ever removed, under a name nothing recognised -- one more directory in /tmp
+// per `go test ./...`, 105 of them on the machine the 2026-09-26 audit ran on.
 func schemagenBinary(t *testing.T) string {
 	t.Helper()
 	binOnce.Do(func() {
-		dir, err := os.MkdirTemp("", "schemagen-main-test")
+		dir, err := testgo.MkdirProcessTemp()
 		if err != nil {
 			binErr = err
 			return
 		}
 		path := filepath.Join(dir, "schemagen")
-		build := exec.Command("go", "build", "-o", path, ".")
+		build := testgo.Command(context.Background(), ".", "build", "-o", path, ".")
 		if out, err := build.CombinedOutput(); err != nil {
 			binErr = err
 			t.Logf("go build: %s", out)

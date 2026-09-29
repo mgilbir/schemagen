@@ -49,11 +49,14 @@ func TestExactNumberNamedTypesCarryBothDirections(t *testing.T) {
 		t.Fatalf("corpus walk found only %d schemas; the sweep is measuring nothing", len(paths))
 	}
 	declared := 0
+	refusals := newRefusalLedger(exactNumbersSweep)
 	for _, path := range paths {
-		src, ok := generateExactOrSkip(t, path)
-		if !ok {
+		src, err := generateExact(t, path)
+		if err != nil {
+			refusals.refuse(path, err)
 			continue
 		}
+		refusals.generated()
 		for _, m := range numberNamedType.FindAllStringSubmatch(src, -1) {
 			name := m[1]
 			declared++
@@ -74,6 +77,7 @@ func TestExactNumberNamedTypesCarryBothDirections(t *testing.T) {
 	if declared == 0 {
 		t.Fatal("no named type over json.Number in the whole corpus: this test is watching nothing")
 	}
+	refusals.check(t)
 	t.Logf("checked %d named types over json.Number across %d schemas", declared, len(paths))
 }
 
@@ -88,9 +92,15 @@ func TestExactNumberNamedTypesCarryBothDirections(t *testing.T) {
 // silence.
 func TestExactNumberFieldsDecodeThroughTheShadow(t *testing.T) {
 	checked := 0
+	refusals := newRefusalLedger(exactNumbersSweep)
 	for _, path := range corpusSchemaPaths(t) {
-		src, ok := generateExactOrSkip(t, path)
-		if !ok || !numberDeclaration.MatchString(src) {
+		src, err := generateExact(t, path)
+		if err != nil {
+			refusals.refuse(path, err)
+			continue
+		}
+		refusals.generated()
+		if !numberDeclaration.MatchString(src) {
 			continue
 		}
 		checked++
@@ -102,6 +112,7 @@ func TestExactNumberFieldsDecodeThroughTheShadow(t *testing.T) {
 	if checked == 0 {
 		t.Fatal("no schema in the corpus produced a json.Number: this test is watching nothing")
 	}
+	refusals.check(t)
 	t.Logf("checked %d schemas that declare a json.Number", checked)
 }
 
@@ -125,29 +136,44 @@ func corpusSchemaPaths(t *testing.T) []string {
 	return paths
 }
 
-// generateExactOrSkip runs one schema through the pipeline under
-// --exact-numbers, and reports ok=false for a document this generator declines
-// to generate at all.
+// exactNumbersSweep names the refusal set of the sweeps that generate the
+// corpus through generateExact.
+const exactNumbersSweep = "corpus/exact-numbers"
+
+// generateExact runs one schema through the pipeline under --exact-numbers, and
+// reports why for a document this generator declines to generate at all.
 //
 // A declined document is not a failure here: the corpus holds schemas written
-// to be refused -- an unresolvable $ref, a cycle no type can express -- and
-// which those are is the business of the tests that measure it. What matters to
-// this sweep is that every document it *does* generate obeys the rules above.
-func generateExactOrSkip(t *testing.T, path string) (string, bool) {
+// to be refused -- an unresolvable $ref, a cycle no type can express. What
+// matters to this sweep is that every document it *does* generate obeys the
+// rules above, and that the set it declines does not grow unseen, which is
+// what pinnedRefusals holds.
+func generateExact(t *testing.T, path string) (string, error) {
 	t.Helper()
 	s, err := schema.LoadFromFile(path)
 	if err != nil {
-		return "", false
+		return "", fmt.Errorf("load: %w", err)
 	}
 	s.NormalizeForDraft(schema.DraftUnknown)
+	// Resolved as the CLI resolves it, from the schema's own directory, for the
+	// reason generateForCompile gives: without it every corpus schema that $refs
+	// a sibling file is counted as refused and quietly leaves the sweep. Six
+	// did, before the refusal set was pinned and the difference from the
+	// default sweep's showed.
+	s.ComputeBaseURIs(nil, s)
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
 	gen := generator.New(generator.Config{
 		PackageName:  "testpkg",
 		OmitEmpty:    true,
 		ExactNumbers: true,
+		Resolver:     schema.NewCompositeResolver(schema.NewFileResolver(filepath.Dir(abs))),
 	})
 	ir, err := gen.Generate(s)
 	if err != nil {
-		return "", false
+		return "", fmt.Errorf("generate: %w", err)
 	}
 	em, err := emitter.New()
 	if err != nil {
@@ -155,7 +181,7 @@ func generateExactOrSkip(t *testing.T, path string) (string, bool) {
 	}
 	src, err := em.Emit(ir)
 	if err != nil {
-		return "", false
+		return "", fmt.Errorf("emit: %w", err)
 	}
-	return string(src), true
+	return string(src), nil
 }

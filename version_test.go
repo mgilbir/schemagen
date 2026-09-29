@@ -1,11 +1,13 @@
 package main
 
 import (
-	"os"
+	"context"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mgilbir/schemagen/internal/testgo"
 )
 
 // The guards for `schemagen --version`.
@@ -107,7 +109,7 @@ func TestTheLinkerStampIsWhatTheVersionFlagPrints(t *testing.T) {
 	const stamped = "v9.9.9-stamp-guard"
 
 	path := filepath.Join(t.TempDir(), "schemagen")
-	build := exec.Command("go", "build",
+	build := testgo.Command(context.Background(), ".", "build",
 		// The same variable the Makefile's GO_LDFLAGS names. Spelled out here
 		// rather than read from the Makefile: this guard is about the path from
 		// an -X to the printed line, and the Makefile is checked by using it.
@@ -138,19 +140,18 @@ func TestTheMakefileStampReachesTheBinary(t *testing.T) {
 	// build a release, and lets this assert an exact string rather than
 	// whatever the checkout happens to describe as.
 	const stamped = "v9.9.9-makefile-guard"
-	// Not the name the Makefile builds by default, so a guard run does not
-	// leave a sentinel-versioned bin/schemagen behind for someone to pick up.
-	const binary = "schemagen-version-guard"
+	// BINDIR sends the binary somewhere this test owns. It used to be a fixed
+	// name under bin/ in the checkout, which two concurrent runs of this test
+	// -- two worktrees' `go test ./...`, or a developer's and an agent's --
+	// raced to write and then deleted from under each other, and which a
+	// killed run left behind with a sentinel version in it.
+	dir := t.TempDir()
 
-	out, err := exec.Command("make", "build", "VERSION="+stamped, "BINARY="+binary).CombinedOutput()
+	out, err := testgo.MakeCommand(context.Background(), ".", "build", "VERSION="+stamped, "BINDIR="+dir).CombinedOutput()
 	if err != nil {
 		t.Fatalf("make build: %v\n%s", err, out)
 	}
-	path, err := filepath.Abs(filepath.Join("bin", binary))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.Remove(path) })
+	path := filepath.Join(dir, "schemagen")
 
 	if got := versionReported(t, runVersion(t, path, "--version")); got != stamped {
 		t.Errorf("the binary `make build VERSION=%s` produced reports %q; the Makefile's -X names something other than the version variable", stamped, got)

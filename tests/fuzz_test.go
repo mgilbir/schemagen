@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -200,6 +202,78 @@ func addFuzzSeeds(f *testing.F) {
 
 	f.Logf("fuzz seed corpus: %d unique schemas x %d config bytes (%d local files, %d external test groups)",
 		unique, len(fuzzSeedCfgBits), local, external)
+	for _, line := range fuzzSeedProvenance(external) {
+		f.Log(line)
+	}
+}
+
+// fuzzSeedProvenance says where this run's seeds came from, and every way that
+// differs from the seeds CI replays.
+//
+// The corpus is not fixed by the repository alone, and a difference used to be
+// invisible. With the JSON Schema Test Suite checked out, `go test ./...`
+// replays 11,580 seeds; without it, a fifth of that -- and CI's test job did
+// not check the suite out, so a developer's run and CI's were measuring
+// different corpora under the same test name. CI's test job now downloads the
+// pinned suite, as the fuzz job always has, so the three agree when the suite
+// is present at the pinned commit. What is left is said here: a missing suite,
+// a suite at another commit, and inputs in Go's own corpus directory
+// (tests/testdata/fuzz/FuzzGenerate), which `go test` replays from the working
+// tree whether or not they are committed -- the 2026-09-26 audit found one
+// there that had replayed locally, and never in CI, for weeks.
+func fuzzSeedProvenance(external int) []string {
+	var out []string
+	pinned := makefileJSTSCommit()
+	switch {
+	case external == 0:
+		out = append(out, fmt.Sprintf("fuzz seed corpus differs from CI's: the JSON Schema Test Suite is not checked out at %s, "+
+			"so its test groups are not replayed here and CI replays them; run 'make download-test-suite' to match", jstsBaseDir))
+	default:
+		head := gitHead(filepath.Dir(jstsBaseDir))
+		switch {
+		case head == "" || pinned == "":
+			out = append(out, fmt.Sprintf("fuzz seed corpus: the suite checkout's commit (%q) or the Makefile's JSTS_COMMIT (%q) "+
+				"could not be read, so whether these are CI's seeds is unknown", head, pinned))
+		case head != pinned:
+			out = append(out, fmt.Sprintf("fuzz seed corpus differs from CI's: the suite checkout is at %s and CI replays JSTS_COMMIT %s; "+
+				"run 'make download-test-suite' to move it", head, pinned))
+		default:
+			out = append(out, fmt.Sprintf("fuzz seed corpus: the suite is at the pinned JSTS_COMMIT %s, as in CI", pinned))
+		}
+	}
+	corpusDir := filepath.Join("testdata", "fuzz", "FuzzGenerate")
+	if entries, err := os.ReadDir(corpusDir); err == nil && len(entries) > 0 {
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		out = append(out, fmt.Sprintf("fuzz seed corpus differs from CI's unless committed: %d input(s) in %s replay here "+
+			"from the working tree (%s); CI replays only what the repository holds. Minimise a real finding into "+
+			"testdata/schemas/adversarial, or delete it", len(names), corpusDir, strings.Join(names, ", ")))
+	}
+	return out
+}
+
+// makefileJSTSCommit reads the suite commit the Makefile pins.
+func makefileJSTSCommit() string {
+	data, err := os.ReadFile(filepath.Join("..", "Makefile"))
+	if err != nil {
+		return ""
+	}
+	m := regexp.MustCompile(`(?m)^JSTS_COMMIT := ([0-9a-f]{40})$`).FindSubmatch(data)
+	if m == nil {
+		return ""
+	}
+	return string(m[1])
+}
+
+// gitHead is the commit a checkout is at, or "" when it cannot be read.
+func gitHead(dir string) string {
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // fuzzSeedBudget is the wall-clock ceiling one seed may take through the fuzz

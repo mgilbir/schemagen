@@ -88,6 +88,17 @@ jobs:
           done
           exit $rc
 
+      # The cross-check drives Bowtie through uvx, and ubuntu-latest does not
+      # ship uv. Without this step every cross-check call failed, and the step
+      # below passed reporting "0 instances judged, 4 errors": the oracle this
+      # job exists to consult had never been consulted. The harness now fails
+      # when uvx is missing, when nothing was judged, and when errors or
+      # abstentions are most of the sample, so this step is what keeps the
+      # cross-check green for the right reason.
+      - name: install uv
+        if: ${{ always() && (inputs.bowtie != 'false') }}
+        uses: astral-sh/setup-uv@v10
+
       # Bowtie runs independent JSON Schema implementations in containers and
       # compares their verdict on each (schema, instance) pair against the
       # generated Validate(). It is the only check that can tell a schemagen bug
