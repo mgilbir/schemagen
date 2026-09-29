@@ -112,13 +112,31 @@ func GoCmd(t *testing.T, dir string, env []string, args ...string) ([]byte, erro
 // 3. Marshals back to JSON
 // 4. Compares original and round-tripped JSON for semantic equality
 func GenerateRoundTripMain(rootType string) string {
+	return GenerateRoundTripMainChecking(rootType, false)
+}
+
+// GenerateRoundTripMainChecking is GenerateRoundTripMain, which with
+// checkIdentity also holds every value the fixture decodes into to its identity
+// being that of what MarshalJSON writes; the package then carries
+// IdentityCheckSource("main").
+func GenerateRoundTripMainChecking(rootType string, checkIdentity bool) string {
+	imports, identity := "", ""
+	if checkIdentity {
+		imports = "\n\t\"strings\""
+		identity = `
+	if diffs, _, _ := SchemagenIdentityDiffs(&obj); len(diffs) > 0 {
+		fmt.Fprintf(os.Stderr, "IDENTITY MISMATCH\n%s\n", strings.Join(diffs, "\n"))
+		os.Exit(1)
+	}
+`
+	}
 	return fmt.Sprintf(`package main
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"reflect"
+	"reflect"%s
 )
 
 func main() {
@@ -160,8 +178,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Round-tripped: %%s\n", string(roundTripped))
 		os.Exit(1)
 	}
-
+%s
 	fmt.Println("PASS")
 }
-`, rootType)
+`, imports, rootType, identity)
 }

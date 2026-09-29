@@ -1331,7 +1331,17 @@ func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, cfg generator.Config) er
 	if err := os.WriteFile(filepath.Join(tmpDir, "fixture.json"), dataJSON, 0o644); err != nil {
 		return fmt.Errorf("write fixture: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(generateRoundTripMain(rootType)), 0o644); err != nil {
+	// Where the package reads identities, every value the document decodes
+	// into is held to TestIdentityIsWhatMarshalJSONWrites's rule as well: its
+	// identity is that of what MarshalJSON writes for it.
+	checkIdentity := false
+	if helpers, err := os.ReadFile(filepath.Join(tmpDir, "schemagen_helpers.go")); err == nil && strings.Contains(string(helpers), "func jsonIDRaw(") {
+		checkIdentity = true
+		if err := os.WriteFile(filepath.Join(tmpDir, "identity_check.go"), []byte(identityCheckSource("main")), 0o644); err != nil {
+			return fmt.Errorf("write identity check: %w", err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(generateRoundTripMainChecking(rootType, checkIdentity)), 0o644); err != nil {
 		return fmt.Errorf("write main: %w", err)
 	}
 	if err := writeTestGoMod(tmpDir, "roundtrip_test"); err != nil {

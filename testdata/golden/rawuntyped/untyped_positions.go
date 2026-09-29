@@ -58,36 +58,32 @@ func (a *AnythingList) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 }
 
 // Validate checks AnythingList against its JSON Schema constraints.
-func (a AnythingList) Validate() error {
+func (a AnythingList) Validate() error { return a.validateIn(nil) }
+
+// validateIn is Validate, sharing _vc with the values below it: the element
+// identities a uniqueItems check keeps. See jsonValidation.
+func (a AnythingList) validateIn(_vc *jsonValidation) error {
 	{
-		seen := make(map[string]bool, len(a))
-		for _at, item := range a {
-			_enc, err := json.Marshal(item)
-			if err != nil {
-				return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", _at, err)
-			}
-			// Raw elements, compared as JSON values rather than as the bytes
-			// json.Marshal writes back unchanged. See _jsonCanonical.
-			key, err := _jsonCanonical(_enc)
-			if err != nil {
-				return jsonValueErrorf("uniqueItems check: invalid JSON at index %d: %w", _at, err)
-			}
-			if seen[key] {
-				return jsonValueErrorf("items are not unique (duplicate at index %d)", _at)
-			}
-			seen[key] = true
+		if _vc == nil {
+			_vc = &jsonValidation{}
+		}
+		_ids, _at, _err := jsonIDsOf(a, _vc, jsonIdentifyAt[json.RawMessage])
+		if _err != nil {
+			return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", _at, jsonMarshalError(&a[_at], _err))
+		}
+		if _at := jsonFirstDuplicate(a, _ids); _at >= 0 {
+			return jsonValueErrorf("items are not unique (duplicate at index %d)", _at)
 		}
 	}
 	// contains validation: count elements matching the contains sub-schema.
 	{
 		_containsCount := 0
-		_cWant := _jsonCanonicalTexts([]string{"1.0"})[0]
-		for _, _cElem := range a {
-			_cBytes, _cErr := json.Marshal(_cElem)
-			if _cErr != nil {
-				continue
-			}
-			if _cCanon, _cCanonErr := _jsonCanonical(_cBytes); _cCanonErr == nil && _cCanon == _cWant {
+		_cWant := jsonIDsOfTexts([]string{
+			"1.0",
+		})
+		_cArr := a
+		for _ci := range _cArr {
+			if _cID, _cErr := jsonIdentifyAt(&_cArr[_ci], nil); _cErr == nil && jsonIDIn(_cID, _cWant) {
 				_containsCount++
 			}
 		}
@@ -191,10 +187,10 @@ func (u UntypedPositionsBounded) Validate() error {
 
 type UntypedPositionsChoices json.RawMessage
 
-// The members as the schema wrote them, reduced at package initialisation to
-// the one spelling every JSON value equal to each of them shares -- which is
-// the same reduction Validate puts the instance through. See _jsonCanonical.
-var untypedPositionsChoicesAllowedJSON = _jsonCanonicalTexts([]string{
+// The members as the schema wrote them, read at package initialisation into the
+// identity every JSON value equal to each of them shares -- which is how
+// Validate reads the instance. See jsonID.
+var untypedPositionsChoicesAllowedJSON = jsonIDsOfTexts([]string{
 	"1",
 	"\"two\"",
 	"[3]",
@@ -230,27 +226,27 @@ func (u UntypedPositionsChoices) MarshalJSON() ([]byte, error) {
 
 // Validate checks UntypedPositionsChoices against its JSON Schema constraints.
 func (u UntypedPositionsChoices) Validate() error {
-	// Reduced to one spelling per JSON value, which is what the member list was
-	// reduced to as well: whitespace, member order and number spelling are not
-	// what an enum is decided on.
-	_canon, _canonErr := _jsonCanonical([]byte(u))
-	if _canonErr != nil {
+	// Compared by identity, which is what the member list was read into as
+	// well: whitespace, member order and number spelling are not what an enum
+	// is decided on. It used to reduce the value to canonical text, re-encoding
+	// every string and key in it, to decide.
+	_id, _idErr := jsonIDRaw(u)
+	if _idErr != nil {
 		return jsonValueErrorf("invalid UntypedPositionsChoices value: %s", _schemagenClipText(string(u)))
 	}
-	for _, allowed := range untypedPositionsChoicesAllowedJSON {
-		if _canon == allowed {
-			return nil
-		}
+	if jsonIDIn(_id, untypedPositionsChoicesAllowedJSON) {
+		return nil
 	}
+	_canon, _ := _jsonCanonical([]byte(u))
 	return jsonValueErrorf("invalid UntypedPositionsChoices value: %s", _canon)
 }
 
 type UntypedPositionsConstant json.RawMessage
 
-// The members as the schema wrote them, reduced at package initialisation to
-// the one spelling every JSON value equal to each of them shares -- which is
-// the same reduction Validate puts the instance through. See _jsonCanonical.
-var untypedPositionsConstantAllowedJSON = _jsonCanonicalTexts([]string{
+// The members as the schema wrote them, read at package initialisation into the
+// identity every JSON value equal to each of them shares -- which is how
+// Validate reads the instance. See jsonID.
+var untypedPositionsConstantAllowedJSON = jsonIDsOfTexts([]string{
 	"{\"k\":1.0}",
 })
 
@@ -284,18 +280,18 @@ func (u UntypedPositionsConstant) MarshalJSON() ([]byte, error) {
 
 // Validate checks UntypedPositionsConstant against its JSON Schema constraints.
 func (u UntypedPositionsConstant) Validate() error {
-	// Reduced to one spelling per JSON value, which is what the member list was
-	// reduced to as well: whitespace, member order and number spelling are not
-	// what an enum is decided on.
-	_canon, _canonErr := _jsonCanonical([]byte(u))
-	if _canonErr != nil {
+	// Compared by identity, which is what the member list was read into as
+	// well: whitespace, member order and number spelling are not what an enum
+	// is decided on. It used to reduce the value to canonical text, re-encoding
+	// every string and key in it, to decide.
+	_id, _idErr := jsonIDRaw(u)
+	if _idErr != nil {
 		return jsonValueErrorf("invalid UntypedPositionsConstant value: %s", _schemagenClipText(string(u)))
 	}
-	for _, allowed := range untypedPositionsConstantAllowedJSON {
-		if _canon == allowed {
-			return nil
-		}
+	if jsonIDIn(_id, untypedPositionsConstantAllowedJSON) {
+		return nil
 	}
+	_canon, _ := _jsonCanonical([]byte(u))
 	return jsonValueErrorf("invalid UntypedPositionsConstant value: %s", _canon)
 }
 
@@ -844,7 +840,11 @@ func (u UntypedPositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]
 }
 
 // Validate checks UntypedPositions against its JSON Schema constraints.
-func (u UntypedPositions) Validate() error {
+func (u UntypedPositions) Validate() error { return u.validateIn(nil) }
+
+// validateIn is Validate, sharing _vc with the values below it: the element
+// identities a uniqueItems check keeps. See jsonValidation.
+func (u UntypedPositions) validateIn(_vc *jsonValidation) error {
 	// Required properties must be present in the source JSON. _jsonKeys is
 	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
 	// presence is untracked and the check is skipped, consistent with how
@@ -859,23 +859,15 @@ func (u UntypedPositions) Validate() error {
 	if u._jsonKeys["unique"] {
 		{
 			arr := u.Unique
-			seen := make(map[string]bool, len(arr))
-			for _at, item := range arr {
-				_enc, err := json.Marshal(item)
-				if err != nil {
-					return fmt.Errorf("unique: uniqueItems check: marshal error at index %d: %w", _at, err)
-				}
-				// The elements are the document's own bytes, and the bytes are not
-				// the value: 1 and 1.0 are one element to uniqueItems. Reduced to
-				// the one text every equal JSON value shares. See _jsonCanonical.
-				key, err := _jsonCanonical(_enc)
-				if err != nil {
-					return fmt.Errorf("unique: uniqueItems check: invalid JSON at index %d: %w", _at, err)
-				}
-				if seen[key] {
-					return fmt.Errorf("unique: items are not unique (duplicate at index %d)", _at)
-				}
-				seen[key] = true
+			if _vc == nil {
+				_vc = &jsonValidation{}
+			}
+			_ids, _at, _err := jsonIDsOf(arr, _vc, jsonIdentifyAt[json.RawMessage])
+			if _err != nil {
+				return fmt.Errorf("unique: uniqueItems check: marshal error at index %d: %w", _at, jsonMarshalError(&arr[_at], _err))
+			}
+			if _at := jsonFirstDuplicate(arr, _ids); _at >= 0 {
+				return fmt.Errorf("unique: items are not unique (duplicate at index %d)", _at)
 			}
 		}
 	}
@@ -885,7 +877,7 @@ func (u UntypedPositions) Validate() error {
 		}
 	}
 	if u.AliasedList != nil {
-		if err := u.AliasedList.Validate(); err != nil {
+		if err := u.AliasedList.validateIn(_vc); err != nil {
 			return jsonPathf(err, "aliasedList")
 		}
 	}
@@ -911,22 +903,16 @@ func (u UntypedPositions) Validate() error {
 	}
 	for _i0, _e0 := range u.NestedUnique {
 		{
-			_uqSeen := make(map[string]bool, len(_e0))
-			for _uqIdx, _uqItem := range _e0 {
-				_uqBytes, _uqErr := json.Marshal(_uqItem)
-				if _uqErr != nil {
-					return fmt.Errorf("nestedUnique[%d]: uniqueItems check: marshal error at index %d: %w", _i0, _uqIdx, _uqErr)
-				}
-				// Raw elements, compared as JSON values rather than as the bytes
-				// json.Marshal writes back unchanged. See _jsonCanonical.
-				_uqKey, _uqErr := _jsonCanonical(_uqBytes)
-				if _uqErr != nil {
-					return fmt.Errorf("nestedUnique[%d]: uniqueItems check: invalid JSON at index %d: %w", _i0, _uqIdx, _uqErr)
-				}
-				if _uqSeen[_uqKey] {
-					return fmt.Errorf("nestedUnique[%d]: items are not unique (duplicate at index %d)", _i0, _uqIdx)
-				}
-				_uqSeen[_uqKey] = true
+			_uqArr := _e0
+			if _vc == nil {
+				_vc = &jsonValidation{}
+			}
+			_uqIDs, _uqIdx, _uqErr := jsonIDsOf(_uqArr, _vc, jsonIdentifyAt[json.RawMessage])
+			if _uqErr != nil {
+				return fmt.Errorf("nestedUnique[%d]: uniqueItems check: marshal error at index %d: %w", _i0, _uqIdx, jsonMarshalError(&_uqArr[_uqIdx], _uqErr))
+			}
+			if _uqIdx := jsonFirstDuplicate(_uqArr, _uqIDs); _uqIdx >= 0 {
+				return fmt.Errorf("nestedUnique[%d]: items are not unique (duplicate at index %d)", _i0, _uqIdx)
 			}
 		}
 	}
@@ -934,13 +920,12 @@ func (u UntypedPositions) Validate() error {
 		// contains validation: count elements matching the contains sub-schema.
 		{
 			_containsCount := 0
-			_cWant := _jsonCanonicalTexts([]string{"1"})[0]
-			for _, _cElem := range u.ContainsConst {
-				_cBytes, _cErr := json.Marshal(_cElem)
-				if _cErr != nil {
-					continue
-				}
-				if _cCanon, _cCanonErr := _jsonCanonical(_cBytes); _cCanonErr == nil && _cCanon == _cWant {
+			_cWant := jsonIDsOfTexts([]string{
+				"1",
+			})
+			_cArr := u.ContainsConst
+			for _ci := range _cArr {
+				if _cID, _cErr := jsonIdentifyAt(&_cArr[_ci], nil); _cErr == nil && jsonIDIn(_cID, _cWant) {
 					_containsCount++
 				}
 			}
@@ -953,24 +938,14 @@ func (u UntypedPositions) Validate() error {
 		// contains validation: count elements matching the contains sub-schema.
 		{
 			_containsCount := 0
-			_cWant := _jsonCanonicalTexts([]string{
+			_cWant := jsonIDsOfTexts([]string{
 				"1.5",
 				"{\"k\":1}",
 			})
-			for _, _cElem := range u.ContainsEnum {
-				_cBytes, _cErr := json.Marshal(_cElem)
-				if _cErr != nil {
-					continue
-				}
-				_cCanon, _cCanonErr := _jsonCanonical(_cBytes)
-				if _cCanonErr != nil {
-					continue
-				}
-				for _, _cAllowed := range _cWant {
-					if _cCanon == _cAllowed {
-						_containsCount++
-						break
-					}
+			_cArr := u.ContainsEnum
+			for _ci := range _cArr {
+				if _cID, _cErr := jsonIdentifyAt(&_cArr[_ci], nil); _cErr == nil && jsonIDIn(_cID, _cWant) {
+					_containsCount++
 				}
 			}
 			if _containsCount < 1 {

@@ -456,8 +456,13 @@ func (h HiddenKeywordSpellingsConstNullBranch) Validate() error {
 	if len(h._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(h._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonIdentity).
+	_v, _err := jsonReadLazily(h._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -530,8 +535,13 @@ func (h HiddenKeywordSpellingsConstStringBranch) Validate() error {
 	if len(h._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(h._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonIdentity).
+	_v, _err := jsonReadLazily(h._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -607,8 +617,13 @@ func (h HiddenKeywordSpellingsOneOfConstNull) Validate() error {
 	if len(h._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(h._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonIdentity).
+	_v, _err := jsonReadLazily(h._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -622,10 +637,10 @@ func (h HiddenKeywordSpellingsOneOfConstNull) Validate() error {
 
 type HiddenKeywordSpellingsPatternConstNullPattern0 json.RawMessage
 
-// The members as the schema wrote them, reduced at package initialisation to
-// the one spelling every JSON value equal to each of them shares -- which is
-// the same reduction Validate puts the instance through. See _jsonCanonical.
-var hiddenKeywordSpellingsPatternConstNullPattern0AllowedJSON = _jsonCanonicalTexts([]string{
+// The members as the schema wrote them, read at package initialisation into the
+// identity every JSON value equal to each of them shares -- which is how
+// Validate reads the instance. See jsonID.
+var hiddenKeywordSpellingsPatternConstNullPattern0AllowedJSON = jsonIDsOfTexts([]string{
 	"null",
 })
 
@@ -659,18 +674,18 @@ func (h HiddenKeywordSpellingsPatternConstNullPattern0) MarshalJSON() ([]byte, e
 
 // Validate checks HiddenKeywordSpellingsPatternConstNullPattern0 against its JSON Schema constraints.
 func (h HiddenKeywordSpellingsPatternConstNullPattern0) Validate() error {
-	// Reduced to one spelling per JSON value, which is what the member list was
-	// reduced to as well: whitespace, member order and number spelling are not
-	// what an enum is decided on.
-	_canon, _canonErr := _jsonCanonical([]byte(h))
-	if _canonErr != nil {
+	// Compared by identity, which is what the member list was read into as
+	// well: whitespace, member order and number spelling are not what an enum
+	// is decided on. It used to reduce the value to canonical text, re-encoding
+	// every string and key in it, to decide.
+	_id, _idErr := jsonIDRaw(h)
+	if _idErr != nil {
 		return jsonValueErrorf("invalid HiddenKeywordSpellingsPatternConstNullPattern0 value: %s", _schemagenClipText(string(h)))
 	}
-	for _, allowed := range hiddenKeywordSpellingsPatternConstNullPattern0AllowedJSON {
-		if _canon == allowed {
-			return nil
-		}
+	if jsonIDIn(_id, hiddenKeywordSpellingsPatternConstNullPattern0AllowedJSON) {
+		return nil
 	}
+	_canon, _ := _jsonCanonical([]byte(h))
 	return jsonValueErrorf("invalid HiddenKeywordSpellingsPatternConstNullPattern0 value: %s", _canon)
 }
 

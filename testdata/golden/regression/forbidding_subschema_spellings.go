@@ -2034,8 +2034,13 @@ func (f ForbiddingSubschemaSpellingsNotEnumBranch) Validate() error {
 	if len(f._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(f._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonIdentity).
+	_v, _err := jsonReadLazily(f._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -2104,8 +2109,13 @@ func (f ForbiddingSubschemaSpellingsNotFalse) Validate() error {
 	if len(f._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(f._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonIdentity).
+	_v, _err := jsonReadLazily(f._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -2298,8 +2308,13 @@ func (f ForbiddingSubschemaSpellingsNotShallowEnum) Validate() error {
 	if len(f._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(f._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonIdentity).
+	_v, _err := jsonReadLazily(f._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -2371,8 +2386,13 @@ func (f ForbiddingSubschemaSpellingsNotTypedConst) Validate() error {
 	if len(f._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(f._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonIdentity).
+	_v, _err := jsonReadLazily(f._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -3187,8 +3207,13 @@ func (f ForbiddingSubschemaSpellingsOneOfOneFalse) Validate() error {
 	if len(f._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(f._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonIdentity).
+	_v, _err := jsonReadLazily(f._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -3581,8 +3606,13 @@ func (f ForbiddingSubschemaSpellingsUnionBranchRequired) Validate() error {
 	if len(f._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(f._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonIdentity).
+	_v, _err := jsonReadLazily(f._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -4924,14 +4954,13 @@ func (f ForbiddingSubschemaSpellings) Validate() error {
 		// contains validation: count elements matching the contains sub-schema.
 		{
 			_containsCount := 0
-			for _, _cElem := range f.OkContains {
+			_cArr := f.OkContains
+			for _ci := range _cArr {
+				_cKind, _cText := jsonKindAt(&_cArr[_ci])
+				_ = _cText
 				_cMatch := true
-				if _cMatch {
-					_cBytes, _ := json.Marshal(_cElem)
-					var _cf float64
-					if json.Unmarshal(_cBytes, &_cf) != nil {
-						_cMatch = false
-					}
+				if _, _cOK := jsonFloatOf(_cKind, _cText); !_cOK {
+					_cMatch = false
 				}
 				if _cMatch {
 					_containsCount++

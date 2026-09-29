@@ -191,6 +191,26 @@ var costShapes = []costShape{
 		unit: 1, open: `{"n":"x","c":`, close: `}`, good: `"y"`, invalid: `{"n":"long"}`,
 	},
 	{
+		// uniqueItems over the type that holds it, two elements a level: the
+		// check at every level compares elements whose subtrees are the rest of
+		// the document. Each element was marshalled to be compared, subtree and
+		// all, at every level; now each element's identity is computed once, by
+		// the check at the top, and read back below. See jsonValidation.
+		name:   "unique elements",
+		schema: `{"type":"object","properties":{"kids":{"type":"array","uniqueItems":true,"items":{"$ref":"#"}},"n":{"type":"string","maxLength":3}}}`,
+		unit:   2, open: `{"n":"x","kids":[{"n":"z"},`, close: `]}`, good: `{"n":"y"}`, bad: `{"n":1}`, invalid: `{"n":"long"}`,
+	},
+	{
+		// The same, judged by the runtime evaluator: unevaluatedItems beside an
+		// anyOf is decided per document. The elements are read lazily from the
+		// document, whose arrays' identities are kept on it. See
+		// jsonLazy.jsonIdentity.
+		name: "unique elements at run time",
+		schema: `{"$ref":"#/$defs/N","$defs":{"N":{"type":"array","uniqueItems":true,
+		  "anyOf":[{"items":{"$ref":"#/$defs/N"}}],"unevaluatedItems":false}}}`,
+		unit: 1, open: `[[],`, close: `]`, good: `[[[]]]`, invalid: `[[],[]]`,
+	},
+	{
 		// A tuple position: the array is held as decoded JSON, and Validate
 		// decodes the position into its type. The array is a []any, which
 		// encoding/json writes by itself.

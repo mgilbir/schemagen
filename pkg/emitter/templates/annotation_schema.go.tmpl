@@ -62,6 +62,19 @@ func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 
 // Raw returns a copy of the value's bytes.
 func ({{$recv}} {{.Name}}) Raw() json.RawMessage { return append(json.RawMessage(nil), {{$recv}}._raw...) }
+{{- if .HasIdentity}}
+
+// jsonIdentity is {{$recv}}'s identity as JSON: that of what MarshalJSON writes,
+// which is the value's bytes with the writeOnly locations stripped by reading
+// them back -- so it is read off that. See jsonID.
+func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	_b, _err := {{$recv}}.MarshalJSON()
+	if _err != nil {
+		return jsonID{}, _err
+	}
+	return jsonIDRaw(_b)
+}
+{{- end}}
 {{- else}}
 {{template "raw_holder_methods" .}}
 {{- end}}
@@ -106,8 +119,13 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	if len({{$recv}}._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal({{$recv}}._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonIdentity).
+	_v, _err := jsonReadLazily({{$recv}}._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.

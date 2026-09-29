@@ -86,8 +86,13 @@ func (u UnevaluatedItemsTestAllofExtendedTuple) Validate() error {
 	if len(u._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(u._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonIdentity).
+	_v, _err := jsonReadLazily(u._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -329,11 +334,12 @@ func (u UnevaluatedItemsTest) Validate() error {
 			for _ui := evaluatedCount; _ui < len(u.TypedOverflow); _ui++ {
 				_uiElem := any(u.TypedOverflow[_ui])
 				_ = _uiElem
-				_uiBytes, _uiMarshalErr := json.Marshal(_uiElem)
-				if _uiMarshalErr != nil {
-					return fmt.Errorf("typed_overflow: unevaluatedItems[%d]: %w", _ui, _uiMarshalErr)
+				_uiKind, _uiText := jsonKindAny(_uiElem)
+				_ = _uiText
+				if _uiKind == 0 {
+					return fmt.Errorf("typed_overflow: unevaluatedItems[%d]: %w", _ui, jsonMarshalError(&_uiElem, fmt.Errorf("json: the item cannot be written as JSON")))
 				}
-				if len(_uiBytes) < 2 || _uiBytes[0] != '"' {
+				if _uiKind != jsonIDStringKind {
 					return fmt.Errorf("typed_overflow: unevaluatedItems[%d]: must be a string", _ui)
 				}
 			}

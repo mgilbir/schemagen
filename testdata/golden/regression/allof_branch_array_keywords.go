@@ -41,14 +41,13 @@ func (c ContainsInt) Validate() error {
 	// contains validation: count elements matching the contains sub-schema.
 	{
 		_containsCount := 0
-		for _, _cElem := range c {
+		_cArr := c
+		for _ci := range _cArr {
+			_cKind, _cText := jsonKindAt(&_cArr[_ci])
+			_ = _cText
 			_cMatch := true
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				var _cf float64
-				if json.Unmarshal(_cBytes, &_cf) != nil || _cf != math.Trunc(_cf) {
-					_cMatch = false
-				}
+			if _cf, _cOK := jsonFloatOf(_cKind, _cText); !_cOK || _cf != math.Trunc(_cf) {
+				_cMatch = false
 			}
 			if _cMatch {
 				_containsCount++
@@ -128,14 +127,13 @@ func (h HasInteger) Validate() error {
 	// contains validation: count elements matching the contains sub-schema.
 	{
 		_containsCount := 0
-		for _, _cElem := range h._value {
+		_cArr := h._value
+		for _ci := range _cArr {
+			_cKind, _cText := jsonKindAt(&_cArr[_ci])
+			_ = _cText
 			_cMatch := true
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				var _cf float64
-				if json.Unmarshal(_cBytes, &_cf) != nil || _cf != math.Trunc(_cf) {
-					_cMatch = false
-				}
+			if _cf, _cOK := jsonFloatOf(_cKind, _cText); !_cOK || _cf != math.Trunc(_cf) {
+				_cMatch = false
 			}
 			if _cMatch {
 				_containsCount++
@@ -265,14 +263,13 @@ func (r RefToContains) Validate() error {
 	// contains validation: count elements matching the contains sub-schema.
 	{
 		_containsCount := 0
-		for _, _cElem := range r {
+		_cArr := r
+		for _ci := range _cArr {
+			_cKind, _cText := jsonKindAt(&_cArr[_ci])
+			_ = _cText
 			_cMatch := true
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				var _cf float64
-				if json.Unmarshal(_cBytes, &_cf) != nil || _cf != math.Trunc(_cf) {
-					_cMatch = false
-				}
+			if _cf, _cOK := jsonFloatOf(_cKind, _cText); !_cOK || _cf != math.Trunc(_cf) {
+				_cMatch = false
 			}
 			if _cMatch {
 				_containsCount++

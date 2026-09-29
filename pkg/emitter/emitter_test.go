@@ -1078,7 +1078,7 @@ func TestEmitFieldContainsPointerSlice(t *testing.T) {
 	if !containsNormalized(src, "if d.Nums != nil {") {
 		t.Fatalf("expected a nil guard around the pointer slice's contains check:\n%s", src)
 	}
-	if !containsNormalized(src, "for _, _cElem := range *d.Nums {") {
+	if !containsNormalized(src, "_cArr := *d.Nums") || !containsNormalized(src, "for _ci := range _cArr {") {
 		t.Fatalf("expected the count to range over the dereferenced slice:\n%s", src)
 	}
 	if !containsNormalized(src, `"nums: contains: %d matching elements, minimum is 2"`) {

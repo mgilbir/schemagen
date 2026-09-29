@@ -166,8 +166,13 @@ func (a AnnDynamic) Validate() error {
 	if len(a._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(a._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonIdentity).
+	_v, _err := jsonReadLazily(a._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -387,10 +392,10 @@ func (a AnnNot) Validate() error {
 // Deprecated: the schema marks this deprecated.
 type AnnRawEnum json.RawMessage
 
-// The members as the schema wrote them, reduced at package initialisation to
-// the one spelling every JSON value equal to each of them shares -- which is
-// the same reduction Validate puts the instance through. See _jsonCanonical.
-var annRawEnumAllowedJSON = _jsonCanonicalTexts([]string{
+// The members as the schema wrote them, read at package initialisation into the
+// identity every JSON value equal to each of them shares -- which is how
+// Validate reads the instance. See jsonID.
+var annRawEnumAllowedJSON = jsonIDsOfTexts([]string{
 	"\"mixed\"",
 	"7",
 })
@@ -425,18 +430,18 @@ func (a AnnRawEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks AnnRawEnum against its JSON Schema constraints.
 func (a AnnRawEnum) Validate() error {
-	// Reduced to one spelling per JSON value, which is what the member list was
-	// reduced to as well: whitespace, member order and number spelling are not
-	// what an enum is decided on.
-	_canon, _canonErr := _jsonCanonical([]byte(a))
-	if _canonErr != nil {
+	// Compared by identity, which is what the member list was read into as
+	// well: whitespace, member order and number spelling are not what an enum
+	// is decided on. It used to reduce the value to canonical text, re-encoding
+	// every string and key in it, to decide.
+	_id, _idErr := jsonIDRaw(a)
+	if _idErr != nil {
 		return jsonValueErrorf("invalid AnnRawEnum value: %s", _schemagenClipText(string(a)))
 	}
-	for _, allowed := range annRawEnumAllowedJSON {
-		if _canon == allowed {
-			return nil
-		}
+	if jsonIDIn(_id, annRawEnumAllowedJSON) {
+		return nil
 	}
+	_canon, _ := _jsonCanonical([]byte(a))
 	return jsonValueErrorf("invalid AnnRawEnum value: %s", _canon)
 }
 
@@ -515,8 +520,13 @@ func (a AnnRuntime) Validate() error {
 	if len(a._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(a._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonIdentity).
+	_v, _err := jsonReadLazily(a._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -1077,10 +1087,10 @@ func (d DepNot) Validate() error {
 // Deprecated: the schema marks this deprecated.
 type DepRawEnum json.RawMessage
 
-// The members as the schema wrote them, reduced at package initialisation to
-// the one spelling every JSON value equal to each of them shares -- which is
-// the same reduction Validate puts the instance through. See _jsonCanonical.
-var depRawEnumAllowedJSON = _jsonCanonicalTexts([]string{
+// The members as the schema wrote them, read at package initialisation into the
+// identity every JSON value equal to each of them shares -- which is how
+// Validate reads the instance. See jsonID.
+var depRawEnumAllowedJSON = jsonIDsOfTexts([]string{
 	"\"either\"",
 	"9",
 })
@@ -1115,18 +1125,18 @@ func (d DepRawEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks DepRawEnum against its JSON Schema constraints.
 func (d DepRawEnum) Validate() error {
-	// Reduced to one spelling per JSON value, which is what the member list was
-	// reduced to as well: whitespace, member order and number spelling are not
-	// what an enum is decided on.
-	_canon, _canonErr := _jsonCanonical([]byte(d))
-	if _canonErr != nil {
+	// Compared by identity, which is what the member list was read into as
+	// well: whitespace, member order and number spelling are not what an enum
+	// is decided on. It used to reduce the value to canonical text, re-encoding
+	// every string and key in it, to decide.
+	_id, _idErr := jsonIDRaw(d)
+	if _idErr != nil {
 		return jsonValueErrorf("invalid DepRawEnum value: %s", _schemagenClipText(string(d)))
 	}
-	for _, allowed := range depRawEnumAllowedJSON {
-		if _canon == allowed {
-			return nil
-		}
+	if jsonIDIn(_id, depRawEnumAllowedJSON) {
+		return nil
 	}
+	_canon, _ := _jsonCanonical([]byte(d))
 	return jsonValueErrorf("invalid DepRawEnum value: %s", _canon)
 }
 
@@ -1197,8 +1207,13 @@ func (d DepRuntime) Validate() error {
 	if len(d._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(d._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonIdentity).
+	_v, _err := jsonReadLazily(d._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -1783,8 +1798,13 @@ func (p PlainRuntime) Validate() error {
 	if len(p._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(p._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonIdentity).
+	_v, _err := jsonReadLazily(p._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.

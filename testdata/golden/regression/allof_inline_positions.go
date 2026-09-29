@@ -60,10 +60,10 @@ func (c Colour) Validate() error {
 
 type RawEnum json.RawMessage
 
-// The members as the schema wrote them, reduced at package initialisation to
-// the one spelling every JSON value equal to each of them shares -- which is
-// the same reduction Validate puts the instance through. See _jsonCanonical.
-var rawEnumAllowedJSON = _jsonCanonicalTexts([]string{
+// The members as the schema wrote them, read at package initialisation into the
+// identity every JSON value equal to each of them shares -- which is how
+// Validate reads the instance. See jsonID.
+var rawEnumAllowedJSON = jsonIDsOfTexts([]string{
 	"\"a\"",
 	"1",
 	"null",
@@ -99,18 +99,18 @@ func (r RawEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks RawEnum against its JSON Schema constraints.
 func (r RawEnum) Validate() error {
-	// Reduced to one spelling per JSON value, which is what the member list was
-	// reduced to as well: whitespace, member order and number spelling are not
-	// what an enum is decided on.
-	_canon, _canonErr := _jsonCanonical([]byte(r))
-	if _canonErr != nil {
+	// Compared by identity, which is what the member list was read into as
+	// well: whitespace, member order and number spelling are not what an enum
+	// is decided on. It used to reduce the value to canonical text, re-encoding
+	// every string and key in it, to decide.
+	_id, _idErr := jsonIDRaw(r)
+	if _idErr != nil {
 		return jsonValueErrorf("invalid RawEnum value: %s", _schemagenClipText(string(r)))
 	}
-	for _, allowed := range rawEnumAllowedJSON {
-		if _canon == allowed {
-			return nil
-		}
+	if jsonIDIn(_id, rawEnumAllowedJSON) {
+		return nil
 	}
+	_canon, _ := _jsonCanonical([]byte(r))
 	return jsonValueErrorf("invalid RawEnum value: %s", _canon)
 }
 
@@ -302,10 +302,10 @@ func (a AllOfInlinePositionsPick) Validate() error {
 
 type AllOfInlinePositionsRaw json.RawMessage
 
-// The members as the schema wrote them, reduced at package initialisation to
-// the one spelling every JSON value equal to each of them shares -- which is
-// the same reduction Validate puts the instance through. See _jsonCanonical.
-var allOfInlinePositionsRawAllowedJSON = _jsonCanonicalTexts([]string{
+// The members as the schema wrote them, read at package initialisation into the
+// identity every JSON value equal to each of them shares -- which is how
+// Validate reads the instance. See jsonID.
+var allOfInlinePositionsRawAllowedJSON = jsonIDsOfTexts([]string{
 	"\"a\"",
 	"1",
 	"null",
@@ -341,18 +341,18 @@ func (a AllOfInlinePositionsRaw) MarshalJSON() ([]byte, error) {
 
 // Validate checks AllOfInlinePositionsRaw against its JSON Schema constraints.
 func (a AllOfInlinePositionsRaw) Validate() error {
-	// Reduced to one spelling per JSON value, which is what the member list was
-	// reduced to as well: whitespace, member order and number spelling are not
-	// what an enum is decided on.
-	_canon, _canonErr := _jsonCanonical([]byte(a))
-	if _canonErr != nil {
+	// Compared by identity, which is what the member list was read into as
+	// well: whitespace, member order and number spelling are not what an enum
+	// is decided on. It used to reduce the value to canonical text, re-encoding
+	// every string and key in it, to decide.
+	_id, _idErr := jsonIDRaw(a)
+	if _idErr != nil {
 		return jsonValueErrorf("invalid AllOfInlinePositionsRaw value: %s", _schemagenClipText(string(a)))
 	}
-	for _, allowed := range allOfInlinePositionsRawAllowedJSON {
-		if _canon == allowed {
-			return nil
-		}
+	if jsonIDIn(_id, allOfInlinePositionsRawAllowedJSON) {
+		return nil
 	}
+	_canon, _ := _jsonCanonical([]byte(a))
 	return jsonValueErrorf("invalid AllOfInlinePositionsRaw value: %s", _canon)
 }
 

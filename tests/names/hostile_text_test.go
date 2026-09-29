@@ -674,6 +674,9 @@ var allowedImports = map[string]bool{
 	"math": true, "math/big": true, "net/mail": true, "net/netip": true, "net/url": true,
 	"reflect": true, "regexp": true, "sort": true, "strconv": true, "strings": true, "time": true,
 	"unicode": true, "unicode/utf8": true,
+	// The identity block: seeded hashes, and the lock and pointer a document
+	// keeps its values' identities under.
+	"hash/maphash": true, "sync": true, "sync/atomic": true,
 	"github.com/mgilbir/goecma262": true, "github.com/mgilbir/goecma262/flags": true,
 	"golang.org/x/net/idna": true, "github.com/mgilbir/schemagen/pkg/validationruntime": true,
 }

@@ -86,6 +86,14 @@ type HelperSet struct {
 	// no whole-document enum or const emits none of it.
 	Canonical bool
 
+	// Identity is jsonID and what computes one: the identity of a JSON value
+	// that uniqueItems, const and enum compare values by, read off the value as
+	// it is held rather than off an encoding of it, and jsonValidation, what one
+	// Validate shares with the values below it so that an identity is computed
+	// once however deeply arrays nest. It closes over Canonical, which confirms
+	// the one equality an identity cannot answer for certain.
+	Identity bool
+
 	NullCheck bool // jsonNullRule and the recursive walker that applies one
 	Format    bool // schemagenFormat* -- one function per asserted format
 	Content   bool // schemagenContentString -- the content vocabulary's decode-and-parse check
@@ -162,7 +170,7 @@ type HelperSet struct {
 func (h HelperSet) Empty() bool {
 	return !h.OneOf && !h.OneOfDiscriminator && !h.Dynamic && !h.DynamicConst &&
 		!h.Annotations && !h.Integer && !h.Number && !h.NumberCompare && !h.DateTime &&
-		!h.Canonical && !h.NullCheck &&
+		!h.Canonical && !h.Identity && !h.NullCheck &&
 		!h.Format && !h.FormatHostname && !h.Content && !h.Access && !h.Decode &&
 		!h.PathJoin && !h.DecodePath && !h.IPAddr && len(h.Patterns) == 0 && !h.Quote && !h.Undecided
 }
@@ -184,6 +192,7 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.DateTime = h.DateTime || other.DateTime
 	h.IPAddr = h.IPAddr || other.IPAddr
 	h.Canonical = h.Canonical || other.Canonical
+	h.Identity = h.Identity || other.Identity
 	h.NullCheck = h.NullCheck || other.NullCheck
 	h.Format = h.Format || other.Format
 	h.Content = h.Content || other.Content
@@ -223,6 +232,15 @@ func (h *HelperSet) CloseOverCalls() {
 	// decode reads a member's refusal for the schema's words through the
 	// decode-path block. Those are settled first, since the path-join block is
 	// what both of them build their messages with.
+	// The runtime evaluator and the object-level const compare values by
+	// identity; and an identity is confirmed, where it has to be certain,
+	// through the JSON-equality reduction.
+	if h.Annotations || h.DynamicConst {
+		h.Identity = true
+	}
+	if h.Identity {
+		h.Canonical = true
+	}
 	if h.NullCheck || h.OneOf || h.OneOfDiscriminator || h.Access {
 		h.Decode = true
 	}
@@ -424,6 +442,16 @@ func HelpersReferencedBy(src string) HelperSet {
 	// declared elsewhere, so both are matched.
 	if strings.Contains(src, "_jsonCanonical(") || strings.Contains(src, "_jsonCanonicalTexts(") {
 		set.Canonical = true
+	}
+	// The identity block. Every site that compares values names one of these:
+	// the type an identity is, the context a Validate shares, or a function that
+	// computes one; and a site that reads a value's kind names jsonKindAt or
+	// jsonKindAny and jsonFloatOf, possibly with none of the others -- a
+	// contains that states only a type. (jsonKindError is the decode block's.)
+	if strings.Contains(src, "jsonID") || strings.Contains(src, "jsonIdentif") || strings.Contains(src, "jsonValidation") ||
+		strings.Contains(src, "jsonKindAt(") || strings.Contains(src, "jsonKindAny(") || strings.Contains(src, "jsonFloatOf(") || strings.Contains(src, "jsonMarshalError(") ||
+		strings.Contains(src, "jsonMarshalText(") {
+		set.Identity = true
 	}
 	// jsonNullRule and checkJSONNullsAt come as one block, and the walker's name
 	// appears at every call site, so one substring pulls both in. The rule type

@@ -1,0 +1,488 @@
+package identity
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/mgilbir/schemagen/internal/testgo"
+	"github.com/mgilbir/schemagen/pkg/emitter"
+	"github.com/mgilbir/schemagen/pkg/generator"
+)
+
+// The checks that compare values -- uniqueItems, const, enum -- compare them by
+// identity (the emitted jsonID), read off each value as it is held: a struct's
+// jsonIdentity reads its members by the rules its appendJSON writes them by. They
+// used to marshal the value and compare the text, which at every level of a
+// document wrote out every subtree below it -- 0.8 to 3 ms of Validate per
+// CycloneDX BOM. The two tests here hold the replacement to what it replaced.
+//
+// TestIdentityIsWhatMarshalJSONWrites is the correctness half: an identity read
+// off a value is the identity of the text MarshalJSON writes for it, for every
+// value of every type that reads its own, in every CycloneDX example BOM -- and
+// again with the value changed the ways a document never changes it, which is
+// where the rules a decoded value never exercises are: a member set twice by
+// the overflow map, a string that is not UTF-8, the spellings of a number.
+//
+// TestValidateWritesNothing is the other half: Validate, run over every BOM,
+// executes no statement that writes a value out.
+
+func TestIdentityIsWhatMarshalJSONWrites(t *testing.T) {
+	if testing.Short() {
+		t.Skip("generates and compiles the CycloneDX 1.6 types")
+	}
+	t.Parallel()
+	root, boms := cycloneDXModule(t, map[string]string{
+		"cdx/identity_check.go": identityCheckSource("cdx"),
+		"idcheck/main.go":       identityCheckDriver,
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	cmd := testgo.Command(ctx, root, append([]string{"run", "-mod=mod", "./idcheck"}, boms...)...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("driver: %v\n%s", err, output)
+	}
+	got := strings.TrimSpace(string(output))
+	m := regexp.MustCompile(`^PASS (\d+) values, (\d+) changed$`).FindStringSubmatch(got)
+	if m == nil {
+		t.Fatalf("identities that are not what MarshalJSON writes:\n%s", got)
+	}
+	// A floor, so that a walk that reached nothing -- no type reading its own
+	// identity, or none of the values -- does not pass for having found no
+	// difference.
+	values, _ := strconv.Atoi(m[1])
+	changed, _ := strconv.Atoi(m[2])
+	if values < 500 || changed < 3000 {
+		t.Fatalf("the walk compared %d values and %d changed ones; the BOMs hold far more", values, changed)
+	}
+	t.Logf("compared %d values and %d changed values across %d BOMs", values, changed, len(boms))
+}
+
+const identityCheckDriver = `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"ex.test/cdx/cdx"
+)
+
+func main() {
+	values, changed, bad := 0, 0, 0
+	for _, path := range os.Args[1:] {
+		in, err := os.ReadFile(path)
+		if err != nil {
+			panic(err)
+		}
+		var bom cdx.Bom
+		if err := json.Unmarshal(in, &bom); err != nil {
+			fmt.Printf("%s: does not decode: %v\n", filepath.Base(path), err)
+			bad++
+			continue
+		}
+		diffs, v, c := cdx.SchemagenIdentityDiffs(&bom)
+		values += v
+		changed += c
+		for _, d := range diffs {
+			fmt.Printf("%s: %s\n", filepath.Base(path), d)
+			bad++
+		}
+	}
+	if bad == 0 {
+		fmt.Printf("PASS %d values, %d changed\n", values, changed)
+	}
+}
+`
+
+// TestIdentityIsJSONEquality holds the identity helpers to what an identity is
+// for: two values equal as JSON share one, and two that differ do not. The
+// differential above cannot see a rule both of its sides get wrong -- both read
+// numbers and strings through the same functions -- so the rules are held here
+// to JSON itself: numbers compared by value however spelled, members in any
+// order, a key written twice meaning its last value, strings compared by their
+// characters however escaped, and a value read lazily from a document as
+// encoding/json decodes it into an any.
+func TestIdentityIsJSONEquality(t *testing.T) {
+	if testing.Short() {
+		t.Skip("compiles and runs the identity helpers")
+	}
+	t.Parallel()
+	em, err := emitter.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, needed, err := em.EmitHelpers("idsem", generator.HelperSet{Identity: true, Decode: true})
+	if err != nil || !needed {
+		t.Fatalf("emitting the identity helpers: needed %v, %v", needed, err)
+	}
+	dir := t.TempDir()
+	if err := writeTestGoMod(dir, "ex.test/idsem"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "helpers.go"), src, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "semantics_test.go"), []byte(identitySemanticsTest), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	if out, err := testgo.Command(ctx, dir, "test", "-mod=mod", "-count=1", ".").CombinedOutput(); err != nil {
+		t.Fatalf("the identity helpers do not read JSON equality:\n%s", out)
+	}
+}
+
+const identitySemanticsTest = `package idsem
+
+import (
+	"encoding/json"
+	"math"
+	"net/netip"
+	"testing"
+	"time"
+)
+
+func rawID(t *testing.T, raw string) jsonID {
+	t.Helper()
+	id, err := jsonIDRaw([]byte(raw))
+	if err != nil {
+		t.Fatalf("%s: %v", raw, err)
+	}
+	return id
+}
+
+func TestEqualAsJSONIsOneIdentity(t *testing.T) {
+	same := [][2]string{
+		{"1", "1.0"}, {"100", "1e2"}, {"0", "-0.0"}, {"0.5", "5e-1"}, {"-12.50", "-1.25e1"},
+		{"123456789012345678901234567890", "1.2345678901234567890123456789e29"},
+		{"{\"a\":1,\"b\":2}", "{\"b\":2,\"a\":1}"},
+		{"{\"a\":1,\"a\":2}", "{\"a\":2}"},
+		{"\"\u00e9\"", "\"\\u00e9\""}, {"\"\\ud800\"", "\"\\ufffd\""}, {"\"\\ud83d\\ude00\"", "\"\U0001F600\""},
+		{"\"a\\/b\"", "\"a/b\""}, {"[1,[2]]", " [ 1 , [ 2.0 ] ] "},
+	}
+	for _, p := range same {
+		if rawID(t, p[0]) != rawID(t, p[1]) {
+			t.Errorf("%s and %s are one JSON value and have two identities", p[0], p[1])
+		}
+	}
+	diff := [][2]string{
+		{"1", "\"1\""}, {"[]", "{}"}, {"null", "false"}, {"true", "false"}, {"[1,2]", "[2,1]"},
+		{"{\"a\":1}", "{\"a\":1,\"b\":1}"}, {"{\"a\":[1]}", "{\"a\":1}"},
+		{"123456789012345678901234567890", "123456789012345678901234567891"}, {"1.5", "15"}, {"0.1", "1"},
+		{"[[]]", "[]"}, {"{\"a\":{}}", "{\"a\":[]}"}, {"\"\"", "null"}, {"{\"a\":1}", "{\"b\":1}"},
+		{"[1,[2,3]]", "[[1,2],3]"}, {"{\"ab\":\"c\"}", "{\"a\":\"bc\"}"},
+	}
+	for _, p := range diff {
+		if rawID(t, p[0]) == rawID(t, p[1]) {
+			t.Errorf("%s and %s are different JSON values and share an identity", p[0], p[1])
+		}
+	}
+}
+
+type namedString string
+
+func refID(t *testing.T, v any) jsonID {
+	t.Helper()
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("marshal %#v: %v", v, err)
+	}
+	return rawID(t, string(b))
+}
+
+func check[T any](t *testing.T, v T) {
+	t.Helper()
+	got, err := jsonIdentifyAt(&v, nil)
+	if err != nil {
+		t.Fatalf("%#v: %v", v, err)
+	}
+	if got != refID(t, v) {
+		b, _ := json.Marshal(v)
+		t.Errorf("%T %#v: its identity is not that of %s", v, v, b)
+	}
+	if got, err := jsonIDAny(v, nil); err != nil || got != refID(t, v) {
+		t.Errorf("%T %#v held as an any: %v", v, v, err)
+	}
+}
+
+func TestAGoValueIsWhatEncodingJSONWrites(t *testing.T) {
+	zone := time.FixedZone("x", -(5*3600 + 30*60))
+	check(t, "plain")
+	check(t, "h\xffi\xfe")
+	check(t, "<&>\u2028")
+	check(t, namedString("n\xc3"))
+	check(t, 0.0)
+	check(t, math.Copysign(0, -1))
+	check(t, 1e21)
+	check(t, 1e-7)
+	check(t, 123456789.125)
+	check(t, float32(0.1))
+	check(t, []float32{0.1, 3, -2.5e-9})
+	check(t, int64(-42))
+	check(t, uint8(200))
+	check(t, json.Number("1.0"))
+	check(t, json.Number("-0.000e5"))
+	check(t, json.Number(""))
+	check(t, json.RawMessage(" { \"b\" : [1, 2.50, \"\\u00e9\\ud800x\"], \"a\":{\"z\":null,\"z\":true} } "))
+	check(t, json.RawMessage(nil))
+	check(t, map[string]any{"k": []any{1.5, "x", nil, true, map[string]any{}}, "j": json.Number("7")})
+	check(t, []any{})
+	check(t, []any(nil))
+	check(t, map[string]any(nil))
+	check(t, []string{"a", "b\x80"})
+	check(t, map[string]string{"a": "b", "c": ""})
+	check(t, []byte("bytes"))
+	check(t, [3]byte{1, 2, 3})
+	check(t, time.Date(2024, 2, 29, 12, 0, 0, 500, time.UTC))
+	check(t, time.Date(1999, 12, 31, 23, 59, 59, 0, zone))
+	check(t, netip.MustParseAddr("::1"))
+	check(t, map[string]*int64{"a": nil})
+	s := "p"
+	check(t, &s)
+	check(t, map[string]json.RawMessage{"x": json.RawMessage("[1,1.0]")})
+}
+
+func TestAValueEncodingJSONRefusesHasNoIdentity(t *testing.T) {
+	for _, v := range []any{math.NaN(), math.Inf(1), json.Number("1x"), json.RawMessage("{"), json.RawMessage{},
+		time.Date(10000, 1, 1, 0, 0, 0, 0, time.UTC), time.Date(1, 1, 1, 0, 0, 0, 0, time.FixedZone("far", 25*3600))} {
+		if _, err := jsonIDAny(v, nil); err == nil {
+			t.Errorf("%#v: encoding/json refuses it, and it was given an identity", v)
+		}
+		if _, err := json.Marshal(v); err == nil {
+			t.Errorf("%#v: encoding/json writes it; the case is wrong", v)
+		}
+	}
+}
+
+func TestALazyValueIsReadAsDecoded(t *testing.T) {
+	doc := []byte(" {\"a\":[12345678901234567890, 1.0, \"\\ud800\", {\"k\":1,\"k\":2}],\"b\":{}} ")
+	d, sp, err := jsonOpenDoc(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// As every lazily read value's document is: its parts kept, and the
+	// caller's buffer let go of.
+	d.keep(sp)
+	d.finish(nil)
+	var v any
+	if err := json.Unmarshal(doc, &v); err != nil {
+		t.Fatal(err)
+	}
+	l := jsonLazy{d, sp}
+	for round := 0; round < 2; round++ {
+		// The second round reads what the first kept on the document.
+		got, err := l.jsonIdentity(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != refID(t, v) {
+			t.Errorf("round %d: a lazily read value is not what encoding/json decodes it into", round)
+		}
+	}
+	a := l.jsonLevel().(map[string]any)["a"].(jsonLazy).jsonLevel().([]any)
+	ids := make([]jsonID, len(a))
+	for i := range a {
+		if ids[i], err = jsonIDAny(a[i], nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if jsonFirstDuplicate(a, ids) >= 0 {
+		t.Errorf("distinct elements reported as duplicates")
+	}
+}
+
+func TestADuplicateIsConfirmedAndACollisionIsNot(t *testing.T) {
+	// Identities made to collide: every element is given one identity. Only
+	// the elements that really are equal may be called duplicates.
+	s := []any{1.0, "x", 2.0, "x"}
+	one := make([]jsonID, len(s))
+	if got := jsonFirstDuplicate(s, one); got != 3 {
+		t.Errorf("first duplicate: got %d, want 3", got)
+	}
+	big := make([]any, 20)
+	for i := range big {
+		big[i] = float64(i)
+	}
+	big[19] = 3.0
+	if got := jsonFirstDuplicate(big, make([]jsonID, len(big))); got != 19 {
+		t.Errorf("first duplicate among colliding identities: got %d, want 19", got)
+	}
+}
+
+func TestAKindIsWhatEncodingJSONWrites(t *testing.T) {
+	cases := []struct {
+		v    any
+		kind byte
+		text string
+	}{
+		{"a\xff", jsonIDStringKind, "a\ufffd"}, {1.5, jsonIDNumberKind, "1.5"}, {int64(-3), jsonIDNumberKind, "-3"},
+		{json.Number("2.50"), jsonIDNumberKind, "2.50"}, {nil, jsonIDNullKind, ""}, {true, jsonIDTrueKind, ""},
+		{[]any{}, jsonIDArrayKind, ""}, {map[string]any{}, jsonIDObjectKind, ""},
+		{json.RawMessage(" \"x\\u0041\" "), jsonIDStringKind, "xA"}, {json.RawMessage(" 1e2 "), jsonIDNumberKind, "1e2"},
+		{namedString("n"), jsonIDStringKind, "n"}, {math.NaN(), 0, ""}, {netip.MustParseAddr("::1"), jsonIDStringKind, "::1"},
+	}
+	for _, c := range cases {
+		kind, text := jsonKindAny(c.v)
+		if kind != c.kind || text != c.text {
+			t.Errorf("%#v: kind %q text %q, want %q %q", c.v, kind, text, c.kind, c.text)
+		}
+	}
+}
+`
+
+func TestValidateWritesNothing(t *testing.T) {
+	if testing.Short() {
+		t.Skip("generates, compiles and runs the CycloneDX 1.6 types with coverage")
+	}
+	t.Parallel()
+	root, boms := cycloneDXModule(t, map[string]string{"covdrv/main.go": validateCoverageDriver})
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	bin := filepath.Join(root, "covdrv.bin")
+	build := testgo.Command(ctx, root, "build", "-mod=mod", "-cover", "-covermode=atomic", "-coverpkg=./...", "-o", bin, "./covdrv")
+	if out, err := build.CombinedOutput(); err != nil {
+		t.Fatalf("building the driver with coverage: %v\n%s", err, out)
+	}
+	counters := filepath.Join(root, "counters")
+	if err := os.MkdirAll(counters, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	run := exec.CommandContext(ctx, bin, append([]string{counters}, boms...)...)
+	run.Env = append(os.Environ(), "GOCOVERDIR="+counters)
+	if out, err := run.CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != fmt.Sprintf("validated %d", len(boms)) {
+		t.Fatalf("driver: %v\n%s", err, out)
+	}
+	profile := filepath.Join(root, "profile.txt")
+	textfmt := testgo.Command(ctx, root, "tool", "covdata", "textfmt", "-i="+counters, "-o="+profile)
+	if out, err := textfmt.CombinedOutput(); err != nil {
+		t.Fatalf("reading the counters: %v\n%s", err, out)
+	}
+	writes, executed, err := executedWrites(profile, filepath.Join(root, "cdx"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A floor, as in the identity test: counters that recorded nothing would
+	// find nothing.
+	if executed < 1000 {
+		t.Fatalf("only %d blocks of the generated package ran during Validate; the counters are not reading it", executed)
+	}
+	if len(writes) > 0 {
+		t.Errorf("Validate wrote values out, %d places, over the %d CycloneDX example BOMs:\n\t%s",
+			len(writes), len(boms), strings.Join(writes, "\n\t"))
+	}
+}
+
+// encodingCall is every way generated code writes a value out: encoding/json,
+// a MarshalJSON, the generated encoder, and the reduction to canonical text,
+// which writes strings through encoding/json.
+var encodingCall = regexp.MustCompile(`json\.Marshal\(|json\.MarshalIndent\(|json\.NewEncoder\(|\.MarshalJSON\(\)|\.appendJSON\(|jsonAppendLeaf|jsonLeafOmit|_jsonCanonical\(`)
+
+// executedWrites reads a coverage profile and reports every block of the
+// package in dir that ran and writes a value out, and how many of its blocks
+// ran at all.
+func executedWrites(profile, dir string) ([]string, int, error) {
+	data, err := os.ReadFile(profile)
+	if err != nil {
+		return nil, 0, err
+	}
+	sources := map[string][]string{}
+	found := map[string]bool{}
+	executed := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		if line == "" || strings.HasPrefix(line, "mode:") {
+			continue
+		}
+		// file:startLine.startCol,endLine.endCol statements count
+		fields := strings.Fields(line)
+		if len(fields) != 3 || fields[2] == "0" {
+			continue
+		}
+		file, span, ok := strings.Cut(fields[0], ":")
+		if !ok || !strings.Contains(file, "/cdx/cdx/") {
+			continue
+		}
+		executed++
+		base := filepath.Base(file)
+		src, ok := sources[base]
+		if !ok {
+			b, err := os.ReadFile(filepath.Join(dir, base))
+			if err != nil {
+				return nil, 0, err
+			}
+			src = strings.Split(string(b), "\n")
+			sources[base] = src
+		}
+		from, to, _ := strings.Cut(span, ",")
+		start, _ := strconv.Atoi(strings.SplitN(from, ".", 2)[0])
+		end, _ := strconv.Atoi(strings.SplitN(to, ".", 2)[0])
+		if start < 1 || end > len(src) || start > end {
+			return nil, 0, fmt.Errorf("%s: block %s is outside the file", base, span)
+		}
+		for i := start; i <= end; i++ {
+			if encodingCall.MatchString(src[i-1]) {
+				found[fmt.Sprintf("%s:%d: %s", base, i, strings.TrimSpace(src[i-1]))] = true
+			}
+		}
+	}
+	var out []string
+	for k := range found {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out, executed, nil
+}
+
+// validateCoverageDriver decodes every BOM, clears the coverage counters, and
+// validates every BOM, so that the counters it writes hold what Validate ran and
+// nothing else.
+const validateCoverageDriver = `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"runtime/coverage"
+
+	"ex.test/cdx/cdx"
+)
+
+func main() {
+	var boms []cdx.Bom
+	for _, path := range os.Args[2:] {
+		in, err := os.ReadFile(path)
+		if err != nil {
+			panic(err)
+		}
+		var bom cdx.Bom
+		if err := json.Unmarshal(in, &bom); err != nil {
+			fmt.Printf("%s: does not decode: %v\n", path, err)
+			os.Exit(1)
+		}
+		boms = append(boms, bom)
+	}
+	if err := coverage.ClearCounters(); err != nil {
+		panic(err)
+	}
+	for i := range boms {
+		if err := boms[i].Validate(); err != nil {
+			fmt.Printf("%s: does not validate: %v\n", os.Args[2+i], err)
+			os.Exit(1)
+		}
+	}
+	if err := coverage.WriteCountersDir(os.Args[1]); err != nil {
+		panic(err)
+	}
+	fmt.Printf("validated %d\n", len(boms))
+}
+`

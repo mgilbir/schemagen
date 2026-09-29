@@ -869,18 +869,20 @@ func _dynTypeMatchesAny(types []string, v any) bool {
 	return false
 }
 
-// _dynEqualsJSON compares a decoded value against a const by re-encoding it, so
-// equality follows JSON semantics rather than Go's.
+// _dynEqualsJSON compares a decoded value against a const by identity, so
+// equality follows JSON semantics rather than Go's, both sides read the way
+// encoding/json decodes a value into an any: every number a float64. See jsonID.
+//
+// It used to re-encode the value, decode that and the const again, and compare
+// the two decodings: at every level of a document a const or an enum reached,
+// the whole subtree below was written out and read back.
 func _dynEqualsJSON(v any, want string) bool {
-	got, err := json.Marshal(v)
+	got, err := jsonIDAny(v, nil)
 	if err != nil {
 		return false
 	}
-	var a, b any
-	if json.Unmarshal(got, &a) != nil || json.Unmarshal([]byte(want), &b) != nil {
-		return false
-	}
-	return reflect.DeepEqual(a, b)
+	w, err := jsonIDRawAsDecoded([]byte(want))
+	return err == nil && got == w
 }
 
 // _dynMultipleOf avoids the floating point error that plain math.Mod shows for
@@ -902,22 +904,20 @@ func _dynRuneLen(s string) int { return len([]rune(s)) }
 // however they were written, and so are two objects with the same members in a
 // different order.
 //
-// Re-encoding each element settles both. encoding/json sorts object keys, and a
-// decoded number is a float64 whichever notation the document used, so two
-// elements produce the same bytes exactly when they are the same JSON value.
+// Compared by identity (see jsonID), which settles both. The elements were
+// re-encoded and compared as text, which at every level of a document wrote out
+// every subtree below it; an element read lazily from the document has its
+// identity kept there, so a check below reads what this one computed.
 func _dynUnique(arr []any) bool {
-	seen := make(map[string]bool, len(arr))
-	for _, elem := range arr {
-		raw, err := json.Marshal(elem)
+	ids := make([]jsonID, len(arr))
+	for i := range arr {
+		id, err := jsonIDAny(arr[i], nil)
 		if err != nil {
 			return false
 		}
-		if seen[string(raw)] {
-			return false
-		}
-		seen[string(raw)] = true
+		ids[i] = id
 	}
-	return true
+	return jsonFirstDuplicate(arr, ids) < 0
 }
 
 // _dynSortedKeys returns an object's keys in a fixed order, so a document with

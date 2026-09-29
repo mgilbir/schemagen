@@ -311,6 +311,13 @@ holds as raw JSON — a `patternProperties` value, a member no branch accounts
 for, a keyword judged at run time, a tuple position — through the document the
 value was decoded from, one level at a time, rather than decoding each afresh;
 a value holding such members keeps that document's index as well as its copy.
+`Validate` writes nothing out to judge a value: `uniqueItems`, `const`, `enum`
+and `contains` compare values by an identity read off each value as it is held,
+equal for any two values that are equal as JSON (`1` and `1.0`, members in any
+order), and an array's check keeps its elements' identities for the checks of
+the arrays inside them. Two values share an identity only if they are equal or
+by a collision of two independently seeded 64-bit hashes; `uniqueItems`
+confirms a duplicate before refusing an array for it.
 `MarshalJSON` writes a value into one buffer, calling what each member's type
 writes directly; `encoding/json` still writes every leaf, so the bytes are the
 ones it always wrote, and a failure is reported in its words. Refusals are
@@ -1242,6 +1249,7 @@ under `tests/`, one package per area:
 | `tests/determinism` | same input, same output; the static map-order guard (`make test-determinism`) |
 | `tests/external` | the JSON Schema Test Suite harness (`make test-external`) |
 | `tests/cogen` | co-generated schemas and instances (`make cogen`) |
+| `tests/identity` | values compared without being written out: identities, trees, and `Validate` under coverage (`make bench-cyclonedx`) |
 | `tests/complexity` | decode, `Validate` and `MarshalJSON` held to time and memory linear in the document |
 
 What more than one of them needs is in `tests/internal/testsupport`. Every

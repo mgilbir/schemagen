@@ -784,15 +784,14 @@ func (n NumberPositions) Validate() error {
 		// contains validation: count elements matching the contains sub-schema.
 		{
 			_containsCount := 0
-			for _, _cElem := range n.Counted {
+			_cArr := n.Counted
+			for _ci := range _cArr {
+				_cKind, _cText := jsonKindAt(&_cArr[_ci])
+				_ = _cText
 				_cMatch := true
-				if _cMatch {
-					_cBytes, _ := json.Marshal(_cElem)
-					if len(_cBytes) > 0 && (_cBytes[0] == '-' || _cBytes[0] >= '0' && _cBytes[0] <= '9') {
-						var _cn jsonNumber
-						if json.Unmarshal(_cBytes, &_cn) != nil || jsonNumberCmp(json.Number(_cn), "7.5") < 0 {
-							_cMatch = false
-						}
+				if _cMatch && _cKind == jsonIDNumberKind {
+					if jsonNumberCmp(json.Number(_cText), "7.5") < 0 {
+						_cMatch = false
 					}
 				}
 				if _cMatch {

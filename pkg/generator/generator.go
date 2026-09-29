@@ -627,6 +627,9 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// the order they are declared in, and the encode is planned to write them
 	// in the same order. See encodeplan.go.
 	g.resolveEncodePlans()
+	// After the encode plan, which a struct's identity reads its members by.
+	// See identityplan.go.
+	g.resolveIdentityPlans()
 
 	// Publish what this call's types are shaped like, so packages generated
 	// later in a cross-package run answer their own questions about them from

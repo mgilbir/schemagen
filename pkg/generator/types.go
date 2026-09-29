@@ -135,6 +135,13 @@ type StructDef struct {
 	// resolveEncodePlans. Empty where the type declares none.
 	EncodeKeysVar string
 	StripRulesVar string
+	// HasIdentity says a check comparing values can reach this struct, which
+	// then reads its own identity (see identityplan.go). ValidateIn says its
+	// Validate shares a jsonValidation with the values below it: it checks
+	// uniqueItems over elements whose identities are kept, or reaches a type
+	// that does. Set by resolveIdentityPlans.
+	HasIdentity bool
+	ValidateIn  bool
 	// StrictReadWrite says the file was generated under Config.StrictReadWrite.
 	// The decoder needs to know even where this struct carries no key of its own:
 	// a refusal arriving from a nested type has to be held rather than returned,
@@ -398,6 +405,10 @@ type ValidatableFieldDef struct {
 	// this is not conditioned on the field being optional -- a required property
 	// written as null leaves the same zero.
 	NullGuard bool
+
+	// ValidateIn says the field's type shares the caller's jsonValidation: its
+	// Validate is called as validateIn. See resolveValidateIn.
+	ValidateIn bool
 }
 
 // HasRequiredFields returns true if the struct has required field validation.
@@ -1066,6 +1077,9 @@ type AdditionalPropertiesDef struct {
 	// ValueType; ValueEncodeLeaf says it is jsonAppendLeaf. See encodeplan.go.
 	ValueEncoder    string
 	ValueEncodeLeaf bool
+	// ValueIdentifier reads one value's identity, as a jsonIdentify[T]
+	// expression over ValueType. See identityplan.go.
+	ValueIdentifier string
 }
 
 // UnevaluatedPropertiesDef describes an unevaluatedProperties constraint on a struct.
@@ -1427,6 +1441,14 @@ type ValidationRule struct {
 	// to be given it. See markRawElementRules. False under the default
 	// configuration, where no element is a RawMessage.
 	RawElements bool
+
+	// Identifier reads the identity of what a uniqueItems rule compares -- one
+	// element -- as a jsonIdentify[T] expression; KeepIDs says the elements are
+	// more than a scalar, so their identities are kept in the jsonValidation
+	// Validate shares, for the check of the array below to read back. See
+	// identityplan.go.
+	Identifier string
+	KeepIDs    bool
 }
 
 func (d *StructDef) TypeName() string { return d.Name }
@@ -1665,6 +1687,9 @@ type FieldDef struct {
 	// omitzero is judged. See encodeplan.go.
 	Encoder    string
 	EncodeLeaf bool
+	// Identifier reads the field's identity, as a jsonIdentify[T] expression
+	// over its type. See identityplan.go.
+	Identifier string
 	// ConditionalOnly marks a field whose every describing schema arrived
 	// through an if/then/else consequence that is applied in full elsewhere. The
 	// branch still supplies the Go type -- that is what the merge is for -- but
@@ -1840,6 +1865,11 @@ type OneOfVariant struct {
 	// Encoder writes the selected variant, as a jsonEnc[T] expression over
 	// Type. See encodeplan.go.
 	Encoder string
+	// Identifier reads the selected variant's identity, as a jsonIdentify[T]
+	// expression over Type, and ValidateIn says Type's Validate shares the
+	// caller's jsonValidation. See identityplan.go.
+	Identifier string
+	ValidateIn bool
 }
 
 // EnumDef represents an enum type.
@@ -1871,6 +1901,12 @@ type EnumDef struct {
 	// and is compared against the member list like every other value -- it needs
 	// nothing here, and its template asks nothing.
 	NeedsNullCheck bool
+
+	// HasIdentity says a check comparing values can reach this enum, whose
+	// MarshalJSON then has a jsonIdentity beside it. Only the two forms with a
+	// MarshalJSON -- the raw form and the number form -- carry one. See
+	// identityplan.go.
+	HasIdentity bool
 }
 
 // IsNumberBase reports whether this is a const-form enum over the json.Number a
@@ -2002,6 +2038,17 @@ type AliasDef struct {
 	// converted to it is what MarshalJSON has always written.
 	EncodeTo     bool
 	ValueEncoder string
+
+	// HasIdentity says a check comparing values can reach this alias, which then
+	// reads its own identity: Identifier reads it, as a jsonIdentify[T]
+	// expression over the alias or, where MarshalAs is set, over the type
+	// MarshalAs names. ValidateIn says its Validate shares a jsonValidation with
+	// the values below it, and ValidateAsIn that the type ValidateAs names does.
+	// See identityplan.go.
+	HasIdentity  bool
+	Identifier   string
+	ValidateIn   bool
+	ValidateAsIn bool
 
 	// Unenforced names the schema keywords this alias silently drops, phrased
 	// for the comment that goes above the declaration. It is set only on the
@@ -2217,6 +2264,7 @@ type ItemLevel struct {
 	ElemTypeName  string // the element's named Go type, when it has one
 	ElemType      GoType // the element's Go type
 	CallValidate  bool   // settled after generation: dispatch to the element's own Validate
+	ValidateIn    bool   // the element's Validate shares the caller's jsonValidation; see resolveValidateIn
 	Rules         []ValidationRule
 
 	// An element that is itself a tuple carries its positions here, and what
@@ -2319,6 +2367,10 @@ type InferredAliasDef struct {
 	// memberOrder is the declaration order the layout pass chose for the three
 	// members of the wrapper. See InferredAliasDef.Members.
 	memberOrder []int
+
+	// HasIdentity says a check comparing values can reach this wrapper, whose
+	// MarshalJSON then has a jsonIdentity beside it. See identityplan.go.
+	HasIdentity bool
 }
 
 // NestedItemsDef describes nested array item validation for schemas like
@@ -2534,6 +2586,10 @@ type BigIntAliasDef struct {
 	// represent it. Emitting the state unconditionally would put an unused
 	// field and a dead branch into every big-int wrapper.
 	AllowsNull bool
+
+	// HasIdentity says a check comparing values can reach this wrapper, whose
+	// MarshalJSON then has a jsonIdentity beside it. See identityplan.go.
+	HasIdentity bool
 }
 
 func (d *BigIntAliasDef) TypeName() string { return d.Name }
@@ -2549,6 +2605,10 @@ type NotSchemaDef struct {
 	IsForbidden bool              // not:{} or not:true — reject everything
 	NotTypes    []string          // not:{type:X} — reject values of these JSON types
 	NotBranches []NotSchemaBranch // not:anyOf branches from draft3 disallow arrays
+
+	// HasIdentity says a check comparing values can reach this wrapper, whose
+	// MarshalJSON then has a jsonIdentity beside it. See identityplan.go.
+	HasIdentity bool
 }
 
 type NotSchemaBranch struct {
@@ -2601,6 +2661,10 @@ type DynamicSchemaDef struct {
 	Else          []DynamicCheck
 	HasThen       bool
 	HasElse       bool
+
+	// HasIdentity says a check comparing values can reach this wrapper, whose
+	// MarshalJSON then has a jsonIdentity beside it. See identityplan.go.
+	HasIdentity bool
 }
 
 // AnnotationSchemaDef represents a schema held as data and interpreted by the
@@ -2647,6 +2711,10 @@ type AnnotationSchemaDef struct {
 	// sight.
 	SchemaVar      string
 	AccessRulesVar string
+
+	// HasIdentity says a check comparing values can reach this wrapper, whose
+	// MarshalJSON then has a jsonIdentity beside it. See identityplan.go.
+	HasIdentity bool
 }
 
 // RuntimeNodeVar is one node of a recursive compiled schema, emitted as a
@@ -2709,6 +2777,10 @@ type TypeOnlySchemaDef struct {
 	// one on the same value, which then carries validateVisiting. See
 	// resolveTypeBranchesInPlace.
 	VisitTarget bool
+
+	// HasIdentity says a check comparing values can reach this wrapper, whose
+	// MarshalJSON then has a jsonIdentity beside it. See identityplan.go.
+	HasIdentity bool
 }
 
 type TypeSchemaBranch struct {

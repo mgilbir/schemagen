@@ -573,10 +573,10 @@ func (o OnlyA) Validate() error {
 
 type EnumOutsideDeclaredTypeArrayEnum json.RawMessage
 
-// The members as the schema wrote them, reduced at package initialisation to
-// the one spelling every JSON value equal to each of them shares -- which is
-// the same reduction Validate puts the instance through. See _jsonCanonical.
-var enumOutsideDeclaredTypeArrayEnumAllowedJSON = _jsonCanonicalTexts([]string{
+// The members as the schema wrote them, read at package initialisation into the
+// identity every JSON value equal to each of them shares -- which is how
+// Validate reads the instance. See jsonID.
+var enumOutsideDeclaredTypeArrayEnumAllowedJSON = jsonIDsOfTexts([]string{
 	"[1]",
 })
 
@@ -610,18 +610,18 @@ func (e EnumOutsideDeclaredTypeArrayEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks EnumOutsideDeclaredTypeArrayEnum against its JSON Schema constraints.
 func (e EnumOutsideDeclaredTypeArrayEnum) Validate() error {
-	// Reduced to one spelling per JSON value, which is what the member list was
-	// reduced to as well: whitespace, member order and number spelling are not
-	// what an enum is decided on.
-	_canon, _canonErr := _jsonCanonical([]byte(e))
-	if _canonErr != nil {
+	// Compared by identity, which is what the member list was read into as
+	// well: whitespace, member order and number spelling are not what an enum
+	// is decided on. It used to reduce the value to canonical text, re-encoding
+	// every string and key in it, to decide.
+	_id, _idErr := jsonIDRaw(e)
+	if _idErr != nil {
 		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeArrayEnum value: %s", _schemagenClipText(string(e)))
 	}
-	for _, allowed := range enumOutsideDeclaredTypeArrayEnumAllowedJSON {
-		if _canon == allowed {
-			return nil
-		}
+	if jsonIDIn(_id, enumOutsideDeclaredTypeArrayEnumAllowedJSON) {
+		return nil
 	}
+	_canon, _ := _jsonCanonical([]byte(e))
 	return jsonValueErrorf("invalid EnumOutsideDeclaredTypeArrayEnum value: %s", _canon)
 }
 
@@ -843,8 +843,13 @@ func (e EnumOutsideDeclaredTypeConstOutsideOneOf) Validate() error {
 	if len(e._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(e._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonIdentity).
+	_v, _err := jsonReadLazily(e._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -1734,8 +1739,13 @@ func (e EnumOutsideDeclaredTypeNotConstOutside) Validate() error {
 	if len(e._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(e._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonIdentity).
+	_v, _err := jsonReadLazily(e._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -1782,10 +1792,10 @@ func (e EnumOutsideDeclaredTypeNumberEnum) Validate() error {
 
 type EnumOutsideDeclaredTypeObjectEnum json.RawMessage
 
-// The members as the schema wrote them, reduced at package initialisation to
-// the one spelling every JSON value equal to each of them shares -- which is
-// the same reduction Validate puts the instance through. See _jsonCanonical.
-var enumOutsideDeclaredTypeObjectEnumAllowedJSON = _jsonCanonicalTexts([]string{
+// The members as the schema wrote them, read at package initialisation into the
+// identity every JSON value equal to each of them shares -- which is how
+// Validate reads the instance. See jsonID.
+var enumOutsideDeclaredTypeObjectEnumAllowedJSON = jsonIDsOfTexts([]string{
 	"{\"k\":1}",
 })
 
@@ -1819,18 +1829,18 @@ func (e EnumOutsideDeclaredTypeObjectEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks EnumOutsideDeclaredTypeObjectEnum against its JSON Schema constraints.
 func (e EnumOutsideDeclaredTypeObjectEnum) Validate() error {
-	// Reduced to one spelling per JSON value, which is what the member list was
-	// reduced to as well: whitespace, member order and number spelling are not
-	// what an enum is decided on.
-	_canon, _canonErr := _jsonCanonical([]byte(e))
-	if _canonErr != nil {
+	// Compared by identity, which is what the member list was read into as
+	// well: whitespace, member order and number spelling are not what an enum
+	// is decided on. It used to reduce the value to canonical text, re-encoding
+	// every string and key in it, to decide.
+	_id, _idErr := jsonIDRaw(e)
+	if _idErr != nil {
 		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeObjectEnum value: %s", _schemagenClipText(string(e)))
 	}
-	for _, allowed := range enumOutsideDeclaredTypeObjectEnumAllowedJSON {
-		if _canon == allowed {
-			return nil
-		}
+	if jsonIDIn(_id, enumOutsideDeclaredTypeObjectEnumAllowedJSON) {
+		return nil
 	}
+	_canon, _ := _jsonCanonical([]byte(e))
 	return jsonValueErrorf("invalid EnumOutsideDeclaredTypeObjectEnum value: %s", _canon)
 }
 
@@ -1870,10 +1880,10 @@ func (e EnumOutsideDeclaredTypeTypedEnum) Validate() error {
 
 type EnumOutsideDeclaredTypeUnionEnum json.RawMessage
 
-// The members as the schema wrote them, reduced at package initialisation to
-// the one spelling every JSON value equal to each of them shares -- which is
-// the same reduction Validate puts the instance through. See _jsonCanonical.
-var enumOutsideDeclaredTypeUnionEnumAllowedJSON = _jsonCanonicalTexts([]string{
+// The members as the schema wrote them, read at package initialisation into the
+// identity every JSON value equal to each of them shares -- which is how
+// Validate reads the instance. See jsonID.
+var enumOutsideDeclaredTypeUnionEnumAllowedJSON = jsonIDsOfTexts([]string{
 	"\"a\"",
 	"5",
 })
@@ -1908,27 +1918,27 @@ func (e EnumOutsideDeclaredTypeUnionEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks EnumOutsideDeclaredTypeUnionEnum against its JSON Schema constraints.
 func (e EnumOutsideDeclaredTypeUnionEnum) Validate() error {
-	// Reduced to one spelling per JSON value, which is what the member list was
-	// reduced to as well: whitespace, member order and number spelling are not
-	// what an enum is decided on.
-	_canon, _canonErr := _jsonCanonical([]byte(e))
-	if _canonErr != nil {
+	// Compared by identity, which is what the member list was read into as
+	// well: whitespace, member order and number spelling are not what an enum
+	// is decided on. It used to reduce the value to canonical text, re-encoding
+	// every string and key in it, to decide.
+	_id, _idErr := jsonIDRaw(e)
+	if _idErr != nil {
 		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeUnionEnum value: %s", _schemagenClipText(string(e)))
 	}
-	for _, allowed := range enumOutsideDeclaredTypeUnionEnumAllowedJSON {
-		if _canon == allowed {
-			return nil
-		}
+	if jsonIDIn(_id, enumOutsideDeclaredTypeUnionEnumAllowedJSON) {
+		return nil
 	}
+	_canon, _ := _jsonCanonical([]byte(e))
 	return jsonValueErrorf("invalid EnumOutsideDeclaredTypeUnionEnum value: %s", _canon)
 }
 
 type EnumOutsideDeclaredTypeUntypedEnum json.RawMessage
 
-// The members as the schema wrote them, reduced at package initialisation to
-// the one spelling every JSON value equal to each of them shares -- which is
-// the same reduction Validate puts the instance through. See _jsonCanonical.
-var enumOutsideDeclaredTypeUntypedEnumAllowedJSON = _jsonCanonicalTexts([]string{
+// The members as the schema wrote them, read at package initialisation into the
+// identity every JSON value equal to each of them shares -- which is how
+// Validate reads the instance. See jsonID.
+var enumOutsideDeclaredTypeUntypedEnumAllowedJSON = jsonIDsOfTexts([]string{
 	"\"a\"",
 	"5",
 })
@@ -1963,18 +1973,18 @@ func (e EnumOutsideDeclaredTypeUntypedEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks EnumOutsideDeclaredTypeUntypedEnum against its JSON Schema constraints.
 func (e EnumOutsideDeclaredTypeUntypedEnum) Validate() error {
-	// Reduced to one spelling per JSON value, which is what the member list was
-	// reduced to as well: whitespace, member order and number spelling are not
-	// what an enum is decided on.
-	_canon, _canonErr := _jsonCanonical([]byte(e))
-	if _canonErr != nil {
+	// Compared by identity, which is what the member list was read into as
+	// well: whitespace, member order and number spelling are not what an enum
+	// is decided on. It used to reduce the value to canonical text, re-encoding
+	// every string and key in it, to decide.
+	_id, _idErr := jsonIDRaw(e)
+	if _idErr != nil {
 		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeUntypedEnum value: %s", _schemagenClipText(string(e)))
 	}
-	for _, allowed := range enumOutsideDeclaredTypeUntypedEnumAllowedJSON {
-		if _canon == allowed {
-			return nil
-		}
+	if jsonIDIn(_id, enumOutsideDeclaredTypeUntypedEnumAllowedJSON) {
+		return nil
 	}
+	_canon, _ := _jsonCanonical([]byte(e))
 	return jsonValueErrorf("invalid EnumOutsideDeclaredTypeUntypedEnum value: %s", _canon)
 }
 
@@ -2942,23 +2952,29 @@ func (e EnumOutsideDeclaredType) appendMemberJSON(_idx int, _key string, _b []by
 func (e EnumOutsideDeclaredType) Validate() error {
 	if e._jsonKeys["boolEnum"] {
 		{
-			_constGot, _constErr := json.Marshal(e.BoolEnum)
+			_constV := e.BoolEnum
+			_constID, _constErr := (func(_p **bool, _m *jsonValidation) (jsonID, error) {
+				return jsonIDPtr[*bool, bool](*_p, _m, jsonIdentifyAt[bool])
+			})(&_constV, nil)
 			if _constErr != nil {
-				return fmt.Errorf("boolEnum: failed to marshal for const check: %w", _constErr)
+				return fmt.Errorf("boolEnum: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 			}
-			if string(_constGot) != "true" {
-				return fmt.Errorf("boolEnum: value must be %s, got %s", "true", _schemagenClipText(string(_constGot)))
+			if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"true"})) {
+				return fmt.Errorf("boolEnum: value must be %s, got %s", "true", _schemagenClipText(jsonMarshalText(&_constV)))
 			}
 		}
 	}
 	if e._jsonKeys["constOutsideProp"] {
 		{
-			_constGot, _constErr := json.Marshal(e.ConstOutsideProp)
+			_constV := e.ConstOutsideProp
+			_constID, _constErr := (func(_p **string, _m *jsonValidation) (jsonID, error) {
+				return jsonIDPtr[*string, string](*_p, _m, jsonIdentifyAt[string])
+			})(&_constV, nil)
 			if _constErr != nil {
-				return fmt.Errorf("constOutsideProp: failed to marshal for const check: %w", _constErr)
+				return fmt.Errorf("constOutsideProp: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 			}
-			if string(_constGot) != "5" {
-				return fmt.Errorf("constOutsideProp: value must be %s, got %s", "5", _schemagenClipText(string(_constGot)))
+			if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"5"})) {
+				return fmt.Errorf("constOutsideProp: value must be %s, got %s", "5", _schemagenClipText(jsonMarshalText(&_constV)))
 			}
 		}
 	}
@@ -2969,34 +2985,43 @@ func (e EnumOutsideDeclaredType) Validate() error {
 	}
 	if e._jsonKeys["fracOutsideInteger"] {
 		{
-			_constGot, _constErr := json.Marshal(e.FracOutsideInteger)
+			_constV := e.FracOutsideInteger
+			_constID, _constErr := (func(_p **int64, _m *jsonValidation) (jsonID, error) {
+				return jsonIDPtr[*int64, int64](*_p, _m, jsonIdentifyAt[int64])
+			})(&_constV, nil)
 			if _constErr != nil {
-				return fmt.Errorf("fracOutsideInteger: failed to marshal for const check: %w", _constErr)
+				return fmt.Errorf("fracOutsideInteger: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 			}
-			if string(_constGot) != "2.5" {
-				return fmt.Errorf("fracOutsideInteger: value must be %s, got %s", "2.5", _schemagenClipText(string(_constGot)))
+			if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"2.5"})) {
+				return fmt.Errorf("fracOutsideInteger: value must be %s, got %s", "2.5", _schemagenClipText(jsonMarshalText(&_constV)))
 			}
 		}
 	}
 	if e._jsonKeys["integerFloatSpelling"] {
 		{
-			_constGot, _constErr := json.Marshal(e.IntegerFloatSpelling)
+			_constV := e.IntegerFloatSpelling
+			_constID, _constErr := (func(_p **int64, _m *jsonValidation) (jsonID, error) {
+				return jsonIDPtr[*int64, int64](*_p, _m, jsonIdentifyAt[int64])
+			})(&_constV, nil)
 			if _constErr != nil {
-				return fmt.Errorf("integerFloatSpelling: failed to marshal for const check: %w", _constErr)
+				return fmt.Errorf("integerFloatSpelling: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 			}
-			if string(_constGot) != "1" {
-				return fmt.Errorf("integerFloatSpelling: value must be %s, got %s", "1", _schemagenClipText(string(_constGot)))
+			if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"1"})) {
+				return fmt.Errorf("integerFloatSpelling: value must be %s, got %s", "1", _schemagenClipText(jsonMarshalText(&_constV)))
 			}
 		}
 	}
 	if e._jsonKeys["typedConst"] {
 		{
-			_constGot, _constErr := json.Marshal(e.TypedConst)
+			_constV := e.TypedConst
+			_constID, _constErr := (func(_p **string, _m *jsonValidation) (jsonID, error) {
+				return jsonIDPtr[*string, string](*_p, _m, jsonIdentifyAt[string])
+			})(&_constV, nil)
 			if _constErr != nil {
-				return fmt.Errorf("typedConst: failed to marshal for const check: %w", _constErr)
+				return fmt.Errorf("typedConst: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 			}
-			if string(_constGot) != "\"a\"" {
-				return fmt.Errorf("typedConst: value must be %s, got %s", "\"a\"", _schemagenClipText(string(_constGot)))
+			if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"\"a\""})) {
+				return fmt.Errorf("typedConst: value must be %s, got %s", "\"a\"", _schemagenClipText(jsonMarshalText(&_constV)))
 			}
 		}
 	}

@@ -81,6 +81,20 @@ func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 	}
 	return json.Marshal({{$recv}}._value)
 }
+{{- if .HasIdentity}}
+
+// jsonIdentity is {{$recv}}'s identity as JSON: that of what MarshalJSON writes.
+// See jsonID.
+func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	if {{$recv}}._isRaw {
+		if len({{$recv}}._raw) == 0 {
+			return jsonIDOfKind(jsonIDNullKind), nil
+		}
+		return jsonIDRaw({{$recv}}._raw)
+	}
+	return jsonIdentifyAt(&{{$recv}}._value, _m)
+}
+{{- end}}
 {{- end}}
 
 {{define "inferred_alias_accessors"}}
@@ -231,17 +245,15 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- end}}
 	{{- if eq .RuleType "uniqueItems"}}
 	{
-		_seen := make(map[string]bool, len({{$recv}}._value))
-		for _i, _item := range {{$recv}}._value {
-			_b, _err := json.Marshal(_item)
-			if _err != nil {
-				return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", _i, _err)
-			}
-			_key := string(_b)
-			if _seen[_key] {
-				return jsonValueErrorf("items are not unique (duplicate at index %d)", _i)
-			}
-			_seen[_key] = true
+		{{- /* Compared by identity; see the struct form in validation.go.tmpl.
+		       The wrapper's own value is reached by no check above it, so there
+		       is nothing kept to read back. */}}
+		_ids, _i, _err := jsonIDsOf({{$recv}}._value, nil, jsonIdentifyAt[any])
+		if _err != nil {
+			return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", _i, jsonMarshalError(&{{$recv}}._value[_i], _err))
+		}
+		if _i := jsonFirstDuplicate({{$recv}}._value, _ids); _i >= 0 {
+			return jsonValueErrorf("items are not unique (duplicate at index %d)", _i)
 		}
 	}
 	{{- end}}
@@ -775,8 +787,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 					if len(arr) <= {{.Index}} {
 						_ifMatch = false
 					} else {
-						_ib, _ie := json.Marshal(arr[{{.Index}}])
-						if _ie != nil || string(_ib) != {{printf "%q" .JSONValue}} {
+						{{- /* Compared by identity (see jsonID): the item was
+						       marshalled and its text compared with the const's
+						       spelling. */}}
+						_ib, _ie := jsonIdentifyAt(&arr[{{.Index}}], nil)
+						if _ie != nil || !jsonIDIn(_ib, jsonIDsOfTexts([]string{ {{- printf "%q" .JSONValue -}} })) {
 							_ifMatch = false
 						}
 					}
@@ -815,8 +830,9 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				_evaluatedByContains = true
 				{{- else if .Contains.ConstJSON}}
 				{
-					_cBytes, _cErr := json.Marshal(_uiElem)
-					if _cErr == nil && string(_cBytes) == {{printf "%q" .Contains.ConstJSON}} {
+					{{- /* Compared by identity, as the cardinality check compares it. */}}
+					_cID, _cErr := jsonIdentifyAt(&_uiElem, nil)
+					if _cErr == nil && jsonIDIn(_cID, jsonIDsOfTexts([]string{ {{- printf "%q" .Contains.ConstJSON -}} })) {
 						_evaluatedByContains = true
 					}
 				}

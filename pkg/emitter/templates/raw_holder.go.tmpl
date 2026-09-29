@@ -46,4 +46,15 @@ func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 
 // Raw returns a copy of the value's bytes.
 func ({{$recv}} {{.Name}}) Raw() json.RawMessage { return append(json.RawMessage(nil), {{$recv}}._raw...) }
+{{- if .HasIdentity}}
+
+// jsonIdentity is {{$recv}}'s identity as JSON: that of the bytes MarshalJSON
+// writes back. See jsonID.
+func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	if len({{$recv}}._raw) == 0 {
+		return jsonIDOfKind(jsonIDNullKind), nil
+	}
+	return jsonIDRaw({{$recv}}._raw)
+}
+{{- end}}
 {{- end}}

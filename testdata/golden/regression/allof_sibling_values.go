@@ -832,12 +832,15 @@ func (a AllOfSiblingValues) appendMemberJSON(_idx int, _key string, _b []byte) (
 func (a AllOfSiblingValues) Validate() error {
 	if a._jsonKeys["constOnProperty"] {
 		{
-			_constGot, _constErr := json.Marshal(a.ConstOnProperty)
+			_constV := a.ConstOnProperty
+			_constID, _constErr := (func(_p **string, _m *jsonValidation) (jsonID, error) {
+				return jsonIDPtr[*string, string](*_p, _m, jsonIdentifyAt[string])
+			})(&_constV, nil)
 			if _constErr != nil {
-				return fmt.Errorf("constOnProperty: failed to marshal for const check: %w", _constErr)
+				return fmt.Errorf("constOnProperty: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 			}
-			if string(_constGot) != "\"q\"" {
-				return fmt.Errorf("constOnProperty: value must be %s, got %s", "\"q\"", _schemagenClipText(string(_constGot)))
+			if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"\"q\""})) {
+				return fmt.Errorf("constOnProperty: value must be %s, got %s", "\"q\"", _schemagenClipText(jsonMarshalText(&_constV)))
 			}
 		}
 	}

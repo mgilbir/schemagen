@@ -433,6 +433,313 @@ encoded, reporting a failure under the field's name.
 {{- end}}
 
 {{/*
+struct_identity is a struct's jsonIdentity: its identity as JSON (see jsonID),
+read off its members by the rules struct_encode writes them by, branch for
+branch -- the same three shapes, the same members, the same omitempty and
+omitzero rulings, the same members set late overriding members set early. So
+the identity is the identity of what appendJSON writes, which is what the
+checks that compare values compared before, without the writing.
+
+Three things are still read off what appendJSON writes, because what decides
+them there is a comparison of bytes: a --strict-read-write struct whose writeOnly
+locations below its members are stripped from the written text, the nulls a
+document wrote (written back where the member reads as a zero value's does), and
+a hand-written member whose Go zero is recognised by its encoding. None of them
+arises outside those configurations and documents.
+*/}}
+{{define "struct_identity"}}
+{{- $s := . -}}
+{{- $recv := receiverName .Name -}}
+
+// jsonIdentity is {{$recv}}'s identity as JSON, read off its members by the rules
+// appendJSON writes them by. See jsonID.
+func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	{{- if .AcceptNonObject}}
+	if {{$recv}}._nonObject {
+		if len({{$recv}}._rawNonObject) > 0 {
+			return jsonIDRaw({{$recv}}._rawNonObject)
+		}
+		return jsonIDOfKind(jsonIDNullKind), nil
+	}
+	{{- end}}
+	{{- if .HasTopLevelOneOf}}
+	{{- range $oof := .OneOfs}}
+	{{- if not $oof.IsProperty}}
+	if {{$recv}}.{{$oof.FieldName}} != nil {
+		switch _sel := {{$recv}}.{{$oof.FieldName}}.(type) {
+		{{- range $oof.Variants}}
+		case *{{.WrapperName}}:
+			return ({{.Identifier}})(&_sel.{{.FieldName}}, _m)
+		{{- end}}
+		}
+	}
+	{{- end}}
+	{{- end}}
+	return jsonIDOfKind(jsonIDNullKind), nil
+	{{- else if .StripRulesVar}}
+	// The writeOnly locations below the members are stripped from the text
+	// appendJSON writes, by reading that text back; so the identity is read off
+	// the text. See struct_identity.
+	_b, _err := {{$recv}}.appendJSON(nil)
+	if _err != nil {
+		return jsonID{}, _err
+	}
+	return jsonIDRaw(_b)
+	{{- else if .EncodeObject}}
+	{{- if .NeedsJSONNulls}}
+	if len({{$recv}}._jsonNulls) > 0 {
+		// A null the document wrote is written back where the member reads as a
+		// zero value's does, byte for byte; so the identity is read off the
+		// text. See struct_identity.
+		_b, _err := {{$recv}}.appendJSON(nil)
+		if _err != nil {
+			return jsonID{}, _err
+		}
+		return jsonIDRaw(_b)
+	}
+	{{- end}}
+	var _o jsonIDObj
+	{{- range $mem := .EncodeMembers}}
+	{{- with $mem.Field}}
+	{
+		{{- if .EncodeLeaf}}
+		{{- if $mem.Omit}}
+		if !{{if eq $mem.Omit "zero"}}jsonOmitZeroAt{{else}}jsonOmitEmptyAt{{end}}(&{{$recv}}.{{.Name}}) {
+		{{- else}}
+		{
+		{{- end}}
+			_id, _err := ({{.Identifier}})(&{{$recv}}.{{.Name}}, _m)
+			if _err != nil {
+				return jsonID{}, _err
+			}
+			_o.computed({{printf "%q" .JSONName}}, _id)
+		}
+		{{- else}}
+		{{- if $mem.Omit}}
+		if !{{if eq $mem.Omit "zero"}}jsonIsZero{{else}}jsonIsEmpty{{end}}({{$recv}}.{{.Name}}) {
+			_o.deferred({{printf "%q" .JSONName}}, {{$mem.Index}})
+		}
+		{{- else}}
+		_o.deferred({{printf "%q" .JSONName}}, {{$mem.Index}})
+		{{- end}}
+		{{- end}}
+	}
+	{{- end}}
+	{{- end}}
+	{{- range .EncodeMembers}}
+	{{- if .OneOf}}
+	if {{$recv}}.{{.OneOf.FieldName}} != nil {
+		switch {{$recv}}.{{.OneOf.FieldName}}.(type) {
+		case {{range $i, $v := .OneOf.Variants}}{{if $i}}, {{end}}*{{$v.WrapperName}}{{end}}:
+			_o.deferred({{printf "%q" .JSONName}}, {{.Index}})
+		}
+	}
+	{{- end}}
+	{{- end}}
+	{{- range .EncodeManual}}
+	{{- if .OneOf}}
+	if {{$recv}}.{{.OneOf.FieldName}} != nil {
+		switch {{$recv}}.{{.OneOf.FieldName}}.(type) {
+		case {{range $i, $v := .OneOf.Variants}}{{if $i}}, {{end}}*{{$v.WrapperName}}{{end}}:
+			_o.deferred({{printf "%q" .JSONName}}, {{.Index}})
+		}
+	}
+	{{- end}}
+	{{- end}}
+	{{- range $mm := .EncodeManual}}
+	{{- with $mm.Field}}
+	{{- if eq .ManualOmit "zerojson"}}
+	{
+		// The member is left out where it writes what its Go zero writes, which
+		// is recognised by its bytes; so it is read off them. See
+		// struct_identity.
+		_v, _err := ({{.Encoder}})({{$recv}}.{{.Name}}, nil)
+		if _err != nil {
+			return jsonID{}, _err
+		}
+		if string(_v) != {{printf "%q" .ZeroJSON}} {
+			_id, _err := jsonIDRaw(_v)
+			if _err != nil {
+				return jsonID{}, _err
+			}
+			_o.computed({{printf "%q" .JSONName}}, _id)
+		}
+	}
+	{{- else}}
+	{{- if eq .ManualOmit "nil"}}
+	if {{$recv}}.{{.Name}} != nil {
+	{{- else if eq .ManualOmit "iszero"}}
+	if !{{$recv}}.{{.Name}}.IsZero() {
+	{{- else}}
+	{
+	{{- end}}
+		{{- if .EncodeLeaf}}
+		_id, _err := ({{.Identifier}})(&{{$recv}}.{{.Name}}, _m)
+		if _err != nil {
+			return jsonID{}, _err
+		}
+		_o.computed({{printf "%q" .JSONName}}, _id)
+		{{- else}}
+		_o.deferred({{printf "%q" .JSONName}}, {{$mm.Index}})
+		{{- end}}
+	}
+	{{- end}}
+	{{- end}}
+	{{- end}}
+	{{- if .HasPatternProperties}}
+	{{- /* maporder: sets members under their own keys, which are distinct, into an object whose identity is a sum over its members. */}}
+	for _key, _member := range {{$recv}}.PatternProperties {
+		_o.held(_key, _member)
+	}
+	{{- end}}
+	{{- if .AdditionalProperties}}
+	{{- if isRawMessage .AdditionalProperties.ValueType}}
+	{{- /* maporder: sets members under their own keys, which are distinct, into an object whose identity is a sum over its members. */}}
+	for _key, _member := range {{$recv}}.AdditionalProperties {
+		_o.held(_key, _member)
+	}
+	{{- else if .AdditionalProperties.ValueEncodeLeaf}}
+	{
+		var _slot {{goType .AdditionalProperties.ValueType}}
+		{{- /* maporder: sets members under their own keys, which are distinct; a member that cannot be read is reported through encoding/json, which names the same one whatever order found it. */}}
+		for _key, _v := range {{$recv}}.AdditionalProperties {
+			_slot = _v
+			_id, _err := ({{.AdditionalProperties.ValueIdentifier}})(&_slot, _m)
+			if _err != nil {
+				return jsonID{}, _err
+			}
+			_o.computed(_key, _id)
+		}
+	}
+	{{- else}}
+	{{- /* maporder: sets members under their own keys, which are distinct, into an object whose identity is a sum over its members. */}}
+	for _key := range {{$recv}}.AdditionalProperties {
+		_o.deferred(_key, {{.EncodeAdditionalMember}})
+	}
+	{{- end}}
+	{{- end}}
+	{{- if .WriteOnlyKeys}}
+	{{- /* maporder: not a map: ranges a slice literal. */}}
+	for _, _woKey := range []string{
+		{{- range .WriteOnlyKeys}}
+		{{printf "%q" .}},
+		{{- end}}
+	} {
+		_o.del(_woKey)
+	}
+	{{- end}}
+	return _o.id({{$recv}}.jsonIdentityMember, _m)
+	{{- else}}
+	var _o jsonIDObject
+	{{- range $mem := .EncodeMembers}}
+	{{- if $mem.Field}}
+	{{- with $mem.Field}}
+	{{- if .EncodeLeaf}}
+	{{- if $mem.Omit}}
+	if !{{if eq $mem.Omit "zero"}}jsonOmitZeroAt{{else}}jsonOmitEmptyAt{{end}}(&{{$recv}}.{{.Name}}) {
+	{{- else}}
+	{
+	{{- end}}
+	{{- else}}
+	{{- if $mem.Omit}}
+	if !{{if eq $mem.Omit "zero"}}jsonIsZero{{else}}jsonIsEmpty{{end}}({{$recv}}.{{.Name}}) {
+	{{- else}}
+	{
+	{{- end}}
+	{{- end}}
+		_id, _err := ({{.Identifier}})(&{{$recv}}.{{.Name}}, _m)
+		if _err != nil {
+			return jsonID{}, _err
+		}
+		_o.add({{printf "%q" .JSONName}}, _id)
+	}
+	{{- end}}
+	{{- else}}
+	if {{$recv}}.{{$mem.OneOf.FieldName}} != nil {
+		switch _sel := {{$recv}}.{{$mem.OneOf.FieldName}}.(type) {
+		{{- range $mem.OneOf.Variants}}
+		case *{{.WrapperName}}:
+			_id, _err := ({{.Identifier}})(&_sel.{{.FieldName}}, _m)
+			if _err != nil {
+				return jsonID{}, _err
+			}
+			_o.add({{printf "%q" $mem.JSONName}}, _id)
+		{{- end}}
+		}
+	}
+	{{- end}}
+	{{- end}}
+	return _o.id(), nil
+	{{- end}}
+}
+{{- if and (not .HasTopLevelOneOf) (not .StripRulesVar) .EncodeObject}}
+
+// jsonIdentityMember reads the member of {{$recv}} numbered idx, as
+// appendMemberJSON writes it. key is the member's key, which names the
+// additionalProperties value to read.
+func ({{$recv}} *{{.Name}}) jsonIdentityMember(_idx int, _key string, _m *jsonValidation) (jsonID, error) {
+	_ = _key
+	switch _idx {
+	{{- range .EncodeMembers}}
+	{{- if .Field}}
+	{{- if not .Field.EncodeLeaf}}
+	case {{.Index}}:
+		return ({{.Field.Identifier}})(&{{$recv}}.{{.Field.Name}}, _m)
+	{{- end}}
+	{{- else}}
+	case {{.Index}}:
+		switch _sel := {{$recv}}.{{.OneOf.FieldName}}.(type) {
+		{{- range .OneOf.Variants}}
+		case *{{.WrapperName}}:
+			return ({{.Identifier}})(&_sel.{{.FieldName}}, _m)
+		{{- end}}
+		}
+	{{- end}}
+	{{- end}}
+	{{- range .EncodeManual}}
+	case {{.Index}}:
+		{{- if .OneOf}}
+		switch _sel := {{$recv}}.{{.OneOf.FieldName}}.(type) {
+		{{- range .OneOf.Variants}}
+		case *{{.WrapperName}}:
+			return ({{.Identifier}})(&_sel.{{.FieldName}}, _m)
+		{{- end}}
+		}
+		{{- else}}
+		return ({{.Field.Identifier}})(&{{$recv}}.{{.Field.Name}}, _m)
+		{{- end}}
+	{{- end}}
+	{{- if and .AdditionalProperties (not (isRawMessage .AdditionalProperties.ValueType)) (not .AdditionalProperties.ValueEncodeLeaf)}}
+	case {{.EncodeAdditionalMember}}:
+		_v := {{$recv}}.AdditionalProperties[_key]
+		return ({{.AdditionalProperties.ValueIdentifier}})(&_v, _m)
+	{{- end}}
+	}
+	return jsonIDOfKind(jsonIDNullKind), nil
+}
+{{- end}}
+{{- end}}
+
+{{/*
+alias_identity is an alias's jsonIdentity: its value read the way its
+MarshalJSON writes it -- converted to the type MarshalAs names, or as its
+underlying type -- and, for an array whose uniqueItems check keeps its
+elements' identities, with them kept.
+*/}}
+{{define "alias_identity"}}
+{{- $recv := receiverName .Name}}
+
+// jsonIdentity is {{$recv}}'s identity as JSON. See jsonID.
+func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	{{- if .MarshalAs}}
+	return ({{.Identifier}})((*{{.MarshalAs}})({{$recv}}), _m)
+	{{- else}}
+	return ({{.Identifier}})({{$recv}}, _m)
+	{{- end}}
+}
+{{- end}}
+
+{{/*
 alias_encode is an alias's appendJSON: the value written the way the alias's
 MarshalJSON writes it -- converted to the type MarshalAs names -- or, for an
 alias without one, the way encoding/json writes its underlying type.

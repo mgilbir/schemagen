@@ -1,4 +1,4 @@
-.PHONY: guards unicode-tables build test lint lint-alignment clean install fmt vet golden download-test-suite test-suite-drift download-metaschemas test-external test-determinism fuzz fuzz-seeds cogen validate-seeds
+.PHONY: guards unicode-tables build test lint lint-alignment clean install fmt vet golden download-test-suite test-suite-drift download-metaschemas test-external test-determinism fuzz fuzz-seeds cogen bench-cyclonedx validate-seeds
 
 BINARY := schemagen
 MODULE := github.com/mgilbir/schemagen
@@ -399,6 +399,16 @@ COGEN_ITERS ?= 400
 cogen:
 	SCHEMAGEN_RUN_COGEN=1 SCHEMAGEN_COGEN_SEED=$(COGEN_SEED) SCHEMAGEN_COGEN_ITERS=$(COGEN_ITERS) \
 		go test ./tests/cogen -run TestCoGenerated -v -count=1 -timeout 60m
+
+# Measures Validate over the CycloneDX 1.6 example BOMs -- time and allocations
+# per BOM and per pass over all 45 -- with the types this tree generates. A
+# measurement rather than a check, so not part of `test`; BENCH_COUNT runs of
+# each benchmark, for benchstat. See tests/identity/cyclonedx_bench_test.go.
+BENCH_COUNT ?= 5
+
+bench-cyclonedx:
+	SCHEMAGEN_BENCH_CYCLONEDX=1 SCHEMAGEN_BENCH_COUNT=$(BENCH_COUNT) \
+		go test ./tests/identity -run '^TestCycloneDXValidateBenchmark$$' -v -count=1 -timeout 60m
 
 # Checks that every fuzz seed under testdata/schemas/adversarial is a legal
 # JSON Schema document, by validating it as an *instance* against the

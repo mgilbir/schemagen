@@ -168,12 +168,13 @@ func (c Circle) Validate() error {
 		}
 	}
 	{
-		_constGot, _constErr := json.Marshal(c.Type)
+		_constV := c.Type
+		_constID, _constErr := (jsonIdentifyAt[string])(&_constV, nil)
 		if _constErr != nil {
-			return fmt.Errorf("type: failed to marshal for const check: %w", _constErr)
+			return fmt.Errorf("type: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 		}
-		if string(_constGot) != "\"circle\"" {
-			return fmt.Errorf("type: value must be %s, got %s", "\"circle\"", _schemagenClipText(string(_constGot)))
+		if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"\"circle\""})) {
+			return fmt.Errorf("type: value must be %s, got %s", "\"circle\"", _schemagenClipText(jsonMarshalText(&_constV)))
 		}
 	}
 	return nil
@@ -340,12 +341,13 @@ func (s Square) Validate() error {
 		}
 	}
 	{
-		_constGot, _constErr := json.Marshal(s.Type)
+		_constV := s.Type
+		_constID, _constErr := (jsonIdentifyAt[string])(&_constV, nil)
 		if _constErr != nil {
-			return fmt.Errorf("type: failed to marshal for const check: %w", _constErr)
+			return fmt.Errorf("type: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 		}
-		if string(_constGot) != "\"square\"" {
-			return fmt.Errorf("type: value must be %s, got %s", "\"square\"", _schemagenClipText(string(_constGot)))
+		if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"\"square\""})) {
+			return fmt.Errorf("type: value must be %s, got %s", "\"square\"", _schemagenClipText(jsonMarshalText(&_constV)))
 		}
 	}
 	return nil
@@ -528,12 +530,13 @@ func (t Triangle) Validate() error {
 		}
 	}
 	{
-		_constGot, _constErr := json.Marshal(t.Type)
+		_constV := t.Type
+		_constID, _constErr := (jsonIdentifyAt[string])(&_constV, nil)
 		if _constErr != nil {
-			return fmt.Errorf("type: failed to marshal for const check: %w", _constErr)
+			return fmt.Errorf("type: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 		}
-		if string(_constGot) != "\"triangle\"" {
-			return fmt.Errorf("type: value must be %s, got %s", "\"triangle\"", _schemagenClipText(string(_constGot)))
+		if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"\"triangle\""})) {
+			return fmt.Errorf("type: value must be %s, got %s", "\"triangle\"", _schemagenClipText(jsonMarshalText(&_constV)))
 		}
 	}
 	return nil

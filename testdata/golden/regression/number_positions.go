@@ -631,12 +631,15 @@ func (n NumberPositions) Validate() error {
 	}
 	if n._jsonKeys["constant"] {
 		{
-			_constGot, _constErr := json.Marshal(n.Constant)
+			_constV := n.Constant
+			_constID, _constErr := (func(_p **float64, _m *jsonValidation) (jsonID, error) {
+				return jsonIDPtr[*float64, float64](*_p, _m, jsonIdentifyAt[float64])
+			})(&_constV, nil)
 			if _constErr != nil {
-				return fmt.Errorf("constant: failed to marshal for const check: %w", _constErr)
+				return fmt.Errorf("constant: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 			}
-			if string(_constGot) != "2.5" {
-				return fmt.Errorf("constant: value must be %s, got %s", "2.5", _schemagenClipText(string(_constGot)))
+			if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"2.5"})) {
+				return fmt.Errorf("constant: value must be %s, got %s", "2.5", _schemagenClipText(jsonMarshalText(&_constV)))
 			}
 		}
 	}
@@ -694,15 +697,15 @@ func (n NumberPositions) Validate() error {
 		// contains validation: count elements matching the contains sub-schema.
 		{
 			_containsCount := 0
-			for _, _cElem := range n.Counted {
+			_cArr := n.Counted
+			for _ci := range _cArr {
+				_cKind, _cText := jsonKindAt(&_cArr[_ci])
+				_ = _cText
 				_cMatch := true
-				if _cMatch {
-					_cBytes, _ := json.Marshal(_cElem)
-					if len(_cBytes) > 0 && (_cBytes[0] == '-' || _cBytes[0] >= '0' && _cBytes[0] <= '9') {
-						var _cf float64
-						if json.Unmarshal(_cBytes, &_cf) != nil || _cf < 7.5 {
-							_cMatch = false
-						}
+				if _cMatch && _cKind == jsonIDNumberKind {
+					_cf, _cOK := jsonFloatOf(_cKind, _cText)
+					if !_cOK || _cf < 7.5 {
+						_cMatch = false
 					}
 				}
 				if _cMatch {

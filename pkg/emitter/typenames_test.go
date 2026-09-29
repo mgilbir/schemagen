@@ -91,6 +91,7 @@ var typeNameEmissionSites = map[string]emissionSite{
 	"unmarshal.go.tmpl | goType $v.LeafDecode.ShadowType":                           {Kind: nameGoType},
 	"unmarshal.go.tmpl | goType $v.Type":                                            {Kind: nameGoType},
 	"unmarshal.go.tmpl | goType .LeafDecode.ShadowType":                             {Kind: nameGoType},
+	"encode.go.tmpl | goType .AdditionalProperties.ValueType":                       {Kind: nameGoType},
 	// The decode plans (generator/decodeplan.go) are Go expressions the
 	// generator composes, and every type they spell is either GoTypeName() --
 	// the same funnel goType is, qualified for a foreign type -- or the name of

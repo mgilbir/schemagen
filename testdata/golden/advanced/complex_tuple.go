@@ -344,25 +344,21 @@ func (e EventRecord) Validate() error {
 	// contains validation: count elements matching the contains sub-schema.
 	{
 		_containsCount := 0
-		for _, _cElem := range e {
+		_cArr := e
+		for _ci := range _cArr {
+			_cKind, _cText := jsonKindAt(&_cArr[_ci])
+			_ = _cText
 			_cMatch := true
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				if len(_cBytes) < 2 || _cBytes[0] != '"' {
-					_cMatch = false
-				}
+			if _cKind != jsonIDStringKind {
+				_cMatch = false
 			}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				var _cs string
-				if len(_cBytes) > 0 && _cBytes[0] == '"' && json.Unmarshal(_cBytes, &_cs) == nil {
-					if _cMatched, _cMErr := _schemagenPattern_1634cd6f9b28ccde.matches(_cs); _cMErr != nil {
-						// An element that may or may not match leaves the count
-						// unknown, so there is no verdict to give.
-						return fmt.Errorf("contains: %w", _cMErr)
-					} else if !_cMatched {
-						_cMatch = false
-					}
+			if _cMatch && _cKind == jsonIDStringKind {
+				if _cMatched, _cMErr := _schemagenPattern_1634cd6f9b28ccde.matches(_cText); _cMErr != nil {
+					// An element that may or may not match leaves the count
+					// unknown, so there is no verdict to give.
+					return fmt.Errorf("contains: %w", _cMErr)
+				} else if !_cMatched {
+					_cMatch = false
 				}
 			}
 			if _cMatch {

@@ -196,12 +196,13 @@ func (c ClickEvent) Validate() error {
 		}
 	}
 	{
-		_constGot, _constErr := json.Marshal(c.Kind)
+		_constV := c.Kind
+		_constID, _constErr := (jsonIdentifyAt[string])(&_constV, nil)
 		if _constErr != nil {
-			return fmt.Errorf("kind: failed to marshal for const check: %w", _constErr)
+			return fmt.Errorf("kind: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 		}
-		if string(_constGot) != "\"click\"" {
-			return fmt.Errorf("kind: value must be %s, got %s", "\"click\"", _schemagenClipText(string(_constGot)))
+		if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"\"click\""})) {
+			return fmt.Errorf("kind: value must be %s, got %s", "\"click\"", _schemagenClipText(jsonMarshalText(&_constV)))
 		}
 	}
 	return nil
@@ -368,12 +369,13 @@ func (k KeypressEvent) Validate() error {
 		}
 	}
 	{
-		_constGot, _constErr := json.Marshal(k.Kind)
+		_constV := k.Kind
+		_constID, _constErr := (jsonIdentifyAt[string])(&_constV, nil)
 		if _constErr != nil {
-			return fmt.Errorf("kind: failed to marshal for const check: %w", _constErr)
+			return fmt.Errorf("kind: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 		}
-		if string(_constGot) != "\"keypress\"" {
-			return fmt.Errorf("kind: value must be %s, got %s", "\"keypress\"", _schemagenClipText(string(_constGot)))
+		if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"\"keypress\""})) {
+			return fmt.Errorf("kind: value must be %s, got %s", "\"keypress\"", _schemagenClipText(jsonMarshalText(&_constV)))
 		}
 	}
 	return nil
@@ -540,12 +542,13 @@ func (s ScrollEvent) Validate() error {
 		}
 	}
 	{
-		_constGot, _constErr := json.Marshal(s.Kind)
+		_constV := s.Kind
+		_constID, _constErr := (jsonIdentifyAt[string])(&_constV, nil)
 		if _constErr != nil {
-			return fmt.Errorf("kind: failed to marshal for const check: %w", _constErr)
+			return fmt.Errorf("kind: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 		}
-		if string(_constGot) != "\"scroll\"" {
-			return fmt.Errorf("kind: value must be %s, got %s", "\"scroll\"", _schemagenClipText(string(_constGot)))
+		if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"\"scroll\""})) {
+			return fmt.Errorf("kind: value must be %s, got %s", "\"scroll\"", _schemagenClipText(jsonMarshalText(&_constV)))
 		}
 	}
 	return nil

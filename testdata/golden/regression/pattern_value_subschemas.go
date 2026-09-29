@@ -445,19 +445,21 @@ func (p *PatternValueSubschemasPattern6) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 }
 
 // Validate checks PatternValueSubschemasPattern6 against its JSON Schema constraints.
-func (p PatternValueSubschemasPattern6) Validate() error {
+func (p PatternValueSubschemasPattern6) Validate() error { return p.validateIn(nil) }
+
+// validateIn is Validate, sharing _vc with the values below it: the element
+// identities a uniqueItems check keeps. See jsonValidation.
+func (p PatternValueSubschemasPattern6) validateIn(_vc *jsonValidation) error {
 	{
-		seen := make(map[string]bool, len(p))
-		for _at, item := range p {
-			_enc, err := json.Marshal(item)
-			if err != nil {
-				return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", _at, err)
-			}
-			key := string(_enc)
-			if seen[key] {
-				return jsonValueErrorf("items are not unique (duplicate at index %d)", _at)
-			}
-			seen[key] = true
+		if _vc == nil {
+			_vc = &jsonValidation{}
+		}
+		_ids, _at, _err := jsonIDsOf(p, _vc, jsonIdentifyAt[any])
+		if _err != nil {
+			return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", _at, jsonMarshalError(&p[_at], _err))
+		}
+		if _at := jsonFirstDuplicate(p, _ids); _at >= 0 {
+			return jsonValueErrorf("items are not unique (duplicate at index %d)", _at)
 		}
 	}
 	return nil

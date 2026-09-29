@@ -135,6 +135,22 @@ func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 	}
 	return json.Marshal({{$recv}}._int64)
 }
+{{- if .HasIdentity}}
+
+// jsonIdentity is {{$recv}}'s identity as JSON: the number, or the null,
+// MarshalJSON writes. See jsonID.
+func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	{{- if .AllowsNull}}
+	if {{$recv}}._isNull {
+		return jsonIDOfKind(jsonIDNullKind), nil
+	}
+	{{- end}}
+	if {{$recv}}._isBigInt && {{$recv}}._bigInt != nil {
+		return jsonIDNumber({{$recv}}._bigInt.String()), nil
+	}
+	return jsonIDInt({{$recv}}._int64), nil
+}
+{{- end}}
 {{- end}}
 
 {{define "bigint_alias_accessors"}}

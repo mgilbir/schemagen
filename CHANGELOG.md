@@ -342,6 +342,27 @@
   writeOnly rules re-read it again at every level. Every generated type now
   writes itself into one buffer; the bytes, and the errors, are the ones
   `encoding/json` wrote.
+- `Validate` no longer writes a value out to judge it. `uniqueItems`, `const`,
+  `enum` and `contains` marshalled each value they compared and compared the
+  text, and the runtime evaluator marshalled and decoded again: an array of
+  objects with `uniqueItems` wrote out every element's subtree, the same check
+  one level down wrote out the same subtrees again, and most of `Validate`'s
+  time over a CycloneDX BOM went there. Values are now compared by an identity
+  read off the value as it is held -- by the rules its `MarshalJSON` writes it
+  by -- and the identities an array's check computes are kept for the checks
+  of the arrays below it, so each is computed once however deeply they nest.
+  Validating the 45 example BOMs the CycloneDX 1.6 specification ships takes
+  a third of the time and a quarter of the allocations it did, and writes
+  nothing out.
+- `uniqueItems`, `const` and `enum` compare values as JSON wherever they are
+  held. Where an element held a `json.Number` or raw JSON, or a `const` was an
+  object, the comparison was of the text a value marshalled to: `1.0` and `1`
+  in two otherwise equal elements were two distinct elements, and an object
+  whose fields are declared in an order other than the one the `const` writes
+  its keys in was refused. A `contains` or `unevaluatedItems` type check no
+  longer takes a `null` for an integer or a number, nor measures a `null`'s
+  length as that of `""`: `encoding/json` decodes a `null` into a `float64` or
+  a `string` by leaving it alone, without an error.
 - A draft 3 schema-valued `type` entry that leads back to its own definition no
   longer overflows the stack. `{"type":[{"$ref":"#/$defs/C"}]}` as the whole of
   `C` made `Validate` call itself on the same value until the goroutine's stack

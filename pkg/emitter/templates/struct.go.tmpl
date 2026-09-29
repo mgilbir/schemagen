@@ -48,6 +48,9 @@ var {{.AccessRulesVar}} = {{accessRules .AccessRules}}
 {{template "marshal" .}}
 {{- end}}
 {{template "struct_encode" .}}
+{{- if .HasIdentity}}
+{{template "struct_identity" .}}
+{{- end}}
 {{- if .HasDefaults}}
 {{template "set_defaults" .}}
 {{- end}}

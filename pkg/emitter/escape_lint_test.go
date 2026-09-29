@@ -135,8 +135,11 @@ var codeFields = map[string]string{
 	"UnderlyingDecoder":  "a decode plan, as Decoder",
 	"UnmarshalAsDecoder": "a decode plan, as Decoder",
 	// The encode plans generator/encodeplan.go composes, the same way.
-	"Encoder":                "an encode plan: a jsonEnc expression built from helper names and minted type names",
-	"ValueEncoder":           "an encode plan, as Encoder",
+	"Encoder":      "an encode plan: a jsonEnc expression built from helper names and minted type names",
+	"ValueEncoder": "an encode plan, as Encoder",
+	// The identity plans generator/identityplan.go composes, the same way.
+	"Identifier":             "an identity plan: a jsonIdentify expression built from helper names and minted type names",
+	"ValueIdentifier":        "an identity plan, as Identifier",
 	"EncodeAdditionalMember": "an int constant",
 	"UnmarshalAs":            "a Go type expression",
 	"MarshalAs":              "a Go type expression",

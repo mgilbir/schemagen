@@ -350,10 +350,17 @@ type jsonDoc struct {
 	// finish once the whole value is decoded. Never set under any other
 	// configuration.
 	refusal error
-	data    []byte
-	own     []byte
-	starts  []int
-	ends    []int
+	{{- if .Identity}}
+	// ids are the identities of the document's objects and arrays, by where
+	// they start, computed the first time a check comparing values asks for
+	// one: a value read lazily is a view of the document, which nothing
+	// changes, so what was computed once holds. See jsonLazy.jsonIdentity.
+	ids atomic.Pointer[jsonIDCache]
+	{{- end}}
+	data   []byte
+	own    []byte
+	starts []int
+	ends   []int
 	// trial counts the union branch trials in progress. See copyOf.
 	trial int
 	// views is set on a document whose values never reach a caller -- one
@@ -482,6 +489,20 @@ func jsonHeld(doc *jsonDoc, raw []byte) (any, error) {
 	var v any
 	err := json.Unmarshal(raw, &v)
 	return v, err
+}
+
+// jsonReadLazily is raw JSON a value holds, read one level at a time through a
+// document opened over it -- the value's own bytes, which it never changes and
+// hands out only as copies, so the document reads them where they are.
+func jsonReadLazily(raw []byte) (any, error) {
+	d, sp, err := jsonOpenDoc(raw)
+	if err != nil {
+		return nil, err
+	}
+	d.own = raw
+	d.views = 1
+	_ = d.finish(nil)
+	return jsonLazy{d, sp}, nil
 }
 
 // jsonTop is v with its first level read, where it is a jsonLazy: what a check
@@ -1940,13 +1961,18 @@ func _dynStrOK(v any, ok func(string) bool) bool {
 
 {{define "dyn_const_helper"}}
 // _dynConstOK reports whether a decoded JSON value equals a constant, which is
-// passed already encoded. Comparing encodings rather than Go values is what
-// makes this exact: both sides are produced by encoding/json, so number
-// formatting, string escaping and object key order are settled the same way for
-// each, and the comparison then differs only where the values do.
+// passed already encoded. Both are compared by identity (see jsonID), read the
+// way encoding/json decodes a value into an any, so number spelling, string
+// escaping and object key order are settled the same way for each, and the
+// comparison then differs only where the values do. It used to re-encode the
+// value to compare the text.
 func _dynConstOK(v any, want string) bool {
-	b, err := json.Marshal(v)
-	return err == nil && string(b) == want
+	got, err := jsonIDAny(v, nil)
+	if err != nil {
+		return false
+	}
+	w, err := jsonIDRawAsDecoded([]byte(want))
+	return err == nil && got == w
 }
 {{- end}}
 
@@ -2892,5 +2918,1634 @@ func _jsonCanonicalParts(s string) (neg bool, digits string, scale int64, ok boo
 		return false, "", 0, true
 	}
 	return neg, digits, scale, true
+}
+{{- end}}
+
+{{define "identity_helpers"}}
+// jsonID is the identity of a JSON value: what uniqueItems, const and enum
+// compare values by, read off the value as it is held rather than off an
+// encoding of it.
+//
+// They used to marshal the value and compare the text, at every level of the
+// document: a check on an array of objects wrote out each object's whole
+// subtree, the same check one level down wrote out the same subtrees again, and
+// a document whose arrays nest d deep was written d times over to be judged
+// once. Two values equal as JSON -- the same members in any order, the same
+// numbers however spelled, the same characters however escaped -- have one
+// identity by construction, because every rule below that could tell them
+// apart is a rule of spelling and the identity is taken after it. Two values
+// that differ share one only by a collision of two independently seeded 64-bit
+// hashes, seeded afresh in every process; the one caller that has to be certain
+// -- uniqueItems, about to refuse an array for a duplicate -- confirms it (see
+// jsonSameValue).
+type jsonID struct{ a, b uint64 }
+
+var jsonIDSeeds = [2]maphash.Seed{maphash.MakeSeed(), maphash.MakeSeed()}
+
+// The kinds an identity is tagged with, so that no value of one kind shares an
+// identity with a value of another: the string "1" and the number 1, the array
+// [] and the object {}. jsonIDLiteralKind is a number literal the canonical
+// reading refuses (see _jsonCanonicalNumber), which is equal to its own
+// spelling only.
+const (
+	jsonIDNullKind    = 'n'
+	jsonIDTrueKind    = 't'
+	jsonIDFalseKind   = 'f'
+	jsonIDStringKind  = 's'
+	jsonIDNumberKind  = 'd'
+	jsonIDLiteralKind = 'l'
+	jsonIDArrayKind   = 'a'
+	jsonIDObjectKind  = 'o'
+	jsonIDMemberKind  = 'm'
+)
+
+// jsonIDMix combines two identities and a tag into one, under both seeds.
+func jsonIDMix(x jsonID, tag byte, y jsonID) jsonID {
+	var buf [33]byte
+	jsonPutUint64(buf[0:], x.a)
+	jsonPutUint64(buf[8:], x.b)
+	jsonPutUint64(buf[16:], y.a)
+	jsonPutUint64(buf[24:], y.b)
+	buf[32] = tag
+	return jsonID{maphash.Bytes(jsonIDSeeds[0], buf[:]), maphash.Bytes(jsonIDSeeds[1], buf[:])}
+}
+
+func jsonPutUint64(b []byte, v uint64) {
+	_ = b[7]
+	b[0], b[1], b[2], b[3] = byte(v), byte(v>>8), byte(v>>16), byte(v>>24)
+	b[4], b[5], b[6], b[7] = byte(v>>32), byte(v>>40), byte(v>>48), byte(v>>56)
+}
+
+// jsonIDOfKind is the identity of null, true or false.
+func jsonIDOfKind(kind byte) jsonID {
+	return jsonIDMix(jsonID{}, kind, jsonID{})
+}
+
+func jsonIDBool(b bool) jsonID {
+	if b {
+		return jsonIDOfKind(jsonIDTrueKind)
+	}
+	return jsonIDOfKind(jsonIDFalseKind)
+}
+
+// jsonIDText and jsonIDBytes are the identity of a text of the given kind: a
+// string's characters, a number's canonical digits. The two agree on equal
+// contents, as maphash's String and Bytes do.
+func jsonIDText(kind byte, s string) jsonID {
+	return jsonIDMix(jsonID{maphash.String(jsonIDSeeds[0], s), maphash.String(jsonIDSeeds[1], s)}, kind, jsonID{uint64(len(s)), 0})
+}
+
+func jsonIDBytes(kind byte, b []byte) jsonID {
+	return jsonIDMix(jsonID{maphash.Bytes(jsonIDSeeds[0], b), maphash.Bytes(jsonIDSeeds[1], b)}, kind, jsonID{uint64(len(b)), 0})
+}
+
+// jsonIDString is the identity of a Go string as encoding/json writes it, which
+// writes every byte that is not UTF-8 as U+FFFD, each on its own: two strings
+// that differ only there are one JSON string.
+func jsonIDString(s string) jsonID {
+	return jsonIDText(jsonIDStringKind, jsonValidString(s))
+}
+
+// jsonIDNumber is the identity of a number literal: its canonical reading, so
+// that 1, 1.0 and 1e0 are one number. It reads the literal as
+// _jsonCanonicalParts does -- the two are held together by the tests -- without
+// building its digit string. A literal that reading refuses is equal to its own
+// spelling only, as it is there.
+func jsonIDNumber[S ~string | ~[]byte](s S) jsonID {
+	neg, lo, hi, scale, ok := jsonNumberDigits(s)
+	if !ok {
+		return jsonIDBytes(jsonIDLiteralKind, []byte(s))
+	}
+	if lo == hi {
+		return jsonIDText(jsonIDNumberKind, "0")
+	}
+	var small [64]byte
+	digits := small[:0]
+	if hi-lo > len(small) {
+		digits = make([]byte, 0, hi-lo)
+	}
+	digits = jsonAppendDigits(digits, s, lo, hi)
+	sign := uint64(0)
+	if neg {
+		sign = 1
+	}
+	return jsonIDMix(jsonIDBytes(jsonIDNumberKind, digits), jsonIDNumberKind, jsonID{uint64(scale), sign})
+}
+
+// jsonNumberDigits reads a number literal into its sign, its significant digits
+// and the power of ten the last of them stands for. The digits are positions lo
+// to hi of the literal's digits with its decimal point taken out; lo == hi is
+// zero, whatever its sign.
+func jsonNumberDigits[S ~string | ~[]byte](s S) (neg bool, lo, hi int, scale int64, ok bool) {
+	if len(s) == 0 {
+		return false, 0, 0, 0, true
+	}
+	i := 0
+	if s[i] == '-' || s[i] == '+' {
+		neg = s[i] == '-'
+		i++
+	}
+	intStart := i
+	for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+		i++
+	}
+	intEnd := i
+	fracStart, fracEnd := i, i
+	if i < len(s) && s[i] == '.' {
+		i++
+		fracStart = i
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			i++
+		}
+		fracEnd = i
+	}
+	if intStart == intEnd && fracStart == fracEnd {
+		return false, 0, 0, 0, false
+	}
+	exp := int64(0)
+	if i < len(s) && (s[i] == 'e' || s[i] == 'E') {
+		i++
+		expStart := i
+		if i < len(s) && (s[i] == '+' || s[i] == '-') {
+			i++
+		}
+		digitsStart := i
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			i++
+		}
+		if digitsStart == i {
+			return false, 0, 0, 0, false
+		}
+		e, err := strconv.ParseInt(string(s[expStart:i]), 10, 64)
+		if err != nil || e > _jsonCanonicalNumberLimit || e < -_jsonCanonicalNumberLimit {
+			return false, 0, 0, 0, false
+		}
+		exp = e
+	}
+	if i != len(s) {
+		return false, 0, 0, 0, false
+	}
+	nInt := intEnd - intStart
+	digitAt := func(k int) byte {
+		if k < nInt {
+			return s[intStart+k]
+		}
+		return s[fracStart+k-nInt]
+	}
+	lo, hi = 0, nInt+(fracEnd-fracStart)
+	for lo < hi && digitAt(lo) == '0' {
+		lo++
+	}
+	scale = exp - int64(fracEnd-fracStart)
+	for hi > lo && digitAt(hi-1) == '0' {
+		hi--
+		scale++
+	}
+	if lo == hi {
+		return false, 0, 0, 0, true
+	}
+	return neg, lo, hi, scale, true
+}
+
+// jsonAppendDigits appends the digits lo to hi of a literal jsonNumberDigits
+// read.
+func jsonAppendDigits[S ~string | ~[]byte](b []byte, s S, lo, hi int) []byte {
+	i, k := 0, 0
+	if len(s) > 0 && (s[0] == '-' || s[0] == '+') {
+		i = 1
+	}
+	for ; i < len(s) && k < hi; i++ {
+		c := s[i]
+		if c == '.' {
+			continue
+		}
+		if c < '0' || c > '9' {
+			break
+		}
+		if k >= lo {
+			b = append(b, c)
+		}
+		k++
+	}
+	return b
+}
+
+// jsonIDInt, jsonIDUint and jsonIDFloat are the identity of a Go number as
+// encoding/json writes it. A float is written in the shortest spelling that
+// reads back as the same float, at the float's own size, and that is the
+// number the document holds; encoding/json refuses NaN and the infinities.
+func jsonIDInt(v int64) jsonID {
+	var buf [24]byte
+	return jsonIDNumber(strconv.AppendInt(buf[:0], v, 10))
+}
+
+func jsonIDUint(v uint64) jsonID {
+	var buf [24]byte
+	return jsonIDNumber(strconv.AppendUint(buf[:0], v, 10))
+}
+
+func jsonIDFloat(f float64, bits int) (jsonID, error) {
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return jsonID{}, &json.UnsupportedValueError{Str: strconv.FormatFloat(f, 'g', -1, bits)}
+	}
+	var buf [32]byte
+	return jsonIDNumber(strconv.AppendFloat(buf[:0], f, 'e', -1, bits)), nil
+}
+
+// jsonIDNumberLiteral is the identity of a json.Number, which encoding/json
+// writes as the literal it holds -- an empty one as 0 -- and refuses when it is
+// not a number.
+func jsonIDNumberLiteral(n json.Number) (jsonID, error) {
+	if n == "" {
+		return jsonIDNumber("0"), nil
+	}
+	if !jsonIsNumberLiteral(string(n)) {
+		return jsonID{}, errors.New("json: invalid number literal " + strconv.Quote(string(n)))
+	}
+	return jsonIDNumber(string(n)), nil
+}
+
+// jsonIsNumberLiteral reports whether s is a JSON number.
+func jsonIsNumberLiteral[S ~string | ~[]byte](s S) bool {
+	i := 0
+	if i < len(s) && s[i] == '-' {
+		i++
+	}
+	switch {
+	case i < len(s) && s[i] == '0':
+		i++
+	case i < len(s) && s[i] >= '1' && s[i] <= '9':
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			i++
+		}
+	default:
+		return false
+	}
+	if i < len(s) && s[i] == '.' {
+		i++
+		if i >= len(s) || s[i] < '0' || s[i] > '9' {
+			return false
+		}
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			i++
+		}
+	}
+	if i < len(s) && (s[i] == 'e' || s[i] == 'E') {
+		i++
+		if i < len(s) && (s[i] == '+' || s[i] == '-') {
+			i++
+		}
+		if i >= len(s) || s[i] < '0' || s[i] > '9' {
+			return false
+		}
+		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
+			i++
+		}
+	}
+	return i == len(s)
+}
+
+// jsonIDTime is the identity of a time.Time as its MarshalJSON writes it, which
+// refuses a year RFC 3339 cannot write and an offset of a day or more.
+func jsonIDTime(t time.Time) (jsonID, error) {
+	if y := t.Year(); y < 0 || y > 9999 {
+		return jsonID{}, errors.New("Time.MarshalJSON: year outside of range [0,9999]")
+	}
+	if _, off := t.Zone(); off <= -24*3600 || off >= 24*3600 {
+		return jsonID{}, errors.New("Time.MarshalJSON: timezone hour outside of range [0,23]")
+	}
+	var buf [64]byte
+	return jsonIDBytes(jsonIDStringKind, t.AppendFormat(buf[:0], time.RFC3339Nano)), nil
+}
+
+// jsonIDArray folds the identities of an array's elements, in order.
+type jsonIDArray struct {
+	acc jsonID
+	n   uint64
+}
+
+func (a *jsonIDArray) add(id jsonID) {
+	a.acc = jsonIDMix(a.acc, jsonIDArrayKind, id)
+	a.n++
+}
+
+func (a *jsonIDArray) id() jsonID {
+	return jsonIDMix(a.acc, jsonIDArrayKind, jsonID{a.n, 1})
+}
+
+// jsonIDObject sums the identities of an object's members: a sum, because a
+// member's place in the object is no part of the value.
+type jsonIDObject struct {
+	sum jsonID
+	n   uint64
+}
+
+func jsonIDMemberOf(key, val jsonID) jsonID {
+	return jsonIDMix(key, jsonIDMemberKind, val)
+}
+
+func (o *jsonIDObject) addID(key, val jsonID) {
+	m := jsonIDMemberOf(key, val)
+	o.sum.a += m.a
+	o.sum.b += m.b
+	o.n++
+}
+
+func (o *jsonIDObject) add(key string, val jsonID) { o.addID(jsonIDString(key), val) }
+
+func (o *jsonIDObject) id() jsonID {
+	return jsonIDMix(o.sum, jsonIDObjectKind, jsonID{o.n, 2})
+}
+
+// jsonIDObj is jsonObj for an identity: the object a struct whose MarshalJSON
+// gathers its members writes, read by the same rules -- a member set twice
+// holds the last value set, and one taken out is gone. A member holding this
+// package's types, and raw JSON a value holds, are read only once the object is
+// complete, as jsonObj writes them only then: a member that is replaced or taken
+// out before is never read, as it was never written.
+type jsonIDObj struct {
+	at    map[string]int
+	ms    []jsonIDObjMember
+	small [8]jsonIDObjMember
+}
+
+type jsonIDObjMember struct {
+	key  string
+	raw  []byte
+	id   jsonID
+	idx  int
+	kind byte
+	gone bool
+}
+
+// The three things a gathered member can be: its identity, raw JSON, or the
+// index the value's jsonIdentityMember reads it under.
+const (
+	jsonIDObjComputed = 'i'
+	jsonIDObjRaw      = 'r'
+	jsonIDObjDeferred = 'd'
+)
+
+// jsonIDMemberFunc reads a deferred member: the value's jsonIdentityMember,
+// told the member's index and key -- the key for an additionalProperties value,
+// which all share one index.
+type jsonIDMemberFunc func(idx int, key string, m *jsonValidation) (jsonID, error)
+
+func (o *jsonIDObj) find(key string) int {
+	if o.at != nil {
+		if i, ok := o.at[key]; ok {
+			return i
+		}
+		return -1
+	}
+	for i := range o.ms {
+		if o.ms[i].key == key {
+			return i
+		}
+	}
+	return -1
+}
+
+func (o *jsonIDObj) set(m jsonIDObjMember) {
+	if i := o.find(m.key); i >= 0 {
+		o.ms[i] = m
+		return
+	}
+	if o.ms == nil {
+		o.ms = o.small[:0]
+	}
+	o.ms = append(o.ms, m)
+	if o.at == nil && len(o.ms) > 16 {
+		o.at = make(map[string]int, 2*len(o.ms))
+		for i := range o.ms {
+			o.at[o.ms[i].key] = i
+		}
+	} else if o.at != nil {
+		o.at[m.key] = len(o.ms) - 1
+	}
+}
+
+func (o *jsonIDObj) computed(key string, id jsonID) {
+	o.set(jsonIDObjMember{key: key, id: id, kind: jsonIDObjComputed})
+}
+
+func (o *jsonIDObj) held(key string, raw []byte) {
+	o.set(jsonIDObjMember{key: key, raw: raw, kind: jsonIDObjRaw})
+}
+
+func (o *jsonIDObj) deferred(key string, idx int) {
+	o.set(jsonIDObjMember{key: key, idx: idx, kind: jsonIDObjDeferred})
+}
+
+func (o *jsonIDObj) del(key string) {
+	if i := o.find(key); i >= 0 {
+		o.ms[i].gone = true
+	}
+}
+
+// id is the object's identity, its deferred and raw members read now.
+func (o *jsonIDObj) id(member jsonIDMemberFunc, m *jsonValidation) (jsonID, error) {
+	var obj jsonIDObject
+	for i := range o.ms {
+		mb := &o.ms[i]
+		if mb.gone {
+			continue
+		}
+		id := mb.id
+		var err error
+		switch mb.kind {
+		case jsonIDObjDeferred:
+			id, err = member(mb.idx, mb.key, m)
+		case jsonIDObjRaw:
+			id, err = jsonIDRawMessage(mb.raw)
+		}
+		if err != nil {
+			return jsonID{}, err
+		}
+		obj.add(mb.key, id)
+	}
+	return obj.id(), nil
+}
+
+// jsonIdentifier is a type of this package that knows its own identity: a
+// struct, and a type with a MarshalJSON, that a check comparing values can
+// reach. Every other value is read by jsonIdentifyAt from its Go kind, which is
+// all encoding/json writes it by.
+type jsonIdentifier interface {
+	jsonIdentity(m *jsonValidation) (jsonID, error)
+}
+
+// jsonValidation is what one call of Validate shares with the checks and the
+// values below it: the identities of the elements of every array whose
+// uniqueItems was checked, or is about to be, keyed by the array.
+//
+// The check of an array reads its elements' identities, which the check of the
+// array holding it computed on its way through -- so each element's identity
+// is computed once however deeply the arrays nest, where each level computing
+// its own read the whole subtree again, and a check at every level of a
+// recursive document was quadratic in its depth. What the table relies on is
+// that a value does not change during one call of Validate.
+type jsonValidation struct {
+	ids map[jsonArrayKey][]jsonID
+}
+
+// jsonArrayKey is an array by where its elements are: the address of its first,
+// as a typed pointer so that arrays of two types never share a key, and its
+// length.
+type jsonArrayKey struct {
+	first any
+	n     int
+}
+
+// jsonIdentify is the identity function of a position: jsonIdentifyAt for a
+// value read by its Go kind, a type's own jsonIdentity, and the container
+// helpers below over one of them.
+type jsonIdentify[T any] func(*T, *jsonValidation) (jsonID, error)
+
+// jsonIDPtr, jsonIDSlice and jsonIDMap are the identity of a pointer, a slice
+// and a map, as encoding/json writes them: null for a nil one, and an object for
+// a map. Their type arguments are written out at every call, for the reason the
+// decode helpers' are.
+func jsonIDPtr[P ~*E, E any](p P, m *jsonValidation, f jsonIdentify[E]) (jsonID, error) {
+	if p == nil {
+		return jsonIDOfKind(jsonIDNullKind), nil
+	}
+	return f(p, m)
+}
+
+func jsonIDSlice[S ~[]E, E any](s S, m *jsonValidation, f jsonIdentify[E]) (jsonID, error) {
+	if s == nil {
+		return jsonIDOfKind(jsonIDNullKind), nil
+	}
+	var a jsonIDArray
+	for i := range s {
+		id, err := f(&s[i], m)
+		if err != nil {
+			return jsonID{}, err
+		}
+		a.add(id)
+	}
+	return a.id(), nil
+}
+
+// jsonIDSliceKept is jsonIDSlice for an array whose uniqueItems check asks for
+// its elements' identities: they are kept in m for it, and read back from m
+// where a check above already computed them.
+func jsonIDSliceKept[S ~[]E, E any](s S, m *jsonValidation, f jsonIdentify[E]) (jsonID, error) {
+	if s == nil {
+		return jsonIDOfKind(jsonIDNullKind), nil
+	}
+	ids, _, err := jsonIDsOf(s, m, f)
+	if err != nil {
+		return jsonID{}, err
+	}
+	var a jsonIDArray
+	for _, id := range ids {
+		a.add(id)
+	}
+	return a.id(), nil
+}
+
+func jsonIDMap[M ~map[string]V, V any](mp M, m *jsonValidation, f jsonIdentify[V]) (jsonID, error) {
+	if mp == nil {
+		return jsonIDOfKind(jsonIDNullKind), nil
+	}
+	var o jsonIDObject
+	var v V
+	{{- /* maporder: sums the members, which no order of the loop changes. */}}
+	for k, x := range mp {
+		v = x
+		id, err := f(&v, m)
+		if err != nil {
+			return jsonID{}, err
+		}
+		o.add(k, id)
+	}
+	return o.id(), nil
+}
+
+// jsonIDsOf is the identity of every element of s, or the index of the first
+// that has none and why. With m, what is computed is kept there, and what a
+// check above computed is read back.
+func jsonIDsOf[S ~[]E, E any](s S, m *jsonValidation, f jsonIdentify[E]) ([]jsonID, int, error) {
+	if len(s) == 0 {
+		return nil, -1, nil
+	}
+	var key jsonArrayKey
+	if m != nil {
+		key = jsonArrayKey{first: &s[0], n: len(s)}
+		if ids, ok := m.ids[key]; ok {
+			return ids, -1, nil
+		}
+	}
+	ids := make([]jsonID, len(s))
+	for i := range s {
+		id, err := f(&s[i], m)
+		if err != nil {
+			return nil, i, err
+		}
+		ids[i] = id
+	}
+	if m != nil {
+		if m.ids == nil {
+			m.ids = make(map[jsonArrayKey][]jsonID)
+		}
+		m.ids[key] = ids
+	}
+	return ids, -1, nil
+}
+
+// jsonFirstDuplicate is the index of the first element of s that is equal to an
+// earlier one, or -1, given the elements' identities. Two elements sharing an
+// identity are confirmed equal by jsonSameValue before they are called
+// duplicates, and a collision -- two different values with one identity -- is
+// compared against every earlier element that has it, which is all it costs.
+func jsonFirstDuplicate[S ~[]E, E any](s S, ids []jsonID) int {
+	if len(ids) < 2 {
+		return -1
+	}
+	if len(ids) <= 8 {
+		for j := 1; j < len(ids); j++ {
+			for i := 0; i < j; i++ {
+				if ids[i] == ids[j] && jsonSameValue(&s[i], &s[j]) {
+					return j
+				}
+			}
+		}
+		return -1
+	}
+	first := make(map[jsonID]int, len(ids))
+	for j, id := range ids {
+		i, ok := first[id]
+		if !ok {
+			first[id] = j
+			continue
+		}
+		for k := i; k < j; k++ {
+			if ids[k] == id && jsonSameValue(&s[k], &s[j]) {
+				return j
+			}
+		}
+	}
+	return -1
+}
+
+// jsonSameValue reports whether two values are equal as JSON, for certain: the
+// one question an identity answers only almost surely, asked only of two values
+// that share one -- which is a duplicate, and an array about to be refused.
+func jsonSameValue[T any](x, y *T) bool {
+	bx, err := json.Marshal(x)
+	if err != nil {
+		return false
+	}
+	by, err := json.Marshal(y)
+	if err != nil {
+		return false
+	}
+	cx, err := _jsonCanonical(bx)
+	if err != nil {
+		return false
+	}
+	cy, err := _jsonCanonical(by)
+	return err == nil && cx == cy
+}
+
+// jsonMarshalError is what a check reports for a value whose identity could
+// not be read -- one encoding/json cannot write either: encoding/json's own
+// words for it, which are the words the check always reported, and err where
+// encoding/json has none.
+func jsonMarshalError[T any](p *T, err error) error {
+	if _, mErr := json.Marshal(*p); mErr != nil {
+		return mErr
+	}
+	return err
+}
+
+// jsonMarshalText is the value at p as encoding/json writes it, for the message
+// of a check that has already refused it.
+func jsonMarshalText[T any](p *T) string {
+	b, _ := json.Marshal(*p)
+	return string(b)
+}
+
+// jsonIDsOfTexts is the identity of each JSON text a schema wrote -- the
+// members of an enum -- as jsonIDRaw reads them. A literal that is not JSON is
+// given one only its own spelling shares, which no value has.
+func jsonIDsOfTexts(texts []string) []jsonID {
+	ids := make([]jsonID, len(texts))
+	for i, t := range texts {
+		id, err := jsonIDRaw([]byte(t))
+		if err != nil {
+			id = jsonIDText(jsonIDLiteralKind, t)
+		}
+		ids[i] = id
+	}
+	return ids
+}
+
+// jsonIDIn reports whether id is one of ids.
+func jsonIDIn(id jsonID, ids []jsonID) bool {
+	for _, x := range ids {
+		if x == id {
+			return true
+		}
+	}
+	return false
+}
+
+// jsonKindAt reads the value at p the way a keyword about one kind of JSON
+// value reads it: its kind -- one of the jsonID*Kind tags, a boolean either of
+// its two -- and, for a string, its characters, and for a number, its literal.
+// A value encoding/json cannot write has kind 0, which no keyword's kind is.
+//
+// It is what the checks that asked this used to learn by marshalling the value
+// and looking at the first byte of the text.
+func jsonKindAt[T any](p *T) (byte, string) {
+	switch v := any(p).(type) {
+	case *any:
+		return jsonKindAny(*v)
+	case *string:
+		return jsonIDStringKind, jsonValidString(*v)
+	case *float64:
+		if math.IsNaN(*v) || math.IsInf(*v, 0) {
+			return 0, ""
+		}
+		return jsonIDNumberKind, strconv.FormatFloat(*v, 'g', -1, 64)
+	case *int64:
+		return jsonIDNumberKind, strconv.FormatInt(*v, 10)
+	case *bool:
+		if *v {
+			return jsonIDTrueKind, ""
+		}
+		return jsonIDFalseKind, ""
+	case *json.Number:
+		return jsonKindNumber(*v)
+	case *json.RawMessage:
+		if *v == nil {
+			return jsonIDNullKind, ""
+		}
+		return jsonKindRaw(*v, false)
+	}
+	return jsonKindAny(any(*p))
+}
+
+// jsonKindAny is jsonKindAt for a value held as an any.
+func jsonKindAny(v any) (byte, string) {
+	switch x := v.(type) {
+	case nil:
+		return jsonIDNullKind, ""
+	case string:
+		return jsonIDStringKind, jsonValidString(x)
+	case float64:
+		if math.IsNaN(x) || math.IsInf(x, 0) {
+			return 0, ""
+		}
+		return jsonIDNumberKind, strconv.FormatFloat(x, 'g', -1, 64)
+	case bool:
+		if x {
+			return jsonIDTrueKind, ""
+		}
+		return jsonIDFalseKind, ""
+	case json.Number:
+		return jsonKindNumber(x)
+	case []any:
+		if x == nil {
+			return jsonIDNullKind, ""
+		}
+		return jsonIDArrayKind, ""
+	case map[string]any:
+		if x == nil {
+			return jsonIDNullKind, ""
+		}
+		return jsonIDObjectKind, ""
+	case json.RawMessage:
+		if x == nil {
+			return jsonIDNullKind, ""
+		}
+		return jsonKindRaw(x, false)
+	{{- if .Decode}}
+	case jsonLazy:
+		return jsonKindRaw(x.d.raw(x.sp), true)
+	{{- end}}
+	}
+	rv := reflect.ValueOf(v)
+	t := rv.Type()
+	if t.Implements(jsonMarshalerType) || reflect.PointerTo(t).Implements(jsonMarshalerType) ||
+		t.Implements(jsonTextMarshalerType) || reflect.PointerTo(t).Implements(jsonTextMarshalerType) {
+		// A type that writes itself says what kind it writes only by writing it.
+		b, err := json.Marshal(v)
+		if err != nil {
+			return 0, ""
+		}
+		return jsonKindRaw(b, false)
+	}
+	switch t.Kind() {
+	case reflect.Pointer, reflect.Interface:
+		if rv.IsNil() {
+			return jsonIDNullKind, ""
+		}
+		return jsonKindAny(rv.Elem().Interface())
+	case reflect.String:
+		return jsonIDStringKind, jsonValidString(rv.String())
+	case reflect.Bool:
+		if rv.Bool() {
+			return jsonIDTrueKind, ""
+		}
+		return jsonIDFalseKind, ""
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return jsonIDNumberKind, strconv.FormatInt(rv.Int(), 10)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return jsonIDNumberKind, strconv.FormatUint(rv.Uint(), 10)
+	case reflect.Float32, reflect.Float64:
+		f := rv.Float()
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return 0, ""
+		}
+		bits := 64
+		if t.Kind() == reflect.Float32 {
+			bits = 32
+		}
+		return jsonIDNumberKind, strconv.FormatFloat(f, 'g', -1, bits)
+	case reflect.Slice:
+		if rv.IsNil() {
+			return jsonIDNullKind, ""
+		}
+		if t.Elem().Kind() == reflect.Uint8 {
+			return jsonIDStringKind, base64.StdEncoding.EncodeToString(rv.Bytes())
+		}
+		return jsonIDArrayKind, ""
+	case reflect.Array:
+		return jsonIDArrayKind, ""
+	case reflect.Map:
+		if rv.IsNil() {
+			return jsonIDNullKind, ""
+		}
+		return jsonIDObjectKind, ""
+	case reflect.Struct:
+		return jsonIDObjectKind, ""
+	}
+	return 0, ""
+}
+
+// jsonFloatOf is a number jsonKindAt read, as the float64 encoding/json decodes
+// it into; false for any other kind, and for a number no float64 holds.
+func jsonFloatOf(kind byte, text string) (float64, bool) {
+	if kind != jsonIDNumberKind {
+		return 0, false
+	}
+	f, err := strconv.ParseFloat(text, 64)
+	return f, err == nil
+}
+
+// jsonKindNumber is jsonKindAt for a json.Number, which encoding/json writes as
+// its literal -- an empty one as 0 -- and refuses when it is not a number.
+func jsonKindNumber(n json.Number) (byte, string) {
+	if n == "" {
+		return jsonIDNumberKind, "0"
+	}
+	if !jsonIsNumberLiteral(string(n)) {
+		return 0, ""
+	}
+	return jsonIDNumberKind, string(n)
+}
+
+// jsonKindRaw is jsonKindAt for a JSON text: a string read the way
+// encoding/json unescapes one, and a number's literal -- as a float64 would read
+// it back where floats says the value is one as decoded into an any.
+func jsonKindRaw(b []byte, floats bool) (byte, string) {
+	r := jsonIDReader{data: b}
+	r.skip()
+	if r.pos >= len(b) {
+		return 0, ""
+	}
+	switch c := b[r.pos]; {
+	case c == '"':
+		s, err := r.str(nil)
+		if err != nil {
+			return 0, ""
+		}
+		return jsonIDStringKind, string(s)
+	case c == 'n':
+		return jsonIDNullKind, ""
+	case c == 't':
+		return jsonIDTrueKind, ""
+	case c == 'f':
+		return jsonIDFalseKind, ""
+	case c == '[':
+		return jsonIDArrayKind, ""
+	case c == '{':
+		return jsonIDObjectKind, ""
+	}
+	end := len(b)
+	for end > r.pos {
+		if c := b[end-1]; c != ' ' && c != '\t' && c != '\n' && c != '\r' {
+			break
+		}
+		end--
+	}
+	text := string(b[r.pos:end])
+	if !jsonIsNumberLiteral(text) {
+		return 0, ""
+	}
+	if floats {
+		f, err := strconv.ParseFloat(text, 64)
+		if err != nil {
+			return 0, ""
+		}
+		return jsonIDNumberKind, strconv.FormatFloat(f, 'g', -1, 64)
+	}
+	return jsonIDNumberKind, text
+}
+
+// jsonValidString is s as encoding/json writes it and reads it back: every
+// byte that is not UTF-8 read as U+FFFD.
+func jsonValidString(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+	var b []byte
+	for i := 0; i < len(s); {
+		r, n := utf8.DecodeRuneInString(s[i:])
+		if r == utf8.RuneError && n == 1 {
+			b = utf8.AppendRune(b, utf8.RuneError)
+		} else {
+			b = append(b, s[i:i+n]...)
+		}
+		i += n
+	}
+	return string(b)
+}
+
+// jsonIdentifyAt is the identity of the value at p, for a value this package
+// does not write itself: read from its Go kind, as encoding/json writes it.
+// The commonest types are read directly; anything else goes through
+// jsonIDReflect.
+func jsonIdentifyAt[T any](p *T, m *jsonValidation) (jsonID, error) {
+	switch v := any(p).(type) {
+	case jsonIdentifier:
+		return v.jsonIdentity(m)
+	case *string:
+		return jsonIDString(*v), nil
+	case **string:
+		if *v == nil {
+			return jsonIDOfKind(jsonIDNullKind), nil
+		}
+		return jsonIDString(**v), nil
+	case *bool:
+		return jsonIDBool(*v), nil
+	case *int64:
+		return jsonIDInt(*v), nil
+	case **int64:
+		if *v == nil {
+			return jsonIDOfKind(jsonIDNullKind), nil
+		}
+		return jsonIDInt(**v), nil
+	case *int:
+		return jsonIDInt(int64(*v)), nil
+	case *float64:
+		return jsonIDFloat(*v, 64)
+	case **float64:
+		if *v == nil {
+			return jsonIDOfKind(jsonIDNullKind), nil
+		}
+		return jsonIDFloat(**v, 64)
+	case *json.Number:
+		return jsonIDNumberLiteral(*v)
+	case *json.RawMessage:
+		return jsonIDRawMessage(*v)
+	case *any:
+		return jsonIDAny(*v, m)
+	case *[]any:
+		return jsonIDAnySlice(*v, m)
+	case *map[string]any:
+		return jsonIDAnyMap(*v, m)
+	case *[]string:
+		if *v == nil {
+			return jsonIDOfKind(jsonIDNullKind), nil
+		}
+		var a jsonIDArray
+		for _, s := range *v {
+			a.add(jsonIDString(s))
+		}
+		return a.id(), nil
+	case *map[string]string:
+		if *v == nil {
+			return jsonIDOfKind(jsonIDNullKind), nil
+		}
+		var o jsonIDObject
+		{{- /* maporder: sums the members, which no order of the loop changes. */}}
+		for k, s := range *v {
+			o.add(k, jsonIDString(s))
+		}
+		return o.id(), nil
+	case *time.Time:
+		return jsonIDTime(*v)
+	case **time.Time:
+		if *v == nil {
+			return jsonIDOfKind(jsonIDNullKind), nil
+		}
+		return jsonIDTime(**v)
+	}
+	return jsonIDReflect(reflect.ValueOf(p).Elem(), m)
+}
+
+// jsonIDAny is the identity of a value held as an any: what encoding/json
+// decodes into one, or whatever a caller put there.
+func jsonIDAny(v any, m *jsonValidation) (jsonID, error) {
+	switch x := v.(type) {
+	case nil:
+		return jsonIDOfKind(jsonIDNullKind), nil
+	case string:
+		return jsonIDString(x), nil
+	case bool:
+		return jsonIDBool(x), nil
+	case float64:
+		return jsonIDFloat(x, 64)
+	case json.Number:
+		return jsonIDNumberLiteral(x)
+	case []any:
+		return jsonIDAnySlice(x, m)
+	case map[string]any:
+		return jsonIDAnyMap(x, m)
+	case json.RawMessage:
+		return jsonIDRawMessage(x)
+	case jsonIdentifier:
+		return x.jsonIdentity(m)
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Pointer {
+		// Copied once, so that a method on its pointer is found where
+		// encoding/json, which is handed the value addressable, finds it.
+		p := reflect.New(rv.Type())
+		p.Elem().Set(rv)
+		rv = p.Elem()
+	}
+	return jsonIDReflect(rv, m)
+}
+
+func jsonIDAnySlice(s []any, m *jsonValidation) (jsonID, error) {
+	if s == nil {
+		return jsonIDOfKind(jsonIDNullKind), nil
+	}
+	var a jsonIDArray
+	for i := range s {
+		id, err := jsonIDAny(s[i], m)
+		if err != nil {
+			return jsonID{}, err
+		}
+		a.add(id)
+	}
+	return a.id(), nil
+}
+
+func jsonIDAnyMap(obj map[string]any, m *jsonValidation) (jsonID, error) {
+	if obj == nil {
+		return jsonIDOfKind(jsonIDNullKind), nil
+	}
+	var o jsonIDObject
+	{{- /* maporder: sums the members, which no order of the loop changes. */}}
+	for k, v := range obj {
+		id, err := jsonIDAny(v, m)
+		if err != nil {
+			return jsonID{}, err
+		}
+		o.add(k, id)
+	}
+	return o.id(), nil
+}
+
+// jsonTextMarshaler is encoding.TextMarshaler, spelled here so that the
+// package need not import encoding for one interface.
+type jsonTextMarshaler interface {
+	MarshalText() ([]byte, error)
+}
+
+var (
+	jsonIdentifierType    = reflect.TypeFor[jsonIdentifier]()
+	jsonMarshalerType     = reflect.TypeFor[json.Marshaler]()
+	jsonTextMarshalerType = reflect.TypeFor[jsonTextMarshaler]()
+	jsonNumberType        = reflect.TypeFor[json.Number]()
+	jsonRawMessageType    = reflect.TypeFor[json.RawMessage]()
+	jsonTimeType          = reflect.TypeFor[time.Time]()
+)
+
+// jsonIDReflect is the identity of the value rv holds, by the rules
+// encoding/json writes a value of its type by: those of the type's own
+// MarshalJSON or MarshalText where it has one, and of its kind where it does
+// not.
+func jsonIDReflect(rv reflect.Value, m *jsonValidation) (jsonID, error) {
+	t := rv.Type()
+	switch t {
+	case jsonNumberType:
+		return jsonIDNumberLiteral(json.Number(rv.String()))
+	case jsonRawMessageType:
+		return jsonIDRawMessage(rv.Bytes())
+	case jsonTimeType:
+		return jsonIDTime(rv.Interface().(time.Time))
+	}
+	if rv.CanAddr() && reflect.PointerTo(t).Implements(jsonIdentifierType) {
+		return rv.Addr().Interface().(jsonIdentifier).jsonIdentity(m)
+	}
+	if t.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			return jsonIDOfKind(jsonIDNullKind), nil
+		}
+		return jsonIDReflect(rv.Elem(), m)
+	}
+	addressable := rv.CanAddr()
+	if t.Implements(jsonMarshalerType) || addressable && reflect.PointerTo(t).Implements(jsonMarshalerType) {
+		return jsonIDMarshaled(rv)
+	}
+	if t.Implements(jsonTextMarshalerType) || addressable && reflect.PointerTo(t).Implements(jsonTextMarshalerType) {
+		var tm jsonTextMarshaler
+		if t.Implements(jsonTextMarshalerType) {
+			tm = rv.Interface().(jsonTextMarshaler)
+		} else {
+			tm = rv.Addr().Interface().(jsonTextMarshaler)
+		}
+		text, err := tm.MarshalText()
+		if err != nil {
+			return jsonID{}, &json.MarshalerError{Type: t, Err: err}
+		}
+		return jsonIDString(string(text)), nil
+	}
+	switch t.Kind() {
+	case reflect.Interface:
+		if rv.IsNil() {
+			return jsonIDOfKind(jsonIDNullKind), nil
+		}
+		return jsonIDAny(rv.Elem().Interface(), m)
+	case reflect.Bool:
+		return jsonIDBool(rv.Bool()), nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return jsonIDInt(rv.Int()), nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return jsonIDUint(rv.Uint()), nil
+	case reflect.Float32:
+		return jsonIDFloat(rv.Float(), 32)
+	case reflect.Float64:
+		return jsonIDFloat(rv.Float(), 64)
+	case reflect.String:
+		return jsonIDString(rv.String()), nil
+	case reflect.Slice:
+		if rv.IsNil() {
+			return jsonIDOfKind(jsonIDNullKind), nil
+		}
+		if e := t.Elem(); e.Kind() == reflect.Uint8 && !reflect.PointerTo(e).Implements(jsonMarshalerType) && !reflect.PointerTo(e).Implements(jsonTextMarshalerType) {
+			// encoding/json writes a []byte as the base64 of its bytes.
+			return jsonIDString(base64.StdEncoding.EncodeToString(rv.Bytes())), nil
+		}
+		fallthrough
+	case reflect.Array:
+		var a jsonIDArray
+		for i := 0; i < rv.Len(); i++ {
+			id, err := jsonIDReflect(rv.Index(i), m)
+			if err != nil {
+				return jsonID{}, err
+			}
+			a.add(id)
+		}
+		return a.id(), nil
+	case reflect.Map:
+		if rv.IsNil() {
+			return jsonIDOfKind(jsonIDNullKind), nil
+		}
+	}
+	// A map whose type the generator did not see -- a map it did see is read by
+	// jsonIDMap -- a struct this package did not declare, or a kind
+	// encoding/json refuses: what encoding/json writes for it is the only
+	// account of its value there is.
+	return jsonIDMarshaled(rv)
+}
+
+// jsonIDMarshaled is the identity of what encoding/json writes for a value no
+// rule here reads: another package's type with a MarshalJSON of its own, or a
+// struct this package did not declare.
+func jsonIDMarshaled(rv reflect.Value) (jsonID, error) {
+	var v any
+	if rv.CanAddr() {
+		v = rv.Addr().Interface()
+	} else {
+		v = rv.Interface()
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return jsonID{}, err
+	}
+	return jsonIDRaw(b)
+}
+
+// jsonOmitEmptyAt and jsonOmitZeroAt are encoding/json's omitempty and omitzero
+// rules, for a member holding nothing this package writes itself: false, 0, a
+// nil pointer or interface, and an empty string, slice, map or array are empty;
+// a value is zero where its IsZero says so, or, without one, where it is Go's
+// zero.
+func jsonOmitEmptyAt[T any](p *T) bool {
+	rv := reflect.ValueOf(p).Elem()
+	switch rv.Kind() {
+	case reflect.Array, reflect.Map, reflect.Slice, reflect.String:
+		return rv.Len() == 0
+	case reflect.Bool:
+		return !rv.Bool()
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return rv.Int() == 0
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return rv.Uint() == 0
+	case reflect.Float32, reflect.Float64:
+		return rv.Float() == 0
+	case reflect.Interface, reflect.Pointer:
+		return rv.IsNil()
+	}
+	return false
+}
+
+func jsonOmitZeroAt[T any](p *T) bool {
+	rv := reflect.ValueOf(p).Elem()
+	switch rv.Kind() {
+	case reflect.Interface, reflect.Pointer:
+		if rv.IsNil() {
+			return true
+		}
+	}
+	switch z := any(p).(type) {
+	case interface{ IsZero() bool }:
+		return z.IsZero()
+	}
+	return rv.IsZero()
+}
+
+{{- if .Decode}}
+
+// jsonIDCache is what a document keeps of the identities asked of its values:
+// those of its objects and arrays, by where each starts. See jsonDoc.ids.
+type jsonIDCache struct {
+	ids map[int]jsonID
+	mu  sync.Mutex
+}
+
+func (c *jsonIDCache) get(at int) (jsonID, bool) {
+	c.mu.Lock()
+	id, ok := c.ids[at]
+	c.mu.Unlock()
+	return id, ok
+}
+
+func (c *jsonIDCache) put(at int, id jsonID) {
+	c.mu.Lock()
+	c.ids[at] = id
+	c.mu.Unlock()
+}
+
+// jsonIdentity is the value's identity as JSON, read the way encoding/json
+// decodes it into an any -- every number a float64 -- which is what its
+// MarshalJSON writes. It is read off the document, and every object and array
+// read on the way is kept there: a check that compares values asks at every
+// level of a document for the identity of what is below it, and each object and
+// array is read once however many levels ask.
+func (l jsonLazy) jsonIdentity(m *jsonValidation) (jsonID, error) {
+	c := l.d.ids.Load()
+	if c == nil {
+		l.d.ids.CompareAndSwap(nil, &jsonIDCache{ids: make(map[int]jsonID)})
+		c = l.d.ids.Load()
+	}
+	return l.d.jsonIDAt(l.sp, c, 0)
+}
+
+func (d *jsonDoc) jsonIDAt(sp jsonSpan, c *jsonIDCache, depth int) (jsonID, error) {
+	data := d.data
+	switch data[sp.start] {
+	case '{', '[':
+	default:
+		return jsonIDRawAsDecoded(data[sp.start:sp.end])
+	}
+	if id, ok := c.get(sp.start); ok {
+		return id, nil
+	}
+	if depth > jsonIDMaxDepth {
+		return jsonID{}, errors.New("json: exceeded max depth")
+	}
+	var id jsonID
+	if data[sp.start] == '[' {
+		var a jsonIDArray
+		it := d.iter(sp)
+		for {
+			e, ok := it.elem()
+			if !ok {
+				break
+			}
+			eid, err := d.jsonIDAt(e, c, depth+1)
+			if err != nil {
+				return jsonID{}, err
+			}
+			a.add(eid)
+		}
+		id = a.id()
+	} else {
+		var small [16]jsonIDMember
+		ms := small[:0]
+		for pos, stop := sp.start+1, sp.end-1; ; {
+			i := jsonSkipSpace(data, pos)
+			if i >= stop {
+				break
+			}
+			if data[i] == ',' {
+				i = jsonSkipSpace(data, i+1)
+			}
+			keyEnd := jsonStringEnd(data, i)
+			var kbuf [64]byte
+			r := jsonIDReader{data: data[i:keyEnd]}
+			k, err := r.str(kbuf[:0])
+			if err != nil {
+				return jsonID{}, err
+			}
+			kid := jsonIDBytes(jsonIDStringKind, k)
+			v := jsonSkipSpace(data, jsonSkipSpace(data, keyEnd)+1)
+			end := d.valueEnd(v)
+			vid, err := d.jsonIDAt(jsonSpan{v, end}, c, depth+1)
+			if err != nil {
+				return jsonID{}, err
+			}
+			ms = append(ms, jsonIDMember{key: kid, mem: jsonIDMemberOf(kid, vid)})
+			pos = end
+		}
+		id = jsonIDMembers(ms)
+	}
+	c.put(sp.start, id)
+	return id, nil
+}
+{{- end}}
+
+// jsonIDRaw is the identity of a JSON text -- raw JSON a value holds -- read
+// with every number exact and a key written twice meaning its last value, which
+// is how _jsonCanonical reads one.
+func jsonIDRaw(b []byte) (jsonID, error) {
+	return jsonIDReadAll(jsonIDReader{data: b})
+}
+
+// jsonIDRawMessage is jsonIDRaw for a json.RawMessage, which encoding/json
+// writes as null when it is nil.
+func jsonIDRawMessage(b []byte) (jsonID, error) {
+	if b == nil {
+		return jsonIDOfKind(jsonIDNullKind), nil
+	}
+	return jsonIDRaw(b)
+}
+
+// jsonIDRawAsDecoded is jsonIDRaw for a value read the way json.Unmarshal reads
+// it into an any: every number a float64.
+func jsonIDRawAsDecoded(b []byte) (jsonID, error) {
+	return jsonIDReadAll(jsonIDReader{data: b, floats: true})
+}
+
+func jsonIDReadAll(r jsonIDReader) (jsonID, error) {
+	r.skip()
+	id, err := r.value(0)
+	if err != nil {
+		return jsonID{}, err
+	}
+	r.skip()
+	if r.pos != len(r.data) {
+		return jsonID{}, r.fail()
+	}
+	return id, nil
+}
+
+// jsonIDReader reads the identity of a JSON text in one pass.
+type jsonIDReader struct {
+	data   []byte
+	pos    int
+	floats bool
+}
+
+// jsonIDMaxDepth is the deepest nesting jsonIDReader reads, which is
+// encoding/json's own limit.
+const jsonIDMaxDepth = 10000
+
+func (r *jsonIDReader) fail() error {
+	return errors.New("json: invalid JSON at offset " + strconv.Itoa(r.pos))
+}
+
+func (r *jsonIDReader) skip() {
+	for r.pos < len(r.data) {
+		switch r.data[r.pos] {
+		case ' ', '\t', '\n', '\r':
+			r.pos++
+		default:
+			return
+		}
+	}
+}
+
+func (r *jsonIDReader) literal(s string, kind byte) (jsonID, error) {
+	if len(r.data)-r.pos < len(s) || string(r.data[r.pos:r.pos+len(s)]) != s {
+		return jsonID{}, r.fail()
+	}
+	r.pos += len(s)
+	return jsonIDOfKind(kind), nil
+}
+
+func (r *jsonIDReader) value(depth int) (jsonID, error) {
+	if depth > jsonIDMaxDepth {
+		return jsonID{}, errors.New("json: exceeded max depth")
+	}
+	if r.pos >= len(r.data) {
+		return jsonID{}, r.fail()
+	}
+	switch c := r.data[r.pos]; {
+	case c == 'n':
+		return r.literal("null", jsonIDNullKind)
+	case c == 't':
+		return r.literal("true", jsonIDTrueKind)
+	case c == 'f':
+		return r.literal("false", jsonIDFalseKind)
+	case c == '"':
+		var small [64]byte
+		s, err := r.str(small[:0])
+		if err != nil {
+			return jsonID{}, err
+		}
+		return jsonIDBytes(jsonIDStringKind, s), nil
+	case c == '-' || c >= '0' && c <= '9':
+		start := r.pos
+		for r.pos < len(r.data) {
+			if c := r.data[r.pos]; c == ',' || c == '}' || c == ']' || c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+				break
+			}
+			r.pos++
+		}
+		text := r.data[start:r.pos]
+		if !jsonIsNumberLiteral(text) {
+			return jsonID{}, r.fail()
+		}
+		if r.floats {
+			f, err := strconv.ParseFloat(string(text), 64)
+			if err != nil {
+				return jsonID{}, errors.New("json: cannot unmarshal number " + string(text) + " into Go value of type float64")
+			}
+			return jsonIDFloat(f, 64)
+		}
+		return jsonIDNumber(text), nil
+	case c == '[':
+		r.pos++
+		var a jsonIDArray
+		r.skip()
+		if r.pos < len(r.data) && r.data[r.pos] == ']' {
+			r.pos++
+			return a.id(), nil
+		}
+		for {
+			r.skip()
+			id, err := r.value(depth + 1)
+			if err != nil {
+				return jsonID{}, err
+			}
+			a.add(id)
+			r.skip()
+			if r.pos >= len(r.data) {
+				return jsonID{}, r.fail()
+			}
+			switch r.data[r.pos] {
+			case ',':
+				r.pos++
+			case ']':
+				r.pos++
+				return a.id(), nil
+			default:
+				return jsonID{}, r.fail()
+			}
+		}
+	case c == '{':
+		r.pos++
+		return r.object(depth)
+	}
+	return jsonID{}, r.fail()
+}
+
+// jsonIDMember is one member of an object being read: its key's identity and
+// its own, kept until the object ends so that a key written twice is counted
+// once, with its last value.
+type jsonIDMember struct {
+	key jsonID
+	mem jsonID
+}
+
+func (r *jsonIDReader) object(depth int) (jsonID, error) {
+	var small [16]jsonIDMember
+	ms := small[:0]
+	r.skip()
+	if r.pos < len(r.data) && r.data[r.pos] == '}' {
+		r.pos++
+		var o jsonIDObject
+		return o.id(), nil
+	}
+	for {
+		r.skip()
+		if r.pos >= len(r.data) || r.data[r.pos] != '"' {
+			return jsonID{}, r.fail()
+		}
+		var kbuf [64]byte
+		k, err := r.str(kbuf[:0])
+		if err != nil {
+			return jsonID{}, err
+		}
+		kid := jsonIDBytes(jsonIDStringKind, k)
+		r.skip()
+		if r.pos >= len(r.data) || r.data[r.pos] != ':' {
+			return jsonID{}, r.fail()
+		}
+		r.pos++
+		r.skip()
+		vid, err := r.value(depth + 1)
+		if err != nil {
+			return jsonID{}, err
+		}
+		ms = append(ms, jsonIDMember{key: kid, mem: jsonIDMemberOf(kid, vid)})
+		r.skip()
+		if r.pos >= len(r.data) {
+			return jsonID{}, r.fail()
+		}
+		if r.data[r.pos] == ',' {
+			r.pos++
+			continue
+		}
+		if r.data[r.pos] != '}' {
+			return jsonID{}, r.fail()
+		}
+		r.pos++
+		return jsonIDMembers(ms), nil
+	}
+}
+
+// jsonIDMembers is the identity of an object read as a list of members, a key
+// written twice meaning its last value.
+func jsonIDMembers(ms []jsonIDMember) jsonID {
+	if len(ms) > 16 {
+		// Sorted by key, stably, so that the last of a run of equal keys is the
+		// one written last.
+		sort.SliceStable(ms, func(i, j int) bool {
+			if ms[i].key.a != ms[j].key.a {
+				return ms[i].key.a < ms[j].key.a
+			}
+			return ms[i].key.b < ms[j].key.b
+		})
+	}
+	var o jsonIDObject
+	for i := range ms {
+		if jsonIDKeyAgain(ms, i) {
+			continue
+		}
+		o.sum.a += ms[i].mem.a
+		o.sum.b += ms[i].mem.b
+		o.n++
+	}
+	return o.id()
+}
+
+// jsonIDKeyAgain reports whether the key of member i is written again later.
+func jsonIDKeyAgain(ms []jsonIDMember, i int) bool {
+	if len(ms) > 16 {
+		return i+1 < len(ms) && ms[i+1].key == ms[i].key
+	}
+	for j := i + 1; j < len(ms); j++ {
+		if ms[j].key == ms[i].key {
+			return true
+		}
+	}
+	return false
+}
+
+// str reads a string literal into b, unescaped as encoding/json unescapes one:
+// a surrogate that is not half of a pair, and a byte that is not UTF-8, read as
+// U+FFFD.
+func (r *jsonIDReader) str(b []byte) ([]byte, error) {
+	r.pos++
+	for r.pos < len(r.data) {
+		c := r.data[r.pos]
+		switch {
+		case c == '"':
+			r.pos++
+			return b, nil
+		case c == '\\':
+			if r.pos+1 >= len(r.data) {
+				return nil, r.fail()
+			}
+			e := r.data[r.pos+1]
+			r.pos += 2
+			switch e {
+			case '"', '\\', '/':
+				b = append(b, e)
+			case 'b':
+				b = append(b, '\b')
+			case 'f':
+				b = append(b, '\f')
+			case 'n':
+				b = append(b, '\n')
+			case 'r':
+				b = append(b, '\r')
+			case 't':
+				b = append(b, '\t')
+			case 'u':
+				cp, ok := r.hex4()
+				if !ok {
+					return nil, r.fail()
+				}
+				switch {
+				case cp >= 0xD800 && cp < 0xDC00:
+					// Half of a pair only where the other half follows.
+					save := r.pos
+					if r.pos+1 < len(r.data) && r.data[r.pos] == '\\' && r.data[r.pos+1] == 'u' {
+						r.pos += 2
+						if lo, ok := r.hex4(); ok && lo >= 0xDC00 && lo < 0xE000 {
+							b = utf8.AppendRune(b, ((cp-0xD800)<<10|(lo-0xDC00))+0x10000)
+							continue
+						}
+					}
+					r.pos = save
+					b = utf8.AppendRune(b, utf8.RuneError)
+				case cp >= 0xDC00 && cp < 0xE000:
+					b = utf8.AppendRune(b, utf8.RuneError)
+				default:
+					b = utf8.AppendRune(b, cp)
+				}
+			default:
+				return nil, r.fail()
+			}
+		case c < 0x20:
+			return nil, r.fail()
+		case c < utf8.RuneSelf:
+			b = append(b, c)
+			r.pos++
+		default:
+			cr, n := utf8.DecodeRune(r.data[r.pos:])
+			if cr == utf8.RuneError && n == 1 {
+				b = utf8.AppendRune(b, utf8.RuneError)
+			} else {
+				b = append(b, r.data[r.pos:r.pos+n]...)
+			}
+			r.pos += n
+		}
+	}
+	return nil, r.fail()
+}
+
+func (r *jsonIDReader) hex4() (rune, bool) {
+	if len(r.data)-r.pos < 4 {
+		return 0, false
+	}
+	var v rune
+	for _, c := range r.data[r.pos : r.pos+4] {
+		switch {
+		case c >= '0' && c <= '9':
+			v = v<<4 | rune(c-'0')
+		case c >= 'a' && c <= 'f':
+			v = v<<4 | rune(c-'a'+10)
+		case c >= 'A' && c <= 'F':
+			v = v<<4 | rune(c-'A'+10)
+		default:
+			return 0, false
+		}
+	}
+	r.pos += 4
+	return v, true
 }
 {{- end}}

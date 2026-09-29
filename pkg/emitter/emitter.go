@@ -369,6 +369,24 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	add(helpers.Canonical, "bytes")
 	add(helpers.Canonical, "strconv")
 	add(helpers.Canonical, "strings")
+	// The identity of a value: two seeded hashes, the Go kind a value this
+	// package does not write itself is read by, the spelling of its numbers, the
+	// base64 encoding/json writes a []byte as, and the time.Time whose
+	// MarshalJSON it reads as a string.
+	add(helpers.Identity, "encoding/base64")
+	add(helpers.Identity, "encoding/json")
+	add(helpers.Identity, "errors")
+	add(helpers.Identity, "hash/maphash")
+	add(helpers.Identity, "math")
+	add(helpers.Identity, "reflect")
+	add(helpers.Identity, "sort")
+	add(helpers.Identity, "strconv")
+	add(helpers.Identity, "time")
+	add(helpers.Identity, "unicode/utf8")
+	// A document keeps the identities of the values read lazily from it, which
+	// a value judged from several goroutines at once shares.
+	add(helpers.Identity && helpers.Decode, "sync")
+	add(helpers.Identity && helpers.Decode, "sync/atomic")
 	// The exact-number comparisons read the literal as decimal digits: strconv
 	// for the exponent, math/big for the one question -- does this divide that
 	// -- that digit arithmetic alone does not answer. Neither is needed by the
