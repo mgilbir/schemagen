@@ -321,6 +321,10 @@
   it as a second match and refused the object: four of the example BOMs the
   CycloneDX 1.6 specification ships (a jsf signature, a model card's inline
   dataset) failed `Validate`.
+- Under `--omit-empty=false`, an absent optional property is no longer written
+  back as a zero its own type then refuses because two `oneOf` branches admit
+  it, or because a `not` does: `{"oneOf":[{"minimum":1},{"maximum":0}]}` wrote
+  `null`, which both branches admit.
 
 ### Changed
 

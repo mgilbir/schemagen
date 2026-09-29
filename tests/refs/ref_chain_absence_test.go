@@ -74,6 +74,10 @@ var refChainKinds = []refChainKind{
 	{"typeonly", `{"type":["string","integer"]}`, `""`, `true`},
 	{"not", `{"not":{"type":"string"}}`, `0`, `"s"`},
 	{"dynamic", `{"oneOf":[{"minimum":1},{"maximum":0}]}`, `0`, ``},
+	// A zero two oneOf branches both admit, and a zero a not admits: both
+	// refuse the value --omit-empty=false would write for an absent property.
+	{"intoneof", `{"type":"integer","oneOf":[{"minimum":-1},{"maximum":1}]}`, `5`, `0`},
+	{"notnull", `{"not":{"type":"null"}}`, `0`, `null`},
 	{"nullable", `{"type":["string","null"]}`, `null`, `1`},
 	{"any", `{}`, `0`, ``},
 }
@@ -341,7 +345,7 @@ func main() {
 		case ok && omitsAbsent:
 			fail("%s: absent, and written back as %s", c.Name, m)
 		case ok:
-			if err := readsBack(c.Name, m, false); err != nil {
+			if err := readsBack(c.Name, m, true); err != nil {
 				fail("%s: absent: %v", c.Name, err)
 			}
 		}

@@ -112,6 +112,11 @@ var refReadingSites = map[string]refReadingSite{
 		Verdict: refReadsWhicheverIsThere, Reads: "$dynamicRef,$recursiveRef,$ref",
 		Why: "it exists to say which of the three a reference string was written as",
 	},
+	"generator/generator.go | (*Generator).schemaCertainlyAdmitsZero": {
+		Verdict: refReadsWhicheverIsThere, Reads: "$dynamicRef,$recursiveRef",
+		Why: "a dynamic reference's target is settled at evaluation time, so a schema carrying one is " +
+			"never known to admit a value; a $ref is followed through the funnel",
+	},
 	"generator/generator.go | isAcceptAllSchema": {
 		Verdict: refReadsWhicheverIsThere, Reads: "$dynamicRef,$recursiveRef,$ref",
 		Why: "a schema carrying any reference is not one that accepts every value",

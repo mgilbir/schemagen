@@ -13983,7 +13983,7 @@ func (g *Generator) zeroValueForbidden(propSchema *schema.Schema, t GoType) bool
 		return false
 	}
 	if kind == zeroKindNull {
-		return g.schemaForbidsNull(propSchema)
+		return g.zeroNullForbiddenAt(propSchema, 0)
 	}
 	return g.schemaForbidsZeroAt(propSchema, kind, 0)
 }
@@ -14113,6 +14113,9 @@ func (g *Generator) schemaForbidsZeroAt(s *schema.Schema, kind string, depth int
 			return true
 		}
 	}
+	if g.zeroForbiddenByOneOfOrNot(s, kind, depth) {
+		return true
+	}
 	// {"const": null} permits nothing but a null, and the value asked about
 	// here is not one. It is spelled with its own flag for the reason
 	// schemaForbidsNull gives.
@@ -14142,6 +14145,189 @@ func (g *Generator) schemaForbidsZeroAt(s *schema.Schema, kind string, depth int
 		return numericBoundsExcludeZero(s)
 	}
 	return false
+}
+
+// schemaForbidsZeroValue asks whichever walk answers for the zero of kind: a
+// null is zeroNullForbiddenAt's, the other zeros are one value of a larger kind
+// and are schemaForbidsZeroAt's.
+func (g *Generator) schemaForbidsZeroValue(s *schema.Schema, kind string, depth int) bool {
+	if kind == zeroKindNull {
+		return g.zeroNullForbiddenAt(s, depth)
+	}
+	return g.schemaForbidsZeroAt(s, kind, depth)
+}
+
+// zeroNullForbiddenAt is schemaForbidsKindAt's answer for null, and what else
+// is known about the one value a null is: a oneOf two of whose branches admit
+// it, and a not whose schema does, refuse it too (zeroForbiddenByOneOfOrNot),
+// at this node or at any node allOf, a $ref, or every branch of an anyOf or a
+// oneOf leads to.
+//
+// It answers only what --omit-empty=false may write for an absent property
+// (zeroValueForbidden). schemaForbidsNull is left as it was, because it also
+// decides which nulls a decode refuses, and a null those two keywords refuse
+// is refused by Validate, under the keyword that refuses it -- a decode that
+// refused it would answer for a keyword it does not name.
+func (g *Generator) zeroNullForbiddenAt(s *schema.Schema, depth int) bool {
+	if s == nil || depth >= maxNullRefDepth {
+		return false
+	}
+	if g.schemaForbidsKindAt(s, jsonKindNull, depth) || g.zeroForbiddenByOneOfOrNot(s, zeroKindNull, depth) {
+		return true
+	}
+	if s.IsBooleanSchema() {
+		return false
+	}
+	if referenceOn(s) != "" {
+		_, target := g.referenceTarget(s)
+		if target != nil && g.zeroNullForbiddenAt(target, depth+1) {
+			return true
+		}
+		if g.refOverridesSiblingsForSchema(s) {
+			return false
+		}
+	}
+	for _, branch := range s.AllOf {
+		if g.zeroNullForbiddenAt(branch, depth+1) {
+			return true
+		}
+	}
+	for _, group := range [][]*schema.Schema{s.AnyOf, s.OneOf} {
+		if len(group) == 0 {
+			continue
+		}
+		everyBranch := true
+		for _, branch := range group {
+			if !g.zeroNullForbiddenAt(branch, depth+1) {
+				everyBranch = false
+				break
+			}
+		}
+		if everyBranch {
+			return true
+		}
+	}
+	return false
+}
+
+// schemaCertainlyAdmitsZero reports whether s is known to admit the zero of kind
+// -- null, "", 0 or false -- and answers false wherever that is not known.
+//
+// It is the other half of the forbidding walks, which answer "forbidden" or "not
+// known to be", and a oneOf needs both halves: it refuses a value exactly one
+// branch does not admit, but also a value two branches admit. {"oneOf":
+// [{"minimum":1},{"maximum":0}]} admits every number and refuses null, because
+// null is not a number and so satisfies both -- and under --omit-empty=false the
+// null an absent property was written back as was one its own type then refused.
+// Counting branches needs a "certainly admits", because a branch this cannot
+// judge must not be counted either way.
+//
+// Only keywords that can be judged against the one value are read. A keyword
+// about another JSON kind is vacuous for it; one that reads the value in a way
+// not modelled here -- a pattern, a format, a conditional, a dynamic reference
+// -- makes the answer "not known".
+func (g *Generator) schemaCertainlyAdmitsZero(s *schema.Schema, kind string, depth int) bool {
+	if s == nil || depth >= maxNullRefDepth {
+		return false
+	}
+	if s.IsBooleanSchema() {
+		return !s.IsFalseSchema()
+	}
+	if s.RecursiveRef != "" || s.DynamicRef != "" || s.If != nil || s.Then != nil || s.Else != nil ||
+		len(s.Extends) > 0 || len(s.Disallow) > 0 || len(s.TypeSchemas) > 0 {
+		return false
+	}
+	if ref := referenceOn(s); ref != "" {
+		_, target := g.referenceTarget(s)
+		if target == nil || !g.schemaCertainlyAdmitsZero(target, kind, depth+1) {
+			return false
+		}
+		if g.refOverridesSiblingsForSchema(s) {
+			return true
+		}
+	}
+	if len(s.Type) > 0 && !typeListAdmitsKind(s.Type, kind) {
+		return false
+	}
+	if s.ConstIsNull {
+		return kind == zeroKindNull
+	}
+	if s.Const != nil {
+		return jsonValueIsZeroOfKind(*s.Const, kind)
+	}
+	if s.Enum != nil {
+		admitted := false
+		for _, v := range s.Enum {
+			if jsonValueIsZeroOfKind(v, kind) {
+				admitted = true
+				break
+			}
+		}
+		if !admitted {
+			return false
+		}
+	}
+	for _, branch := range s.AllOf {
+		if !g.schemaCertainlyAdmitsZero(branch, kind, depth+1) {
+			return false
+		}
+	}
+	if len(s.AnyOf) > 0 {
+		some := false
+		for _, branch := range s.AnyOf {
+			if g.schemaCertainlyAdmitsZero(branch, kind, depth+1) {
+				some = true
+				break
+			}
+		}
+		if !some {
+			return false
+		}
+	}
+	if len(s.OneOf) > 0 {
+		admitting := 0
+		for _, branch := range s.OneOf {
+			switch {
+			case g.schemaCertainlyAdmitsZero(branch, kind, depth+1):
+				admitting++
+			case !g.schemaForbidsZeroValue(branch, kind, depth+1):
+				return false
+			}
+		}
+		if admitting != 1 {
+			return false
+		}
+	}
+	if s.Not != nil && !g.schemaForbidsZeroValue(s.Not, kind, depth+1) {
+		return false
+	}
+	switch kind {
+	case zeroKindString:
+		if (s.MinLength != nil && s.MinLength.Int() > 0) || s.Pattern != nil || s.Format != nil {
+			return false
+		}
+	case zeroKindNumber:
+		if numericBoundsExcludeZero(s) {
+			return false
+		}
+	}
+	return true
+}
+
+// zeroForbiddenByOneOfOrNot is the part of the forbidding walks that needs
+// schemaCertainlyAdmitsZero: a oneOf two of whose branches admit the value, and a
+// not whose schema admits it, both refuse it.
+func (g *Generator) zeroForbiddenByOneOfOrNot(s *schema.Schema, kind string, depth int) bool {
+	admitting := 0
+	for _, branch := range s.OneOf {
+		if g.schemaCertainlyAdmitsZero(branch, kind, depth+1) {
+			admitting++
+		}
+	}
+	if admitting >= 2 {
+		return true
+	}
+	return s.Not != nil && g.schemaCertainlyAdmitsZero(s.Not, kind, depth+1)
 }
 
 // jsonValueIsZeroOfKind reports whether a decoded JSON value is the zero of the
