@@ -119,6 +119,12 @@ type StructDef struct {
 	// contains element, a patternProperties value -- which is where the flag was
 	// a silent no-op until issue #219. See accessRulesFor.
 	AccessRules []AccessRule
+	// AccessRulesVar is the package variable AccessRules is declared as, named
+	// by the generator's name registry when the def is added to the file. It
+	// used to be spelled in the template as the type name plus "AccessRules",
+	// which a definition keyed "FooAccessRules" beside a type Foo declared
+	// twice.
+	AccessRulesVar string
 	// StrictReadWrite says the file was generated under Config.StrictReadWrite.
 	// The decoder needs to know even where this struct carries no key of its own:
 	// a refusal arriving from a nested type has to be held rather than returned,
@@ -1146,9 +1152,13 @@ type IfConditionDef struct {
 }
 
 // ConstCheck describes a property const value check (property must equal a specific JSON value).
+//
+// It names the property by its JSON name only. It used to carry a Go field name
+// too, derived from the property name on the spot -- a second derivation of a
+// member name, out of the reach of the struct's member scope (which numbers a
+// field whose derived name is taken), and read by nothing.
 type ConstCheck struct {
 	PropertyName string // JSON property name
-	GoFieldName  string // Go field name for struct access
 	JSONValue    string // expected JSON-encoded value (e.g., `"bar"`, `42`)
 }
 
@@ -1790,8 +1800,13 @@ func (d *OneOfDef) HasValidatableVariants() bool {
 
 // OneOfVariant represents one variant of a oneOf.
 type OneOfVariant struct {
-	WrapperName        string   // TypeName_VariantName
-	FieldName          string   // exported field inside wrapper
+	WrapperName string // TypeName_VariantName
+	FieldName   string // exported field inside wrapper
+	// GetterName is the method on the parent struct that returns this variant.
+	// It lives in the parent's member scope beside the parent's fields, and the
+	// name registry claims it there (claimVariantMemberNames); the template used
+	// to spell it "Get" + FieldName, out of the registry's sight.
+	GetterName         string
 	Type               GoType   // the actual type of this variant
 	RequiredFields     []string // JSON field names that must be present for this variant to match
 	DiscriminatorValue string   // first discriminator value selecting this variant (empty if no discriminator)
@@ -1835,6 +1850,10 @@ type EnumDef struct {
 	Values   []EnumValue
 	Doc
 	IsRaw bool // true for heterogeneous enums → json.RawMessage-based instead of const-based
+	// AllowedVar is the package variable a raw enum holds its member list in,
+	// named by the generator's name registry like every package-level
+	// identifier. Empty for the const form, which declares constants instead.
+	AllowedVar string
 	// IntegerToken is set on an int64-based const enum whose draft admits a
 	// number written in float notation, which the bare named type would refuse.
 	IntegerToken bool
@@ -2574,6 +2593,15 @@ type AnnotationSchemaDef struct {
 	// flag did nothing: issue #219's unevaluatedProperties and unevaluatedItems
 	// positions are both this type. See accessRulesFor.
 	AccessRules []AccessRule
+
+	// SchemaVar and AccessRulesVar are the package variables the compiled
+	// schema and the access rules are declared as. Both are named by the
+	// generator's name registry when the def is added to the file, as every
+	// package-level identifier is; the template used to spell them as the
+	// type name plus "Schema" and plus "AccessRules", out of the registry's
+	// sight.
+	SchemaVar      string
+	AccessRulesVar string
 }
 
 // RuntimeNodeVar is one node of a recursive compiled schema, emitted as a

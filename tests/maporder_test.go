@@ -68,6 +68,8 @@ var mapOrderGuardedPackages = []string{
 	"internal/testgo",
 	"pkg/schema",
 	"pkg/generator",
+	"pkg/generator/internal/unicodepin",
+	"pkg/generator/internal/unicodepin/gen",
 	"pkg/emitter",
 	"pkg/emitter/internal/gocontext",
 	"pkg/emitter/internal/gocontext/guardgen",

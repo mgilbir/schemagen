@@ -4,15 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"go/token"
 	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/spf13/cobra"
 
@@ -183,12 +180,11 @@ func (c *ConfigFile) schemaOutputs() map[string]string {
 // isExportedIdent reports whether s is an exported Go identifier. This is an
 // early check so a bad config fails before any generation; the generator applies
 // the authoritative one when the name is used.
+//
+// It is the generator's predicate, which answers from the Unicode tables of the
+// oldest Go the generated code supports rather than from the running Go's.
 func isExportedIdent(s string) bool {
-	if !token.IsIdentifier(s) || token.Lookup(s).IsKeyword() {
-		return false
-	}
-	r, _ := utf8.DecodeRuneInString(s)
-	return unicode.IsUpper(r)
+	return generator.IsExportedIdentifier(s)
 }
 
 func absOrSelf(path string) string {

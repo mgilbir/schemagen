@@ -777,7 +777,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 	// for: a tuple slot, a contains element, a patternProperties value. See
 	// _accessRefuseReadOnly.
 	if _roErr == nil {
-		if _err := _accessRefuseReadOnly(data, {{$struct.Name}}AccessRules); _err != nil {
+		if _err := _accessRefuseReadOnly(data, {{$struct.AccessRulesVar}}); _err != nil {
 			_roErr = _err
 		}
 	}

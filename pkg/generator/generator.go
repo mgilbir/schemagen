@@ -6,11 +6,10 @@ import (
 	"fmt"
 	"math"
 	"net/url"
-	"path"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/mgilbir/schemagen/pkg/schema"
 )
@@ -19,7 +18,7 @@ import (
 type Generator struct {
 	config       Config
 	output       *File
-	generated    map[string]bool // track already-generated type names
+	names        *nameRegistry   // every identifier the package declares; see names.go
 	generating   map[string]bool // track types currently being generated (recursion guard)
 	rootTypeName string          // Go type name for the root schema
 	rootID       string          // $id of the root schema (for detecting self-references)
@@ -100,16 +99,6 @@ type Generator struct {
 	// set, a pointer must be used to break the cycle.
 	structsInProgress map[string]bool
 
-	// oneOfMemberNames counts the variant member names claimed on each parent
-	// type, so that two oneOf groups on the same struct cannot claim the same
-	// one. Every variant name becomes both a package-level wrapper type
-	// (Parent_Name) and a method (Parent.GetName), and the vocabulary primitive
-	// variants draw from is tiny — a struct with two scalar oneOf properties
-	// named both of them "String" and emitted Go that does not compile. Keyed by
-	// parent type name; the count drives the same numeric suffix already used
-	// for duplicates inside one group.
-	oneOfMemberNames map[string]map[string]int
-
 	// appliedOverrides records which FieldNames overrides were actually used,
 	// keyed by type name → JSON property name. The CLI inspects this after
 	// generation to warn about configured overrides that matched no property.
@@ -177,32 +166,32 @@ type Generator struct {
 	// the type across packages.
 	crossPackageMisses map[crossPackageMiss]bool
 
-	// typeSchemas records which schema node claimed each generated type name,
-	// so callers can detect a name already taken by a different schema and
-	// pick a disambiguated one instead of silently reusing the wrong type.
+	// typeSchemas records the schema node each generated type name was built
+	// from, for the lookups that ask what a named type's schema says (its
+	// integer token rule, its leaf decode, what the cross-package registry
+	// publishes). It decides no name: who holds a name is the name registry's
+	// question (g.names), and nothing reads this to answer it.
 	typeSchemas map[string]*schema.Schema
 
-	// typeOwner records which schema node a generated type name belongs to, for
-	// every name that reached a declaration by any route.
-	//
-	// typeSchemas above answers the same question and cannot be used for it. It
-	// is written part-way down generateTypeDef, so every arm ahead of that line
-	// -- the runtime evaluator, the dynamic-scope wrapper, the annotation
-	// evaluator -- declares a type whose name it never records, and so do the
-	// wrapper helpers that build a def and mark it generated without calling
-	// generateTypeDef at all. A name they own reads as unowned, and the caller
-	// that asked "is this name free" would be told yes and hand a second node the
-	// first one's type. That is the merge this map exists to prevent, so the
-	// record is taken where nothing can be ahead of it: on the way out of
-	// generateTypeDef and of resolvePropertyType, for whatever name each of them
-	// left declared.
-	//
-	// First writer wins, because the first node to declare a name is the one that
-	// holds it. A name a call asked for and did not declare is not recorded at
-	// all, so declining to generate leaves the name free for the next node -- and
-	// the map is emptied with g.generated between two Generate calls that do not
-	// share a package, since what is not declared is not held.
-	typeOwner map[string]*schema.Schema
+	// nameSources maps a copy a generation arm makes of the node it is
+	// declaring (a merge with one keyword cleared, say) to that node, so the
+	// copy claims names as the node it copies. mergeDocSources is the same
+	// record for the merges themselves. See holderFor.
+	nameSources map[*schema.Schema]*schema.Schema
+
+	// typesInFlight counts the generateTypeDef calls in progress per name, so
+	// that only the outermost gives back a name nothing was declared under.
+	typesInFlight map[string]int
+
+	// definitionNames is the name each definition of the document being
+	// generated claimed before anything was generated. See claimDefinitionNames.
+	definitionNames map[*schema.Schema]string
+
+	// namingDefect is the first declaration generation reached for a name the
+	// registry holds for something else. Several arms discard generateTypeDef's
+	// error, so the defect is kept here as well and Generate reports it: a
+	// position typed by another node's type must not leave this package.
+	namingDefect error
 
 	// nodeTypeNames is the inverse of typeSchemas: the canonical Go name a
 	// schema node was first materialized under. A self-referential document
@@ -291,7 +280,7 @@ type Generator struct {
 	// kind of type is X" -- does it carry a Validate, what is its zero, does it
 	// reject null, is it an enum -- answers "no such type" for anything an
 	// earlier schema of the package materialized. The name registry
-	// (g.generated, g.nodeTypeNames) already spans the calls, so a $ref into an
+	// (g.names, g.nodeTypeNames) already spans the calls, so a $ref into an
 	// earlier document is correctly *typed* as that type and then treated as
 	// unknown by every one of those predicates: issue #218, where a
 	// cross-document $ref produced a field of the right type whose constraints
@@ -311,44 +300,25 @@ type Generator struct {
 	// it is checked on arrival and refused. Generate reports this in preference
 	// to the "cannot resolve $ref" that refusing it produces.
 	nullSubschemaErr error
-
-	// pinnedNames is the set of names Config.DefinitionTypeNames asks for, and
-	// pinnedNameTaken the ones a *different* schema node had already claimed by
-	// the time the pinned definition asked for them.
-	//
-	// A pinned name is one the caller invented to keep two definitions apart, so
-	// it was never written in any document and cannot be checked against one.
-	// Every other route into generateTypeDef derives its name from something in
-	// the input -- a $defs key, a property path, a title -- and the caller can
-	// see those; it cannot see the names the generator mints for inline
-	// positions (parent name + field name), and a pinned name that lands on one
-	// of those would be skipped by the re-entrancy guard exactly as the
-	// collision it was invented to prevent. Recording it here is what turns that
-	// back into a refusal instead of a second silent merge.
-	pinnedNames     map[string]bool
-	pinnedNameTaken map[string]bool
 }
 
 // New creates a new Generator with the given configuration.
+//
+// The names the configuration pins (Config.DefinitionTypeNames) are held from
+// here on, ahead of every name the generator derives: a pin is a name the caller
+// chose, having seen every input, and a type minted for a position somewhere must
+// step around it rather than take it. See names.go.
 func New(cfg Config) *Generator {
-	pinned := make(map[string]bool, len(cfg.DefinitionTypeNames))
-	// maporder: fills a set; the same members end up in it in any order.
-	for _, name := range cfg.DefinitionTypeNames {
-		pinned[name] = true
-	}
 	return &Generator{
 		config:             cfg,
 		ownIndex:           indexFor(cfg.Resolver, cfg.Draft),
-		pinnedNames:        pinned,
-		pinnedNameTaken:    make(map[string]bool),
-		generated:          make(map[string]bool),
+		names:              newNameRegistry(cfg.DefinitionTypeNames),
 		generating:         make(map[string]bool),
 		structsInProgress:  make(map[string]bool),
 		unresolvedRefs:     make(map[string]map[string]bool),
 		resolvedRefs:       make(map[string]bool),
 		crossPackageMisses: make(map[crossPackageMiss]bool),
 		typeSchemas:        make(map[string]*schema.Schema),
-		typeOwner:          make(map[string]*schema.Schema),
 		nodeTypeNames:      make(map[*schema.Schema]string),
 		patternMintedTypes: make(map[string]*schema.Schema),
 		nodesInProgress:    make(map[*schema.Schema]bool),
@@ -358,6 +328,7 @@ func New(cfg Config) *Generator {
 		arrayTypeInferredFromBranch: make(map[*schema.Schema]bool),
 		mergedPropertyOrigins:       make(map[*schema.Schema]map[string]*mergedPropertyOrigin),
 		mergeDocSources:             make(map[*schema.Schema]*schema.Schema),
+		nameSources:                 make(map[*schema.Schema]*schema.Schema),
 	}
 }
 
@@ -421,17 +392,26 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	g.output = &File{
 		PackageName: g.config.PackageName,
 	}
-	// In shared-types mode the generated/typeSchemas registries survive
-	// across calls, so types materialized by an earlier schema of the same
-	// package are referenced instead of re-emitted.
+	// In shared-types mode the name registry survives across calls, so types
+	// materialized by an earlier schema of the same package are referenced
+	// instead of re-emitted, and nothing a later schema derives can take a name
+	// an earlier one declared. Otherwise every call is a package of its own: a
+	// name this call does not declare is held by nobody, and a holder left
+	// behind would have this document's positions stepping around types that
+	// are not in the file being written.
 	if !g.config.SharedTypes {
-		g.generated = make(map[string]bool)
-		// And with it the record of who holds each of those names, which is a
-		// statement about the same set: a name this call does not declare is held
-		// by nobody, and an owner left behind would have this document's
-		// positions stepping around types that are not in the file being written.
-		g.typeOwner = make(map[string]*schema.Schema)
+		g.names = newNameRegistry(g.config.DefinitionTypeNames)
 	}
+	// A name move is located the way every other diagnostic of this call
+	// locates a node: a fragment in the document it was handed, a URI and a
+	// fragment in any other (see docLocator).
+	locator := docLocator{home: g.homeDoc}
+	g.names.locate = func(n *schema.Schema) string {
+		loc, _ := locator.name(n)
+		return loc
+	}
+	g.namingDefect = nil
+	g.typesInFlight = make(map[string]int)
 	g.generating = make(map[string]bool)
 	g.crossImports = make(map[string]string)
 	// Ref-resolution bookkeeping is per schema: in shared-types mode the same
@@ -456,6 +436,7 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 
 	// Determine root type name.
 	g.rootTypeName = DefaultRootTypeName(s)
+	explicitRoot := false
 	if override := g.rootNameOverride; override == "" {
 		override = g.config.RootTypeName
 		if override != "" {
@@ -466,18 +447,34 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 				return nil, fmt.Errorf("root type name %q is not an exported Go identifier", override)
 			}
 			g.rootTypeName = override
+			explicitRoot = true
 		}
 	} else {
 		if !isExportedGoIdentifier(override) {
 			return nil, fmt.Errorf("root type name %q is not an exported Go identifier", override)
 		}
 		g.rootTypeName = override
+		explicitRoot = true
 	}
 	// In shared-types mode a root name already claimed by an earlier schema
 	// would be silently skipped by the generated-types registry; require the
 	// caller to name every schema's root distinctly.
-	if g.config.SharedTypes && g.generated[g.rootTypeName] {
+	if g.config.SharedTypes && g.names.declared[g.rootTypeName] {
 		return nil, &RootTypeCollisionError{Name: g.rootTypeName}
+	}
+	// The root is the first name this document claims. An explicit name is the
+	// caller's and is used verbatim or not at all; one read off the title moves
+	// like any other derived name when generated code already spells it -- a
+	// document titled "Schemagen Validation Mode" would otherwise declare the
+	// constant the validation-capability block declares.
+	rootHolder := nameHolder{kind: holderType, node: s, role: "root", what: "the root type"}
+	if explicitRoot {
+		if !g.names.claimExactly(g.rootTypeName, rootHolder) {
+			held, _ := g.names.holderOf(g.rootTypeName)
+			return nil, fmt.Errorf("root type name %q is already taken in this package, by %s; choose another", g.rootTypeName, held.what)
+		}
+	} else {
+		g.rootTypeName = g.names.claim(g.rootTypeName, rootHolder)
 	}
 
 	// Store root schema's $id for detecting self-references.
@@ -546,6 +543,11 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// these two, which is a new inconsistency of the shape issue #203 reports.
 	// TestReferenceKeywordsFollowAnExplicitDraft is what holds it.
 	g.normalizeDialectRefKeywords(s)
+
+	// Every definition's name is claimed before any type is generated, so that no
+	// name minted for a position on the way -- which is decided by whatever the
+	// document happens to generate first -- can take one. See names.go.
+	g.claimDefinitionNames(s)
 
 	// Process definitions first — generate TypeDefs for each.
 	defNames := sortedKeys(s.Defs)
@@ -688,17 +690,12 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 		return nil, newCrossPackageMissError(g.crossPackageMisses)
 	}
 
-	// A pinned name that another schema already held kept none of the
-	// definitions apart, so the IR built above is the merged one the pin exists
-	// to prevent. Reported rather than worked around: the name came from the
-	// caller, and only the caller can choose another.
-	if len(g.pinnedNameTaken) > 0 {
-		names := make([]string, 0, len(g.pinnedNameTaken))
-		for name := range g.pinnedNameTaken {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		return nil, &PinnedNameCollisionError{Names: names}
+	// A declaration reached a name the registry holds for something else. No
+	// input asks for that, and the IR built above has a position typed by
+	// another node's schema -- the one outcome this generator must never hand
+	// back. See NamingDefectError.
+	if g.namingDefect != nil {
+		return nil, g.namingDefect
 	}
 
 	// Imports of sibling generated packages (cross-package refs), sorted for
@@ -984,61 +981,205 @@ func DefaultRootTypeName(s *schema.Schema) string {
 	return "Root"
 }
 
-// notePinnedNameTaken records a pinned name the re-entrancy guard just turned
-// away because a different schema node holds it.
+// claimTypeName is the name a type minted for s is declared under: the name the
+// caller derived, or the first numbered spelling of it that no other holder has
+// (see names.go for the policy). The name is held for s from here on;
+// releaseTypeName gives it back if nothing is declared under it.
 //
-// The comparison is on the node, not on the name: the same definition arrives
-// here repeatedly (its own $defs entry, and again through every $ref that
-// reaches it) and those visits are the guard working as intended. Only a
-// *different* node under a pinned name is a collision, and only then is the
-// definition that pin was invented for left sharing someone else's type.
-//
-// A name with no recorded schema is not judged. The arms above this guard --
-// the runtime evaluator, the dynamic-scope wrapper -- claim a name before
-// typeSchemas is written, so "no entry" means "not known", not "free".
-func (g *Generator) notePinnedNameTaken(name string, s *schema.Schema) {
-	if s == nil || !g.pinnedNames[name] {
-		return
+// what describes the claim for a diagnostic: "a type for a position inside
+// Root", "the type $ref \"#/$defs/a_b\" reaches", ...
+func (g *Generator) claimTypeName(want string, s *schema.Schema, what string) string {
+	if want == "" {
+		return ""
 	}
-	claimed, ok := g.typeSchemas[name]
-	if !ok || claimed == nil || claimed == s {
-		return
-	}
-	// Two nodes pinned to one name are the caller saying they are one type,
-	// which a document spelling the same definition under both "definitions"
-	// and "$defs" produces. The guard turning the second away is then the whole
-	// point of the pin, not a collision with it.
-	if g.config.DefinitionTypeNames[claimed] == name && g.config.DefinitionTypeNames[s] == name {
-		return
-	}
-	g.pinnedNameTaken[name] = true
+	return g.names.claim(want, g.holderFor(s, what))
 }
 
-// noteTypeOwner records s as the holder of a type name, if the call that just
-// returned left that name declared and no earlier node holds it. See typeOwner.
-func (g *Generator) noteTypeOwner(name string, s *schema.Schema) {
-	if name == "" || s == nil || !g.generated[name] {
-		return
-	}
-	if _, held := g.typeOwner[name]; held {
-		return
-	}
-	g.typeOwner[name] = s
+// holderFor is the holder a type generated for s claims its name as.
+//
+// A node an allOf or anyOf merge synthesized is the node it was merged from, as
+// far as names go: the merge is that schema, read with its branches folded in,
+// and it is handed down to the arms under the name its source is being declared
+// under (generateAllOfDef resolves `merged` under the frame's own name). Taken
+// as a node of its own it would find that name held by its source and be
+// numbered off it -- declaring the same position twice, once under each name.
+// mergeDocSources is the record of where each merge came from.
+func (g *Generator) holderFor(s *schema.Schema, what string) nameHolder {
+	return typeHolder(g.nameOwner(s), what)
 }
 
-// nameHeldByOther reports whether a declared type of this package stands under
-// name and was generated for some schema node other than s.
-func (g *Generator) nameHeldByOther(name string, s *schema.Schema) bool {
+// nameOwner follows a synthesized merge node back to the schema it was built
+// from; see holderFor.
+func (g *Generator) nameOwner(s *schema.Schema) *schema.Schema {
+	for i := 0; s != nil && i < maxRuntimeDepth; i++ {
+		orig, ok := g.nameSources[s]
+		if !ok {
+			orig, ok = g.mergeDocSources[s]
+		}
+		if !ok || orig == s {
+			return s
+		}
+		s = orig
+	}
+	return s
+}
+
+// releaseTypeName gives name back when s holds it and nothing was declared under
+// it, so that a name a call asked for and did not use is free for the next node.
+func (g *Generator) releaseTypeName(name string, s *schema.Schema) {
 	if name == "" {
+		return
+	}
+	g.names.release(name, g.holderFor(s, ""))
+}
+
+// isDeclared reports whether a declaration of this package stands under name,
+// whichever node it was generated for. Only the lookups that already know the
+// name is the one they want -- a canonical name read off nodeTypeNames, a name
+// generateTypeDef was just called with -- may ask this; a caller holding a
+// derived name asks declaredFor, because a derived name can stand for another
+// node's type.
+func (g *Generator) isDeclared(name string) bool {
+	return name != "" && g.names.declared[name]
+}
+
+// declaredFor reports whether the declaration standing under name was generated
+// for s -- the question every arm that reuses an existing type has to ask. A
+// name declared for some other node is not s's type however the name was
+// derived, and answering yes is how a position came to carry another node's
+// schema.
+func (g *Generator) declaredFor(name string, s *schema.Schema) bool {
+	if !g.isDeclared(name) {
 		return false
 	}
-	owner, held := g.typeOwner[name]
-	return held && owner != s
+	held, ok := g.names.holderOf(name)
+	return ok && g.names.sameHolder(held, g.holderFor(s, ""))
+}
+
+// declare commits the declaration of name, which the caller must hold: the
+// name was claimed for the node being generated, by generateTypeDef or by the
+// arm that minted it. Declaring a name nothing claimed, or declaring one twice,
+// is a naming defect and is reported as one.
+func (g *Generator) declare(name string) {
+	if _, held := g.names.holderOf(name); !held {
+		g.noteNamingDefect(&NamingDefectError{Name: name, Holder: "nothing", Detail: "a type was declared under a name that was never claimed"})
+	}
+	if g.names.declared[name] {
+		g.noteNamingDefect(&NamingDefectError{Name: name, Holder: "an earlier declaration", Detail: "a type was declared twice"})
+		return
+	}
+	g.names.declared[name] = true
+}
+
+// emitDef declares def's name and adds def to the file. See declare.
+func (g *Generator) emitDef(def TypeDef) {
+	g.declare(def.TypeName())
+	g.appendDef(def)
+}
+
+// emitDefAs is emitDef for an arm that holds name and built def for it; a def
+// built under any other name is a defect, since the name it would be declared
+// under is not the one that was claimed.
+func (g *Generator) emitDefAs(name string, def TypeDef) {
+	if def.TypeName() != name {
+		g.noteNamingDefect(&NamingDefectError{Name: def.TypeName(), Holder: "the claim on " + name, Detail: "a type definition was built under a name other than the one claimed for it"})
+	}
+	g.emitDef(def)
+}
+
+// appendDef adds a def whose name is already declared -- by an arm that marks
+// its name on entry, so that a recursive reach of it sees the declaration, and
+// adds the finished def on the way out.
+func (g *Generator) appendDef(def TypeDef) {
+	name := def.TypeName()
+	if !g.names.declared[name] {
+		g.noteNamingDefect(&NamingDefectError{Name: name, Holder: "nothing", Detail: "a type definition was added under a name that was not declared"})
+	}
+	g.claimCarriedIdents(def)
+	g.output.TypeDefs = append(g.output.TypeDefs, def)
+}
+
+// claimCarriedIdents claims the package-level identifiers a def declares
+// besides its type: the variables its template emits beside it. Claimed here,
+// where every def enters the file, so that no kind of def can carry one past
+// the registry.
+func (g *Generator) claimCarriedIdents(def TypeDef) {
+	switch d := def.(type) {
+	case *StructDef:
+		if len(d.AccessRules) > 0 {
+			d.AccessRulesVar = g.names.claim(d.Name+"AccessRules",
+				memberHolder(d.Name, "access-rules", "the access rules of "+d.Name))
+		}
+	case *AnnotationSchemaDef:
+		d.SchemaVar = g.names.claim(d.Name+"Schema",
+			memberHolder(d.Name, "schema", "the compiled schema of "+d.Name))
+		if len(d.AccessRules) > 0 {
+			d.AccessRulesVar = g.names.claim(d.Name+"AccessRules",
+				memberHolder(d.Name, "access-rules", "the access rules of "+d.Name))
+		}
+		// The hoisted nodes are spelled inside the literals that refer to one
+		// another, so they cannot be renumbered here without rewriting those. They
+		// cannot collide either: each is "_rt" + this type's name + "Node" + a
+		// number, the type's name is unique, and nothing else the registry hands
+		// out begins "_rt". Held all the same, so that a claim of the same
+		// spelling from anywhere else is numbered off it, and checked, so that
+		// the argument above is a checked one.
+		for i, node := range d.Nodes {
+			if !g.names.claimExactly(node.Name, memberHolder(d.Name, "node/"+strconv.Itoa(i), "a compiled node of "+d.Name)) {
+				held, _ := g.names.holderOf(node.Name)
+				g.noteNamingDefect(&NamingDefectError{Name: node.Name, Holder: held.what, Detail: "a compiled schema node of " + d.Name + " was named"})
+			}
+		}
+	}
+}
+
+// unresolvedRefTypeName is the name a position spells for a $ref nothing could
+// resolve, where the position cannot hold `any` -- an array element, a map
+// value, a oneOf variant -- and --lenient-refs has accepted the degradation.
+// Nothing declares it, and the file says so (File.UndeclaredRefTypes).
+//
+// It is claimed like any other name. It used to be read straight off the
+// reference text, and where that text derived the name of a type the package
+// did declare, the position silently bound that unrelated type: it compiled,
+// validated against a schema the reference never named, and the banner that
+// exists to say "this file does not build" said nothing, since the name was
+// declared. Holding the name keeps it apart from every declared one, so the
+// failure is the build failure the banner describes.
+func (g *Generator) unresolvedRefTypeName(ref string) string {
+	if name, ok := g.names.unresolved[ref]; ok {
+		return name
+	}
+	name := g.names.claim(refToGoName(ref), nameHolder{kind: holderUnresolved, key: ref, what: "the undeclared name --lenient-refs leaves for $ref " + strconv.Quote(ref)})
+	g.names.unresolved[ref] = name
+	return name
+}
+
+// withdrawDefs removes from the file the defs drop selects, and gives their
+// names back: a type taken out of the package holds nothing.
+func (g *Generator) withdrawDefs(drop func(TypeDef) bool) {
+	kept := g.output.TypeDefs[:0]
+	for _, td := range g.output.TypeDefs {
+		if drop(td) {
+			g.names.withdraw(td.TypeName())
+			continue
+		}
+		kept = append(kept, td)
+	}
+	g.output.TypeDefs = kept
+}
+
+// noteNamingDefect records the first naming defect of this Generate call. See
+// namingDefect.
+func (g *Generator) noteNamingDefect(err error) {
+	if g.namingDefect == nil {
+		g.namingDefect = err
+	}
 }
 
 // unclaimedTypeName is the name a type minted for a position inside a document
 // is declared under: the name the position derives, or the first numbered
-// spelling of it that no other node holds.
+// spelling of it that no other holder has. It claims the name for s; see
+// claimTypeName.
 //
 // A position's name is its parent's name and its own, so two positions whose
 // names differ only in what the Go name derivation drops arrive here as one
@@ -1056,87 +1197,133 @@ func (g *Generator) nameHeldByOther(name string, s *schema.Schema) bool {
 // Numbered rather than qualified, for the reason the same fold gets a numeric
 // suffix a level down in generateStruct when two property names collide: the two
 // positions differ in nothing that survives the derivation, so there is no other
-// name to give them. Which of two *definitions* keeps a contested name is not
-// decided here: that question can need a comparison across documents, which this
-// cannot see, and it is Config.DefinitionTypeNames' answer.
+// name to give them.
 //
 // The name is left alone when the node holding it is s itself. The same node
 // arrives repeatedly -- reached again through a $ref, revisited by a second pass
 // -- and giving it a fresh name each time would declare the same type twice.
 //
-// It is left alone too when Config.DefinitionTypeNames pins it, and that is not
-// an oversight. A pinned name is one the caller invented to keep two definitions
-// apart, so it was never written in any document and the caller cannot see what
-// else it might land on. Stepping around it here would answer that with a name
-// nobody chose and say nothing, where the contract is that the caller hears: the
-// collision is recorded by notePinnedNameTaken and the run is refused with the
-// definition and the remedy named. Numbering is the answer for a name this
-// generator derived, not for one it was handed.
+// A name Config.DefinitionTypeNames pins is held for its definition from New()
+// on, so a position deriving it is numbered off it rather than taking it. That
+// used to be a refusal (PinnedNameCollisionError): the pinned definition could
+// arrive after the position and find its name gone. With the pin held first
+// there is no race to lose, and a position -- whose name nobody chose -- is what
+// moves.
+//
+// It answers without holding the name: most of the arms a position chooses
+// between declare nothing, and a position's name is claimed where a
+// declaration is actually made -- by generateTypeDef, or by declareFor for the
+// arms that build a def themselves. A name another node declares in between is
+// then caught there, as a naming defect, rather than reused.
 func (g *Generator) unclaimedTypeName(name string, s *schema.Schema) string {
-	if g.pinnedNames[name] || !g.nameHeldByOther(name, s) {
-		return name
-	}
-	return g.numberedTypeName(name, s)
+	return g.names.firstAvailable(name, g.holderFor(s, "the type for a position named "+name))
 }
 
-// numberedTypeName is the first numbered spelling of name that no other node
-// holds and the caller has not pinned.
-func (g *Generator) numberedTypeName(name string, s *schema.Schema) string {
-	for i := 2; ; i++ {
-		candidate := fmt.Sprintf("%s%d", name, i)
-		if !g.pinnedNames[candidate] && !g.nameHeldByOther(candidate, s) {
-			return candidate
+// nameAvailableTo reports whether name is free, or held for s already.
+func (g *Generator) nameAvailableTo(name string, s *schema.Schema) bool {
+	return name != "" && g.names.availableTo(name, g.holderFor(s, ""))
+}
+
+// holderNodeOf is the node the name of the type being generated is held for.
+// Within generateTypeDefBody that is the node generateTypeDefFor claimed it
+// for, which is s except where a declaration is being built from another node's
+// schema (a $ref chain ending in a wrapper, where each link is generated under
+// the name of the definition that began it). fallback answers for a name that is
+// not a node's -- which a body never sees.
+func (g *Generator) holderNodeOf(name string, fallback *schema.Schema) *schema.Schema {
+	if held, ok := g.names.holderOf(name); ok && held.kind == holderType && held.node != nil {
+		return held.node
+	}
+	return fallback
+}
+
+// holdFor claims name for s ahead of a declaration an arm is about to make
+// through a function that declares its own name (generateEnumDef), and reports
+// whether it could. It cannot only when the name went to another node since it
+// was derived, which is a naming defect and is recorded as one.
+func (g *Generator) holdFor(name string, s *schema.Schema) bool {
+	if g.names.claimExactly(name, g.holderFor(s, "a type named "+name)) {
+		return true
+	}
+	held, _ := g.names.holderOf(name)
+	g.noteNamingDefect(&NamingDefectError{Name: name, Holder: held.what, Detail: "a type was about to be declared for one schema node under a name held for another"})
+	return false
+}
+
+// declareFor claims name for s and commits a declaration under it, for an arm
+// that builds its def outside generateTypeDef. The caller asks nameAvailableTo
+// first; a name held for another node here is a naming defect.
+func (g *Generator) declareFor(name string, s *schema.Schema) {
+	if !g.names.claimExactly(name, g.holderFor(s, "a type named "+name)) {
+		held, _ := g.names.holderOf(name)
+		g.noteNamingDefect(&NamingDefectError{Name: name, Holder: held.what, Detail: "a type was declared for one schema node under a name held for another"})
+		return
+	}
+	g.declare(name)
+}
+
+// claimDefinitionNames claims the Go type name of every definition of the
+// document being generated, before any type is generated, and records them for
+// definitionGoName. See names.go for why definitions claim ahead of positions,
+// and definitionClaimOrder for the order among them.
+//
+// A derived name is kept off the document's own root type name, which is
+// claimed first. The definitions are generated first, so a $defs key deriving
+// that name used to take it and the root type was never declared at all: a
+// document titled "Thing" with a $defs entry keyed "thing" produced a package
+// holding one Thing, the definition's, and {"t":"not-an-object"} passed a root
+// schema that requires t to be that object. Issue #268.
+//
+// Two keys that fold onto one Go name -- "a-b" and "a_b", "X" and "!" -- are
+// numbered apart here, the way the CLI numbers them for a run of several
+// documents (splitFoldedClaims). A library caller that pins nothing used to get
+// one type for both: the second definition was skipped by the re-entrancy guard
+// and every $ref to it bound the first. Issue #271's library half.
+//
+// A pinned name is the caller's and is used as given; it is already held (see
+// New).
+func (g *Generator) claimDefinitionNames(s *schema.Schema) {
+	g.definitionNames = make(map[*schema.Schema]string)
+	// The container normalizeNode filled as a mirror of the other holds the same
+	// nodes under the keyword the document did not write, and is not read: a
+	// claim is described by the keyword its author used.
+	var claims []definitionClaim
+	if s.MirroredDefinitions != "$defs" {
+		for _, key := range sortedKeys(s.Defs) {
+			claims = append(claims, definitionClaim{keyword: "$defs", key: key, node: s.Defs[key], want: SchemaNameToGoName(key)})
 		}
+	}
+	if s.MirroredDefinitions != "definitions" {
+		for _, key := range sortedKeys(s.Definitions) {
+			claims = append(claims, definitionClaim{keyword: "definitions", key: key, node: s.Definitions[key], want: SchemaNameToGoName(key)})
+		}
+	}
+	definitionClaimOrder(claims)
+	for _, c := range claims {
+		if c.node == nil {
+			continue
+		}
+		if _, done := g.definitionNames[c.node]; done {
+			continue
+		}
+		if pinned, ok := g.names.pinnedNameOf(c.node); ok {
+			g.definitionNames[c.node] = pinned
+			continue
+		}
+		g.definitionNames[c.node] = g.names.claim(c.want,
+			nameHolder{kind: holderType, node: c.node, role: "definition", what: c.keyword + "/" + c.key})
 	}
 }
 
 // definitionGoName is the Go type name a definition is declared under: the name
-// the caller pinned for that node, or the one its $defs key derives.
-//
-// A derived name is kept off the document's own root type name. The definitions
-// are generated first, so a $defs key deriving that name claimed it and the root
-// type was never declared at all: a document titled "Thing" with a $defs entry
-// keyed "thing" produced a package holding one Thing, the definition's, and
-// {"t":"not-an-object"} passed a root schema that requires t to be that object.
-// Issue #268, and it says nothing on the way past.
-//
-// The root type name is the one name in the document that cannot move: it is what
-// --root-name and the title choose, it is the type the caller writes their code
-// against, and every position inside the document is named after it. So the
-// definition is what steps aside.
-//
-// A pinned name is left alone, here as everywhere: the caller has said what that
-// definition is called, having seen the whole input set, and it may well be
-// naming it after this very root (issue #249's AlphaThing). The CLI resolves this
-// collision before generation and reaches the same answer by the route that can
-// also say which keyword declared it, so this is the backstop for a caller that
-// resolves nothing -- the library's own callers, and the compliance harness.
+// claimDefinitionNames claimed for it.
 func (g *Generator) definitionGoName(defKey string, def *schema.Schema) string {
-	if pinned, ok := g.config.DefinitionTypeNames[def]; ok {
-		return pinned
+	if name, ok := g.definitionNames[def]; ok {
+		return name
 	}
-	name := SchemaNameToGoName(defKey)
-	if name == g.rootTypeName {
-		return g.numberedTypeName(name, def)
-	}
-	return name
-}
-
-// PinnedNameCollisionError reports names Config.DefinitionTypeNames asked for
-// that a different schema node had already claimed.
-//
-// The caller invented those names to keep two definitions apart, so a name that
-// lands on some other type has not kept them apart at all -- the definition is
-// skipped by the re-entrancy guard and its position silently carries the other
-// type, which is the defect the pin exists to prevent. Refusing is the only
-// answer that does not hand back that same silence under a new name.
-type PinnedNameCollisionError struct {
-	Names []string
-}
-
-func (e *PinnedNameCollisionError) Error() string {
-	return fmt.Sprintf("type name %s is claimed by another schema in this package",
-		strings.Join(quoteAll(e.Names), ", "))
+	// Not a definition of the document being generated; nothing reaches here
+	// today, and the answer is still a claimed one.
+	return g.claimTypeName(SchemaNameToGoName(defKey), def, "definition "+defKey)
 }
 
 // RootTypeCollisionError reports a --shared-types schema whose root type name
@@ -2066,40 +2253,40 @@ func (g *Generator) addRequiredImports() {
 		needsFmt = true
 	}
 	if needsJSON {
-		g.output.Imports = append(g.output.Imports, Import{Path: "encoding/json"})
+		g.output.Imports = append(g.output.Imports, GeneratedImport("encoding/json"))
 	}
 	if needsFmt {
-		g.output.Imports = append(g.output.Imports, Import{Path: "fmt"})
+		g.output.Imports = append(g.output.Imports, GeneratedImport("fmt"))
 	}
 	if needsMath {
-		g.output.Imports = append(g.output.Imports, Import{Path: "math"})
+		g.output.Imports = append(g.output.Imports, GeneratedImport("math"))
 	}
 	if needsTime {
-		g.output.Imports = append(g.output.Imports, Import{Path: "time"})
+		g.output.Imports = append(g.output.Imports, GeneratedImport("time"))
 	}
 	if needsUTF8 {
-		g.output.Imports = append(g.output.Imports, Import{Path: "unicode/utf8"})
+		g.output.Imports = append(g.output.Imports, GeneratedImport("unicode/utf8"))
 	}
 	if needsBytes {
-		g.output.Imports = append(g.output.Imports, Import{Path: "bytes"})
+		g.output.Imports = append(g.output.Imports, GeneratedImport("bytes"))
 	}
 	if needsStrings {
-		g.output.Imports = append(g.output.Imports, Import{Path: "strings"})
+		g.output.Imports = append(g.output.Imports, GeneratedImport("strings"))
 	}
 	if needsBigInt {
-		g.output.Imports = append(g.output.Imports, Import{Path: "math/big"})
+		g.output.Imports = append(g.output.Imports, GeneratedImport("math/big"))
 	}
 	if needsNetIP {
-		g.output.Imports = append(g.output.Imports, Import{Path: "net/netip"})
+		g.output.Imports = append(g.output.Imports, GeneratedImport("net/netip"))
 	}
 	if needsNetMail {
-		g.output.Imports = append(g.output.Imports, Import{Path: "net/mail"})
+		g.output.Imports = append(g.output.Imports, GeneratedImport("net/mail"))
 	}
 	if needsNetURL {
-		g.output.Imports = append(g.output.Imports, Import{Path: "net/url"})
+		g.output.Imports = append(g.output.Imports, GeneratedImport("net/url"))
 	}
 	if needsValidationRuntime {
-		g.output.Imports = append(g.output.Imports, Import{Path: "github.com/mgilbir/schemagen/pkg/validationruntime"})
+		g.output.Imports = append(g.output.Imports, GeneratedImport("github.com/mgilbir/schemagen/pkg/validationruntime"))
 	}
 }
 
@@ -2903,8 +3090,8 @@ func usesNetIPType(t GoType) bool {
 //
 // Both ref arms of generateTypeDef resolve the target and then recurse into
 // generateTypeDef for it. Nothing stops that recursion on its own: the
-// re-entrancy guard is g.generated[name], which is set when a definition
-// *completes*, so a ref chain that leads back to a definition still in flight
+// re-entrancy guard is the registry's declared set (isDeclared), which an arm
+// sets when it commits, so a ref chain that leads back to a definition still in flight
 // re-enters the same arm forever. The result is "fatal error: stack overflow",
 // which no recover can catch -- it takes the process down, and {"$ref":"#"} is
 // enough to trigger it. The struct path never had this problem because it marks
@@ -2916,7 +3103,7 @@ func usesNetIPType(t GoType) bool {
 // {"$ref":"#"} asserts "valid if valid", which every JSON value satisfies. `any`
 // is what that schema describes, not a degradation of it. A cycle that does pass
 // through a schema with content never gets here -- that schema's arm claims it,
-// marks g.generated on entry, and the reference resolves to the named type.
+// declares its name on entry, and the reference resolves to the named type.
 func (g *Generator) refCycleAliasDef(name string, s, resolved *schema.Schema) TypeDef {
 	if !g.nodesInProgress[resolved] {
 		return nil
@@ -2961,6 +3148,16 @@ func (g *Generator) refCycleAliasDef(name string, s, resolved *schema.Schema) Ty
 // the same question about the same node in every case but the merge, and this
 // only ever strengthens what they decided.
 func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
+	return g.generateTypeDefFor(name, s, s)
+}
+
+// generateTypeDefFor is generateTypeDef for a declaration that belongs to one
+// node and is built from another's schema: owner holds the name, s is what the
+// type is generated from. A document root that is nothing but a $ref to a
+// wrapper type is the case -- the root's own name is declared, for the root,
+// from the target's schema, because a defined type over the wrapper would carry
+// none of its methods.
+func (g *Generator) generateTypeDefFor(name string, owner, s *schema.Schema) error {
 	// The re-entrancy guard comes first, ahead of both arms that claim a schema
 	// before the static ones. The same name arrives here more than once -- a
 	// $defs entry is generated in its own right and again through every $ref that
@@ -2978,16 +3175,45 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	// It is also what makes the null rejection below a once-per-name question:
 	// the second visit returns here, so the def is never re-judged against a
 	// schema other than the one it was built from.
-	if g.generated[name] {
-		g.notePinnedNameTaken(name, s)
+	//
+	// "The same schema under the same name" is checked, not assumed. The name
+	// must be one the registry holds for s -- claimed by the caller, or free and
+	// claimed here -- and a name held for another node is not s's to declare or
+	// to reuse. Returning quietly there, as this guard used to, handed the caller
+	// a name standing for some other node's type and the position was validated
+	// against a schema written somewhere else (a titled oneOf variant
+	// reusing $defs/Foo, the nullable-oneOf arm reading its name straight off the
+	// reference string). That is now a defect report, because every name a
+	// caller passes here comes out of the registry.
+	holder := g.holderFor(owner, "a type named "+name)
+	if held, ok := g.names.holderOf(name); ok && !g.names.sameHolder(held, holder) {
+		err := &NamingDefectError{Name: name, Holder: held.what, Detail: "generation asked to declare a type for one schema node under a name held for another"}
+		g.noteNamingDefect(err)
+		return err
+	}
+	if g.isDeclared(name) {
 		return nil
 	}
+	// Held from here until the outermost call for this name returns, so that a
+	// position deriving the same spelling meanwhile is numbered off it rather
+	// than generating a second type under it. Given back if nothing was
+	// declared: several arms decline, and a name nothing declared is free for
+	// the next node that derives it -- whoever claimed it first.
+	g.names.claimExactly(name, holder)
+	g.typesInFlight[name]++
+	defer func() {
+		g.typesInFlight[name]--
+		if g.typesInFlight[name] == 0 {
+			delete(g.typesInFlight, name)
+			g.releaseTypeName(name, owner)
+		}
+	}()
 
 	// The backstop for the guard above's blind spot: a node whose own generation
 	// is still in flight, arriving here under a *different* name.
 	//
-	// g.generated keys on the name, and it is only set when a definition
-	// completes, so it says nothing about a node that is halfway through being
+	// The declared set keys on the name, and it is only set when an arm
+	// commits, so it says nothing about a node that is halfway through being
 	// generated -- and it can say nothing at all when the name is fresh at every
 	// level. An arm that mints its name from the position it was reached through
 	// does exactly that: parentName+segment grows one segment per level, so a
@@ -3010,8 +3236,7 @@ func (g *Generator) generateTypeDef(name string, s *schema.Schema) error {
 	// which is what keeps the sub-schema enforced rather than merely terminating.
 	if canonical, cyclic := g.cyclicNodeName(s); cyclic && canonical != name {
 		g.remintedInFlight = append(g.remintedInFlight, RemintedNode{Name: name, Canonical: canonical})
-		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+		g.emitDef(&AliasDef{
 			Name:       name,
 			Underlying: &NamedType{Name: canonical},
 			Doc:        g.docFor(name, s),
@@ -3181,7 +3406,7 @@ func (g *Generator) typeDefNamed(name string) TypeDef {
 // already been through here under the schema it was built from.
 //
 // A name held by an earlier *call* cannot be reached either, and the two halves
-// of that are worth keeping together. Under --shared-types g.generated survives
+// of that are worth keeping together. Under --shared-types the name registry survives
 // between documents, so such a name returns at the guard above and never arrives
 // here -- which is right, since the type was stamped when it was declared. And
 // g.output is rebuilt by every Generate whether or not the run shares types, so
@@ -3258,28 +3483,10 @@ func (g *Generator) applyNullRejection(name string, s *schema.Schema) {
 // this name. Split out of generateTypeDef so that the null rejection above runs
 // once, after whichever of them claimed the schema.
 //
-// The ownership record sits here rather than in the wrapper, and the two are not
-// the same placement. It has to cover exactly the code that can leave a name
-// declared -- that is what makes it a statement about what was declared rather
-// than about what was asked for -- and applyNullRejection is not such code: it
-// appends no def, marks nothing generated, and only sets fields on a def one of
-// these arms already built. Deferring it around that call as well would extend
-// the record over a step that cannot change its answer, and assert an ordering
-// between the two that does not exist. See typeOwner.
-//
-// The two are independent in fact and not only by inspection: noteTypeOwner
-// reads g.generated and writes g.typeOwner, applyNullRejection reads
-// g.output.TypeDefs and writes fields on one of them, and neither touches what
-// the other reads. Built both ways, the corpus emits identical source under
-// every configuration.
+// The name is held for s by the time this runs (see generateTypeDef), so every
+// arm below declares under a name that is s's; an arm that declines leaves it
+// to generateTypeDef to give back.
 func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
-	// Whatever this call leaves declared under name belongs to s, unless an
-	// earlier node already holds it. Taken on the way out, so that it describes
-	// what was declared rather than what was asked for: several arms below
-	// decline, and a name nothing declared has to stay free for the next node
-	// that derives it. See typeOwner.
-	defer g.noteTypeOwner(name, s)
-
 	// The dynamic scope this type is resolved against, seeded at the type itself
 	// and restored on the way out. This is #293's answer, candidate 1.
 	//
@@ -3334,8 +3541,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 	// match the value. Route those to the runtime evaluator before any other
 	// arm claims the schema.
 	if def := g.annotationSchemaDef(name, s); def != nil {
-		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, def)
+		g.emitDefAs(name, def)
 		return nil
 	}
 
@@ -3351,8 +3557,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 	// See unevaluatedNeedsRuntimeEvaluator.
 	if g.unevaluatedNeedsRuntimeEvaluator(s) {
 		if def := g.runtimeSchemaDef(name, s); def != nil {
-			g.generated[name] = true
-			g.output.TypeDefs = append(g.output.TypeDefs, def)
+			g.emitDefAs(name, def)
 			return nil
 		}
 	}
@@ -3376,8 +3581,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 		return err
 	}
 	if def != nil {
-		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, def)
+		g.emitDefAs(name, def)
 		return nil
 	}
 
@@ -3406,8 +3610,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 	// permits, and cannot be seen from outside. See negationOperandStatesOnly.
 	if g.siblingsWouldDropNot(s) {
 		if def := g.runtimeSchemaDef(name, s); def != nil {
-			g.generated[name] = true
-			g.output.TypeDefs = append(g.output.TypeDefs, def)
+			g.emitDefAs(name, def)
 			return nil
 		}
 	}
@@ -3443,8 +3646,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 	// instance, `type B any` is an exact description of that, and giving it a
 	// Validate would be inventing a check the schema does not state.
 	if s.IsFalseSchema() {
-		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+		g.emitDefAs(name, &NotSchemaDef{
 			Name:        name,
 			Doc:         g.docFor(name, s),
 			IsForbidden: true,
@@ -3481,8 +3683,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 	refMergesEnum := g.refMergesSiblingValues(s)
 
 	if g.validationKeywordsEnabled() && !refDisplacesEnum && s.Enum != nil && len(s.Enum) == 0 {
-		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+		g.emitDefAs(name, &NotSchemaDef{
 			Name:        name,
 			Doc:         g.docFor(name, s),
 			IsForbidden: true,
@@ -3552,8 +3753,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 
 	// anyOf/oneOf with only boolean false sub-schemas → nothing can match → forbidden.
 	if len(s.AnyOf) > 0 && !hasProperties(s) && g.allSubsFalse(s.AnyOf) {
-		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+		g.emitDefAs(name, &NotSchemaDef{
 			Name:        name,
 			Doc:         g.docFor(name, s),
 			IsForbidden: true,
@@ -3567,8 +3767,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 		total := len(s.OneOf)
 		if falseCount == total {
 			// All false → nothing matches
-			g.generated[name] = true
-			g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+			g.emitDefAs(name, &NotSchemaDef{
 				Name:        name,
 				Doc:         g.docFor(name, s),
 				IsForbidden: true,
@@ -3577,8 +3776,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 		}
 		if trueCount > 1 {
 			// More than one always-true sub-schema → always multiple matches → forbidden
-			g.generated[name] = true
-			g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+			g.emitDefAs(name, &NotSchemaDef{
 				Name:        name,
 				Doc:         g.docFor(name, s),
 				IsForbidden: true,
@@ -3625,16 +3823,14 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 				// about this branch, it still gives the caller the branch's type,
 				// and the alternative here enforces nothing either.
 				if def := g.rawWrapperDef(name, s); def != nil {
-					g.generated[name] = true
-					g.output.TypeDefs = append(g.output.TypeDefs, def)
+					g.emitDefAs(name, def)
 					return nil
 				}
 			}
 			if !goType.IsPointer() {
 				goType = &PointerType{Inner: goType}
 			}
-			g.generated[name] = true
-			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+			g.emitDefAs(name, &AliasDef{
 				Name:       name,
 				Underlying: goType,
 				Doc:        g.docFor(name, s),
@@ -3656,12 +3852,10 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 		// (Go forbids methods on interface-underlying types), so when the
 		// branches are expressible, wrap the raw JSON in a struct instead.
 		if def := g.rawWrapperDef(name, s); def != nil {
-			g.generated[name] = true
-			g.output.TypeDefs = append(g.output.TypeDefs, def)
+			g.emitDefAs(name, def)
 			return nil
 		}
-		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, g.unenforcedAliasDef(name, s))
+		g.emitDefAs(name, g.unenforcedAliasDef(name, s))
 		return nil
 	}
 
@@ -3693,8 +3887,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 		primarySchemaType(s) == "" && g.inferTypeFromConstraints(s) == "" &&
 		oneOfUnionKeepsWholeSchema(s) && g.oneOfUnionOutrunsBranches(s) {
 		if def := g.rawWrapperDef(name, s); def != nil {
-			g.generated[name] = true
-			g.output.TypeDefs = append(g.output.TypeDefs, def)
+			g.emitDefAs(name, def)
 			return nil
 		}
 	}
@@ -3716,8 +3909,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 		resolved := g.resolveRefInContext(effRef, s)
 		if resolved != nil {
 			if def := g.refCycleAliasDef(name, s, resolved); def != nil {
-				g.generated[name] = true
-				g.output.TypeDefs = append(g.output.TypeDefs, def)
+				g.emitDefAs(name, def)
 				return nil
 			}
 			// A reference into a document another package of this run owns is
@@ -3741,8 +3933,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			// is what the reference means, and it is what --shared-types
 			// materializes for the identical schema.
 			if foreign, ok := g.foreignTypeFor(resolved, effRef); ok && !g.aliasDropsMethods(foreign) {
-				g.generated[name] = true
-				g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+				g.emitDefAs(name, &AliasDef{
 					Name:       name,
 					Underlying: foreign,
 					Doc:        g.docFor(name, s),
@@ -3765,7 +3956,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			// Validate that checks it, so the constraint would be silently dropped.
 			// Instead, generate Root directly from the resolved schema.
 			if g.aliasDropsMethods(&NamedType{Name: refName}) {
-				err := g.generateTypeDef(name, resolved)
+				err := g.generateTypeDefFor(name, g.holderNodeOf(name, s), resolved)
 				if pushed {
 					g.popDynamicScope()
 				}
@@ -3774,8 +3965,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			if pushed {
 				g.popDynamicScope()
 			}
-			g.generated[name] = true
-			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+			g.emitDefAs(name, &AliasDef{
 				Name:       name,
 				Underlying: &NamedType{Name: refName},
 				Doc:        g.docFor(name, s),
@@ -3793,8 +3983,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 		resolved := g.resolveDynamicRef(s.DynamicRef, s)
 		if resolved != nil {
 			if def := g.refCycleAliasDef(name, s, resolved); def != nil {
-				g.generated[name] = true
-				g.output.TypeDefs = append(g.output.TypeDefs, def)
+				g.emitDefAs(name, def)
 				return nil
 			}
 			// The same answer the $ref arm above gives, and now for the same
@@ -3825,8 +4014,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			// reference means and what --shared-types materializes for the same
 			// schema.
 			if foreign, ok := g.foreignTypeFor(resolved, s.DynamicRef); ok && !g.aliasDropsMethods(foreign) {
-				g.generated[name] = true
-				g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+				g.emitDefAs(name, &AliasDef{
 					Name:       name,
 					Underlying: foreign,
 					Doc:        g.docFor(name, s),
@@ -3838,10 +4026,9 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 				return err
 			}
 			if g.aliasDropsMethods(&NamedType{Name: refName}) {
-				return g.generateTypeDef(name, resolved)
+				return g.generateTypeDefFor(name, g.holderNodeOf(name, s), resolved)
 			}
-			g.generated[name] = true
-			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+			g.emitDefAs(name, &AliasDef{
 				Name:       name,
 				Underlying: &NamedType{Name: refName},
 				Doc:        g.docFor(name, s),
@@ -3854,8 +4041,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 	// validates the negated constraint. Only handles schemas where "not" is the
 	// sole meaningful keyword (no type, properties, items, etc.).
 	if notDef := g.extractNotSchemaDef(name, s); notDef != nil {
-		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, notDef)
+		g.emitDefAs(name, notDef)
 		return nil
 	}
 
@@ -3864,8 +4050,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 	// schemas like {"type": "null"}, {"type": ["integer","string"]}, etc. that
 	// don't map to a single Go type.
 	if toDef := g.extractTypeOnlySchemaDef(name, s); toDef != nil {
-		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, toDef)
+		g.emitDefAs(name, toDef)
 		return nil
 	}
 
@@ -3873,8 +4058,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 	// was asserted nowhere. The wrapper accepts every JSON value and checks the
 	// format only when the value arrived as a string. See stringAnnotationOnlySchema.
 	if fDef := g.stringAnnotationOnlyDef(name, s); fDef != nil {
-		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, fDef)
+		g.emitDefAs(name, fDef)
 		return nil
 	}
 
@@ -3882,9 +4066,9 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 	// with a single primitive type (for example integer OR an object schema), use
 	// the same raw wrapper as multi-type schemas so both alternatives can validate.
 	if len(s.TypeSchemas) > 0 {
-		g.generated[name] = true
+		g.declare(name)
 		branches, allowed := g.typeUnionBranches(s, name)
-		g.output.TypeDefs = append(g.output.TypeDefs, &TypeOnlySchemaDef{
+		g.appendDef(&TypeOnlySchemaDef{
 			Name:         name,
 			Doc:          g.docFor(name, s),
 			AllowedTypes: allowed,
@@ -3913,11 +4097,11 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			anyOfVariants = extractAnyOfVariantRules(s, goType)
 			oneOfVariants = extractOneOfVariantRules(s, goType)
 		}
-		g.generated[name] = true
+		g.declare(name)
 		if isInferred {
 			// Type was inferred from constraints — generate wrapper struct that
 			// accepts any JSON value but validates only matching types.
-			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
+			g.appendDef(&InferredAliasDef{
 				Name:             name,
 				Doc:              g.docFor(name, s),
 				StrictReadWrite:  g.config.StrictReadWrite,
@@ -3930,7 +4114,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 			})
 		} else if g.config.BigIntSupport && primaryType == "integer" {
 			// BigInt support: generate wrapper struct with int64 + *big.Int.
-			g.output.TypeDefs = append(g.output.TypeDefs, &BigIntAliasDef{
+			g.appendDef(&BigIntAliasDef{
 				Name:           name,
 				Doc:            g.docFor(name, s),
 				Validations:    rules,
@@ -3941,7 +4125,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 				StrictInteger:  g.requiresStrictIntegerToken(s),
 			})
 		} else {
-			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+			g.appendDef(&AliasDef{
 				Name:           name,
 				Underlying:     goType,
 				Doc:            g.docFor(name, s),
@@ -3963,7 +4147,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 		// the flag already set, that re-entry runs to completion and appends a
 		// second, identical declaration under the same name -- which Go rejects
 		// as a redeclaration.
-		g.generated[name] = true
+		g.declare(name)
 		goType := g.resolveType(s, name)
 		var rules []ValidationRule
 		var anyOfVariants [][]ValidationRule
@@ -4008,7 +4192,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 				addlItemsTypeName != "" || containsDef != nil || unevalItems != nil {
 				inferredGoType = &ArrayType{ItemType: &PrimitiveType{Name: "any"}}
 			}
-			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
+			g.appendDef(&InferredAliasDef{
 				Name:                    name,
 				Doc:                     g.docFor(name, s),
 				StrictReadWrite:         g.config.StrictReadWrite,
@@ -4052,7 +4236,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 				maxContains = nil
 				unevalItems = nil
 			}
-			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+			g.appendDef(&AliasDef{
 				Name:             name,
 				Underlying:       goType,
 				Doc:              g.docFor(name, s),
@@ -4088,8 +4272,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 	// a Validate() method, so every one of those would be dropped silently; a
 	// raw-JSON wrapper keeps them enforceable.
 	if def := g.rawWrapperDef(name, s); def != nil {
-		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, def)
+		g.emitDefAs(name, def)
 		return nil
 	}
 
@@ -4099,8 +4282,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 	// CanHaveMethods gate never writes the Validate they would go in. Building
 	// them only to discard them said the opposite. unenforcedAliasDef reports
 	// what is being lost instead.
-	g.generated[name] = true
-	g.output.TypeDefs = append(g.output.TypeDefs, g.unenforcedAliasDef(name, s))
+	g.emitDefAs(name, g.unenforcedAliasDef(name, s))
 	return nil
 }
 
@@ -4115,7 +4297,7 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 // exactly this shape, and without a struct to carry them every one of those
 // keywords is dropped.
 func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema) {
-	g.generated[name] = true
+	g.declare(name)
 	var additionalProps *AdditionalPropertiesDef
 	// The keys of an object with no declared properties are all "additional",
 	// so a schema-valued additionalProperties governs every value the overflow
@@ -4229,7 +4411,7 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 	if len(branchChecks) > 0 || len(runtimeBranchChecks) > 0 {
 		needsUnmarshal = true
 	}
-	g.output.TypeDefs = append(g.output.TypeDefs, &StructDef{
+	g.appendDef(&StructDef{
 		Name:                 name,
 		Doc:                  g.docFor(name, s),
 		AdditionalProperties: additionalProps,
@@ -4487,7 +4669,7 @@ func (g *Generator) noteUnsatisfiableRequired(typeName, property string) {
 // constraints are purely object-specific (properties, additionalProperties, etc.)
 // and NOT for schemas generated from applicator merging (allOf, anyOf).
 func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonObject bool) error {
-	g.generated[name] = true
+	g.declare(name)
 	g.structsInProgress[name] = true
 	defer delete(g.structsInProgress, name)
 
@@ -4558,23 +4740,52 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		}
 		goFieldNames[propName] = goName
 	}
-	// An override may collide with another field's name, with a generated method,
+	// An override may collide with another override, with a generated method,
 	// or with the synthesized overflow field; any of these produce uncompilable
 	// Go, so reject them with an actionable error rather than silently suffixing
 	// (which would defeat the override).
+	//
+	// The overrides are claimed in the type's member scope first, because the
+	// caller chose them; the derived names are claimed after, and a derived name
+	// that lands on one already held -- the numbered spelling of a fold that
+	// another property is literally called ("a-b" and "a_b" fold to AB1 and AB2,
+	// and a third property may be called "AB1") -- takes the next numbered
+	// spelling the scope does not hold. That used to be a refusal naming
+	// --field-map, for a document that has no field map at all.
+	scope := g.names.memberScopeFor(name)
 	finalNames := make(map[string]string, len(propNames)) // Go name → JSON name
 	for _, propName := range propNames {
+		if !overridden[propName] {
+			continue
+		}
 		goName := goFieldNames[propName]
-		if overridden[propName] {
-			if reason, reserved := reservedFieldNames[goName]; reserved {
-				return fmt.Errorf("type %s: field-map override maps property %q to %q, which collides with %s; choose a different name",
-					name, propName, goName, reason)
-			}
+		if reason, reserved := reservedFieldNames[goName]; reserved {
+			return fmt.Errorf("type %s: field-map override maps property %q to %q, which collides with %s; choose a different name",
+				name, propName, goName, reason)
 		}
 		if other, dup := finalNames[goName]; dup {
 			return fmt.Errorf("type %s: field name %q for property %q collides with property %q (check --field-map overrides)",
 				name, goName, propName, other)
 		}
+		finalNames[goName] = propName
+		scope.claim(goName, "the field for property "+strconv.Quote(propName), "field", s.Properties[propName])
+	}
+	for _, propName := range propNames {
+		if overridden[propName] {
+			continue
+		}
+		// An override landing on a name a property derives is the caller's
+		// configuration contradicting the document, and only the caller can say
+		// which of the two was meant; that stays a refusal.
+		if other, dup := finalNames[goFieldNames[propName]]; dup && overridden[other] {
+			return fmt.Errorf("type %s: field name %q for property %q collides with property %q (check --field-map overrides)",
+				name, goFieldNames[propName], propName, other)
+		}
+		// The move is recorded from the name the property derives, not from
+		// the fold's numbered spelling: AB -> AB1 is what changed the field.
+		goName := scope.claimFrom(derived[propName], goFieldNames[propName], "the field for property "+strconv.Quote(propName), "field",
+			fieldFoldReason(derived[propName], propName, propNames, derived, overridden), s.Properties[propName])
+		goFieldNames[propName] = goName
 		finalNames[goName] = propName
 	}
 
@@ -5694,7 +5905,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		NeedsNullCheck:         needsNullCheck,
 		AcceptNonObject:        acceptNonObj,
 	}
-	g.output.TypeDefs = append(g.output.TypeDefs, structDef)
+	g.appendDef(structDef)
 	return nil
 }
 
@@ -5728,8 +5939,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	// If any allOf sub-schema is boolean false, nothing can satisfy all constraints.
 	// Generate a forbidden type (NotSchemaDef).
 	if g.allOfContainsFalseSchema(s.AllOf) {
-		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+		g.emitDefAs(name, &NotSchemaDef{
 			Name:        name,
 			Doc:         g.docFor(name, s),
 			IsForbidden: true,
@@ -5930,8 +6140,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 	// the declared metaschema withholds it, `enum` and `type` assert nothing and
 	// neither can make a schema empty.
 	if g.validationKeywordsEnabled() && emptyEnumSchema(merged) {
-		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+		g.emitDefAs(name, &NotSchemaDef{
 			Name:        name,
 			Doc:         g.docFor(name, s),
 			IsForbidden: true,
@@ -6021,12 +6230,10 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				// been here.
 				if !enumTypeCarriesSchema(merged) {
 					if def := g.rawWrapperDef(name, s); def != nil {
-						g.generated[name] = true
-						g.output.TypeDefs = append(g.output.TypeDefs, def)
+						g.emitDefAs(name, def)
 						return nil
 					}
 				}
-				g.generated[name] = true
 				return g.generateEnumDef(name, merged)
 			}
 		}
@@ -6037,8 +6244,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		if len(merged.Type) > 0 {
 			pt := primarySchemaType(merged)
 			if pt == "null" || (pt == "" && len(merged.Type) > 1) {
-				g.generated[name] = true
-				g.output.TypeDefs = append(g.output.TypeDefs, &TypeOnlySchemaDef{
+				g.emitDefAs(name, &TypeOnlySchemaDef{
 					Name:         name,
 					Doc:          g.docFor(name, s),
 					AllowedTypes: merged.Type,
@@ -6064,14 +6270,16 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		// it.
 		mergedNoAllOf := *merged
 		mergedNoAllOf.AllOf = nil
+		// The copy is the merge -- and so this frame's own schema -- as far as
+		// the name it is declared under goes; see holderFor.
+		g.nameSources[&mergedNoAllOf] = merged
 		if g.nullableFormatUnion(&mergedNoAllOf) {
 			if _, ok := g.typeUnionWrapper(&mergedNoAllOf, name); ok {
 				return nil
 			}
 		}
 		if fDef := g.stringAnnotationOnlyDef(name, &mergedNoAllOf); fDef != nil {
-			g.generated[name] = true
-			g.output.TypeDefs = append(g.output.TypeDefs, fDef)
+			g.emitDefAs(name, fDef)
 			return nil
 		}
 
@@ -6124,7 +6332,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			// `arraySchema` for the array's positions, `merged` for the bounds
 			// and the null rule, and `s` for the anyOf/oneOf siblings of the
 			// allOf -- the same split the inferred arm makes.
-			g.generated[name] = true
+			g.declare(name)
 			goType := g.resolveType(merged, name)
 			// The merge leaves a branch's array keywords where they are on
 			// purpose, so when a branch is what supplies `items` the slice
@@ -6190,7 +6398,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 					itemValidations = append(itemValidations, *iv)
 				}
 			}
-			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+			g.appendDef(&AliasDef{
 				Name:             name,
 				Underlying:       goType,
 				Doc:              g.docFor(name, s),
@@ -6228,7 +6436,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				anyOfVariants = extractAnyOfVariantRules(s, goType)
 				oneOfVariants = extractOneOfVariantRules(s, goType)
 			}
-			g.generated[name] = true
+			g.declare(name)
 			// A JSON null is refused by a *declared* array and permitted by an
 			// inferred one, so the question has to be put to the schema without
 			// the merge's guess in it. Nothing here said "array"; a branch's
@@ -6280,7 +6488,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			if !g.aliasUnderlyingIs(validateAsConvertible, inferredGoType) {
 				validateAsConvertible = ""
 			}
-			g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
+			g.appendDef(&InferredAliasDef{
 				Name:                    name,
 				Doc:                     g.docFor(name, s),
 				StrictReadWrite:         g.config.StrictReadWrite,
@@ -6319,14 +6527,14 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				anyOfVariants = extractAnyOfVariantRules(s, goType)
 				oneOfVariants = extractOneOfVariantRules(s, goType)
 			}
-			g.generated[name] = true
+			g.declare(name)
 			if inferredFromConstraints {
 				// A bound is all the merge had to go on, so the type is a guess
 				// about what the schema is *about*, not a statement that the
 				// instance must be one. The wrapper keeps the guess -- the
 				// constraint is checked when the value does turn out to be a
 				// string -- without making the Go type refuse everything else.
-				g.output.TypeDefs = append(g.output.TypeDefs, &InferredAliasDef{
+				g.appendDef(&InferredAliasDef{
 					Name:             name,
 					Doc:              g.docFor(name, s),
 					StrictReadWrite:  g.config.StrictReadWrite,
@@ -6345,7 +6553,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				// definition was written {"allOf":[{"$ref": someInteger}]}: the
 				// alias was a plain int64, and the arbitrary precision the flag
 				// exists to provide was gone with no diagnostic.
-				g.output.TypeDefs = append(g.output.TypeDefs, &BigIntAliasDef{
+				g.appendDef(&BigIntAliasDef{
 					Name:           name,
 					Doc:            g.docFor(name, s),
 					Validations:    rules,
@@ -6357,7 +6565,7 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				})
 				return nil
 			}
-			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{
+			g.appendDef(&AliasDef{
 				Name:           name,
 				Underlying:     goType,
 				Doc:            g.docFor(name, s),
@@ -6390,12 +6598,10 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 		// schema's applicators still constrain the value, in which case wrap the
 		// raw JSON so a Validate() can be attached.
 		if def := g.rawWrapperDef(name, s); def != nil {
-			g.generated[name] = true
-			g.output.TypeDefs = append(g.output.TypeDefs, def)
+			g.emitDefAs(name, def)
 			return nil
 		}
-		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, g.unenforcedAliasDef(name, s))
+		g.emitDefAs(name, g.unenforcedAliasDef(name, s))
 		return nil
 	}
 
@@ -8177,8 +8383,7 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 	// merged properties, where the alternative would enforce nothing.
 	if g.anyOfMergeCannotHoldBranches(s) {
 		if def := g.rawWrapperDef(name, s); def != nil {
-			g.generated[name] = true
-			g.output.TypeDefs = append(g.output.TypeDefs, def)
+			g.emitDefAs(name, def)
 			return nil
 		}
 	}
@@ -8237,12 +8442,10 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 		// merge, so prefer a wrapper carrying a Validate() over a bare
 		// `type X any` that drops them.
 		if def := g.rawWrapperDef(name, s); def != nil {
-			g.generated[name] = true
-			g.output.TypeDefs = append(g.output.TypeDefs, def)
+			g.emitDefAs(name, def)
 			return nil
 		}
-		g.generated[name] = true
-		g.output.TypeDefs = append(g.output.TypeDefs, g.unenforcedAliasDef(name, s))
+		g.emitDefAs(name, g.unenforcedAliasDef(name, s))
 		return nil
 	}
 
@@ -8440,45 +8643,25 @@ func (g *Generator) generateOneOfForProperty(parentName, jsonName, goFieldName s
 		return nil, nil
 	}
 
-	// Build the oneOf definition with sealed interface pattern.
-	interfaceName := ToOneOfInterfaceName(parentName, goFieldName)
+	// Build the oneOf definition with sealed interface pattern. The interface is
+	// a package-level type and is claimed like one.
+	interfaceName := g.names.claim(ToOneOfInterfaceName(parentName, goFieldName),
+		memberHolder(parentName, "oneof-interface/"+goFieldName, "the sealed interface of "+parentName+"."+goFieldName))
 
 	var variants []OneOfVariant
-	// Name occurrences are tracked per parent type, not per oneOf group. Each
-	// variant name becomes a wrapper type (Parent_Name) and a method
-	// (Parent.GetName), both of which live on the parent rather than inside the
-	// group, so two groups on one struct claiming the same name — which two
-	// scalar oneOf properties do immediately, since primitive variants are all
-	// called String / Integer / Number / Boolean — emitted a redeclared type and
-	// a redeclared method. Widening the scope of the existing suffix mechanism
-	// resolves that the same way a duplicate inside one group is resolved.
-	usedNames := g.oneOfMemberNames[parentName]
-	if usedNames == nil {
-		if g.oneOfMemberNames == nil {
-			g.oneOfMemberNames = make(map[string]map[string]int)
-		}
-		usedNames = make(map[string]int)
-		g.oneOfMemberNames[parentName] = usedNames
-	}
 	for i, variant := range nonNullVariants {
 		result, err := g.resolveOneOfVariant(variant, parentName, goFieldName, i)
 		if err != nil {
 			return nil, err
 		}
 
-		// Deduplicate variant names: if we've already seen this name, append an index.
-		name := result.Name
-		if count, exists := usedNames[name]; exists {
-			name = fmt.Sprintf("%s%d", name, count+1)
-		}
-		usedNames[result.Name]++
-
-		wrapperName := ToOneOfWrapperName(parentName, name)
+		name, getter, wrapperName := g.claimVariantMemberNames(parentName, goFieldName, i, result.Name, variant)
 
 		checks := oneOfVariantChecks(variant, result.Type)
 		variants = append(variants, OneOfVariant{
 			WrapperName:    wrapperName,
 			FieldName:      name,
+			GetterName:     getter,
 			Type:           result.Type,
 			RequiredFields: result.RequiredFields,
 			Checks:         checks,
@@ -8499,6 +8682,96 @@ func (g *Generator) generateOneOfForProperty(parentName, jsonName, goFieldName s
 
 	return oneOfDef, nil
 }
+
+// claimVariantMemberNames settles the name a oneOf variant is known by on its
+// parent: the name the getter Get<Name> is declared under in the parent's member
+// scope, and the package-level wrapper type Parent_<Name> the variant is held in.
+// The two are numbered together, so that a variant's getter and its wrapper keep
+// naming each other.
+//
+// The name the variant asks for is its type's (a primitive's "String", a
+// definition's own name). It is not its to keep when:
+//
+//   - another variant of this parent already has it -- two scalar oneOf
+//     properties on one struct both have a "String" -- and the second is
+//     numbered, String2;
+//   - the numbered spelling is itself a variant's own name. The old suffix
+//     counted occurrences and appended the count without asking, so a variant
+//     titled "String2" beside two "String" variants emitted a second String2
+//     wrapper and getter;
+//   - the getter would be a field of the parent. A property named "getCat"
+//     derives the field GetCat, which a variant named Cat's getter redeclared:
+//     "field and method with the same name GetCat". The field is the schema's
+//     and keeps its name; the variant moves.
+func (g *Generator) claimVariantMemberNames(parentName, groupField string, index int, want string, variant *schema.Schema) (name, getter, wrapperName string) {
+	scope := g.names.memberScopeFor(parentName)
+	role := "oneof-variant/" + groupField + "/" + strconv.Itoa(index)
+	what := "the getter of variant " + strconv.Itoa(index) + " of " + parentName + "." + groupField
+	wrapper := memberHolder(parentName, role, "the wrapper type of variant "+strconv.Itoa(index)+" of "+parentName+"."+groupField).locatedAt(variant)
+	at := g.names.location(variant)
+	getterWant, wrapperWant := variantGetterName(want), ToOneOfWrapperName(parentName, want)
+	getterHolder, getterTaken := scope.heldByOther(getterWant, what)
+	wrapperTaken := !g.names.availableTo(wrapperWant, wrapper)
+	name = want
+	for n := 2; ; n++ {
+		_, taken := scope.heldByOther(variantGetterName(name), what)
+		if !taken && g.names.availableTo(ToOneOfWrapperName(parentName, name), wrapper) {
+			break
+		}
+		name = NumberedName(want, n)
+	}
+	getter = scope.claim(variantGetterName(name), what, "getter", variant)
+	wrapperName = g.names.claim(ToOneOfWrapperName(parentName, name), wrapper)
+	if name != want {
+		// Both names are part of the parent's API, so both moves are recorded
+		// -- each against what held it, or, for the one that was free, against
+		// what held the name it is numbered together with.
+		getterMove := NameMove{Role: "getter", Type: parentName, Wanted: getterWant, Got: getter, Claimant: what, Location: at, Holder: getterHolder}
+		wrapperMove := NameMove{Role: "wrapper", Type: parentName, Wanted: wrapperWant, Got: wrapperName, Claimant: wrapper.what, Location: at}
+		if wrapperTaken {
+			holder, _ := g.names.holderOf(wrapperWant)
+			wrapperMove.Holder = holder.what
+		}
+		if !getterTaken {
+			getterMove.Holder, getterMove.Paired = wrapperMove.Holder, wrapperWant
+		}
+		if !wrapperTaken {
+			wrapperMove.Holder, wrapperMove.Paired = getterHolder, getterWant
+		}
+		g.names.recordMoves(getterMove, wrapperMove)
+	}
+	return name, getter, wrapperName
+}
+
+// fieldFoldReason says why the field for propName was numbered before the
+// member scope was asked: the name it derives, want, is a generated member's, or
+// another property of the type derives it too. Empty when neither is so.
+func fieldFoldReason(want, propName string, propNames []string, derived map[string]string, overridden map[string]bool) string {
+	var others []string
+	for _, p := range propNames {
+		if p != propName && !overridden[p] && derived[p] == want {
+			others = append(others, strconv.Quote(p))
+		}
+	}
+	var parts []string
+	if slices.Contains(generatedMemberNames, want) {
+		parts = append(parts, reservedMemberHolder)
+	}
+	// Several others are counted rather than listed: each of them is reported
+	// with its own move, so listing them all in every one would say the same
+	// thing n times over.
+	switch len(others) {
+	case 0:
+	case 1:
+		parts = append(parts, "also what property "+others[0]+" derives")
+	default:
+		parts = append(parts, "also what "+strconv.Itoa(len(others))+" other properties derive")
+	}
+	return strings.Join(parts, ", and ")
+}
+
+// variantGetterName is the method a union variant is read through.
+func variantGetterName(variant string) string { return "Get" + variant }
 
 // applyDiscriminator attempts to set discriminator info on a OneOfDef.
 // It checks for:
@@ -8979,7 +9252,6 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 
 	// $ref / $recursiveRef / $dynamicRef variant → use the referenced type
 	if effRef := variant.EffectiveRef(); effRef != "" {
-		goName := refToGoName(effRef)
 		refSchema := g.resolveRefInContext(effRef, variant)
 		if refSchema != nil {
 			// A ref into a document owned by another package of this run
@@ -8995,12 +9267,11 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 					RequiredFields: refSchema.Required,
 				}, nil
 			}
-			goName = g.goNameForResolvedRef(effRef, refSchema, goName)
 			// Definitions in different documents may share a name (each
-			// document declaring e.g. #/definitions/element); without
-			// disambiguation every variant would silently reuse whichever
-			// type claimed the name first.
-			goName = g.uniqueTypeName(goName, refSchema)
+			// document declaring e.g. #/definitions/element); the name is
+			// claimed for this node, so a variant never reuses whichever type
+			// claimed the name first.
+			goName := g.goNameForResolvedRef(effRef, refSchema, refToGoName(effRef))
 			if err := g.generateTypeDef(goName, refSchema); err != nil {
 				return oneOfVariantResult{}, err
 			}
@@ -9010,6 +9281,7 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 				RequiredFields: refSchema.Required,
 			}, nil
 		}
+		goName := g.unresolvedRefTypeName(effRef)
 		return oneOfVariantResult{
 			Name: goName,
 			Type: &NamedType{Name: goName, Pointer: true},
@@ -9019,7 +9291,7 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 	// A variant whose schema *is* the node being generated further up the stack.
 	// Ahead of every arm below that mints a name, because each of them names the
 	// position -- parentName+fieldName+"Option"+index -- and parentName grows a
-	// segment per level, so g.generated[variantName] never fires and the arm
+	// segment per level, so a guard keyed on the name never fires and the arm
 	// re-enters itself until the process runs out of memory. This is the guard
 	// resolvePropertyType keeps at its own entry and the one #348 and #349
 	// added at the element and bucket positions; see cyclicNodeName.
@@ -9043,14 +9315,9 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 	// for those -- a variant with no Validate for the union's dispatch to call,
 	// so the branch's own keywords decide nothing.
 	if g.objectShapeNeedsNamedType(variant) {
-		variantName := fmt.Sprintf("%s%sOption%d", parentName, fieldName, index)
-		if variant.Title != "" {
-			variantName = SchemaNameToGoName(variant.Title)
-		}
-		if !g.generated[variantName] {
-			if err := g.generateTypeDef(variantName, variant); err != nil {
-				return oneOfVariantResult{}, err
-			}
+		variantName := g.claimVariantTypeName(variant, parentName, fieldName, index)
+		if err := g.generateTypeDef(variantName, variant); err != nil {
+			return oneOfVariantResult{}, err
 		}
 		return oneOfVariantResult{
 			Name:           variantName,
@@ -9066,22 +9333,18 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 	// knows the type; name the variant after it, as the inline-object arm does
 	// one type up. See allOfNeedsNamedType.
 	if g.allOfNeedsNamedType(variant) {
-		variantName := fmt.Sprintf("%s%sOption%d", parentName, fieldName, index)
-		if variant.Title != "" {
-			variantName = SchemaNameToGoName(variant.Title)
+		variantName := g.claimVariantTypeName(variant, parentName, fieldName, index)
+		if err := g.generateTypeDef(variantName, variant); err != nil {
+			return oneOfVariantResult{}, err
 		}
-		if !g.generated[variantName] {
-			if err := g.generateTypeDef(variantName, variant); err != nil {
-				return oneOfVariantResult{}, err
-			}
-		}
-		if g.generated[variantName] {
+		if g.declaredFor(variantName, variant) {
 			return oneOfVariantResult{
 				Name:           variantName,
 				Type:           &NamedType{Name: variantName},
 				RequiredFields: variant.Required,
 			}, nil
 		}
+		g.releaseTypeName(variantName, variant)
 	}
 
 	// A branch whose value is a formatted string that no Go primitive can carry
@@ -9101,21 +9364,17 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 	// one keyword over; see declaredContentStringSchema.
 	if g.stringAnnotationOnlySchema(variant) || g.nullableFormatUnion(variant) ||
 		g.declaredFormatStringSchema(variant) || g.declaredContentStringSchema(variant) {
-		variantName := fmt.Sprintf("%s%sOption%d", parentName, fieldName, index)
-		if variant.Title != "" {
-			variantName = SchemaNameToGoName(variant.Title)
+		variantName := g.claimVariantTypeName(variant, parentName, fieldName, index)
+		if err := g.generateTypeDef(variantName, variant); err != nil {
+			return oneOfVariantResult{}, err
 		}
-		if !g.generated[variantName] {
-			if err := g.generateTypeDef(variantName, variant); err != nil {
-				return oneOfVariantResult{}, err
-			}
-		}
-		if g.generated[variantName] {
+		if g.declaredFor(variantName, variant) {
 			return oneOfVariantResult{
 				Name: variantName,
 				Type: &NamedType{Name: variantName},
 			}, nil
 		}
+		g.releaseTypeName(variantName, variant)
 	}
 
 	// Primitive variant
@@ -9123,14 +9382,38 @@ func (g *Generator) resolveOneOfVariant(variant *schema.Schema, parentName, fiel
 	if pt != "" {
 		goType := g.primitiveTypeFromSchema(pt)
 		if goType != nil {
-			goName := SchemaNameToGoName(pt)
-			return oneOfVariantResult{Name: goName, Type: goType}, nil
+			// The variant's member name ("String", "Integer"), which
+			// claimVariantMemberNames settles on the parent. The type is the
+			// primitive, which no registry names.
+			memberName := SchemaNameToGoName(pt)
+			return oneOfVariantResult{Name: memberName, Type: goType}, nil
 		}
 	}
 
 	// Constraint-only or empty schema — fall back to any, but preserve required fields
 	// for discrimination (e.g. oneOf variants that differ only by required constraints).
 	return oneOfVariantResult{Name: "Any", Type: &PrimitiveType{Name: "any"}, RequiredFields: variant.Required}, nil
+}
+
+// claimVariantTypeName is the name an inline oneOf variant's own type is
+// declared under -- its title where it has one, and otherwise the position's
+// name with the variant's index -- or the first numbered spelling of it that no
+// other node holds. generateTypeDef claims it.
+//
+// A title is a name the schema's author wrote, but it is not the variant's by
+// right: another definition can be called the same thing. {"$defs":{"Foo":{...}},
+// "properties":{"p":{"oneOf":[{"title":"Foo",...},...]}}} used to find Foo
+// already generated and take it -- the variant was selected and validated as
+// $defs/Foo, so {"p":{"b":1}} was refused for a property the variant does not
+// have. The title is what the variant asks for; the registry says what it gets.
+func (g *Generator) claimVariantTypeName(variant *schema.Schema, parentName, fieldName string, index int) string {
+	want := fmt.Sprintf("%s%sOption%d", parentName, fieldName, index)
+	what := "the type of oneOf variant " + strconv.Itoa(index) + " of " + parentName + "." + fieldName
+	if variant.Title != "" {
+		want = SchemaNameToGoName(variant.Title)
+		what += ", titled " + strconv.Quote(variant.Title)
+	}
+	return g.names.firstAvailable(want, g.holderFor(variant, what))
 }
 
 // separateNullFromOneOf splits oneOf variants into non-null variants and a null flag.
@@ -9242,15 +9525,15 @@ func (g *Generator) nullableCollapseNamedType(s, branch *schema.Schema, inner Go
 	if g.nullableCollapseCarriesTheBranch(branch, inner) {
 		return nil, false
 	}
-	if posName == "" || g.generated[posName] || g.generating[posName] || g.nodesInProgress[s] {
+	if !g.nameAvailableTo(posName, s) || g.isDeclared(posName) || g.generating[posName] || g.nodesInProgress[s] {
 		return nil, false
 	}
 	def := g.rawWrapperDef(posName, s)
 	if def == nil {
 		return nil, false
 	}
-	g.generated[posName] = true
-	g.output.TypeDefs = append(g.output.TypeDefs, def)
+	g.declareFor(posName, s)
+	g.appendDef(def)
 	return &NamedType{Name: posName}, true
 }
 
@@ -9317,7 +9600,7 @@ func (g *Generator) schemaStatesMoreThanItsGoType(s *schema.Schema, t GoType, de
 
 // generateEnumDef produces an EnumDef from an enum schema.
 func (g *Generator) generateEnumDef(name string, s *schema.Schema) error {
-	g.generated[name] = true
+	g.declare(name)
 
 	// A member the schema's own "type" forbids is a member no instance can ever
 	// equal, so it is dropped before anything reads the list. This has to happen
@@ -9336,7 +9619,7 @@ func (g *Generator) generateEnumDef(name string, s *schema.Schema) error {
 	// which does not compile. See declaredTypeAdmitsNoEnumMember.
 	if kept, filtered := g.enumMembersDeclaredTypeAdmits(s); filtered {
 		if len(kept) == 0 {
-			g.output.TypeDefs = append(g.output.TypeDefs, &NotSchemaDef{
+			g.appendDef(&NotSchemaDef{
 				Name:        name,
 				Doc:         g.docFor(name, s),
 				IsForbidden: true,
@@ -9371,7 +9654,7 @@ func (g *Generator) generateEnumDef(name string, s *schema.Schema) error {
 		return g.generateRawEnumDef(name, s)
 	}
 
-	constNames := enumConstNames(name, s.Enum)
+	constNames := g.claimEnumConstNames(name, s.Enum)
 	values := make([]EnumValue, len(s.Enum))
 	for i, v := range s.Enum {
 		values[i] = EnumValue{
@@ -9380,13 +9663,30 @@ func (g *Generator) generateEnumDef(name string, s *schema.Schema) error {
 		}
 	}
 
-	g.output.TypeDefs = append(g.output.TypeDefs, &EnumDef{
+	g.appendDef(&EnumDef{
 		Name:     name,
 		BaseType: baseType,
 		Values:   values,
 		Doc:      g.docFor(name, s),
 	})
 	return nil
+}
+
+// claimEnumConstNames gives each member of a const-form enum the package-level
+// constant it is declared as. The names are derived by enumConstNames, which
+// keeps them apart from one another, and then claimed in the package's name
+// space, which keeps them apart from everything else: a constant is a
+// package-level identifier like a type, and {"$defs":{"A":{"enum":["B"]},
+// "a_b":{...}}} derived the constant AB beside the type AB -- a package that
+// declared AB twice and did not compile. A constant is claimed after the
+// definitions, so it is the one that moves.
+func (g *Generator) claimEnumConstNames(typeName string, values []any) []string {
+	names := enumConstNames(typeName, values)
+	for i, want := range names {
+		names[i] = g.names.claim(want, memberHolder(typeName, "const/"+strconv.Itoa(i),
+			"the constant for member "+strconv.Itoa(i)+" of the enum "+typeName))
+	}
+	return names
 }
 
 // isHeterogeneousEnum returns true if the enum values contain non-primitive
@@ -9477,12 +9777,17 @@ func (g *Generator) generateRawEnumDef(name string, s *schema.Schema) error {
 		}
 	}
 
-	g.output.TypeDefs = append(g.output.TypeDefs, &EnumDef{
+	g.appendDef(&EnumDef{
 		Name:     name,
 		BaseType: &PrimitiveType{Name: "json.RawMessage"},
 		Values:   values,
 		Doc:      g.docFor(name, s),
 		IsRaw:    true,
+		// The package variable the member list is held in. A raw enum declares
+		// no constants -- the member names above are never spelled -- so this is
+		// the one package-level identifier it adds besides its own type.
+		AllowedVar: g.names.claim(lowerFirstIdent(name)+"AllowedJSON",
+			memberHolder(name, "allowed-json", "the member list of the enum "+name)),
 	})
 	return nil
 }
@@ -9522,11 +9827,9 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 	// that belongs to another position. Deciding before any of them run leaves
 	// them one name that is this position's own.
 	posName := g.unclaimedTypeName(parentName+fieldName, s)
-	// And what the arms below leave declared under it belongs to this position.
-	// generateTypeDef records the same thing for the names it is called with;
-	// this covers the wrapper arms that build a def and mark it generated
-	// without going through it. See typeOwner.
-	defer g.noteTypeOwner(posName, s)
+	// The node the name was asked for. Arms below rebind s (promoteConstToEnum),
+	// and a name is held for the node it was claimed for, not for a copy.
+	posNode := s
 
 	// A property stating a "not" beside another keyword. Ahead of every arm
 	// below, each of which types the value from one of those siblings and has
@@ -9537,7 +9840,7 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		if err := g.generateTypeDef(posName, s); err != nil {
 			return nil, err
 		}
-		if g.generated[posName] {
+		if g.declaredFor(posName, s) {
 			return &NamedType{Name: posName}, nil
 		}
 	}
@@ -9597,6 +9900,14 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 
 	// Inline enum → generate enum type
 	if g.validationKeywordsEnabled() && !refDisplacesEnum && !refMergesEnum && len(s.Enum) > 0 {
+		// The name is held for the node it was derived for, not for the copy
+		// promoteConstToEnum may have made of it.
+		if g.declaredFor(posName, posNode) {
+			return &NamedType{Name: posName}, nil
+		}
+		if !g.holdFor(posName, posNode) {
+			return g.untypedType(), nil
+		}
 		if err := g.generateEnumDef(posName, s); err != nil {
 			return nil, err
 		}
@@ -9612,7 +9923,7 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		if err := g.generateTypeDef(posName, s); err != nil {
 			return nil, err
 		}
-		if g.generated[posName] {
+		if g.declaredFor(posName, s) {
 			return &NamedType{Name: posName}, nil
 		}
 	}
@@ -9623,15 +9934,30 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 		if hasNull && len(nonNull) == 1 {
 			variant := nonNull[0]
 			if effRef := variant.EffectiveRef(); effRef != "" {
-				goName := refToGoName(effRef)
-				if refSchema := g.resolveRefInContext(effRef, variant); refSchema != nil {
-					if foreign, ok := g.foreignTypeFor(refSchema, effRef); ok {
-						foreign.Pointer = true
-						return foreign, nil
-					}
-					if err := g.generateTypeDef(goName, refSchema); err != nil {
-						return nil, err
-					}
+				// Named the way every other $ref arm names its target, through
+				// goNameForResolvedRef. This arm read the name straight off the
+				// reference text instead, so $defs "a-b" and "a_b" -- which the
+				// definitions' own claims number apart as AB and AB2 -- both
+				// answered AB here, and a {"oneOf":[{"type":"null"},
+				// {"$ref":"#/$defs/a_b"}]} property was typed as a-b's struct:
+				// {"y":{"n":1}} refused for a property a_b does not have. Under
+				// --lenient-refs an unresolved one spelled a name nothing declared.
+				refSchema := g.resolveRefInContext(effRef, variant)
+				if refSchema == nil {
+					// As the $ref arm below answers an unresolved reference: `any`
+					// is what a nullable position can hold of it.
+					return &PrimitiveType{Name: "any"}, nil
+				}
+				if foreign, ok := g.foreignTypeFor(refSchema, effRef); ok {
+					foreign.Pointer = true
+					return foreign, nil
+				}
+				if canonical, ok := g.cyclicNodeName(refSchema); ok {
+					return namedOrPointer(canonical, true), nil
+				}
+				goName := g.goNameForResolvedRef(effRef, refSchema, refToGoName(effRef))
+				if err := g.generateTypeDef(goName, refSchema); err != nil {
+					return nil, err
 				}
 				return &PointerType{Inner: &NamedType{Name: goName}}, nil
 			}
@@ -9728,7 +10054,6 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 			}
 			return &PrimitiveType{Name: "json.RawMessage"}, nil
 		}
-		goName := refToGoName(effRef)
 		// Ensure the referenced type gets generated.
 		refSchema := g.resolveEffectiveRefSchema(s)
 		if refSchema != nil {
@@ -9739,7 +10064,7 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 			// still being generated further up the stack. The guard at the top of
 			// this function reads s, so it cannot see it, and the arm below then
 			// re-enters generateTypeDef for a definition whose frame has not
-			// returned: g.generated is not set until a definition completes, so
+			// returned: its name is not declared until an arm commits, so
 			// the re-entry runs every arm again and emits a *second* declaration
 			// under the same name. {"properties":{"thing":{"$ref":"#/$defs/Thing"}},
 			// "$defs":{"Thing":{"$ref":"#"}}} is the whole of it -- $defs/Thing
@@ -9755,7 +10080,7 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 				return namedOrPointer(canonical, true), nil
 			}
 			pushed := g.pushDynamicScope(refSchema)
-			goName = g.goNameForResolvedRef(effRef, refSchema, goName)
+			goName := g.goNameForResolvedRef(effRef, refSchema, refToGoName(effRef))
 			if err := g.generateTypeDef(goName, refSchema); err != nil {
 				if pushed {
 					g.popDynamicScope()
@@ -9769,12 +10094,11 @@ func (g *Generator) resolvePropertyType(s *schema.Schema, parentName, fieldName 
 			if g.isScopedSelfRef(effRef, s, refSchema) {
 				return &PointerType{Inner: &NamedType{Name: goName}}, nil
 			}
-		} else {
-			// Ref target could not be resolved (e.g. points to an unknown keyword).
-			// Fall back to any to produce compilable code.
-			return &PrimitiveType{Name: "any"}, nil
+			return &NamedType{Name: goName}, nil
 		}
-		return &NamedType{Name: goName}, nil
+		// Ref target could not be resolved (e.g. points to an unknown keyword).
+		// Fall back to any to produce compilable code.
+		return &PrimitiveType{Name: "any"}, nil
 	}
 
 	// Draft 3 allows a schema to sit inside the "type" array as an alternative.
@@ -10145,13 +10469,25 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		}
 	}
 
+	enumNode := s
 	if g.validationKeywordsEnabled() && !refDisplacesEnum && !refMergesEnum && len(s.Type) == 0 {
 		s = promoteConstToEnum(s)
 	}
 
-	// Inline enum
+	// Inline enum. The name is the position's, or the first numbered spelling of
+	// it no other node holds, claimed for the node as written (the promotion
+	// above returns a copy). This arm used to declare contextName as it came, so
+	// a $defs entry already holding that name was declared a second time --
+	// "declares [RootAItem RootAItem.Validate] twice ... a defect in schemagen"
+	// -- for an items enum under a property a beside $defs/RootAItem.
 	if g.validationKeywordsEnabled() && !refDisplacesEnum && !refMergesEnum && len(s.Enum) > 0 {
-		enumName := contextName
+		enumName := g.unclaimedTypeName(contextName, enumNode)
+		if g.declaredFor(enumName, enumNode) {
+			return &NamedType{Name: enumName}
+		}
+		if !g.holdFor(enumName, enumNode) {
+			return g.untypedType()
+		}
 		_ = g.generateEnumDef(enumName, s)
 		return &NamedType{Name: enumName}
 	}
@@ -10184,7 +10520,7 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 	if effRef := s.EffectiveRef(); effRef != "" && !g.refOverridesSiblingsForSchema(s) &&
 		hasRefStructuralSiblings(s) && !objectIsStruct(s) &&
 		!g.nodesInProgress[s] && !g.generating[contextName] {
-		if n, cyclic := g.materializeNamed(s, contextName); g.generated[n] {
+		if n, cyclic := g.materializeNamed(s, contextName); g.declaredFor(n, s) {
 			return namedOrPointer(n, cyclic)
 		}
 	}
@@ -10197,7 +10533,6 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 			}
 			return &PrimitiveType{Name: "json.RawMessage"}
 		}
-		goName := refToGoName(effRef)
 		// resolveEffectiveRefSchema, not resolveRefInContext: a $recursiveRef
 		// resolves against the dynamic scope, and resolving it statically here
 		// would pick the document that lexically contains it rather than the
@@ -10210,10 +10545,10 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 			// If the ref resolved to a scoped document root (not the main root),
 			// derive the Go name from that schema rather than the raw ref string.
 			// This handles $ref: "#" inside a sub-schema with its own $id.
-			goName = g.goNameForResolvedRef(effRef, refSchema, goName)
+			goName := g.goNameForResolvedRef(effRef, refSchema, refToGoName(effRef))
 			// A ref leading back to a node whose type is still being generated
 			// must not be generated again: goName is then the name already in
-			// flight, g.generated is not set for it until that frame finishes,
+			// flight, it is not declared until that frame commits,
 			// and the call re-enters the identical arm.
 			// {"$defs":{"C":{"type":[{"$ref":"#/$defs/C"}]}}} closes the loop in
 			// a single hop through the draft-3 type-alternatives path, which
@@ -10234,13 +10569,13 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 			if g.isScopedSelfRef(effRef, s, refSchema) {
 				return &PointerType{Inner: &NamedType{Name: goName}}
 			}
+			return &NamedType{Name: goName}
 		}
-		return &NamedType{Name: goName}
+		return &NamedType{Name: g.unresolvedRefTypeName(effRef)}
 	}
 
 	// $dynamicRef — resolve via dynamic scope chain.
 	if s.DynamicRef != "" && (g.refOverridesSiblingsForSchema(s) || !hasRefStructuralSiblings(s)) {
-		goName := refToGoName(s.DynamicRef)
 		if refSchema := g.resolveDynamicRef(s.DynamicRef, s); refSchema != nil {
 			// As the $ref arm immediately above, and for the reason argued at the
 			// document-root arm of generateTypeDefBody: the target a $dynamicRef
@@ -10253,13 +10588,14 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 			if foreign, ok := g.foreignTypeFor(refSchema, s.DynamicRef); ok {
 				return foreign
 			}
-			goName = g.goNameForResolvedRef(s.DynamicRef, refSchema, goName)
+			goName := g.goNameForResolvedRef(s.DynamicRef, refSchema, refToGoName(s.DynamicRef))
 			_ = g.generateTypeDef(goName, refSchema)
 			if g.isScopedSelfRef(s.DynamicRef, s, refSchema) {
 				return &PointerType{Inner: &NamedType{Name: goName}}
 			}
+			return &NamedType{Name: goName}
 		}
-		return &NamedType{Name: goName}
+		return &NamedType{Name: g.unresolvedRefTypeName(s.DynamicRef)}
 	}
 
 	primaryType := primarySchemaType(s)
@@ -10352,11 +10688,18 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 		return namedOrPointer(canonical, g.nodesInProgress[s])
 	}
 	if !g.generating[contextName] && (g.allOfNeedsNamedType(s) || g.compositionAdmitsNothing(s) || (len(s.AnyOf) > 0 && g.anyOfHasProperties(s))) {
-		g.generating[contextName] = true
-		_ = g.generateTypeDef(contextName, s)
-		delete(g.generating, contextName)
-		if g.generated[contextName] {
-			return &NamedType{Name: contextName}
+		// generating is asked of the name the caller handed down first: it is the
+		// mark generateAllOfDef sets for the merge it is resolving, and that
+		// merge is a node of its own, so the name below would step around the
+		// frame's name rather than stop at it.
+		name := g.unclaimedTypeName(contextName, s)
+		if !g.generating[name] {
+			g.generating[name] = true
+			_ = g.generateTypeDef(name, s)
+			delete(g.generating, name)
+			if g.declaredFor(name, s) {
+				return &NamedType{Name: name}
+			}
 		}
 	}
 
@@ -10439,16 +10782,25 @@ func (g *Generator) resolveType(s *schema.Schema, contextName string) GoType {
 // another route), and a name being generated is the frame that called us -- both
 // would have the wrapper stand in for something else.
 func (g *Generator) constraintOnlyNamedType(s *schema.Schema, contextName string) GoType {
-	if contextName == "" || g.generated[contextName] || g.generating[contextName] || g.nodesInProgress[s] {
+	if contextName == "" || g.generating[contextName] || g.nodesInProgress[s] {
 		return nil
 	}
-	def := g.constraintOnlyWrapperDef(contextName, s)
+	// The position's name, or the first numbered spelling of it no other node
+	// holds: a name another node declared is that node's type, not this one's.
+	name := g.unclaimedTypeName(contextName, s)
+	if g.declaredFor(name, s) {
+		return &NamedType{Name: name}
+	}
+	if g.generating[name] {
+		return nil
+	}
+	def := g.constraintOnlyWrapperDef(name, s)
 	if def == nil {
 		return nil
 	}
-	g.generated[contextName] = true
-	g.output.TypeDefs = append(g.output.TypeDefs, def)
-	return &NamedType{Name: contextName}
+	g.declareFor(name, s)
+	g.appendDef(def)
+	return &NamedType{Name: name}
 }
 
 // materializeNamed generates s under contextName and returns the name to
@@ -10464,12 +10816,21 @@ func (g *Generator) constraintOnlyNamedType(s *schema.Schema, contextName string
 // It also reports whether the reference closes a cycle -- the node is still
 // being generated further up the stack -- in which case the caller must emit a
 // pointer, since Go rejects a type that contains itself by value.
+//
+// The name is the position's own, or the first numbered spelling of it no
+// other node holds. This funnel used to hand contextName to generateTypeDef as
+// it was, and a name another node already held came straight back: the
+// re-entrancy guard answered "generated" and the caller referenced that node's
+// type. {"$defs":{"RootAItem":{"type":"integer","minimum":5}},"properties":
+// {"a":{"type":"array","items":{"type":"object",...}}}} typed a's elements as
+// the $defs integer, and {"a":[{"z":"q"}]} failed to decode.
 func (g *Generator) materializeNamed(s *schema.Schema, contextName string) (string, bool) {
 	if canonical, ok := g.nodeTypeNames[s]; ok {
 		return canonical, g.nodesInProgress[s]
 	}
-	_ = g.generateTypeDef(contextName, s)
-	return contextName, false
+	name := g.unclaimedTypeName(contextName, s)
+	_ = g.generateTypeDef(name, s)
+	return name, false
 }
 
 // cyclicNodeName reports the name s is already being generated under, when s's
@@ -10478,8 +10839,8 @@ func (g *Generator) materializeNamed(s *schema.Schema, contextName string) (stri
 // This is the read side of the mark generateTypeDef sets on entry. Every route
 // into generateTypeDef names its target after the position it was reached from
 // -- parentName+fieldName, a contextName, a name derived from the $ref string
-// -- and re-entrancy there is guarded by g.generated[name], which is only set
-// when a definition *completes*. A cycle that arrives back at the same schema
+// -- and re-entrancy there is guarded by the declared set, which is only set
+// when an arm commits. A cycle that arrives back at the same schema
 // *node* is therefore not recognised, whether it arrives under a name one
 // segment longer each time (RootA, RootAA, RootAAA ...) or under the identical
 // name already in flight. Either way the arm re-enters itself and the run ends
@@ -10512,7 +10873,7 @@ func (g *Generator) cyclicNodeName(s *schema.Schema) (string, bool) {
 //
 // This is the funnel for the class of call the guard above exists for, and it is
 // here so the question is asked once rather than once per arm. A name derived
-// from a reference string repeats when the reference does, so g.generated[name]
+// from a reference string repeats when the reference does, so the declared set
 // -- generateTypeDef's own re-entrancy guard -- terminates a cycle through it.
 // A name derived from a position does not: parentName+segment grows one segment
 // per level, so the same node arrives under RootA, RootAA, RootAAA ... and no
@@ -10531,8 +10892,9 @@ func (g *Generator) materializeAtPosition(s *schema.Schema, posName string) (str
 	if canonical, cyclic := g.cyclicNodeName(s); cyclic {
 		return canonical, true
 	}
-	_ = g.generateTypeDef(posName, s)
-	return posName, false
+	name := g.unclaimedTypeName(posName, s)
+	_ = g.generateTypeDef(name, s)
+	return name, false
 }
 
 // RemintedNode is one node that reached generateTypeDef while its own
@@ -11983,7 +12345,7 @@ func (g *Generator) isScopedSelfRef(ref string, ctx *schema.Schema, resolved *sc
 	// like A → B → A where A is already generated and B is being built.
 	if len(g.structsInProgress) > 0 {
 		goName := g.goNameForResolvedRef(ref, resolved, refToGoName(ref))
-		if g.generated[goName] && g.typeReferencesAnyInProgress(goName) {
+		if g.declaredFor(goName, resolved) && g.typeReferencesAnyInProgress(goName) {
 			return true
 		}
 	}
@@ -12036,16 +12398,34 @@ func extractTypeName(t GoType) string {
 // schema's title or $id rather than the raw ref string. This ensures that
 // "$ref: '#'" inside a sub-schema with its own $id gets a meaningful Go name
 // (e.g., "Tree") rather than the default "Root".
+//
+// The answer is one no other node holds (see names.go), and generateTypeDef
+// claims it for resolved: the derivation below reads the name off the reference text, and
+// two references can read the same name off different nodes -- "#/type/1" and
+// "#/disallow/1" both end in "1" -- which a library caller that pins nothing
+// used to get as one type for both nodes. The second is numbered instead.
 func (g *Generator) goNameForResolvedRef(ref string, resolved *schema.Schema, fallback string) string {
 	if resolved == nil {
 		return fallback
 	}
+	name := g.derivedNameForResolvedRef(ref, resolved, fallback)
+	return g.names.firstAvailable(name, g.holderFor(resolved, "the type $ref "+strconv.Quote(ref)+" reaches"))
+}
+
+// derivedNameForResolvedRef is goNameForResolvedRef's derivation, before the
+// name is claimed.
+func (g *Generator) derivedNameForResolvedRef(ref string, resolved *schema.Schema, fallback string) string {
 	// A node already materialized under a name keeps it. Each traversal of a
 	// self-referential document arrives with a different context-derived
 	// fallback, so deriving a fresh name here is what let "$ref":"#" inside a
 	// fetched meta-schema recurse without end.
 	if existing, ok := g.nodeTypeNames[resolved]; ok {
 		return existing
+	}
+	// A definition of the document being generated has claimed its name
+	// already; the reference names that, whatever its own text derives.
+	if claimed, ok := g.definitionNames[resolved]; ok {
+		return claimed
 	}
 	// A definition the caller pinned a name for keeps it wherever the reference
 	// came from, and this is the arm that answers every reference the node was
@@ -12054,7 +12434,7 @@ func (g *Generator) goNameForResolvedRef(ref string, resolved *schema.Schema, fa
 	// above generateTypeDef's node registry claimed. Without it the reference
 	// materializes that definition under the name its $defs key derives, which
 	// is the name the pin exists to move it off.
-	if pinned, ok := g.config.DefinitionTypeNames[resolved]; ok {
+	if pinned, ok := g.names.pinnedNameOf(resolved); ok {
 		return pinned
 	}
 	// A reference that lands on the document's own root names the root type,
@@ -12068,6 +12448,17 @@ func (g *Generator) goNameForResolvedRef(ref string, resolved *schema.Schema, fa
 	// nodeTypeNames above could not yet answer. Issue #259.
 	if resolved == g.rootSchema {
 		return g.rootTypeName
+	}
+	// A definition of another resource -- a resource embedded under its own
+	// $id, or another document -- is named from the key it is written under in
+	// that resource, as the document's own definitions are (claimDefinitionNames),
+	// rather than from the text of whichever reference reached it first: an
+	// anchor, a pointer through an absolute URI and a relative one all name the
+	// one node. Its resource is the index's answer (schema.ResourceIndex), which
+	// is where the reference was resolved. The name is then claimed like every
+	// other, so a same-keyed definition of the root keeps its own.
+	if key, ok := g.definitionKeyInOwnResource(resolved); ok {
+		return SchemaNameToGoName(key)
 	}
 	// Check if the resolved schema is a known document root with its own $id.
 	if resolved.DocumentRoot == resolved {
@@ -12085,6 +12476,27 @@ func (g *Generator) goNameForResolvedRef(ref string, resolved *schema.Schema, fa
 		}
 	}
 	return fallback
+}
+
+// definitionKeyInOwnResource returns the $defs or definitions key s is written
+// under directly beneath the root of the resource the index places it in, and
+// whether it is such an entry. The location is where the document wrote it
+// (schema.Schema.SourceLocationWithin), so a draft-07 "definitions" entry is
+// read under the keyword the document used, not the $defs mirror Normalize
+// made of it.
+func (g *Generator) definitionKeyInOwnResource(s *schema.Schema) (string, bool) {
+	if g.index == nil || s == nil {
+		return "", false
+	}
+	res := g.index.ResourceOf(s)
+	if res == nil || res.Root == nil || res.Root == s {
+		return "", false
+	}
+	tokens, ok := s.SourceLocationWithin(res.Root)
+	if !ok || len(tokens) != 2 || (tokens[0] != "$defs" && tokens[0] != "definitions") {
+		return "", false
+	}
+	return tokens[1], true
 }
 
 // lastPathSegment extracts the last meaningful segment from a URI path.
@@ -12282,7 +12694,14 @@ func tagNameIsRepresentable(jsonName string) bool {
 	if jsonName == "-" {
 		return false
 	}
-	// The rest is encoding/json's isValidTag, applied to the whole name.
+	// The rest is encoding/json's isValidTag, applied to the whole name -- with
+	// its unicode.IsLetter and unicode.IsDigit answered from the tables of the
+	// oldest Go the generated code supports (see unicodeident.go). isValidTag
+	// runs in the program that compiles the generated code, under whichever Go
+	// that is, and a name holding a letter only a newer Unicode has is an
+	// invalid tag there: encoding/json drops it and uses the Go field name, so
+	// the property is read and written under another key without a word. Such a
+	// name goes to the hand-written path, which every Go reads alike.
 	if jsonName == "" {
 		return false
 	}
@@ -12290,7 +12709,7 @@ func tagNameIsRepresentable(jsonName string) bool {
 		if strings.ContainsRune(validTagPunctuation, r) {
 			continue
 		}
-		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+		if !identLetter(r) && !identDigit(r) {
 			return false
 		}
 	}
@@ -12723,16 +13142,21 @@ func (g *Generator) overflowAllOfWrapperType(s *schema.Schema, contextName strin
 	if !g.allOfStatesUnmergeableOverflow(s) {
 		return nil, false
 	}
-	if g.generated[contextName] {
-		return &NamedType{Name: contextName}, true
+	// The name is the position's, or the first numbered spelling no other node
+	// holds. A declaration already standing under the position's name is reused
+	// only when it was generated for this node: reading "declared" as "mine" is
+	// how a position came to carry another node's type.
+	name := g.unclaimedTypeName(contextName, s)
+	if g.declaredFor(name, s) {
+		return &NamedType{Name: name}, true
 	}
-	def := g.runtimeSchemaDef(contextName, s)
+	def := g.runtimeSchemaDef(name, s)
 	if def == nil {
 		return nil, false
 	}
-	g.generated[contextName] = true
-	g.output.TypeDefs = append(g.output.TypeDefs, def)
-	return &NamedType{Name: contextName}, true
+	g.declareFor(name, s)
+	g.appendDef(def)
+	return &NamedType{Name: name}, true
 }
 
 // allOfBuildsObjectType reports whether generateAllOfDef would answer this
@@ -13366,12 +13790,12 @@ func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext strin
 	//
 	// The three arms below name the *position*: itemContext is the parent's name
 	// with "Item" or "Value" on the end, so it grows a segment per level of a
-	// cycle and g.generated[itemContext] can never fire. They ask
+	// cycle and a guard keyed on the name can never fire. They ask
 	// materializeAtPosition for that reason -- the element keeps the name the
 	// node is already being generated under, by value, since a slice or map
 	// element already carries the indirection a recursive Go type needs.
 	if g.inlineAnnotationWrapper(items) || g.inlineUnevaluatedWrapper(items) {
-		if name, cyclic := g.materializeAtPosition(items, itemContext); cyclic || g.generated[name] {
+		if name, cyclic := g.materializeAtPosition(items, itemContext); cyclic || g.declaredFor(name, items) {
 			return &NamedType{Name: name}
 		}
 	}
@@ -13402,12 +13826,17 @@ func (g *Generator) resolveArrayItemType(items *schema.Schema, itemContext strin
 	// from claiming anything else: it declines a single non-null type, so
 	// []string and *string are untouched, and it declines a schema stating any
 	// keyword besides the type.
-	if !g.generated[itemContext] {
-		if def := g.extractTypeOnlySchemaDef(itemContext, items); def != nil {
-			g.generated[itemContext] = true
-			g.output.TypeDefs = append(g.output.TypeDefs, def)
-			return &NamedType{Name: itemContext}
+	//
+	// The name is the position's, or the first numbered spelling no other node
+	// holds; a declaration standing under it for this same node is reused.
+	if name := g.unclaimedTypeName(itemContext, items); g.declaredFor(name, items) {
+		if _, ok := g.typeDefNamed(name).(*TypeOnlySchemaDef); ok {
+			return &NamedType{Name: name}
 		}
+	} else if def := g.extractTypeOnlySchemaDef(name, items); def != nil {
+		g.declareFor(name, items)
+		g.appendDef(def)
+		return &NamedType{Name: name}
 	}
 	// An element (or map value) whose schema states no "type" and would be given
 	// one by resolveType, read off a validation keyword. {"type":"array","items":
@@ -15211,16 +15640,15 @@ func (g *Generator) inlineNameAvailable(sub *schema.Schema, name string) bool {
 	if g.generating[name] || g.nodesInProgress[sub] {
 		return false
 	}
-	if _, named := g.nodeTypeNames[sub]; !named && g.generated[name] {
-		return false
-	}
 	return true
 }
 
-// namedInlineType materializes sub under name and answers with the reference to
-// it, or (nil, false) when generateTypeDef declined to declare anything.
+// namedInlineType materializes sub under name -- or, where another node holds
+// that, the first numbered spelling of it nothing holds (see materializeNamed)
+// -- and answers with the reference to it, or (nil, false) when generateTypeDef
+// declined to declare anything.
 func (g *Generator) namedInlineType(sub *schema.Schema, name string) (GoType, bool) {
-	if n, cyclic := g.materializeNamed(sub, name); g.generated[n] {
+	if n, cyclic := g.materializeNamed(sub, name); g.declaredFor(n, sub) {
 		return namedOrPointer(n, cyclic), true
 	}
 	return nil, false
@@ -16629,8 +17057,8 @@ func (g *Generator) jsonMethodTables() (validatableTypes, unmarshalTypes, marsha
 // allOf whose element validation the merged alias can delegate to, generating
 // that branch's definition on demand if nothing has yet.
 //
-// The on-demand generation is guarded by g.generated, which is only set when a
-// definition *completes*, so it does not stop a branch that resolves back to
+// The on-demand generation is guarded by the declared set, which is only set
+// when an arm commits, so it does not stop a branch that resolves back to
 // the definition currently in flight -- {"$ref": "#", "items": {}} is enough:
 // the items sibling routes the root through the implicit-allOf arm, and the
 // synthesized $ref branch resolves to the root again, whose type is still being
@@ -16703,11 +17131,14 @@ func (g *Generator) firstAllOfArrayAliasName(allOf []*schema.Schema) string {
 		}
 		if effRef := sub.EffectiveRef(); effRef != "" {
 			if resolved := g.resolveEffectiveRefSchema(sub); resolved != nil && !g.ownedByAnotherPackage(resolved) {
+				// The name is resolved's own (goNameForResolvedRef answers only with
+				// a spelling no other node holds), so whatever stands under it is
+				// resolved's type.
 				name := g.goNameForResolvedRef(effRef, resolved, refToGoName(effRef))
-				if !g.generated[name] && !g.nodesInProgress[resolved] {
+				if !g.isDeclared(name) && !g.nodesInProgress[resolved] {
 					_ = g.generateTypeDef(name, resolved)
 				}
-				if g.isArrayAlias(name) {
+				if g.declaredFor(name, resolved) && g.isArrayAlias(name) {
 					return name
 				}
 			}
@@ -16715,10 +17146,10 @@ func (g *Generator) firstAllOfArrayAliasName(allOf []*schema.Schema) string {
 		if sub.DynamicRef != "" {
 			if resolved := g.resolveDynamicRef(sub.DynamicRef, sub); resolved != nil && !g.ownedByAnotherPackage(resolved) {
 				name := g.goNameForResolvedRef(sub.DynamicRef, resolved, refToGoName(sub.DynamicRef))
-				if !g.generated[name] && !g.nodesInProgress[resolved] {
+				if !g.isDeclared(name) && !g.nodesInProgress[resolved] {
 					_ = g.generateTypeDef(name, resolved)
 				}
-				if g.isArrayAlias(name) {
+				if g.declaredFor(name, resolved) && g.isArrayAlias(name) {
 					return name
 				}
 			}
@@ -16845,8 +17276,8 @@ func namedTypeAt(t GoType) *NamedType {
 // namedTypeName extracts the type name from a GoType if it's a NamedType
 // (possibly wrapped in a PointerType). Returns "" otherwise.
 //
-// This is the name as a *key into this package's own tables* -- g.generated,
-// the validatable/enum/alias maps, uniqueTypeName. It is deliberately
+// This is the name as a *key into this package's own tables* -- the name
+// registry, the validatable/enum/alias maps. It is deliberately
 // unqualified, and for that reason it must never be the name written into
 // generated source: see emittedTypeName, and the class of defect that follows
 // from confusing the two.
@@ -18391,7 +18822,7 @@ func (g *Generator) delegatedBranchType(sub *schema.Schema, contextName string) 
 		return name, true
 	}
 	name, _ := g.materializeNamed(sub, contextName)
-	if name == "" || !g.generated[name] {
+	if name == "" || !g.declaredFor(name, sub) {
 		return "", false
 	}
 	return name, true
@@ -18410,24 +18841,27 @@ func (g *Generator) anyOfUnionType(s *schema.Schema, contextName string) (GoType
 	if g.anyOfHasProperties(s) {
 		return nil, false
 	}
-	if g.generated[contextName] {
-		return &NamedType{Name: contextName}, true
+	// The position's name, or the first numbered spelling no other node holds;
+	// a declaration under it is reused only when it is this node's.
+	name := g.unclaimedTypeName(contextName, s)
+	if g.declaredFor(name, s) {
+		return &NamedType{Name: name}, true
 	}
 	branches := make([]TypeSchemaBranch, 0, len(s.AnyOf))
 	for i, variant := range s.AnyOf {
-		name, ok := g.delegatedBranchType(variant, fmt.Sprintf("%sAlternative%d", contextName, i))
+		branchName, ok := g.delegatedBranchType(variant, fmt.Sprintf("%sAlternative%d", name, i))
 		if !ok {
 			return nil, false
 		}
-		branches = append(branches, TypeSchemaBranch{TypeName: name})
+		branches = append(branches, TypeSchemaBranch{TypeName: branchName})
 	}
-	g.generated[contextName] = true
-	g.output.TypeDefs = append(g.output.TypeDefs, &TypeOnlySchemaDef{
-		Name:         contextName,
-		Doc:          g.docFor(contextName, s),
+	g.declareFor(name, s)
+	g.appendDef(&TypeOnlySchemaDef{
+		Name:         name,
+		Doc:          g.docFor(name, s),
 		TypeBranches: branches,
 	})
-	return &NamedType{Name: contextName}, true
+	return &NamedType{Name: name}, true
 }
 
 // multiTypeUnionType represents a "type" listing several JSON types that no
@@ -18474,18 +18908,19 @@ func (g *Generator) multiTypeUnionType(s *schema.Schema, contextName string) (Go
 // generated type of its own, and the rest are checked inline against the JSON
 // type. Shared by every caller that has already decided the schema belongs here.
 func (g *Generator) typeUnionWrapper(s *schema.Schema, contextName string) (GoType, bool) {
-	if g.generated[contextName] {
-		return &NamedType{Name: contextName}, true
+	name := g.unclaimedTypeName(contextName, s)
+	if g.declaredFor(name, s) {
+		return &NamedType{Name: name}, true
 	}
-	branches, allowed := g.typeUnionBranches(s, contextName)
-	g.generated[contextName] = true
-	g.output.TypeDefs = append(g.output.TypeDefs, &TypeOnlySchemaDef{
-		Name:         contextName,
-		Doc:          g.docFor(contextName, s),
+	branches, allowed := g.typeUnionBranches(s, name)
+	g.declareFor(name, s)
+	g.appendDef(&TypeOnlySchemaDef{
+		Name:         name,
+		Doc:          g.docFor(name, s),
 		AllowedTypes: allowed,
 		TypeBranches: branches,
 	})
-	return &NamedType{Name: contextName}, true
+	return &NamedType{Name: name}, true
 }
 
 // nullableFormatUnion reports whether s is the nullable spelling of a formatted
@@ -18761,19 +19196,24 @@ func (g *Generator) declaredContentStringSchema(s *schema.Schema) bool {
 // name, which is the "fixed in one position, not its sibling" shape these
 // wrappers exist to avoid.
 func (g *Generator) stringAnnotationOnlyWrapperType(s *schema.Schema, contextName string) (GoType, bool) {
-	if g.generated[contextName] {
+	// The position's name, or the first numbered spelling no other node holds.
+	// A declaration under it was reused whenever this schema was of the shape,
+	// whoever the declaration belonged to; it is reused now only when it is
+	// this node's.
+	name := g.unclaimedTypeName(contextName, s)
+	if g.declaredFor(name, s) {
 		if g.stringAnnotationOnlySchema(s) {
-			return &NamedType{Name: contextName}, true
+			return &NamedType{Name: name}, true
 		}
 		return nil, false
 	}
-	def := g.stringAnnotationOnlyDef(contextName, s)
+	def := g.stringAnnotationOnlyDef(name, s)
 	if def == nil {
 		return nil, false
 	}
-	g.generated[contextName] = true
-	g.output.TypeDefs = append(g.output.TypeDefs, def)
-	return &NamedType{Name: contextName}, true
+	g.declareFor(name, s)
+	g.appendDef(def)
+	return &NamedType{Name: name}, true
 }
 
 // nullOnlyWrapperType represents a {"type":"null"} property as the same
@@ -18796,16 +19236,17 @@ func (g *Generator) nullOnlyWrapperType(s *schema.Schema, contextName string) (G
 	if !isNullOnly(s) {
 		return nil, false
 	}
-	def := g.extractTypeOnlySchemaDef(contextName, s)
+	name := g.unclaimedTypeName(contextName, s)
+	def := g.extractTypeOnlySchemaDef(name, s)
 	if def == nil {
 		return nil, false
 	}
-	if g.generated[contextName] {
-		return &NamedType{Name: contextName}, true
+	if g.declaredFor(name, s) {
+		return &NamedType{Name: name}, true
 	}
-	g.generated[contextName] = true
-	g.output.TypeDefs = append(g.output.TypeDefs, def)
-	return &NamedType{Name: contextName}, true
+	g.declareFor(name, s)
+	g.appendDef(def)
+	return &NamedType{Name: name}, true
 }
 
 // hasNonTypeScopedConstraints reports whether the schema states something that
@@ -19232,9 +19673,8 @@ func (g *Generator) inferredTupleItemFromSchema(sub *schema.Schema, posName stri
 				return InferredTupleItem{JSONType: resolved.Type[0]}
 			}
 			// Could be a named type — generate it and reference it.
-			goName := refToGoName(effRef)
-			goName = g.goNameForResolvedRef(effRef, resolved, goName)
-			if !g.generated[goName] {
+			goName := g.goNameForResolvedRef(effRef, resolved, refToGoName(effRef))
+			if !g.isDeclared(goName) {
 				_ = g.generateTypeDef(goName, resolved)
 			}
 			return InferredTupleItem{TypeName: goName}
@@ -19253,15 +19693,15 @@ func (g *Generator) resolveRefTypeName(s *schema.Schema) string {
 	if effRef == "" {
 		return ""
 	}
-	goName := refToGoName(effRef)
-	if resolved != nil {
-		if name, foreign := g.foreignDelegateTypeName(resolved, effRef); foreign {
-			return name
-		}
-		goName = g.goNameForResolvedRef(effRef, resolved, goName)
-		if !g.generated[goName] {
-			_ = g.generateTypeDef(goName, resolved)
-		}
+	if resolved == nil {
+		return g.unresolvedRefTypeName(effRef)
+	}
+	if name, foreign := g.foreignDelegateTypeName(resolved, effRef); foreign {
+		return name
+	}
+	goName := g.goNameForResolvedRef(effRef, resolved, refToGoName(effRef))
+	if !g.isDeclared(goName) {
+		_ = g.generateTypeDef(goName, resolved)
 	}
 	return goName
 }
@@ -20226,8 +20666,8 @@ func (g *Generator) branchOverflowValueTypeName(sub *schema.Schema, posName stri
 //
 // Both arms that name the *position* go through materializeAtPosition, and that
 // is not an optimisation: posName is minted from the bucket's owner and index,
-// so it grows one segment per level of a cycle and g.generated[posName] -- the
-// only guard these arms had -- can never fire.
+// so it grows one segment per level of a cycle and a guard keyed on the name --
+// the only guard these arms had -- can never fire.
 // {"patternProperties":{"^x":{"$ref":"#","minLength":1}}} is a legal schema that
 // re-entered here forever and ended the run in "fatal error: out of memory",
 // which no recover intercepts (#349). Thirty-nine bytes of it were enough, and
@@ -20258,7 +20698,7 @@ func (g *Generator) rawValueTypeName(sub *schema.Schema, posName string) string 
 		if cyclic {
 			return name
 		}
-		if g.generated[name] {
+		if g.declaredFor(name, sub) {
 			g.patternMintedTypes[name] = sub
 			return name
 		}
@@ -20268,9 +20708,9 @@ func (g *Generator) rawValueTypeName(sub *schema.Schema, posName string) string 
 			if name, foreign := g.foreignDelegateTypeName(r, ref); foreign {
 				return name
 			}
-			refName := g.uniqueTypeName(g.goNameForResolvedRef(ref, r, refToGoName(ref)), r)
+			refName := g.goNameForResolvedRef(ref, r, refToGoName(ref))
 			_ = g.generateTypeDef(refName, r)
-			if g.generated[refName] {
+			if g.declaredFor(refName, r) {
 				return refName
 			}
 		}
@@ -20280,7 +20720,7 @@ func (g *Generator) rawValueTypeName(sub *schema.Schema, posName string) string 
 	if cyclic {
 		return name
 	}
-	if g.generated[name] {
+	if g.declaredFor(name, sub) {
 		g.patternMintedTypes[name] = sub
 		return name
 	}
@@ -20370,16 +20810,14 @@ func (g *Generator) resolvePatternPropertyTypes() {
 	// owning struct and the bucket's own index, so exactly one bucket ever refers
 	// to it, and the names that are shared -- a $ref target's -- are not minted
 	// here and are never withdrawn.
-	kept := g.output.TypeDefs[:0]
-	for _, td := range g.output.TypeDefs {
+	g.withdrawDefs(func(td TypeDef) bool {
 		node, minted := g.patternMintedTypes[td.TypeName()]
 		if minted && declined[td.TypeName()] {
 			g.config.CrossPackage.forgetType(node)
-			continue
+			return true
 		}
-		kept = append(kept, td)
-	}
-	g.output.TypeDefs = kept
+		return false
+	})
 }
 
 // extractPatternPropertyValidationRules extracts validation rules from a
@@ -20983,7 +21421,6 @@ func (g *Generator) collectBranchEval(s *schema.Schema) *EvalBranchDef {
 			if err == nil {
 				branch.ConstChecks = append(branch.ConstChecks, ConstCheck{
 					PropertyName: propName,
-					GoFieldName:  JSONPropertyToGoName(propName),
 					JSONValue:    string(jsonVal),
 				})
 			}
@@ -21013,7 +21450,6 @@ func (g *Generator) extractIfCondition(s *schema.Schema) *IfConditionDef {
 			if err == nil {
 				constChecks = append(constChecks, ConstCheck{
 					PropertyName: propName,
-					GoFieldName:  JSONPropertyToGoName(propName),
 					JSONValue:    string(jsonVal),
 				})
 			}
@@ -21397,7 +21833,6 @@ func (g *Generator) flattenBranches(subs []*schema.Schema, depth int) []EvalBran
 					if !found {
 						branch.ConstChecks = append(branch.ConstChecks, ConstCheck{
 							PropertyName: propName,
-							GoFieldName:  JSONPropertyToGoName(propName),
 							JSONValue:    string(jsonVal),
 						})
 					}
@@ -22480,7 +22915,7 @@ func (g *Generator) tupleItemCheckFor(posSch *schema.Schema, posName string) (Tu
 		// generated a second time. posName is minted from the position it was
 		// reached through, so a reference that leads back to an array whose
 		// element is this very node arrives here under a name one "Item0"
-		// longer at every level -- and g.generated[posName], which keys on the
+		// longer at every level -- and the declared set, which keys on the
 		// name, never fires. {"items":{"$ref":"#","minItems":1}} is 35 bytes of
 		// legal schema that recursed until the process died of it: not a stack
 		// overflow but "fatal error: out of memory", because each level also
@@ -22500,7 +22935,7 @@ func (g *Generator) tupleItemCheckFor(posSch *schema.Schema, posName string) (Tu
 				return TupleItemDef{TypeName: name}, true
 			}
 		} else {
-			if g.generated[name] && g.namedTypeIsValidatable(name) {
+			if g.declaredFor(name, posSch) && g.namedTypeIsValidatable(name) {
 				return TupleItemDef{TypeName: name}, true
 			}
 		}
@@ -22523,7 +22958,7 @@ func (g *Generator) tupleItemCheckFor(posSch *schema.Schema, posName string) (Tu
 	// parent type as generated BEFORE calling buildTupleItemDefs.
 	if refName != "" {
 		_ = g.generateTypeDef(refName, resolved)
-		if g.generated[refName] && g.namedTypeIsValidatable(refName) {
+		if g.declaredFor(refName, resolved) && g.namedTypeIsValidatable(refName) {
 			return TupleItemDef{TypeName: refName}, true
 		}
 	}
@@ -22567,7 +23002,7 @@ func (g *Generator) tupleItemCheckFor(posSch *schema.Schema, posName string) (Tu
 			if g.namedTypeIsValidatable(name) {
 				return TupleItemDef{TypeName: name}, true
 			}
-		} else if g.generated[name] {
+		} else if g.declaredFor(name, resolved) {
 			return TupleItemDef{TypeName: name}, true
 		}
 	}
@@ -22581,7 +23016,7 @@ func (g *Generator) tupleItemCheckFor(posSch *schema.Schema, posName string) (Tu
 			if g.namedTypeIsValidatable(name) {
 				return TupleItemDef{TypeName: name}, true
 			}
-		} else if g.generated[name] {
+		} else if g.declaredFor(name, resolved) {
 			return TupleItemDef{TypeName: name}, true
 		}
 	}
@@ -22590,7 +23025,7 @@ func (g *Generator) tupleItemCheckFor(posSch *schema.Schema, posName string) (Tu
 			if g.namedTypeIsValidatable(name) {
 				return TupleItemDef{TypeName: name}, true
 			}
-		} else if g.generated[name] {
+		} else if g.declaredFor(name, resolved) {
 			return TupleItemDef{TypeName: name}, true
 		}
 	}
@@ -22772,48 +23207,6 @@ func hasStructuralKeywords(s *schema.Schema) bool {
 		return true
 	}
 	return false
-}
-
-// uniqueTypeName returns name if it is unclaimed or already claimed by s;
-// otherwise it disambiguates — first by prefixing the owning document's name
-// (element in field.json → FieldElement), then with a numeric suffix — so
-// same-named definitions from different documents do not silently collapse
-// onto a single generated type.
-func (g *Generator) uniqueTypeName(name string, s *schema.Schema) string {
-	claimed, ok := g.typeSchemas[name]
-	if !ok || claimed == s {
-		return name
-	}
-	if doc := documentGoName(s); doc != "" && !strings.HasPrefix(name, doc) {
-		candidate := doc + name
-		if claimed, ok := g.typeSchemas[candidate]; !ok || claimed == s {
-			return candidate
-		}
-	}
-	for i := 2; ; i++ {
-		candidate := fmt.Sprintf("%s%d", name, i)
-		if claimed, ok := g.typeSchemas[candidate]; !ok || claimed == s {
-			return candidate
-		}
-	}
-}
-
-// documentGoName derives a Go name prefix from the document a schema node
-// belongs to: the basename of its base URI without extension.
-func documentGoName(s *schema.Schema) string {
-	u := s.BaseURI
-	if s.DocumentRoot != nil && s.DocumentRoot.BaseURI != nil {
-		u = s.DocumentRoot.BaseURI
-	}
-	if u == nil {
-		return ""
-	}
-	base := path.Base(u.Path)
-	if base == "." || base == "/" || base == "" {
-		return ""
-	}
-	base = strings.TrimSuffix(base, path.Ext(base))
-	return SchemaNameToGoName(base)
 }
 
 // discriminatorCandidateProps returns the property names to consider as
@@ -23033,54 +23426,23 @@ func (g *Generator) foreignDelegateTypeName(resolved *schema.Schema, ref string)
 }
 
 // importAlias returns (and records) the alias under which importPath is
-// imported by the file being generated, deduplicating base-name conflicts
-// with a numeric suffix.
+// imported by the file being generated.
+//
+// The alias is claimed in the package's name registry like any other
+// identifier the file declares, so it steps around everything generated code
+// already spells: the names the file's own imports are spelled under
+// (generatedImports), the helpers, Go's predeclared identifiers, and every other
+// package-level name. The table this replaced reserved "flags" for the regexp
+// engine's flag package, which every file spells "ecmaflags" -- so a sibling
+// package named ecmaflags was imported under the name the generated
+// pattern checks call, and the file did not compile. It also left out half the
+// imports the helper file carries (sort, strconv, errors, reflect, ...).
 func (g *Generator) importAlias(importPath string) string {
 	if alias, ok := g.crossImports[importPath]; ok {
 		return alias
 	}
-	base := PackageNameForImportPath(importPath)
-	alias := base
-	for i := 2; ; i++ {
-		taken := reservedImportNames[alias]
-		if !taken {
-			// maporder: a predicate; it returns the same answer whichever member it stops at.
-			for _, existing := range g.crossImports {
-				if existing == alias {
-					taken = true
-					break
-				}
-			}
-		}
-		if !taken {
-			break
-		}
-		alias = fmt.Sprintf("%s%d", base, i)
-	}
+	alias := g.names.claim(PackageNameForImportPath(importPath),
+		nameHolder{kind: holderImport, key: importPath, what: "the import name of " + strconv.Quote(importPath)})
 	g.crossImports[importPath] = alias
 	return alias
-}
-
-// reservedImportNames are the package names the generated file may import for
-// its own use (see addRequiredImports and the emitter templates). A foreign
-// package whose last path segment collides with one of these must be aliased:
-// the two would otherwise be imported under the same name and the file would
-// not compile. The set is fixed rather than derived from the import list
-// because addRequiredImports runs after aliases have been assigned.
-var reservedImportNames = map[string]bool{
-	"big":               true, // math/big
-	"bytes":             true,
-	"ecma262":           true, // github.com/mgilbir/goecma262
-	"flags":             true, // github.com/mgilbir/goecma262/flags
-	"fmt":               true,
-	"json":              true, // encoding/json
-	"mail":              true, // net/mail
-	"math":              true,
-	"netip":             true, // net/netip
-	"regexp":            true,
-	"strings":           true,
-	"time":              true,
-	"url":               true, // net/url
-	"utf8":              true, // unicode/utf8
-	"validationruntime": true,
 }

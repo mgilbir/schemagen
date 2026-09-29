@@ -619,13 +619,11 @@ func TestSharedTypesReportsTheDefinitionsItSplit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate: %v\nstderr:\n%s", err, stderr)
 	}
-	want := "warning: 2 documents claim the Go type name Thing, and those claims do not describe the same type, so they cannot be one:\n" +
+	want := "warning: 2 documents claim the Go type name Thing for types that are not the same, so each has its own name:\n" +
 		"  " + paths[0] + " #/$defs/Thing becomes AlphaThing\n" +
 		"  " + paths[1] + " #/$defs/Thing becomes BetaThing\n" +
-		"one package holds one type per name, so sharing it would have given every document whichever schema was generated first and discarded the rest. " +
-		"Each definition is qualified with its own document's root type name -- all of them, not only the later ones, so the generated names do not depend on the order the inputs were listed. " +
-		"A listed document's own root type keeps the name it was given; --root-name sets both. " +
-		"Make the definitions identical if they were meant to be one type, or rename one of them in the schema to choose the Go names yourself.\n"
+		"  to choose: make them identical if they are one type, or rename one; --root-name sets a document's qualifier\n" +
+		nameSeparationNote
 	if stderr != want {
 		t.Errorf("stderr =\n%q\nwant\n%q", stderr, want)
 	}
@@ -649,25 +647,27 @@ func TestSharedTypesQualifiedNamesFollowRootName(t *testing.T) {
 }
 
 // The qualified name is one schemagen invented, so it was never written in any
-// document and cannot be checked against one. When it lands on a name the
-// package already declares it has separated nothing, and the run is refused
-// rather than silently merging under the new name -- which would be the same
-// defect wearing a longer identifier.
-func TestSharedTypesRefusesAQualifiedNameThatIsAlreadyTaken(t *testing.T) {
-	// Two shapes reach it. In the first the name is taken by another definition,
-	// which the caller can see; in the second by a type generated for a position
-	// *inside* a document (root name + property name), which the caller cannot.
-	//
-	// The remedy differs with the shape, and the message says so: --root-name
-	// separates the definition from another definition, and does not separate it
-	// from an inline position, because that position is named from the root name
-	// too and moves with it. Each case checks the remedy that applies.
+// document and cannot be checked against one. It can land on a name the package
+// already has: another definition keyed exactly that, or a type generated for a
+// position *inside* a document (root name + property name), which the caller
+// cannot even see.
+//
+// This used to refuse the run -- "renamed to ADocThing, which another schema in
+// this package already declares" -- for documents that are well formed. The
+// qualified name is now one more claim in the name registry. Against another
+// definition it is numbered, because that definition spelled the name in its
+// own key and the qualifier is only schemagen's; against a position it is the
+// position that moves, because the qualified name is pinned and held from the
+// start. Either way every property is typed by its own schema, which is what is
+// checked here, by running documents through the generated package.
+func TestSharedTypesSeparatesAQualifiedNameThatIsAlreadyTaken(t *testing.T) {
+	beta := `{"title": "BDoc", "properties": {"t": {"$ref": "#/$defs/Thing"}},
+		"$defs": {"Thing": {"type": "integer"}}}`
 	for _, tc := range []struct {
-		name    string
-		alpha   string
-		fixed   string
-		fixArgs []string
-		want    string
+		name      string
+		alpha     string
+		wantTypes []string
+		instances []rootInstance
 	}{
 		{
 			name: "another definition",
@@ -675,12 +675,19 @@ func TestSharedTypesRefusesAQualifiedNameThatIsAlreadyTaken(t *testing.T) {
 				"title": "ADoc",
 				"properties": {"t": {"$ref": "#/$defs/Thing"}, "q": {"$ref": "#/$defs/ADocThing"}},
 				"$defs": {
-					"Thing": {"type": "object", "properties": {"k": {"type": "string"}}},
-					"ADocThing": {"type": "object", "properties": {"z": {"type": "boolean"}}}
+					"Thing": {"type": "object", "properties": {"k": {"type": "string"}}, "required": ["k"]},
+					"ADocThing": {"type": "object", "properties": {"z": {"type": "boolean"}}, "required": ["z"]}
 				}
 			}`,
-			fixArgs: []string{"--root-name=file:%[1]s=Aye"},
-			want:    "AyeThing",
+			// $defs/ADocThing keeps the name its key spells; a.json's Thing,
+			// qualified onto it, is numbered.
+			wantTypes: []string{"ADoc", "ADocThing", "ADocThing2", "BDoc", "BDocThing"},
+			instances: []rootInstance{
+				{"ADoc", `{"t":{"k":"x"},"q":{"z":true}}`, true, `{"q":{"z":true},"t":{"k":"x"}}`},
+				{"ADoc", `{"t":{"z":true}}`, false, ""},
+				{"ADoc", `{"q":{"k":"x"}}`, false, ""},
+				{"BDoc", `{"t":5}`, true, `{"t":5}`},
+			},
 		},
 		{
 			name: "an inline position",
@@ -690,55 +697,30 @@ func TestSharedTypesRefusesAQualifiedNameThatIsAlreadyTaken(t *testing.T) {
 					"t": {"$ref": "#/$defs/Thing"},
 					"thing": {"type": "object", "properties": {"z": {"type": "boolean"}}, "required": ["z"]}
 				},
-				"$defs": {"Thing": {"type": "object", "properties": {"k": {"type": "string"}}}}
+				"$defs": {"Thing": {"type": "object", "properties": {"k": {"type": "string"}}, "required": ["k"]}}
 			}`,
-			// The root name moves both, so the definition is what has to change.
-			fixed: `{
-				"title": "ADoc",
-				"properties": {
-					"t": {"$ref": "#/$defs/Widget"},
-					"thing": {"type": "object", "properties": {"z": {"type": "boolean"}}, "required": ["z"]}
-				},
-				"$defs": {"Widget": {"type": "object", "properties": {"k": {"type": "string"}}}}
-			}`,
-			want: "ADocThing",
+			// The pinned definition holds ADocThing from the start; the property
+			// "thing", whose position derives the same name, is numbered.
+			wantTypes: []string{"ADoc", "ADocThing", "ADocThing2", "BDoc", "BDocThing"},
+			instances: []rootInstance{
+				{"ADoc", `{"t":{"k":"x"},"thing":{"z":true}}`, true, `{"t":{"k":"x"},"thing":{"z":true}}`},
+				{"ADoc", `{"t":{"z":true}}`, false, ""},
+				{"ADoc", `{"thing":{"k":"x"}}`, false, ""},
+			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			dir, paths := writeSchemas(t, "a.json", tc.alpha,
-				"b.json", `{"title": "BDoc", "properties": {"t": {"$ref": "#/$defs/Thing"}},
-					"$defs": {"Thing": {"type": "integer"}}}`)
-
-			_, err := runGenerateCapturing(t, append(append([]string{}, paths...),
-				"-o", filepath.Join(dir, "gen"), "-p", "gen", "--shared-types")...)
-			if err == nil {
-				t.Fatal("expected the run to be refused")
-			}
-			msg := err.Error()
-			for _, want := range []string{
-				"#/$defs/Thing in " + paths[0] + " was renamed to ADocThing, which another schema in this package already declares",
-				"a property \"thing\" under a root named Alpha is also AlphaThing, and --root-name moves both of them together",
-				"Rename the definition, or whatever else holds that name, in the schema",
-				"--schema-package",
-			} {
-				if !strings.Contains(msg, want) {
-					t.Errorf("refusal should say %q, got:\n%s", want, msg)
-				}
-			}
-
-			// And the remedy the message names has to work.
-			if tc.fixed != "" {
-				writeFile(t, paths[0], tc.fixed)
-			}
-			args := append(append([]string{}, paths...), "-o", filepath.Join(dir, "gen2"), "-p", "gen", "--shared-types")
-			for _, a := range tc.fixArgs {
-				args = append(args, fmt.Sprintf(a, paths[0]))
-			}
-			if _, err := runGenerateCapturing(t, args...); err != nil {
-				t.Fatalf("the remedy should resolve it: %v", err)
-			}
-			if names := strings.Join(declaredTypeNames(t, filepath.Join(dir, "gen2")), ","); !strings.Contains(names, tc.want) {
-				t.Errorf("declared types = %s, want a %s", names, tc.want)
+			_, paths := writeSchemas(t, "a.json", tc.alpha, "b.json", beta)
+			var genDir string
+			generateCompileRunRoots(t,
+				func(modRoot string) []string {
+					genDir = filepath.Join(modRoot, "gen")
+					return append(append([]string{}, paths...), "-o", genDir, "-p", "gen", "--shared-types")
+				},
+				"example.com/m/gen",
+				tc.instances)
+			if got := strings.Join(declaredTypeNames(t, genDir), ","); got != strings.Join(tc.wantTypes, ",") {
+				t.Errorf("declared types = %s, want %s", got, strings.Join(tc.wantTypes, ","))
 			}
 		})
 	}

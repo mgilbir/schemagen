@@ -211,8 +211,12 @@ func checkPackageIdentifiers(pkg string, imports []generator.Import) error {
 	return nil
 }
 
+// isPackageIdentifier reports whether s can name a package or an import under
+// every Go the generated code supports: generator.IsIdentifier answers from the
+// oldest supported Go's Unicode tables, where token.IsIdentifier would answer
+// from the running one's.
 func isPackageIdentifier(s string) bool {
-	return token.IsIdentifier(s) && !token.Lookup(s).IsKeyword() && s != "_"
+	return generator.IsIdentifier(s) && s != "_"
 }
 
 // Emit takes a generator.File and returns gofmt-formatted Go source code.
@@ -333,7 +337,14 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	var imports []generator.Import
 	// Each path is added at most once: the list goes straight into the file's
 	// import block, and naming the same package twice does not compile.
-	addAliased := func(cond bool, path, alias string) {
+	//
+	// The spec -- and so the name the file spells the package under -- is the
+	// generator's (generator.GeneratedImport), which is the table its name
+	// registry reserves those names from. A path that table does not list is a
+	// panic there rather than an import here, so the helper file cannot gain a
+	// package whose name a cross-package alias or a schema-derived identifier
+	// could still take.
+	add := func(cond bool, path string) {
 		if !cond {
 			return
 		}
@@ -342,9 +353,14 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 				return
 			}
 		}
-		imports = append(imports, generator.Import{Path: path, Alias: alias})
+		imports = append(imports, generator.GeneratedImport(path))
 	}
-	add := func(cond bool, path string) { addAliased(cond, path, "") }
+	addAliased := func(cond bool, path, alias string) {
+		if spec := generator.GeneratedImport(path); spec.Alias != alias {
+			panic(fmt.Sprintf("emitter: %q is imported as %q, and the generator reserves it as %q", path, alias, spec.Alias))
+		}
+		add(cond, path)
+	}
 	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.NumberCompare || helpers.DateTime || helpers.Canonical || helpers.NullCheck || helpers.ExactProperties || helpers.DecodePath, "encoding/json")
 	add(helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.Canonical || helpers.NullCheck || helpers.Format || helpers.PathJoin || helpers.DecodePath, "fmt")
 	// The JSON-equality reduction: a decoder over the document's own bytes, a

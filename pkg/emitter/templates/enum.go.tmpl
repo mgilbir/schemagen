@@ -116,7 +116,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 {{- template "annotation_comment" mkAnnotationCtx .Annotations "" .HasProse}}
 type {{.Name}} json.RawMessage
 {{- $recv := receiverName .Name}}
-{{- $allowedVar := lowerFirst .Name | printf "%sAllowedJSON"}}
+{{- $allowedVar := .AllowedVar}}
 
 // The members as the schema wrote them, reduced at package initialisation to
 // the one spelling every JSON value equal to each of them shares -- which is

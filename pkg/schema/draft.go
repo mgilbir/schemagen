@@ -261,6 +261,7 @@ func (s *Schema) rewriteLegacyKeywords(d Draft) {
 		for k, v := range s.Definitions {
 			s.Defs[k] = v
 		}
+		s.MirroredDefinitions = "$defs"
 	}
 
 	// Copy $defs → definitions if definitions is empty.
@@ -270,6 +271,7 @@ func (s *Schema) rewriteLegacyKeywords(d Draft) {
 		for k, v := range s.Defs {
 			s.Definitions[k] = v
 		}
+		s.MirroredDefinitions = "definitions"
 	}
 
 	// Draft 3: "extends" is allOf.

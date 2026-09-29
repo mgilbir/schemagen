@@ -2,7 +2,6 @@ package generator
 
 import (
 	"strings"
-	"unicode"
 	"unicode/utf8"
 )
 
@@ -56,20 +55,22 @@ func splitWords(s string) []string {
 	runes := []rune(s)
 	for i, r := range runes {
 		// Treat underscores, hyphens, and any non-letter/non-digit as separators.
-		if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+		// Letters and digits are the pinned tables' (see unicodeident.go): a
+		// letter newer than the oldest supported Go is a separator here.
+		if !identLetter(r) && !identDigit(r) {
 			buf.WriteRune(' ')
 			continue
 		}
 		if i > 0 {
 			prev := runes[i-1]
-			prevIsIdent := unicode.IsLetter(prev) || unicode.IsDigit(prev)
+			prevIsIdent := identLetter(prev) || identDigit(prev)
 			if prevIsIdent {
 				// Upper after lower → new word boundary
-				if unicode.IsUpper(r) && unicode.IsLower(prev) {
+				if identUpper(r) && identLower(prev) {
 					buf.WriteRune(' ')
 				}
 				// Upper followed by lower, but preceded by upper → "URLParser" → "URL" "Parser"
-				if i+1 < len(runes) && unicode.IsUpper(prev) && unicode.IsUpper(r) && unicode.IsLower(runes[i+1]) {
+				if i+1 < len(runes) && identUpper(prev) && identUpper(r) && identLower(runes[i+1]) {
 					buf.WriteRune(' ')
 				}
 			}
@@ -82,8 +83,11 @@ func splitWords(s string) []string {
 }
 
 // capitalizeWord capitalizes a word, handling common acronyms.
+//
+// Both case mappings are the pinned tables' (see unicodeident.go), so a letter
+// is not uppercased onto one only a newer Go has.
 func capitalizeWord(word string) string {
-	lower := strings.ToLower(word)
+	lower := identStringToLower(word)
 	if acronym, ok := commonAcronyms[lower]; ok {
 		return acronym
 	}
@@ -91,7 +95,7 @@ func capitalizeWord(word string) string {
 		return word
 	}
 	runes := []rune(lower)
-	runes[0] = unicode.ToUpper(runes[0])
+	runes[0] = identToUpper(runes[0])
 	return string(runes)
 }
 
@@ -106,7 +110,7 @@ func sanitizeGoIdentifier(name string) string {
 	// Strip characters that are not valid in Go identifiers.
 	var buf strings.Builder
 	for _, r := range name {
-		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' {
+		if identLetter(r) || identDigit(r) || r == '_' {
 			buf.WriteRune(r)
 		}
 	}
@@ -130,7 +134,7 @@ func sanitizeGoIdentifier(name string) string {
 	// schema. Not silent, but not generation either: every such document was
 	// ungeneratable.
 	first, _ := utf8.DecodeRuneInString(result)
-	if unicode.IsDigit(first) {
+	if identDigit(first) {
 		result = "X" + result
 	}
 
@@ -208,6 +212,19 @@ func exportedGoName(name string) string {
 		return name
 	}
 	return "X" + name
+}
+
+// lowerFirstIdent is name with its first letter lowercased, for the unexported
+// package variable a declaration carries. The emitter's lowerFirst did this in
+// the template, out of the name registry's sight; it is done here now so that
+// the result is claimed like every other package-level identifier, and by the
+// pinned case mapping (see unicodeident.go).
+func lowerFirstIdent(name string) string {
+	if name == "" {
+		return name
+	}
+	r, size := utf8.DecodeRuneInString(name)
+	return string(identToLower(r)) + name[size:]
 }
 
 // SchemaNameToGoName converts a JSON Schema definition name to a Go type name.

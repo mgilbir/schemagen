@@ -131,12 +131,11 @@ func TestTwoSpellingsReportWhatWasSplit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate: %v\nstderr:\n%s", err, stderr)
 	}
-	want := "warning: " + paths[0] + " declares the Go type name X in 2 places, and those declarations do not describe the same type, so they cannot be one:\n" +
+	want := "warning: " + paths[0] + " declares the Go type name X in 2 places that are not the same type, so each has its own name:\n" +
 		"  " + paths[0] + " #/$defs/X becomes DefsX\n" +
 		"  " + paths[0] + " #/definitions/X becomes DefinitionsX\n" +
-		"one Go package holds one type per name, so declaring them all as X would have given every $ref whichever was generated first and discarded the rest -- a position typed by a schema the document never wrote there. " +
-		"Each definition is qualified instead with the keyword that declared it, which is the only thing in the document that tells them apart. " +
-		"$defs and definitions name the same container in every draft that defines both, so if these were meant to be one definition make them identical or delete one; otherwise rename one of them in the schema to choose the Go names yourself.\n"
+		"  to choose: make them identical or delete one if they are one definition; otherwise rename one\n" +
+		nameSeparationNote
 	if stderr != want {
 		t.Errorf("stderr =\n%q\nwant\n%q", stderr, want)
 	}
@@ -184,13 +183,11 @@ func TestDefinitionNamedAfterItsOwnRootTypeSaysWhatToChange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("generate: %v", err)
 	}
-	want := "warning: " + paths[0] + " declares the Go type name X in 2 places, and those declarations do not describe the same type, so they cannot be one:\n" +
+	want := "warning: " + paths[0] + " declares the Go type name X in 2 places that are not the same type, so each has its own name:\n" +
 		"  " + paths[0] + " #/$defs/X becomes DefsX\n" +
 		"  " + paths[0] + " root type keeps X\n" +
-		"one Go package holds one type per name, so declaring them all as X would have given every $ref whichever was generated first and discarded the rest -- a position typed by a schema the document never wrote there. " +
-		"Each definition is qualified instead with the keyword that declared it, which is the only thing in the document that tells them apart. " +
-		"The document's root type keeps the name -- it is the one the caller asked for, by the document's title or by --root-name. " +
-		"Rename the definition in the schema, or give the document another root name with --root-name, to choose the Go names yourself.\n"
+		"  to choose: rename the definition, or give the document another root name with --root-name\n" +
+		nameSeparationNote
 	if stderr != want {
 		t.Errorf("stderr =\n%q\nwant\n%q", stderr, want)
 	}

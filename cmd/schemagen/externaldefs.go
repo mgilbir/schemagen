@@ -427,9 +427,8 @@ func (w *externalWalker) record(into nameClaim, doc, node *schema.Schema, ref, f
 // A listed document is qualified with its root type name, which the caller
 // chose. A referenced one often has no title and so no root type name at all,
 // and "Root" in front of every untitled document separates nothing -- so the
-// document's own file name stands in, which is the same derivation the
-// generator's uniqueTypeName already falls back to (element in alpha.json
-// becomes AlphaElement). --root-name still wins where a key names the document.
+// document's own file name stands in (element in alpha.json becomes
+// AlphaElement). --root-name still wins where a key names the document.
 func (w *externalWalker) documentPrefix(label string, doc *schema.Schema) string {
 	if w.chosenName != nil {
 		if chosen := w.chosenName(label, doc); chosen != "" {
@@ -560,6 +559,11 @@ func externalClaimName(res, node *schema.Schema, ref, fragment string) (name, ke
 		keyword string
 		m       map[string]*schema.Schema
 	}{{"$defs", res.Defs}, {"definitions", res.Definitions}} {
+		// The mirror normalizeNode filled holds the same nodes under the
+		// keyword the document did not write; see collectNameClaims.
+		if container.keyword == res.MirroredDefinitions {
+			continue
+		}
 		for _, key := range sortedSchemaKeys(container.m) {
 			if container.m[key] == node {
 				return generator.TypeNameForRef(ref), container.keyword, key

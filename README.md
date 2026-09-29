@@ -706,7 +706,9 @@ property, a `$defs` entry, an `allOf` member, a tuple slot and `contains` all
 take it, and the package builds. An array element, a map value and a `oneOf` or
 `anyOf` variant each need a *name*, so the file spells the name the reference
 would have produced — `{"xs":{"type":"array","items":{"$ref":"gone.json"}}}`
-emits `[]GoneJSON` — and nothing declares it.
+emits `[]GoneJSON` — and nothing declares it. Where the package already declares
+a type of that name the reference gets a numbered one (`GoneJSON2`) rather than
+binding a type its schema never described.
 
 The two cases are told apart rather than lumped together. A ref that degraded
 into a name says so, names the identifier, and says the package does not
@@ -840,7 +842,12 @@ names both documents. Every claim on the name is qualified, not only the later
 one, so the generated names do not depend on the order the inputs were listed;
 `--root-name` sets the prefix. A document's own root type keeps its name, and a
 definition that collides with another document's root name is the one that
-moves.
+moves. A qualified name can itself be taken — a definition keyed `AlphaThing`,
+or the type of a property `thing` under the root `Alpha` — and is then numbered
+(`AlphaThing2`) rather than refused: the definition spelled in its own key keeps
+the name, and a type named for a position steps around a qualified one. The
+warning is written after generation from the names the package actually
+declares.
 
 `--schema-package` shares a name space per package and answers the same
 collision the same way, between the documents assigned to one package.
@@ -1051,7 +1058,11 @@ A derived name is always **exported**, which capitalizing alone cannot guarantee
 | `日本語`, `한국어`, `العربية`, `ภาษาไทย` | `X日本語`, `X한국어`, `Xالعربية`, `Xภาษาไทย` | no upper case exists in the script |
 | `привет`, `Ωμέγα`, `café` | `Привет`, `Ωμέγα`, `Café` | Cyrillic, Greek and Latin have case, so nothing is prefixed |
 
-The JSON tag keeps the original property name either way, so this changes the Go API of a generated type and not the wire format. Two properties whose derived names collide (`日本語` beside `X日本語`) are numbered apart exactly as any other clash is. Use `--field-map` to pin individual properties to chosen Go field names:
+The JSON tag keeps the original property name either way, so this changes the Go API of a generated type and not the wire format. Two properties whose derived names collide (`日本語` beside `X日本語`) are numbered apart exactly as any other clash is. Every such move inside a type is reported on stderr — a field numbered off another property's field or off a generated method (`validate` → `Validate1`), and a union getter numbered off a field together with its wrapper type (`GetCat2`, `Root_Cat2` beside a property `getCat`) — one line each, saying what the name is, what took the one it wanted, and how to choose it.
+
+Which characters are letters, which are upper case and what a letter capitalizes to are taken from the Unicode version of the oldest Go the generated code supports (the go.mod minimum: Go 1.25, Unicode 15.0), whichever Go runs `schemagen`. A letter a later Unicode added is treated like punctuation in a derived name (`aᲉb` → `AB`), a case pair a later Unicode added is not applied (`ɤx` → `Xɤx`, not `Ɤx`), and a property name holding such a letter is read and written by hand rather than through a struct tag — Go 1.25 would not compile the identifier, and its `encoding/json` would ignore the tag.
+
+Use `--field-map` to pin individual properties to chosen Go field names:
 
 ```bash
 schemagen generate --field-map names.json person.json address.json

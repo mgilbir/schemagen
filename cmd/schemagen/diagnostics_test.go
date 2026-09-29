@@ -258,11 +258,11 @@ func TestLenientRefsSaysNothingWhenEverythingResolves(t *testing.T) {
 // $ref can land in, with the one thing that matters recorded: whether the
 // package that comes out builds.
 //
-// Positions that can hold `any` -- a property, a $defs entry, an allOf member,
-// a tuple slot, `contains`, the document root -- build. Positions that need a
-// name -- an array element, a map value, a oneOf or anyOf variant, and any
-// nesting of those -- do not, because the emitted file spells the name the ref
-// would have produced and nothing declares it.
+// Positions that can hold `any` -- a property (a nullable one included), a
+// $defs entry, an allOf member, a tuple slot, `contains`, the document root --
+// build. Positions that need a name -- an array element, a map value, a oneOf
+// or anyOf variant, and any nesting of those -- do not, because the emitted
+// file spells a name for the ref and nothing declares it.
 //
 // patternProperties is deliberately absent: it belongs with the first group
 // (checked by hand against the repository's own module), but the package it
@@ -280,11 +280,15 @@ var lenientRefPositions = []struct {
 	{"allOf member", `{"title":"T","type":"object","properties":{"x":{"allOf":[{"$ref":"gone.json"}]}}}`, true},
 	{"tuple slot", `{"title":"T","type":"object","properties":{"xs":{"type":"array","prefixItems":[{"$ref":"gone.json"}]}}}`, true},
 	{"contains", `{"title":"T","type":"object","properties":{"xs":{"type":"array","contains":{"$ref":"gone.json"}}}}`, true},
+	// A property that is nothing but a nullable reference is a property, and
+	// holds `any` like the plain one above. It spelled the name the reference
+	// would have produced instead, read straight off the reference text by an
+	// arm that named its target outside the name registry.
+	{"nullable oneOf variant", `{"title":"T","type":"object","properties":{"x":{"oneOf":[{"$ref":"gone.json"},{"type":"null"}]}}}`, true},
 
 	{"array element", `{"title":"T","type":"object","properties":{"xs":{"type":"array","items":{"$ref":"gone.json"}}}}`, false},
 	{"map value", `{"title":"T","type":"object","additionalProperties":{"$ref":"gone.json"}}`, false},
 	{"oneOf variant", `{"title":"T","type":"object","properties":{"x":{"oneOf":[{"$ref":"gone.json"},{"type":"string"}]}}}`, false},
-	{"nullable oneOf variant", `{"title":"T","type":"object","properties":{"x":{"oneOf":[{"$ref":"gone.json"},{"type":"null"}]}}}`, false},
 	{"anyOf variant", `{"title":"T","type":"object","properties":{"x":{"anyOf":[{"$ref":"gone.json"},{"type":"string"}]}}}`, false},
 	{"array of arrays", `{"title":"T","type":"object","properties":{"xs":{"type":"array","items":{"type":"array","items":{"$ref":"gone.json"}}}}}`, false},
 	{"map of arrays", `{"title":"T","type":"object","additionalProperties":{"type":"array","items":{"$ref":"gone.json"}}}`, false},
@@ -296,8 +300,8 @@ var lenientRefPositions = []struct {
 // case by case, and that when they agree on failure the identifier the compiler
 // calls undefined is the identifier the warning named.
 //
-// A warning that fired everywhere would fail on the six positions that build; a
-// warning that fired nowhere would fail on the seven that do not; one that fired
+// A warning that fired everywhere would fail on the seven positions that build; a
+// warning that fired nowhere would fail on the six that do not; one that fired
 // in the right places under the wrong name would fail on the identifier check.
 func TestLenientRefsWarnsExactlyWhenTheGeneratedPackageDoesNotBuild(t *testing.T) {
 	for _, tc := range lenientRefPositions {
@@ -478,11 +482,16 @@ func TestLenientRefsNamesTheIdentifierTakenFromTheFragment(t *testing.T) {
 }
 
 // A ref that cannot be served, in a position that needs a name, whose name
-// another definition of the same file already declares. The package builds --
-// the field is typed as the wrong Widget, which is exactly what the
-// unresolved-ref warning is for -- so the compile advice must not fire. Undeclared
-// is the question, not unresolved.
-func TestLenientRefsStaysQuietWhenAnotherDefinitionAlreadyHoldsTheName(t *testing.T) {
+// another definition of the same file already declares.
+//
+// This used to build, with the elements typed as the local Widget: a type
+// validated against a schema the reference never named, which the unresolved-ref
+// warning mentioned only in general terms. No position is typed by another
+// node's schema any more -- the name registry holds the local Widget's name for
+// it, so the unresolved reference is spelled Widget2, which nothing declares --
+// and the outcome is the one every other name-needing position has: the package
+// does not build, the warning says so, and the source's notice names Widget2.
+func TestLenientRefsNeverBindsAnUnresolvedRefToADeclaredNamesake(t *testing.T) {
 	src := t.TempDir()
 	mainPath := filepath.Join(src, "main.json")
 	writeFile(t, mainPath, `{
@@ -503,22 +512,25 @@ func TestLenientRefsStaysQuietWhenAnotherDefinitionAlreadyHoldsTheName(t *testin
 	if !strings.Contains(stderr, `$ref "missing.json#/$defs/Widget" could not be resolved`) {
 		t.Fatalf("the ref is still unresolved and still reported:\n%s", stderr)
 	}
-	if strings.Contains(stderr, "does not compile") {
-		t.Errorf("Widget is declared in this file, so the package builds:\n%s", stderr)
+	if !strings.Contains(stderr, "The generated package does not compile") {
+		t.Errorf("the element spells a name nothing declares, so the warning must say the package does not build:\n%s", stderr)
 	}
 	buildOut, buildErr := buildGenerated(t, out, "lenientshadow")
-	if buildErr != nil {
-		t.Fatalf("the package should build -- the name is taken by the local Widget:\n%s", buildOut)
+	if buildErr == nil {
+		t.Fatalf("the package built, so the unresolved element was bound to a declared type:\n%s", buildOut)
+	}
+	if !strings.Contains(buildOut, "undefined: Widget2") {
+		t.Errorf("go build should be the one calling Widget2 undefined:\n%s", buildOut)
 	}
 	gen, readErr := os.ReadFile(filepath.Join(out, "main.go"))
 	if readErr != nil {
 		t.Fatal(readErr)
 	}
-	if strings.Contains(string(gen), "DOES NOT COMPILE") {
-		t.Errorf("the file compiles; its own notice must not say otherwise:\n%s", gen)
+	if !strings.Contains(string(gen), "missing.json#/$defs/Widget -> Widget2") {
+		t.Errorf("the file's notice should name the undeclared Widget2:\n%s", gen)
 	}
-	if !strings.Contains(string(gen), "[]Widget") {
-		t.Errorf("the degraded element should have taken the declared Widget:\n%s", gen)
+	if strings.Contains(string(gen), "[]Widget ") || strings.Contains(string(gen), "[]Widget\n") {
+		t.Errorf("the degraded element took the declared Widget:\n%s", gen)
 	}
 }
 

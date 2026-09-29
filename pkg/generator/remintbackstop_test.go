@@ -82,7 +82,7 @@ func TestTheRemintBackstopAnswersWithTheNameAlreadyInFlight(t *testing.T) {
 	if !ok || named.Name != canonical {
 		t.Errorf("the alias stands on %v, want the name already in flight (%s)", alias.Underlying, canonical)
 	}
-	if !g.generated[posName] {
+	if !g.isDeclared(posName) {
 		t.Errorf("the name was not marked generated, so a second arrival would run the arms again")
 	}
 }
