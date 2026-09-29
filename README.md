@@ -784,9 +784,55 @@ branches left to right.
 
 A default reached through a `$ref` lands on a field whose Go type is the
 referenced type, so the value is written as a conversion into it —
-`_default := ResourceID("unset")`. Types a JSON scalar does not convert to (a
-struct, a slice, a `time.Time` alias, a big-int wrapper) get no default, as
-before.
+`_default := ResourceID("unset")`.
+
+`default` is an annotation, and one policy decides what `SetDefaults` does
+with it. A default is planted only when both hold:
+
+1. **The field's Go type holds it** — `SetDefaults` leaves the field as a
+   document carrying the default would, and the value writes back out as the
+   same JSON. The built-in scalars, the named types over them (enums
+   included), slices and maps of anything below, `--big-int`'s wrapper
+   (integers past `int64` too), `--exact-numbers`' `json.Number`, an untyped
+   position (as `encoding/json` decodes it, or under `--raw-untyped` as its
+   bytes) and the wrappers that hold a value's JSON all do. `4.5` and `1e30`
+   in an `int64`, `1e400` or `1.2345678901234567890` in a `float64`, and
+   `12345678901234567890` in an untyped `any` (a `float64` underneath) do not.
+   A value no literal spells — an object in a struct, a slice of structs, a
+   `oneOf` group, an asserted `date-time` or `ipv4`/`ipv6` held as a
+   `time.Time` or `netip.Addr` — is planted by *decoding* it: `SetDefaults`
+   decodes `{"<property>": <default>}` into a fresh value of the type and
+   copies the field across, so the field is exactly what a document carrying
+   the default leaves it, the nested value's own key set and overflow members
+   included. The same rule holds at every level of it: a nested number the
+   field would round, or a `time.Time` or `netip.Addr` that would write the
+   value back respelled (`"2020-01-01T00:00:00.000Z"` comes back without its
+   fraction, `"::0001"` as `"::1"`), is not held. A type of another generated
+   package is one whose decode this generator cannot follow, so it gets no
+   default.
+2. **It is valid where it lands** — against every schema that describes the
+   property on every document: its own, its `$ref` chain and `allOf`
+   branches, each `patternProperties` value whose pattern matches its name,
+   the `additionalProperties` of an object in that reach that does not claim
+   it, and the `propertyNames` its name must satisfy. The generator judges
+   this itself; the judgement agrees with the JSON Schema Test Suite on every
+   instance it decides (`make test-external`). What it cannot decide — an
+   asserted `format`, the content vocabulary, a dynamic reference, the
+   `unevaluated*` keywords — it compiles for the runtime evaluator, and
+   `SetDefaults` plants the default only if the evaluator accepts it.
+
+A default that fails either is not planted, and `schemagen generate` warns,
+naming where the default is written and why:
+
+```
+warning: s.json: the default of Root.e (#/properties/e/default) is not planted by SetDefaults: the default "zzz" is not valid where it is written: it is not a member of "enum" at #/properties/e/enum
+```
+
+It never fails generation: a schema with an unusable default is still a legal
+schema. What the judgement does not see is the rest of the object: a
+`dependentRequired`, a `maxProperties` or a branch that turns on which members
+are present sees the default as one more member, and whether that makes the
+object invalid depends on the document it is planted into.
 
 ### Unresolvable References
 

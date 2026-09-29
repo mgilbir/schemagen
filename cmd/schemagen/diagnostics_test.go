@@ -722,6 +722,56 @@ func TestUnsatisfiableRequiredWarningFollowsARef(t *testing.T) {
 	}
 }
 
+// A default SetDefaults does not plant is reported, located at the default the
+// document wrote, and the run succeeds: 4.5 on an integer used to fail it, and
+// "zzz" outside the enum used to be planted without a word. "ok" is the control
+// that nothing is reported for a default that is planted.
+func TestSkippedDefaultsAreWarnedAboutAndDoNotFailTheRun(t *testing.T) {
+	src := t.TempDir()
+	mainPath := filepath.Join(src, "defaults.json")
+	writeFile(t, mainPath, `{
+		"$schema": "https://json-schema.org/draft/2020-12/schema",
+		"$id": "https://ex.test/defaults.json",
+		"title": "Dflt", "type": "object",
+		"properties": {
+			"n": {"type": "integer", "default": 4.5},
+			"e": {"$ref": "#/$defs/E"},
+			"ok": {"type": "string", "default": "fine"}
+		},
+		"$defs": {"E": {"type": "string", "enum": ["a", "b"], "default": "zzz"}}
+	}`)
+	// The single-package run and the multi-package one report through
+	// different writers; both are held to the same report.
+	for _, mode := range []struct {
+		name  string
+		extra []string
+	}{
+		{"one package", []string{"-p", "m"}},
+		{"--schema-package", []string{"--schema-package", "https://ex.test/defaults.json=example.com/m/dflt"}},
+	} {
+		t.Run(mode.name, func(t *testing.T) {
+			args := append([]string{mainPath, "-o", t.TempDir()}, mode.extra...)
+			stderr, err := runGenerateCapturing(t, args...)
+			if err != nil {
+				t.Fatalf("generate failed; an unusable default must not fail it: %v\nstderr:\n%s", err, stderr)
+			}
+			for _, want := range []string{
+				"warning: " + mainPath + ": the default of Dflt.n (#/properties/n/default) is not planted by SetDefaults: ",
+				`the default 4.5 is not valid where it is written: it is not of a type "type" at #/properties/n/type admits`,
+				"warning: " + mainPath + ": the default of Dflt.e (#/$defs/E/default) is not planted by SetDefaults: ",
+				`the default "zzz" is not valid where it is written: it is not a member of "enum" at #/$defs/E/enum`,
+			} {
+				if !strings.Contains(stderr, want) {
+					t.Errorf("stderr should contain %q, got:\n%s", want, stderr)
+				}
+			}
+			if strings.Contains(stderr, "Dflt.ok") {
+				t.Errorf("a planted default was reported:\n%s", stderr)
+			}
+		})
+	}
+}
+
 // A readOnly on a patternProperties or additionalProperties value binds every
 // member its key selects, the struct's own required properties included, so the
 // decoder refuses those too and the warning has to follow. "name" is the

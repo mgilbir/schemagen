@@ -2,34 +2,83 @@ package generator
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/mgilbir/schemagen/pkg/schema"
 )
 
-// TestDefaultThroughRefReportsAnUnrepresentableValue holds the two spellings of
-// the same schema to the same answer.
-//
-// A fractional default on an integer field fails generation rather than being
-// truncated into a different value. Behind a $ref the keyword is found by the
-// same walk but written by a later pass, and dropping it quietly there would
-// mean whether the run failed depended on where the author put the keyword --
-// the spelling-dependence issue #172 was about.
-func TestDefaultThroughRefReportsAnUnrepresentableValue(t *testing.T) {
-	const doc = `{"type":"object","properties":{"n":{"$ref":"#/$defs/N"}},` +
-		`"$defs":{"N":{"type":"integer","default":4.5}}}`
+// generateForDefaults runs Generate over doc under cfg and returns the IR and
+// the defaults the run declined.
+func generateForDefaults(t *testing.T, doc string, cfg Config) (*File, []SkippedDefault) {
+	t.Helper()
 	var s schema.Schema
 	if err := json.Unmarshal([]byte(doc), &s); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	s.Normalize()
-	_, err := New(Config{PackageName: "testpkg"}).Generate(&s)
-	if err == nil {
-		t.Fatalf("generation succeeded; the same default written inline is an error")
+	if cfg.PackageName == "" {
+		cfg.PackageName = "testpkg"
 	}
-	if !strings.Contains(err.Error(), "not an integer") {
-		t.Fatalf("generation failed for the wrong reason: %v", err)
+	g := New(cfg)
+	ir, err := g.Generate(&s)
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	return ir, g.SkippedDefaults()
+}
+
+// fieldNamed finds the field whose property is jsonName, and fails the test if
+// there is none: a field that was never found would read as a zero FieldDef, and
+// an empty default would then pass for a field that does not exist.
+func fieldNamed(t *testing.T, ir *File, jsonName string) FieldDef {
+	t.Helper()
+	for _, td := range ir.TypeDefs {
+		sd, ok := td.(*StructDef)
+		if !ok {
+			continue
+		}
+		for _, f := range sd.Fields {
+			if f.JSONName == jsonName {
+				return f
+			}
+		}
+	}
+	t.Fatalf("no field for property %q", jsonName)
+	return FieldDef{}
+}
+
+// TestAnUnusableDefaultIsSkippedWhereverItIsWritten holds every spelling of an
+// unusable default to one answer: generation succeeds, SetDefaults writes
+// nothing, and the default is reported with where it was written.
+//
+// 4.5 on an integer used to fail generation of a perfectly legal schema, and
+// did so whether the keyword was written on the property or behind a $ref --
+// which of the two an author wrote is exactly the difference issue #172 said
+// nothing may turn on. It still may not: both are now skipped the same way.
+func TestAnUnusableDefaultIsSkippedWhereverItIsWritten(t *testing.T) {
+	for _, tc := range []struct {
+		name, doc, loc string
+	}{
+		{"inline", `{"type":"object","properties":{"n":{"type":"integer","default":4.5}}}`, "#/properties/n/default"},
+		{"through a $ref", `{"type":"object","properties":{"n":{"$ref":"#/$defs/N"}},` +
+			`"$defs":{"N":{"type":"integer","default":4.5}}}`, "#/$defs/N/default"},
+		{"under --big-int", `{"type":"object","properties":{"n":{"type":"integer","default":4.5}}}`, "#/properties/n/default"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := Config{BigIntSupport: tc.name == "under --big-int"}
+			ir, skipped := generateForDefaults(t, tc.doc, cfg)
+			if f := fieldNamed(t, ir, "n"); f.DefaultLiteral != "" {
+				t.Errorf("the default was planted as %q", f.DefaultLiteral)
+			}
+			if len(skipped) != 1 {
+				t.Fatalf("want one skipped default, got %+v", skipped)
+			}
+			if skipped[0].Property != "n" || skipped[0].Location != tc.loc || !strings.Contains(skipped[0].Reason, `"type"`) {
+				t.Errorf("the report is %+v, want property n at %s failing \"type\"", skipped[0], tc.loc)
+			}
+		})
 	}
 }
 
@@ -43,20 +92,18 @@ func TestDefaultThroughRefReportsAnUnrepresentableValue(t *testing.T) {
 // of something else. The IR is built directly because a cross-package run is the
 // only way to produce the shape, and the shape is one field.
 func TestNamedDefaultDeclinesAForeignType(t *testing.T) {
-	value := any("dflt")
+	cand := func() *defaultCandidate { return &defaultCandidate{value: "dflt", property: "p"} }
 	g := New(Config{PackageName: "testpkg"})
 	g.output = &File{TypeDefs: []TypeDef{
 		&AliasDef{Name: "Token", Underlying: &PrimitiveType{Name: "string"}},
 		&StructDef{Name: "Holder", Fields: []FieldDef{
 			{Name: "Local", JSONName: "local",
-				Type: &NamedType{Name: "Token", Pointer: true}, pendingDefault: &value},
+				Type: &NamedType{Name: "Token", Pointer: true}, pendingDefault: cand()},
 			{Name: "Foreign", JSONName: "foreign",
-				Type: &NamedType{Name: "Token", Pointer: true, PkgAlias: "other"}, pendingDefault: &value},
+				Type: &NamedType{Name: "Token", Pointer: true, PkgAlias: "other"}, pendingDefault: cand()},
 		}},
 	}}
-	if err := g.resolveNamedTypeDefaults(); err != nil {
-		t.Fatalf("resolveNamedTypeDefaults: %v", err)
-	}
+	g.resolveDefaults()
 	holder := g.output.TypeDefs[1].(*StructDef)
 	// The local field is the control: without it a pass that declined
 	// everything would satisfy the assertion below.
@@ -67,154 +114,113 @@ func TestNamedDefaultDeclinesAForeignType(t *testing.T) {
 		t.Errorf("the field typed by another package got the literal %q, "+
 			"read off this package's declaration of the same name", got)
 	}
+	// Nor is it decoded: whether that type's decode holds the value is a
+	// question about a declaration this run cannot read.
+	if got := holder.Fields[1].DefaultShape; got != "" {
+		t.Errorf("the field typed by another package was given the shape %q", got)
+	}
+	if len(g.skippedDefaults) != 1 || !strings.Contains(g.skippedDefaults[0].Reason, "another package") {
+		t.Errorf("the declined default is reported as %+v, want one report naming the other package", g.skippedDefaults)
+	}
 }
 
 func TestDefaultToGoLiteral(t *testing.T) {
+	num := func(s string) any { return json.Number(s) }
 	tests := []struct {
 		name       string
 		defaultVal any
 		goType     GoType
 		want       string
-		wantErr    bool
+		handled    bool
+		wantWhy    bool
 	}{
 		// String defaults
-		{"string_hello", "hello", &PrimitiveType{Name: "string"}, `"hello"`, false},
-		{"string_empty", "", &PrimitiveType{Name: "string"}, "", false},
-		{"string_with_quotes", `say "hi"`, &PrimitiveType{Name: "string"}, `"say \"hi\""`, false},
+		{"string_hello", "hello", &PrimitiveType{Name: "string"}, `"hello"`, true, false},
+		{"string_empty", "", &PrimitiveType{Name: "string"}, "", true, false},
+		{"string_with_quotes", `say "hi"`, &PrimitiveType{Name: "string"}, `"say \"hi\""`, true, false},
 
-		// Integer defaults (JSON numbers come as float64)
-		{"int_42", float64(42), &PrimitiveType{Name: "int64"}, "42", false},
-		{"int_0", float64(0), &PrimitiveType{Name: "int64"}, "", false},
-		{"int_negative", float64(-5), &PrimitiveType{Name: "int64"}, "-5", false},
+		// Integer defaults
+		{"int_42", num("42"), &PrimitiveType{Name: "int64"}, "42", true, false},
+		{"int_0", num("0"), &PrimitiveType{Name: "int64"}, "", true, false},
+		{"int_negative", num("-5"), &PrimitiveType{Name: "int64"}, "-5", true, false},
+		{"int_float_spelling", num("4.0"), &PrimitiveType{Name: "int64"}, "4", true, false},
 
-		// Fractional defaults on an integer field are rejected, not truncated.
-		{"int_fractional", float64(4.5), &PrimitiveType{Name: "int64"}, "", true},
-		{"int_fractional_negative", float64(-0.5), &PrimitiveType{Name: "int64"}, "", true},
-		{"int_pointer_fractional", float64(4.5), &PointerType{Inner: &PrimitiveType{Name: "int64"}}, "", true},
-		{"int_pointer_zero_kept", float64(0), &PointerType{Inner: &PrimitiveType{Name: "int64"}}, "0", false},
-
-		// Out-of-range integer defaults are rejected: float64→int64 conversion is
-		// undefined in Go outside the int64 range.
-		{"int_overflow_high", 1e30, &PrimitiveType{Name: "int64"}, "", true},
-		{"int_overflow_low", -1e30, &PrimitiveType{Name: "int64"}, "", true},
-		{"int_overflow_exactly_2_63", float64(1 << 63), &PrimitiveType{Name: "int64"}, "", true},
-		{"int_min_int64_ok", -float64(1 << 63), &PrimitiveType{Name: "int64"}, "-9223372036854775808", false},
+		// A value an int64 cannot hold is declined with a reason, never
+		// truncated or wrapped.
+		{"int_fractional", num("4.5"), &PrimitiveType{Name: "int64"}, "", true, true},
+		{"int_fractional_negative", num("-0.5"), &PrimitiveType{Name: "int64"}, "", true, true},
+		{"int_pointer_fractional", num("4.5"), &PointerType{Inner: &PrimitiveType{Name: "int64"}}, "", true, true},
+		{"int_pointer_zero_kept", num("0"), &PointerType{Inner: &PrimitiveType{Name: "int64"}}, "0", true, false},
+		{"int_overflow_high", num("1e30"), &PrimitiveType{Name: "int64"}, "", true, true},
+		{"int_overflow_low", num("-1e30"), &PrimitiveType{Name: "int64"}, "", true, true},
+		{"int_overflow_exactly_2_63", num("9223372036854775808"), &PrimitiveType{Name: "int64"}, "", true, true},
+		{"int_max_int64_ok", num("9223372036854775807"), &PrimitiveType{Name: "int64"}, "9223372036854775807", true, false},
+		{"int_min_int64_ok", num("-9223372036854775808"), &PrimitiveType{Name: "int64"}, "-9223372036854775808", true, false},
 
 		// Float defaults
-		{"float_3.14", float64(3.14), &PrimitiveType{Name: "float64"}, "3.14", false},
-		{"float_0", float64(0), &PrimitiveType{Name: "float64"}, "", false},
-		{"float_30.5", float64(30.5), &PrimitiveType{Name: "float64"}, "30.5", false},
+		{"float_3.14", num("3.14"), &PrimitiveType{Name: "float64"}, "3.14", true, false},
+		{"float_0", num("0"), &PrimitiveType{Name: "float64"}, "", true, false},
+		{"float_30.5", num("30.5"), &PrimitiveType{Name: "float64"}, "30.5", true, false},
+		{"float_out_of_range", num("1e400"), &PrimitiveType{Name: "float64"}, "", true, true},
+
+		// An exact number holds what a float64 cannot.
+		{"number_exact_1e400", num("1e400"), &PrimitiveType{Name: GoNumberTypeName}, `json.Number("1e400")`, true, false},
 
 		// Boolean defaults
-		{"bool_true", true, &PrimitiveType{Name: "bool"}, "true", false},
-		{"bool_false", false, &PrimitiveType{Name: "bool"}, "", false},
+		{"bool_true", true, &PrimitiveType{Name: "bool"}, "true", true, false},
+		{"bool_false", false, &PrimitiveType{Name: "bool"}, "", true, false},
+
+		// An untyped field holds what encoding/json decodes the JSON into.
+		{"any_object", map[string]any{"a": []any{num("1"), "x"}}, &PrimitiveType{Name: "any"}, `map[string]any{"a": []any{float64(1), "x"}}`, true, false},
 
 		// Nil values
-		{"nil_default", nil, &PrimitiveType{Name: "string"}, "", false},
-		{"nil_type", "hello", nil, "", false},
+		{"nil_default", nil, &PrimitiveType{Name: "string"}, "", true, false},
+		{"nil_type", "hello", nil, "", false, false},
 
-		// Complex types (should return empty)
-		{"array_type", []any{1, 2, 3}, &ArrayType{ItemType: &PrimitiveType{Name: "int64"}}, "", false},
-		{"map_type", map[string]any{"a": 1}, &MapType{KeyType: &PrimitiveType{Name: "string"}, ValueType: &PrimitiveType{Name: "any"}}, "", false},
+		// Other types are resolveDefaults' to spell.
+		{"array_type", []any{num("1")}, &ArrayType{ItemType: &PrimitiveType{Name: "int64"}}, "", false, false},
+		{"map_type", map[string]any{"a": num("1")}, &MapType{KeyType: &PrimitiveType{Name: "string"}, ValueType: &PrimitiveType{Name: "any"}}, "", false, false},
 
-		// Type mismatch (should return empty, without an error)
-		{"string_for_int", "hello", &PrimitiveType{Name: "int64"}, "", false},
-		{"number_for_string", float64(42), &PrimitiveType{Name: "string"}, "", false},
+		// A value of the wrong JSON kind is declined with a reason, where it
+		// used to be dropped without one.
+		{"string_for_int", "hello", &PrimitiveType{Name: "int64"}, "", true, true},
+		{"array_for_int", []any{}, &PrimitiveType{Name: "int64"}, "", true, true},
+		{"number_for_string", num("42"), &PrimitiveType{Name: "string"}, "", true, true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := defaultToGoLiteral(tt.defaultVal, tt.goType)
-			if tt.wantErr {
-				if err == nil {
-					t.Fatalf("defaultToGoLiteral(%v, %v) = %q, want error", tt.defaultVal, tt.goType, got)
-				}
-				if got != "" {
-					t.Errorf("defaultToGoLiteral(%v, %v) returned literal %q alongside error", tt.defaultVal, tt.goType, got)
-				}
-				return
+			got, handled, why := defaultToGoLiteral(tt.defaultVal, tt.goType)
+			if handled != tt.handled {
+				t.Fatalf("handled = %v, want %v", handled, tt.handled)
 			}
-			if err != nil {
-				t.Fatalf("defaultToGoLiteral(%v, %v) unexpected error: %v", tt.defaultVal, tt.goType, err)
+			if (why != "") != tt.wantWhy {
+				t.Fatalf("why = %q, want a reason: %v", why, tt.wantWhy)
 			}
 			if got != tt.want {
-				t.Errorf("defaultToGoLiteral(%v, %v) = %q, want %q", tt.defaultVal, tt.goType, got, tt.want)
+				t.Errorf("literal = %q, want %q", got, tt.want)
 			}
 		})
 	}
 }
 
-// TestBigIntDefaultReportsAFractionalValue holds --big-int to the same answer
-// the plain int64 target gives.
-//
-// The wrapper the flag materializes holds integers of any size, so a value too
-// large for int64 is not an error here -- but a value with a fraction is not an
-// integer at all, and quietly dropping it would mean whether a run failed turned
-// on a flag rather than on what the schema says. Issue #172's rule, on the axis
-// #251 opened.
-func TestBigIntDefaultReportsAFractionalValue(t *testing.T) {
-	const doc = `{"type":"object","properties":{"n":{"type":"integer","default":4.5}}}`
-	var s schema.Schema
-	if err := json.Unmarshal([]byte(doc), &s); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	s.Normalize()
-	_, err := New(Config{PackageName: "testpkg", BigIntSupport: true}).Generate(&s)
-	if err == nil {
-		t.Fatalf("generation succeeded; the same default without --big-int is an error")
-	}
-	if !strings.Contains(err.Error(), "not an integer") {
-		t.Fatalf("generation failed for the wrong reason: %v", err)
-	}
-}
-
-// TestBigIntDefaultDeclinesAValuePastFloat64 is the one integer default
-// --big-int still writes nothing for, and the reason is upstream of this
-// package: "default" is decoded into an `any`, so a literal past float64's exact
-// range arrives already rounded and the digits the author wrote are gone.
-//
-// Writing the rounded digits would put a number in the generated source that the
-// schema never stated. Nothing is written instead, and generation succeeds --
-// which is the difference from the fractional case above, where the value is not
-// an integer under any reading.
-func TestBigIntDefaultDeclinesAValuePastFloat64(t *testing.T) {
+// TestBigIntDefaultWritesAValuePastInt64 is the integer default --big-int
+// exists to hold. It used to write nothing, on the ground that "default" was
+// decoded into an `any` and a literal past float64's exact range arrived
+// rounded; the schema package decodes it with UseNumber, so the digits are the
+// schema's own and the wrapper holds them.
+func TestBigIntDefaultWritesAValuePastInt64(t *testing.T) {
 	const doc = `{"type":"object","properties":{` +
 		`"big":{"type":"integer","default":1e30},` +
 		`"small":{"type":"integer","default":7}}}`
-	var s schema.Schema
-	if err := json.Unmarshal([]byte(doc), &s); err != nil {
-		t.Fatalf("unmarshal: %v", err)
+	ir, skipped := generateForDefaults(t, doc, Config{BigIntSupport: true})
+	if len(skipped) != 0 {
+		t.Fatalf("nothing should be skipped, got %+v", skipped)
 	}
-	s.Normalize()
-	ir, err := New(Config{PackageName: "testpkg", BigIntSupport: true}).Generate(&s)
-	if err != nil {
-		t.Fatalf("generate: %v", err)
+	if big := fieldNamed(t, ir, "big"); !strings.Contains(big.DefaultLiteral, `"1000000000000000000000000000000"`) {
+		t.Errorf("the default past int64 is %q, want the wrapper's decode of its digits", big.DefaultLiteral)
 	}
-	var big, small FieldDef
-	var foundBig, foundSmall bool
-	for _, td := range ir.TypeDefs {
-		sd, ok := td.(*StructDef)
-		if !ok {
-			continue
-		}
-		for _, f := range sd.Fields {
-			switch f.JSONName {
-			case "big":
-				big, foundBig = f, true
-			case "small":
-				small, foundSmall = f, true
-			}
-		}
-	}
-	// A field that was never found would read as a zero FieldDef, and the
-	// empty default below would then pass for a field that does not exist.
-	if !foundBig || !foundSmall {
-		t.Fatalf("expected fields big and small; found big=%v small=%v", foundBig, foundSmall)
-	}
-	if big.DefaultLiteral != "" {
-		t.Errorf("the out-of-range default was written as %q; its digits are not the schema's", big.DefaultLiteral)
-	}
-	if !strings.Contains(small.DefaultLiteral, "_int64: 7") {
+	if small := fieldNamed(t, ir, "small"); !strings.Contains(small.DefaultLiteral, "_int64: 7") {
 		t.Errorf("the in-range default beside it is %q, want the wrapper literal", small.DefaultLiteral)
 	}
 }
@@ -225,34 +231,37 @@ func TestBigIntDefaultDeclinesAValuePastFloat64(t *testing.T) {
 // TestNamedDefaultDeclinesAForeignType does, and for the same reason.
 //
 // A pointer element has no literal at all: Go has no address-of for a scalar
-// written inside a composite. An element typed by another generated package has
-// no declaration here to read, and a local type of the same name would answer in
-// its place. Both would emit source that does not compile, and the whole default
-// is declined rather than half-written.
+// written inside a composite. It is planted by decoding instead, which holds
+// it. An element typed by another generated package has no declaration here to
+// read -- a local type of the same name would answer in its place -- so neither
+// a literal nor the decode can be shown to hold it, and the whole default is
+// declined rather than half-written, and reported.
 func TestCollectionDefaultDeclinesAnElementWithNoLiteral(t *testing.T) {
-	local := any([]any{"z"})
+	cand := func(p string) *defaultCandidate { return &defaultCandidate{value: []any{"z"}, property: p} }
 	g := New(Config{PackageName: "testpkg"})
 	g.output = &File{TypeDefs: []TypeDef{
 		&AliasDef{Name: "Token", Underlying: &PrimitiveType{Name: "string"}},
 		&StructDef{Name: "Holder", Fields: []FieldDef{
 			{Name: "Plain", JSONName: "plain",
-				Type: &ArrayType{ItemType: &NamedType{Name: "Token"}}, pendingDefault: &local},
+				Type: &ArrayType{ItemType: &NamedType{Name: "Token"}}, pendingDefault: cand("plain")},
 			{Name: "Pointed", JSONName: "pointed",
-				Type: &ArrayType{ItemType: &NamedType{Name: "Token", Pointer: true}}, pendingDefault: &local},
+				Type: &ArrayType{ItemType: &NamedType{Name: "Token", Pointer: true}}, pendingDefault: cand("pointed")},
 			{Name: "Foreign", JSONName: "foreign",
-				Type: &ArrayType{ItemType: &NamedType{Name: "Token", PkgAlias: "other"}}, pendingDefault: &local},
+				Type: &ArrayType{ItemType: &NamedType{Name: "Token", PkgAlias: "other"}}, pendingDefault: cand("foreign")},
 		}},
 	}}
-	if err := g.resolveNamedTypeDefaults(); err != nil {
-		t.Fatalf("resolveNamedTypeDefaults: %v", err)
-	}
+	g.resolveDefaults()
 	fields := g.output.TypeDefs[1].(*StructDef).Fields
 	if want := `[]Token{Token("z")}`; fields[0].DefaultLiteral != want {
 		t.Errorf("the control element is %q, want %q", fields[0].DefaultLiteral, want)
 	}
-	for _, f := range fields[1:] {
-		if f.DefaultLiteral != "" {
-			t.Errorf("%s: wrote %q for an element with no literal", f.JSONName, f.DefaultLiteral)
-		}
+	if f := fields[1]; f.DefaultShape != defaultShapeDecoded || f.DefaultLiteral != strconv.Quote(`{"pointed":["z"]}`) {
+		t.Errorf("the pointer elements are %q / %q, want the decoded document", f.DefaultShape, f.DefaultLiteral)
+	}
+	if f := fields[2]; f.DefaultLiteral != "" {
+		t.Errorf("foreign: wrote %q for an element nothing here can hold", f.DefaultLiteral)
+	}
+	if len(g.skippedDefaults) != 1 || g.skippedDefaults[0].Property != "foreign" {
+		t.Errorf("want the foreign default reported, got %+v", g.skippedDefaults)
 	}
 }

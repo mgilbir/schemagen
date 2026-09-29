@@ -144,6 +144,8 @@ var codeFields = map[string]string{
 	"ValidateAs":             "a Go type expression",
 	"ValueType":              "a Go type expression",
 	"DefaultLiteral":         "a Go composite literal; generator.defaultLiteral quotes every string",
+	"DefaultJudge":           "a package variable name the generator's name registry handed out (defaultJudgeNode)",
+	"DefaultJudgeValue":      "a Go tree literal; generator.jsonTreeLiteral quotes every string and number",
 	"ZeroLiteral":            "a Go zero value for a minted type",
 	"NodeLiteral":            "an evaluator node literal; generator quotes every string",
 	"Literal":                "a Go literal; generator quotes every string",

@@ -130,6 +130,10 @@ type Generator struct {
 	// a document that does not. See noteUnsatisfiableRequired.
 	unsatisfiableRequired []UnsatisfiableRequired
 
+	// skippedDefaults records the defaults SetDefaults does not plant, and why.
+	// See noteSkippedDefault.
+	skippedDefaults []SkippedDefault
+
 	// unresolvedRefs records reference values that resolveRefInContext could not
 	// resolve anywhere (local defs, anchors, document roots, or the external
 	// resolver). Unless Config.LenientRefs is set, Generate fails when this
@@ -447,6 +451,7 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	g.ledger = ledgerState{}
 	g.resolvedRefMemo = nil
 	g.hooks = testHooks{forceEvaluator: options.forceEvaluator}
+	g.skippedDefaults = nil
 	g.rootSchema = s
 	if g.config.Draft != schema.DraftUnknown {
 		g.draft = g.config.Draft
@@ -634,9 +639,7 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// Must run after every type definition exists: the literal it writes is a
 	// conversion into a named type, and whether that conversion is sound is a
 	// property of the declaration, not of the property that references it.
-	if err := g.resolveNamedTypeDefaults(); err != nil {
-		return nil, err
-	}
+	g.resolveDefaults()
 	// Last of the passes that read or settle a type's decode: every leaf
 	// decode and every delegate is in place, and the decode of each position
 	// is composed out of them. See decodeplan.go.
@@ -648,7 +651,7 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// property list -- the decoder, the checks, the error paths -- moves.
 	//
 	// Last of the passes, because the members it orders are still being decided
-	// until the ones above have run: a default that resolveNamedTypeDefaults
+	// until the ones above have run: a default that resolveDefaults
 	// settles is what gives a struct its _jsonKeys, and a struct ordered before
 	// that would be ordered without it.
 	typeLayouts := g.orderMembersForLayout()
@@ -1598,6 +1601,7 @@ func (g *Generator) addRequiredImports() {
 	needsNetMail := false
 	needsNetURL := false
 	needsStdRegexp := false
+	needsReflect := false
 
 	// A "number" held exactly names encoding/json in the *type*, not only in the
 	// code: a field, an array element, a map value, an alias's underlying and an
@@ -1640,6 +1644,18 @@ func (g *Generator) addRequiredImports() {
 			}
 			if sd.NeedsUnmarshal {
 				needsJSON = true // UnmarshalJSON always uses json.Unmarshal
+			}
+			if sd.HasDefaults() {
+				// A default can be a json.RawMessage literal, a default judged
+				// when SetDefaults runs is handed to the evaluator with its
+				// numbers as json.Number, and a decoded one is decoded with
+				// json.Unmarshal. Claimed for every struct with a default
+				// rather than for those, because keepReferencedImports drops
+				// what the rendered file never qualifies. The same goes for
+				// reflect, which asks a bare decoded field whether it is still
+				// its zero: a struct holding a slice is not comparable.
+				needsJSON = true
+				needsReflect = true
 			}
 			if sd.NeedsMarshal {
 				needsJSON = true // MarshalJSON always uses json.Marshal
@@ -2332,6 +2348,9 @@ func (g *Generator) addRequiredImports() {
 	}
 	if needsNetURL {
 		g.output.Imports = append(g.output.Imports, GeneratedImport("net/url"))
+	}
+	if needsReflect {
+		g.output.Imports = append(g.output.Imports, GeneratedImport("reflect"))
 	}
 	// The runtime module is claimed for every file, whatever the file's types
 	// happen to reach: almost every generated declaration calls into it, and
@@ -4861,6 +4880,12 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				// and one an allOf on the property states is not dropped
 				// (#187).
 				oneOfDef.Doc = g.propertyDoc(s, propName, propSchema)
+				// A group is a sealed interface over variant wrappers, and
+				// which variant a default selects is a decode's decision, not
+				// a literal's: its default is judged here and planted by
+				// decoding it, once every variant's declaration exists (see
+				// resolveDefaults).
+				oneOfDef.pendingDefault = g.defaultCandidateFor(name, s, propName, propSchema)
 				oneOfs = append(oneOfs, *oneOfDef)
 				needsMarshal = true
 				needsUnmarshal = true
@@ -5019,39 +5044,44 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 			}
 		}
 
-		// Compute default literal if some schema unconditionally states one for
-		// this location. A default the field's own Go type cannot spell is kept
-		// for resolveNamedTypeDefaults, which runs once every declaration a
-		// $ref or an allOf may have named is there to be read.
-		var defaultLiteral string
-		var pendingDefault *any
-		defaultValue := g.propertyDefault(s, propName, propSchema)
-		if defaultValue != nil {
-			lit, err := defaultToGoLiteral(*defaultValue, goType)
-			if err != nil {
-				return fmt.Errorf("property %q: %w", propName, err)
-			}
-			defaultLiteral = lit
-			if lit == "" {
-				pendingDefault = defaultValue
+		// The default some schema unconditionally states for this location, if
+		// it is valid there (see defaultCandidateFor). One the field's own Go
+		// type is a built-in scalar for is spelled now; any other is kept for
+		// resolveDefaults, which runs once every declaration a $ref or an allOf
+		// may have named is there to be read.
+		var defaultLiteral, defaultJudge, defaultJudgeValue string
+		var pendingDefault *defaultCandidate
+		if cand := g.defaultCandidateFor(name, s, propName, propSchema); cand != nil {
+			lit, handled, why := defaultToGoLiteral(cand.value, goType)
+			switch {
+			case why != "":
+				g.noteSkippedDefault(name, cand, why)
+			case !handled:
+				pendingDefault = cand
+			case lit != "":
+				if judge, judgeValue, ok := g.defaultJudgeFor(name, goFieldName, cand); ok {
+					defaultLiteral, defaultJudge, defaultJudgeValue = lit, judge, judgeValue
+				}
 			}
 		}
 
 		fields = append(fields, FieldDef{
-			Name:            goFieldName,
-			JSONName:        propName,
-			Type:            goType,
-			OmitEmpty:       omitEmpty,
-			OmitZero:        omitZero,
-			Required:        required,
-			Doc:             g.propertyDoc(s, propName, propSchema),
-			ManualJSON:      manualJSON,
-			ManualOmit:      manualOmit,
-			ZeroJSON:        zeroJSON,
-			DefaultLiteral:  defaultLiteral,
-			pendingDefault:  pendingDefault,
-			LeafDecode:      g.leafDecodeFor(goType, propSchema),
-			ConditionalOnly: conditionalOnly[propName],
+			Name:              goFieldName,
+			JSONName:          propName,
+			Type:              goType,
+			OmitEmpty:         omitEmpty,
+			OmitZero:          omitZero,
+			Required:          required,
+			Doc:               g.propertyDoc(s, propName, propSchema),
+			ManualJSON:        manualJSON,
+			ManualOmit:        manualOmit,
+			ZeroJSON:          zeroJSON,
+			DefaultLiteral:    defaultLiteral,
+			DefaultJudge:      defaultJudge,
+			DefaultJudgeValue: defaultJudgeValue,
+			pendingDefault:    pendingDefault,
+			LeafDecode:        g.leafDecodeFor(goType, propSchema),
+			ConditionalOnly:   conditionalOnly[propName],
 		})
 		if needsUnmarshalForLeafDecode(fields[len(fields)-1]) {
 			needsUnmarshal = true
@@ -5069,7 +5099,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		// generated file in the corpus. It is kept for the same reason
 		// needsUnmarshalForLeafDecode is: so the two are decided together rather
 		// than by coincidence. The fields whose literal is settled later ask the
-		// same question from resolveNamedTypeDefaults.
+		// same question from resolveDefaults.
 		if fields[len(fields)-1].DefaultAsksJSONKeys() {
 			needsUnmarshal = true
 		}
@@ -11923,7 +11953,10 @@ func (g *Generator) docSchemaFor(s *schema.Schema) *schema.Schema {
 // then its $ref chain, then its allOf branches left to right. 2020-12 collects
 // every one of them and leaves the choice to the consumer; a generator has one
 // slot and has to choose.
-func (g *Generator) propertyDefault(owner *schema.Schema, name string, propSchema *schema.Schema) *any {
+//
+// The node that states it is returned beside it, for a diagnostic to say where
+// the default was written.
+func (g *Generator) propertyDefault(owner *schema.Schema, name string, propSchema *schema.Schema) (*any, *schema.Schema) {
 	sources, narrowed := g.unconditionalPropertySchemas(owner, name)
 	if !narrowed {
 		sources = []*schema.Schema{propSchema}
@@ -11931,11 +11964,11 @@ func (g *Generator) propertyDefault(owner *schema.Schema, name string, propSchem
 	for _, src := range sources {
 		for _, node := range g.unconditionalReachAt(src, true) {
 			if node.Default != nil {
-				return node.Default
+				return node.Default, node
 			}
 		}
 	}
-	return nil
+	return nil, nil
 }
 
 // readWriteAtLocation reports whether "readOnly" or "writeOnly" is asserted by a

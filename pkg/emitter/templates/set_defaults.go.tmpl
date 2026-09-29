@@ -17,27 +17,46 @@
 // Nothing here touches _jsonKeys. A default is not a property the document sent,
 // so a required property still has to have been sent, and SetDefaults cannot
 // make one satisfiable that was not.
+//
+// Only a default that is valid where it lands is written at all: one the
+// generator could prove valid is written as it stands, one it could not decide
+// is written only if the runtime evaluator accepts it against the property's
+// schema, and one that is invalid is not here.
 func ({{$recv}} *{{$struct.Name}}) SetDefaults() {
 	{{- range $struct.Fields}}
 	{{- if .DefaultLiteral}}
+	{{- if eq .DefaultShape "decoded"}}
+	{{- /* No literal spells this value, so the document that carries it is
+	       decoded into a fresh value of this type and the field copied out:
+	       it is then what that document leaves it. See defaultShapeDecoded. */}}
 	{{- if not .DefaultAsksJSONKeys}}
+	if {{$recv}}.{{.Name}} == nil{{template "default_judge" .}} {
+	{{- else}}
+	if !{{$recv}}._jsonKeys[{{printf "%q" .JSONName}}] && reflect.ValueOf(&{{$recv}}.{{.Name}}).Elem().IsZero(){{template "default_judge" .}} {
+	{{- end}}
+		var _decoded {{$struct.Name}}
+		if {{if $struct.StrictReadWrite}}rt.DecodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}([]byte({{.DefaultLiteral}}), &_decoded) == nil {
+			{{$recv}}.{{.Name}} = _decoded.{{.Name}}
+		}
+	}
+	{{- else if not .DefaultAsksJSONKeys}}
 	{{- if eq .DefaultShape "*named"}}
-	if {{$recv}}.{{.Name}} == nil {
+	if {{$recv}}.{{.Name}} == nil{{template "default_judge" .}} {
 		_default := {{.DefaultLiteral}}
 		{{$recv}}.{{.Name}} = &_default
 	}
 	{{- else if eq (goType .Type) "*string"}}
-	if {{$recv}}.{{.Name}} == nil {
+	if {{$recv}}.{{.Name}} == nil{{template "default_judge" .}} {
 		_default := {{.DefaultLiteral}}
 		{{$recv}}.{{.Name}} = &_default
 	}
 	{{- else if eq (goType .Type) "*int64"}}
-	if {{$recv}}.{{.Name}} == nil {
+	if {{$recv}}.{{.Name}} == nil{{template "default_judge" .}} {
 		_default := int64({{.DefaultLiteral}})
 		{{$recv}}.{{.Name}} = &_default
 	}
 	{{- else if eq (goType .Type) "*float64"}}
-	if {{$recv}}.{{.Name}} == nil {
+	if {{$recv}}.{{.Name}} == nil{{template "default_judge" .}} {
 		_default := float64({{.DefaultLiteral}})
 		{{$recv}}.{{.Name}} = &_default
 	}
@@ -46,29 +65,56 @@ func ({{$recv}} *{{$struct.Name}}) SetDefaults() {
 	       conversion -- json.Number("1.25") -- because the value is the text
 	       the schema wrote and re-rendering it would plant a different
 	       number. */}}
-	if {{$recv}}.{{.Name}} == nil {
+	if {{$recv}}.{{.Name}} == nil{{template "default_judge" .}} {
 		_default := {{.DefaultLiteral}}
 		{{$recv}}.{{.Name}} = &_default
 	}
 	{{- else if eq (goType .Type) "*bool"}}
-	if {{$recv}}.{{.Name}} == nil {
+	if {{$recv}}.{{.Name}} == nil{{template "default_judge" .}} {
 		_default := {{.DefaultLiteral}}
 		{{$recv}}.{{.Name}} = &_default
 	}
 	{{- end}}
 	{{- else if eq .DefaultShape "collection"}}
-	if !{{$recv}}._jsonKeys[{{printf "%q" .JSONName}}] && {{$recv}}.{{.Name}} == nil {
+	if !{{$recv}}._jsonKeys[{{printf "%q" .JSONName}}] && {{$recv}}.{{.Name}} == nil{{template "default_judge" .}} {
+		{{$recv}}.{{.Name}} = {{.DefaultLiteral}}
+	}
+	{{- else if eq .DefaultShape "iszero"}}
+	{{- /* A raw-value wrapper holds a slice and is not comparable; it says
+	       it is empty itself. */}}
+	if !{{$recv}}._jsonKeys[{{printf "%q" .JSONName}}] && {{$recv}}.{{.Name}}.IsZero(){{template "default_judge" .}} {
 		{{$recv}}.{{.Name}} = {{.DefaultLiteral}}
 	}
 	{{- else}}
 	{
 		var _zero {{goType .Type}}
-		if !{{$recv}}._jsonKeys[{{printf "%q" .JSONName}}] && {{$recv}}.{{.Name}} == _zero {
+		if !{{$recv}}._jsonKeys[{{printf "%q" .JSONName}}] && {{$recv}}.{{.Name}} == _zero{{template "default_judge" .}} {
 			{{$recv}}.{{.Name}} = {{.DefaultLiteral}}
 		}
 	}
 	{{- end}}
 	{{- end}}
 	{{- end}}
+	{{- range $struct.OneOfs}}
+	{{- if .DefaultLiteral}}
+	{{- /* A oneOf group is planted by decoding, always: which variant the
+	       default selects is the decode's decision. */}}
+	if {{$recv}}.{{.FieldName}} == nil{{template "default_judge" .}} {
+		var _decoded {{$struct.Name}}
+		if {{if $struct.StrictReadWrite}}rt.DecodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}([]byte({{.DefaultLiteral}}), &_decoded) == nil {
+			{{$recv}}.{{.FieldName}} = _decoded.{{.FieldName}}
+		}
+	}
+	{{- end}}
+	{{- end}}
 }
+{{- end}}
+
+{{/*
+default_judge is the runtime half of a default's validity judgement, for one
+the generator could not decide: the condition that the evaluator accepts the
+default against the property's schema. See FieldDef.DefaultJudge.
+*/}}
+{{define "default_judge"}}
+{{- if .DefaultJudge}} && rt.EvalNode(&{{.DefaultJudge}}, {{.DefaultJudgeValue}}).OK(){{end}}
 {{- end}}

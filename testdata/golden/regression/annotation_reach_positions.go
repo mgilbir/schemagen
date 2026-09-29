@@ -2288,7 +2288,18 @@ func (a AnnotationReachPositions) appendMemberJSON(_idx int, _key string, _b []b
 // Nothing here touches _jsonKeys. A default is not a property the document sent,
 // so a required property still has to have been sent, and SetDefaults cannot
 // make one satisfiable that was not.
+//
+// Only a default that is valid where it lands is written at all: one the
+// generator could prove valid is written as it stands, one it could not decide
+// is written only if the runtime evaluator accepts it against the property's
+// schema, and one that is invalid is not here.
 func (a *AnnotationReachPositions) SetDefaults() {
+	{
+		var _zero UntypedDefault
+		if !a._jsonKeys["dfltAnyViaRef"] && a.DfltAnyViaRef == _zero {
+			a.DfltAnyViaRef = UntypedDefault("untyped")
+		}
+	}
 	if a.DfltBindsBoth == nil {
 		_default := "unconditional"
 		a.DfltBindsBoth = &_default
@@ -2309,6 +2320,9 @@ func (a *AnnotationReachPositions) SetDefaults() {
 		_default := DefaultedInt(7)
 		a.DfltIntViaRef = &_default
 	}
+	if !a._jsonKeys["dfltMultiTypeViaRef"] && a.DfltMultiTypeViaRef.IsZero() {
+		a.DfltMultiTypeViaRef = MultiTypedDefault{_raw: json.RawMessage("\"multi\"")}
+	}
 	if a.DfltNearestWins == nil {
 		_default := "own"
 		a.DfltNearestWins = &_default
@@ -2316,6 +2330,12 @@ func (a *AnnotationReachPositions) SetDefaults() {
 	if a.DfltNumberViaRef == nil {
 		_default := DefaultedNumber(1.5)
 		a.DfltNumberViaRef = &_default
+	}
+	if a.DfltObjectViaRef == nil {
+		var _decoded AnnotationReachPositions
+		if json.Unmarshal([]byte("{\"dfltObjectViaRef\":{\"n\":\"x\"}}"), &_decoded) == nil {
+			a.DfltObjectViaRef = _decoded.DfltObjectViaRef
+		}
 	}
 	{
 		var _zero DefaultedString

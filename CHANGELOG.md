@@ -75,6 +75,27 @@
   - The `pkg/generator.HelperSet` is reduced to the patterns a package
     compiles, and the pruning that decided which helper blocks a package needed
     is gone with the blocks.
+- `default` has one policy. `SetDefaults` plants a default only when the
+  field's Go type holds it exactly and it is valid against every schema that
+  describes the property on every document — its own, its `$ref`/`allOf`
+  reach, a matching `patternProperties`, an `additionalProperties` that
+  claims it, the `propertyNames` its name must satisfy. The generator judges
+  validity itself, and defers what it cannot decide (an asserted `format`,
+  say) to the runtime evaluator when `SetDefaults` runs. Any other default is
+  skipped with a warning naming where it is written and why, and none fails
+  generation. Before, `4.5` or `1e30` on an integer and `1e400` on a number
+  refused to generate a legal schema, `"x"` or `[]` on an integer vanished
+  without a word, and `"zzz"` on `enum: ["a","b"]` was planted, so that
+  `SetDefaults` made `{}` invalid. Now `1e30` is planted under `--big-int`,
+  `1e400` and `1.2345678901234567890` under `--exact-numbers`, and an untyped
+  position takes its default (as its bytes under `--raw-untyped`); a
+  `float64` takes only a number it writes back out as itself. An object on a
+  struct-typed property, a slice of structs, a `oneOf` group, and an asserted
+  `date-time` or ip held as `time.Time`/`netip.Addr` — all silently dropped
+  before — are planted by decoding the default, which leaves exactly the state
+  a document carrying it would; one the decode would respell or round is
+  skipped and reported. The library reports the skips as
+  `Generator.SkippedDefaults`.
 - `--strict-read-write` binds `readOnly` and `writeOnly` by one rule, JSON
   Schema's own: a keyword applies where the route to a location is fixed by
   keys, indexes, `allOf` and `$ref`, and is conditional where the route goes

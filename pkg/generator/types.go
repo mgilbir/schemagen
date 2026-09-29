@@ -487,6 +487,11 @@ func (d *StructDef) HasDefaults() bool {
 			return true
 		}
 	}
+	for _, o := range d.OneOfs {
+		if o.DefaultLiteral != "" {
+			return true
+		}
+	}
 	return false
 }
 
@@ -1693,13 +1698,21 @@ type FieldDef struct {
 	// is a conversion or composite written into a generated type, which the
 	// scalar arms would wrap in a second conversion of the wrong type;
 	// "collection" for a slice or map literal, whose field is nil exactly when
-	// the property was absent. Set by resolveNamedTypeDefaults.
+	// the property was absent; "iszero" for a raw-value wrapper, which is not
+	// comparable and says it is empty by IsZero. Set by resolveDefaults.
 	DefaultShape string
-	// pendingDefault is the "default" of a field defaultToGoLiteral could not
-	// write, held for resolveNamedTypeDefaults. Unexported: nothing outside this
-	// package, and no template, has any use for a value that has not been
-	// decided yet.
-	pendingDefault *any
+	// DefaultJudge and DefaultJudgeValue are set on a default whose validity
+	// the generator could not decide (see judgeValue): DefaultJudge is the
+	// package variable the property's schema is compiled into for the runtime
+	// evaluator, and DefaultJudgeValue the default as the tree the evaluator
+	// reads. SetDefaults plants the default only where the evaluator accepts it.
+	DefaultJudge      string
+	DefaultJudgeValue string
+	// pendingDefault is a "default" on its way to SetDefaults: found and judged
+	// at field construction, and spelled by resolveDefaults once every
+	// declaration it may name exists. Unexported: nothing outside this package,
+	// and no template, has any use for a value that has not been decided yet.
+	pendingDefault *defaultCandidate
 	// LeafDecode is set when the field's type holds an int64 the document's
 	// draft lets be written in float notation, a json.Number a JSON string
 	// could fill, or a time.Time whose decoder refuses spellings RFC 3339
@@ -1812,6 +1825,15 @@ type OneOfDef struct {
 	// strings the schema admits, which is the defect that method exists to
 	// prevent.
 	RejectNull bool
+	// DefaultLiteral, DefaultJudge and DefaultJudgeValue are a FieldDef's, for
+	// the default of the group's property. A group is always planted by
+	// decoding (see defaultShapeDecoded): DefaultLiteral is the Go string
+	// literal of the one-member document that carries the default, and which
+	// variant it selects is the decode's decision, as it is for a document.
+	DefaultLiteral    string
+	DefaultJudge      string
+	DefaultJudgeValue string
+	pendingDefault    *defaultCandidate
 }
 
 // IsProperty reports whether the union sits at a property of its parent,
@@ -3003,8 +3025,12 @@ type File struct {
 // decoded into the type to be judged by the type's Validate. Var is the
 // package variable the root node is declared as, and Nodes the nodes hoisted
 // out of it, as AnnotationSchemaDef's are.
+//
+// A default's runtime judge is declared the same way (see defaultJudgeNode),
+// and Purpose is what its doc comment says it is; empty for an element's node.
 type ElementNode struct {
 	TypeName string
+	Purpose  string
 	Var      string
 	Literal  string
 	Nodes    []RuntimeNodeVar

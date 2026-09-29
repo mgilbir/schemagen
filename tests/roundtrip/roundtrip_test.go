@@ -2973,11 +2973,29 @@ func main() {
 		fail("dfltEmptyViaRef: SetDefaults wrote %q, want the empty string", string(*v.DfltEmptyViaRef))
 	}
 
-	// Nothing states one about these unconditionally, so nothing may be
-	// written. The four conditional ones are the carve-out; dfltObjectViaRef is
-	// a default whose target is a struct, which no conversion of a JSON value
-	// reaches; dfltMismatchViaRef states a string default for an integer type,
-	// which has no literal either; and dfltNone is the plain control.
+	// The two untyped holders take the default as it is, since each holds any
+	// JSON value exactly as a document carrying it would leave it. A $defs
+	// entry with no "type" compiles to an alias over the empty interface, which
+	// holds what encoding/json decodes the JSON into; a multi-type one compiles
+	// to a raw-value wrapper, which holds its JSON -- written as the wrapper's
+	// bytes, not as a conversion of a string literal into a struct, which is
+	// the shape that does not compile.
+	if s, ok := v.DfltAnyViaRef.(string); !ok || s != "untyped" {
+		fail("dfltAnyViaRef: SetDefaults wrote %#v, want %q", v.DfltAnyViaRef, "untyped")
+	}
+	if got := v.DfltMultiTypeViaRef.String(); got != ` + "`" + `"multi"` + "`" + ` {
+		fail("dfltMultiTypeViaRef: SetDefaults wrote %s, want %q", got, "multi")
+	}
+	// A struct takes its default by decoding it, as a document carrying it
+	// would fill it; no literal is written for one.
+	if v.DfltObjectViaRef == nil || v.DfltObjectViaRef.N == nil || *v.DfltObjectViaRef.N != "x" {
+		fail("dfltObjectViaRef: SetDefaults wrote %+v, want {n: x}", v.DfltObjectViaRef)
+	}
+
+	// Nothing states one about these unconditionally, or what is stated is
+	// not usable, so nothing may be written. The four conditional ones are the
+	// carve-out; dfltMismatchViaRef states a string default for an integer
+	// type, which is not valid there; and dfltNone is the plain control.
 	for _, c := range []struct {
 		name string
 		set  bool
@@ -2986,18 +3004,7 @@ func main() {
 		{"dfltCondElse", v.DfltCondElse != nil},
 		{"dfltCondAnyOf", v.DfltCondAnyOf != nil},
 		{"dfltCondOneOf", v.DfltCondOneOf != nil},
-		{"dfltObjectViaRef", v.DfltObjectViaRef != nil},
 		{"dfltMismatchViaRef", v.DfltMismatchViaRef != nil},
-		// A $defs entry with no "type" compiles to an alias over the empty
-		// interface. The conversion into it does compile, so nothing but the
-		// scalar test stops SetDefaults from writing a boxed value into a field
-		// whose zero test cannot tell it from any other.
-		{"dfltAnyViaRef", v.DfltAnyViaRef != nil},
-		// A multi-type $defs entry compiles to a wrapper struct, and its
-		// default is a JSON string -- so a pass that answered "string" for a
-		// declaration it could not read would produce a conversion of a string
-		// literal into a struct, which is the shape that does not compile.
-		{"dfltMultiTypeViaRef", !v.DfltMultiTypeViaRef.IsZero()},
 		{"dfltNone", v.DfltNone != nil},
 	} {
 		if c.set {
