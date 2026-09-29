@@ -9,13 +9,13 @@ import (
 
 type Pair json.RawMessage
 
-// The members as the schema wrote them, read at package initialisation into the
-// identity every JSON value equal to each of them shares -- which is how
-// Validate reads the instance. See jsonID.
-var pairAllowedJSON = jsonIDsOfTexts([]string{
+// The members as the schema wrote them, read at package initialisation: the
+// identity every JSON value equal to each shares, and its tree, which is what
+// Validate compares the instance with. See jsonMatchesConst.
+var pairAllowedJSON = jsonConstOf(false,
 	"{\"k\":1}",
 	"{\"k\":2}",
-})
+)
 
 // UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
 //
@@ -47,15 +47,14 @@ func (p Pair) MarshalJSON() ([]byte, error) {
 
 // Validate checks Pair against its JSON Schema constraints.
 func (p Pair) Validate() error {
-	// Compared by identity, which is what the member list was read into as
-	// well: whitespace, member order and number spelling are not what an enum
-	// is decided on. It used to reduce the value to canonical text, re-encoding
-	// every string and key in it, to decide.
-	_id, _idErr := jsonIDRaw(p)
-	if _idErr != nil {
+	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// number spelling are not what an enum is decided on. It used to reduce the
+	// value to canonical text, re-encoding every string and key in it, to decide.
+	_ok, _okErr := jsonMatchesConstRaw(p, pairAllowedJSON)
+	if _okErr != nil {
 		return jsonValueErrorf("invalid Pair value: %s", _schemagenClipText(string(p)))
 	}
-	if jsonIDIn(_id, pairAllowedJSON) {
+	if _ok {
 		return nil
 	}
 	_canon, _ := _jsonCanonical([]byte(p))
@@ -214,13 +213,13 @@ func (a AllOfObjectEnumConstMember) Validate() error {
 	// enum: the object as a whole must be one of the permitted documents.
 	if a._jsonRawProps != nil {
 		_enumProps := a._jsonRawProps
-		_enumID, _enumErr := jsonIDMap(_enumProps, nil, jsonIdentifyAt[json.RawMessage])
+		_enumOK, _enumErr := jsonMatchesConstAt(&_enumProps, jsonConstOf(false,
+			"{\"k\":1}",
+		))
 		if _enumErr != nil {
 			return fmt.Errorf("enum: cannot encode value: %w", jsonMarshalError(&_enumProps, _enumErr))
 		}
-		if !jsonIDIn(_enumID, jsonIDsOfTexts([]string{
-			"{\"k\":1}",
-		})) {
+		if !_enumOK {
 			_enumCanon, _ := _jsonCanonical([]byte(jsonMarshalText(&_enumProps)))
 			return fmt.Errorf("enum: value %s is not one of the permitted values", _schemagenClipText(_enumCanon))
 		}
@@ -380,14 +379,14 @@ func (a AllOfObjectEnumInline) Validate() error {
 	// enum: the object as a whole must be one of the permitted documents.
 	if a._jsonRawProps != nil {
 		_enumProps := a._jsonRawProps
-		_enumID, _enumErr := jsonIDMap(_enumProps, nil, jsonIdentifyAt[json.RawMessage])
+		_enumOK, _enumErr := jsonMatchesConstAt(&_enumProps, jsonConstOf(false,
+			"{\"k\":1}",
+			"{\"k\":2}",
+		))
 		if _enumErr != nil {
 			return fmt.Errorf("enum: cannot encode value: %w", jsonMarshalError(&_enumProps, _enumErr))
 		}
-		if !jsonIDIn(_enumID, jsonIDsOfTexts([]string{
-			"{\"k\":1}",
-			"{\"k\":2}",
-		})) {
+		if !_enumOK {
 			_enumCanon, _ := _jsonCanonical([]byte(jsonMarshalText(&_enumProps)))
 			return fmt.Errorf("enum: value %s is not one of the permitted values", _schemagenClipText(_enumCanon))
 		}
@@ -541,13 +540,13 @@ func (a AllOfObjectEnumNested) Validate() error {
 	// enum: the object as a whole must be one of the permitted documents.
 	if a._jsonRawProps != nil {
 		_enumProps := a._jsonRawProps
-		_enumID, _enumErr := jsonIDMap(_enumProps, nil, jsonIdentifyAt[json.RawMessage])
+		_enumOK, _enumErr := jsonMatchesConstAt(&_enumProps, jsonConstOf(false,
+			"{\"k\":{\"n\":[1,2]}}",
+		))
 		if _enumErr != nil {
 			return fmt.Errorf("enum: cannot encode value: %w", jsonMarshalError(&_enumProps, _enumErr))
 		}
-		if !jsonIDIn(_enumID, jsonIDsOfTexts([]string{
-			"{\"k\":{\"n\":[1,2]}}",
-		})) {
+		if !_enumOK {
 			_enumCanon, _ := _jsonCanonical([]byte(jsonMarshalText(&_enumProps)))
 			return fmt.Errorf("enum: value %s is not one of the permitted values", _schemagenClipText(_enumCanon))
 		}
@@ -884,13 +883,13 @@ func (a AllOfObjectEnumReordered) Validate() error {
 	// enum: the object as a whole must be one of the permitted documents.
 	if a._jsonRawProps != nil {
 		_enumProps := a._jsonRawProps
-		_enumID, _enumErr := jsonIDMap(_enumProps, nil, jsonIdentifyAt[json.RawMessage])
+		_enumOK, _enumErr := jsonMatchesConstAt(&_enumProps, jsonConstOf(false,
+			"{\"a\":1,\"b\":2}",
+		))
 		if _enumErr != nil {
 			return fmt.Errorf("enum: cannot encode value: %w", jsonMarshalError(&_enumProps, _enumErr))
 		}
-		if !jsonIDIn(_enumID, jsonIDsOfTexts([]string{
-			"{\"a\":1,\"b\":2}",
-		})) {
+		if !_enumOK {
 			_enumCanon, _ := _jsonCanonical([]byte(jsonMarshalText(&_enumProps)))
 			return fmt.Errorf("enum: value %s is not one of the permitted values", _schemagenClipText(_enumCanon))
 		}
@@ -900,13 +899,13 @@ func (a AllOfObjectEnumReordered) Validate() error {
 
 type AllOfObjectEnumStandalone json.RawMessage
 
-// The members as the schema wrote them, read at package initialisation into the
-// identity every JSON value equal to each of them shares -- which is how
-// Validate reads the instance. See jsonID.
-var allOfObjectEnumStandaloneAllowedJSON = jsonIDsOfTexts([]string{
+// The members as the schema wrote them, read at package initialisation: the
+// identity every JSON value equal to each shares, and its tree, which is what
+// Validate compares the instance with. See jsonMatchesConst.
+var allOfObjectEnumStandaloneAllowedJSON = jsonConstOf(false,
 	"{\"k\":1}",
 	"{\"k\":2}",
-})
+)
 
 // UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
 //
@@ -938,15 +937,14 @@ func (a AllOfObjectEnumStandalone) MarshalJSON() ([]byte, error) {
 
 // Validate checks AllOfObjectEnumStandalone against its JSON Schema constraints.
 func (a AllOfObjectEnumStandalone) Validate() error {
-	// Compared by identity, which is what the member list was read into as
-	// well: whitespace, member order and number spelling are not what an enum
-	// is decided on. It used to reduce the value to canonical text, re-encoding
-	// every string and key in it, to decide.
-	_id, _idErr := jsonIDRaw(a)
-	if _idErr != nil {
+	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// number spelling are not what an enum is decided on. It used to reduce the
+	// value to canonical text, re-encoding every string and key in it, to decide.
+	_ok, _okErr := jsonMatchesConstRaw(a, allOfObjectEnumStandaloneAllowedJSON)
+	if _okErr != nil {
 		return jsonValueErrorf("invalid AllOfObjectEnumStandalone value: %s", _schemagenClipText(string(a)))
 	}
-	if jsonIDIn(_id, allOfObjectEnumStandaloneAllowedJSON) {
+	if _ok {
 		return nil
 	}
 	_canon, _ := _jsonCanonical([]byte(a))
@@ -1105,14 +1103,14 @@ func (a AllOfObjectEnumViaRef) Validate() error {
 	// enum: the object as a whole must be one of the permitted documents.
 	if a._jsonRawProps != nil {
 		_enumProps := a._jsonRawProps
-		_enumID, _enumErr := jsonIDMap(_enumProps, nil, jsonIdentifyAt[json.RawMessage])
+		_enumOK, _enumErr := jsonMatchesConstAt(&_enumProps, jsonConstOf(false,
+			"{\"k\":1}",
+			"{\"k\":2}",
+		))
 		if _enumErr != nil {
 			return fmt.Errorf("enum: cannot encode value: %w", jsonMarshalError(&_enumProps, _enumErr))
 		}
-		if !jsonIDIn(_enumID, jsonIDsOfTexts([]string{
-			"{\"k\":1}",
-			"{\"k\":2}",
-		})) {
+		if !_enumOK {
 			_enumCanon, _ := _jsonCanonical([]byte(jsonMarshalText(&_enumProps)))
 			return fmt.Errorf("enum: value %s is not one of the permitted values", _schemagenClipText(_enumCanon))
 		}

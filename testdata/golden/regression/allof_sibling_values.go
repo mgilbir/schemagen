@@ -833,13 +833,13 @@ func (a AllOfSiblingValues) Validate() error {
 	if a._jsonKeys["constOnProperty"] {
 		{
 			_constV := a.ConstOnProperty
-			_constID, _constErr := (func(_p **string, _m *jsonValidation) (jsonID, error) {
+			_constOK, _constErr := jsonMatchesConst(&_constV, func(_p **string, _m *jsonValidation) (jsonID, error) {
 				return jsonIDPtr[*string, string](*_p, _m, jsonIdentifyAt[string])
-			})(&_constV, nil)
+			}, jsonConstOf(false, "\"q\""))
 			if _constErr != nil {
 				return fmt.Errorf("constOnProperty: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 			}
-			if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"\"q\""})) {
+			if !_constOK {
 				return fmt.Errorf("constOnProperty: value must be %s, got %s", "\"q\"", _schemagenClipText(jsonMarshalText(&_constV)))
 			}
 		}

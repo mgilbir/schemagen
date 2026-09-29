@@ -458,7 +458,7 @@ func (p PatternValueSubschemasPattern6) validateIn(_vc *jsonValidation) error {
 		if _err != nil {
 			return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", _at, jsonMarshalError(&p[_at], _err))
 		}
-		if _at := jsonFirstDuplicate(p, _ids); _at >= 0 {
+		if _at := jsonFirstDuplicate(p, _ids, jsonIdentifyAt[any]); _at >= 0 {
 			return jsonValueErrorf("items are not unique (duplicate at index %d)", _at)
 		}
 	}

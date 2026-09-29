@@ -453,13 +453,13 @@ func (a AnnNot) Validate() error {
 // Deprecated: the schema marks this deprecated.
 type AnnRawEnum json.RawMessage
 
-// The members as the schema wrote them, read at package initialisation into the
-// identity every JSON value equal to each of them shares -- which is how
-// Validate reads the instance. See jsonID.
-var annRawEnumAllowedJSON = jsonIDsOfTexts([]string{
+// The members as the schema wrote them, read at package initialisation: the
+// identity every JSON value equal to each shares, and its tree, which is what
+// Validate compares the instance with. See jsonMatchesConst.
+var annRawEnumAllowedJSON = jsonConstOf(false,
 	"\"mixed\"",
 	"7",
-})
+)
 
 // UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
 //
@@ -491,15 +491,14 @@ func (a AnnRawEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks AnnRawEnum against its JSON Schema constraints.
 func (a AnnRawEnum) Validate() error {
-	// Compared by identity, which is what the member list was read into as
-	// well: whitespace, member order and number spelling are not what an enum
-	// is decided on. It used to reduce the value to canonical text, re-encoding
-	// every string and key in it, to decide.
-	_id, _idErr := jsonIDRaw(a)
-	if _idErr != nil {
+	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// number spelling are not what an enum is decided on. It used to reduce the
+	// value to canonical text, re-encoding every string and key in it, to decide.
+	_ok, _okErr := jsonMatchesConstRaw(a, annRawEnumAllowedJSON)
+	if _okErr != nil {
 		return jsonValueErrorf("invalid AnnRawEnum value: %s", _schemagenClipText(string(a)))
 	}
-	if jsonIDIn(_id, annRawEnumAllowedJSON) {
+	if _ok {
 		return nil
 	}
 	_canon, _ := _jsonCanonical([]byte(a))
@@ -1207,13 +1206,13 @@ func (d DepNot) Validate() error {
 // Deprecated: the schema marks this deprecated.
 type DepRawEnum json.RawMessage
 
-// The members as the schema wrote them, read at package initialisation into the
-// identity every JSON value equal to each of them shares -- which is how
-// Validate reads the instance. See jsonID.
-var depRawEnumAllowedJSON = jsonIDsOfTexts([]string{
+// The members as the schema wrote them, read at package initialisation: the
+// identity every JSON value equal to each shares, and its tree, which is what
+// Validate compares the instance with. See jsonMatchesConst.
+var depRawEnumAllowedJSON = jsonConstOf(false,
 	"\"either\"",
 	"9",
-})
+)
 
 // UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
 //
@@ -1245,15 +1244,14 @@ func (d DepRawEnum) MarshalJSON() ([]byte, error) {
 
 // Validate checks DepRawEnum against its JSON Schema constraints.
 func (d DepRawEnum) Validate() error {
-	// Compared by identity, which is what the member list was read into as
-	// well: whitespace, member order and number spelling are not what an enum
-	// is decided on. It used to reduce the value to canonical text, re-encoding
-	// every string and key in it, to decide.
-	_id, _idErr := jsonIDRaw(d)
-	if _idErr != nil {
+	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// number spelling are not what an enum is decided on. It used to reduce the
+	// value to canonical text, re-encoding every string and key in it, to decide.
+	_ok, _okErr := jsonMatchesConstRaw(d, depRawEnumAllowedJSON)
+	if _okErr != nil {
 		return jsonValueErrorf("invalid DepRawEnum value: %s", _schemagenClipText(string(d)))
 	}
-	if jsonIDIn(_id, depRawEnumAllowedJSON) {
+	if _ok {
 		return nil
 	}
 	_canon, _ := _jsonCanonical([]byte(d))

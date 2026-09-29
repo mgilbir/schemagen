@@ -450,7 +450,7 @@ func HelpersReferencedBy(src string) HelperSet {
 	// contains that states only a type. (jsonKindError is the decode block's.)
 	if strings.Contains(src, "jsonID") || strings.Contains(src, "jsonIdentif") || strings.Contains(src, "jsonValidation") ||
 		strings.Contains(src, "jsonKindAt(") || strings.Contains(src, "jsonKindAny(") || strings.Contains(src, "jsonFloatOf(") || strings.Contains(src, "jsonMarshalError(") ||
-		strings.Contains(src, "jsonMarshalText(") {
+		strings.Contains(src, "jsonMarshalText(") || strings.Contains(src, "jsonConstOf(") || strings.Contains(src, "jsonMatchesConst") {
 		set.Identity = true
 	}
 	// jsonNullRule and checkJSONNullsAt come as one block, and the walker's name

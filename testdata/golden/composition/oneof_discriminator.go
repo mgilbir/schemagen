@@ -197,11 +197,11 @@ func (c ClickEvent) Validate() error {
 	}
 	{
 		_constV := c.Kind
-		_constID, _constErr := (jsonIdentifyAt[string])(&_constV, nil)
+		_constOK, _constErr := jsonMatchesConst(&_constV, jsonIdentifyAt[string], jsonConstOf(false, "\"click\""))
 		if _constErr != nil {
 			return fmt.Errorf("kind: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 		}
-		if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"\"click\""})) {
+		if !_constOK {
 			return fmt.Errorf("kind: value must be %s, got %s", "\"click\"", _schemagenClipText(jsonMarshalText(&_constV)))
 		}
 	}
@@ -370,11 +370,11 @@ func (k KeypressEvent) Validate() error {
 	}
 	{
 		_constV := k.Kind
-		_constID, _constErr := (jsonIdentifyAt[string])(&_constV, nil)
+		_constOK, _constErr := jsonMatchesConst(&_constV, jsonIdentifyAt[string], jsonConstOf(false, "\"keypress\""))
 		if _constErr != nil {
 			return fmt.Errorf("kind: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 		}
-		if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"\"keypress\""})) {
+		if !_constOK {
 			return fmt.Errorf("kind: value must be %s, got %s", "\"keypress\"", _schemagenClipText(jsonMarshalText(&_constV)))
 		}
 	}
@@ -543,11 +543,11 @@ func (s ScrollEvent) Validate() error {
 	}
 	{
 		_constV := s.Kind
-		_constID, _constErr := (jsonIdentifyAt[string])(&_constV, nil)
+		_constOK, _constErr := jsonMatchesConst(&_constV, jsonIdentifyAt[string], jsonConstOf(false, "\"scroll\""))
 		if _constErr != nil {
 			return fmt.Errorf("kind: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 		}
-		if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"\"scroll\""})) {
+		if !_constOK {
 			return fmt.Errorf("kind: value must be %s, got %s", "\"scroll\"", _schemagenClipText(jsonMarshalText(&_constV)))
 		}
 	}

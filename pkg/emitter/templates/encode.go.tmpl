@@ -457,9 +457,9 @@ func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 	{{- if .AcceptNonObject}}
 	if {{$recv}}._nonObject {
 		if len({{$recv}}._rawNonObject) > 0 {
-			return jsonIDRaw({{$recv}}._rawNonObject)
+			return jsonIDRawIn({{$recv}}._rawNonObject, _m)
 		}
-		return jsonIDOfKind(jsonIDNullKind), nil
+		return jsonIDNull(_m)
 	}
 	{{- end}}
 	{{- if .HasTopLevelOneOf}}
@@ -475,7 +475,7 @@ func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 	}
 	{{- end}}
 	{{- end}}
-	return jsonIDOfKind(jsonIDNullKind), nil
+	return jsonIDNull(_m)
 	{{- else if .StripRulesVar}}
 	// The writeOnly locations below the members are stripped from the text
 	// appendJSON writes, by reading that text back; so the identity is read off
@@ -484,7 +484,7 @@ func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 	if _err != nil {
 		return jsonID{}, _err
 	}
-	return jsonIDRaw(_b)
+	return jsonIDRawIn(_b, _m)
 	{{- else if .EncodeObject}}
 	{{- if .NeedsJSONNulls}}
 	if len({{$recv}}._jsonNulls) > 0 {
@@ -495,10 +495,10 @@ func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 		if _err != nil {
 			return jsonID{}, _err
 		}
-		return jsonIDRaw(_b)
+		return jsonIDRawIn(_b, _m)
 	}
 	{{- end}}
-	var _o jsonIDObj
+	_o := jsonIDObj{m: _m}
 	{{- range $mem := .EncodeMembers}}
 	{{- with $mem.Field}}
 	{
@@ -558,7 +558,7 @@ func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 			return jsonID{}, _err
 		}
 		if string(_v) != {{printf "%q" .ZeroJSON}} {
-			_id, _err := jsonIDRaw(_v)
+			_id, _err := jsonIDRawIn(_v, _m)
 			if _err != nil {
 				return jsonID{}, _err
 			}
@@ -630,7 +630,7 @@ func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 	{{- end}}
 	return _o.id({{$recv}}.jsonIdentityMember, _m)
 	{{- else}}
-	var _o jsonIDObject
+	_o := jsonIDObject{m: _m}
 	{{- range $mem := .EncodeMembers}}
 	{{- if $mem.Field}}
 	{{- with $mem.Field}}
@@ -715,7 +715,7 @@ func ({{$recv}} *{{.Name}}) jsonIdentityMember(_idx int, _key string, _m *jsonVa
 		return ({{.AdditionalProperties.ValueIdentifier}})(&_v, _m)
 	{{- end}}
 	}
-	return jsonIDOfKind(jsonIDNullKind), nil
+	return jsonIDNull(_m)
 }
 {{- end}}
 {{- end}}

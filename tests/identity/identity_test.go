@@ -297,7 +297,7 @@ func TestALazyValueIsReadAsDecoded(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if jsonFirstDuplicate(a, ids) >= 0 {
+	if jsonFirstDuplicate(a, ids, jsonIdentifyAt[any]) >= 0 {
 		t.Errorf("distinct elements reported as duplicates")
 	}
 }
@@ -307,7 +307,7 @@ func TestADuplicateIsConfirmedAndACollisionIsNot(t *testing.T) {
 	// the elements that really are equal may be called duplicates.
 	s := []any{1.0, "x", 2.0, "x"}
 	one := make([]jsonID, len(s))
-	if got := jsonFirstDuplicate(s, one); got != 3 {
+	if got := jsonFirstDuplicate(s, one, jsonIdentifyAt[any]); got != 3 {
 		t.Errorf("first duplicate: got %d, want 3", got)
 	}
 	big := make([]any, 20)
@@ -315,8 +315,59 @@ func TestADuplicateIsConfirmedAndACollisionIsNot(t *testing.T) {
 		big[i] = float64(i)
 	}
 	big[19] = 3.0
-	if got := jsonFirstDuplicate(big, make([]jsonID, len(big))); got != 19 {
+	if got := jsonFirstDuplicate(big, make([]jsonID, len(big)), jsonIdentifyAt[any]); got != 19 {
 		t.Errorf("first duplicate among colliding identities: got %d, want 19", got)
+	}
+}
+
+func TestAConstIsDecidedExactly(t *testing.T) {
+	// A const the value's identity collides with: the identity is the value's,
+	// the literal is another. An identity may only ever decide a mismatch, so
+	// this must not admit the value.
+	v := map[string]any{"a": json.Number("1"), "b": []any{"x"}}
+	id, err := jsonIdentifyAt(&v, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := jsonTreeRaw([]byte("{\"a\":2,\"b\":[\"x\"]}"), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	colliding := &jsonConst{ids: []jsonID{id}, trees: []any{other}}
+	if ok, err := jsonMatchesConstAt(&v, colliding); err != nil || ok {
+		t.Errorf("a value sharing an identity with a const it is not was admitted: %v, %v", ok, err)
+	}
+	if ok, err := jsonMatchesConstRaw([]byte("{\"b\":[\"x\"],\"a\":1.0}"), &jsonConst{ids: []jsonID{rawID(t, "{\"a\":1,\"b\":[\"x\"]}")}, trees: []any{other}}); err != nil || ok {
+		t.Errorf("raw JSON sharing an identity with a const it is not was admitted: %v, %v", ok, err)
+	}
+	// And the value itself, spelled otherwise, is admitted.
+	same := jsonConstOf(false, "{\"b\":[\"x\"],\"a\":1.0}")
+	if ok, err := jsonMatchesConstAt(&v, same); err != nil || !ok {
+		t.Errorf("a value equal to the const as JSON was refused: %v, %v", ok, err)
+	}
+	// A duplicate is confirmed the same way.
+	s := []any{v, map[string]any{"a": json.Number("2"), "b": []any{"x"}}}
+	if got := jsonFirstDuplicate(s, []jsonID{id, id}, jsonIdentifyAt[any]); got != -1 {
+		t.Errorf("two different elements sharing an identity were called duplicates")
+	}
+}
+
+func TestATreeIsWhatEncodingJSONDecodes(t *testing.T) {
+	for _, v := range []any{"a\xff", 1.5, float32(0.1), int64(-3), json.Number("2.50"), nil, true, []byte("xy"),
+		map[string]any{"k": []any{json.RawMessage(" {\"a\":1,\"a\":2} "), namedString("n")}},
+		time.Date(1999, 12, 31, 23, 59, 59, 0, time.FixedZone("x", 3600)), netip.MustParseAddr("::1"), map[string]string{"x": "y"}} {
+		got, err := jsonTreeAny(v, nil)
+		if err != nil {
+			t.Fatalf("%#v: %v", v, err)
+		}
+		b, _ := json.Marshal(v)
+		want, err := jsonTreeRaw(b, false)
+		if err != nil || !jsonTreeEqual(got, want) {
+			t.Errorf("%#v: tree %#v is not what encoding/json decodes %s into", v, got, b)
+		}
+	}
+	if jsonTreeEqual(json.Number("1"), "1") || !jsonTreeEqual(json.Number("1.0"), 1.0) || jsonTreeEqual([]any{}, map[string]any{}) {
+		t.Errorf("tree equality is not JSON equality")
 	}
 }
 

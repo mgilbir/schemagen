@@ -877,12 +877,8 @@ func _dynTypeMatchesAny(types []string, v any) bool {
 // the two decodings: at every level of a document a const or an enum reached,
 // the whole subtree below was written out and read back.
 func _dynEqualsJSON(v any, want string) bool {
-	got, err := jsonIDAny(v, nil)
-	if err != nil {
-		return false
-	}
-	w, err := jsonIDRawAsDecoded([]byte(want))
-	return err == nil && got == w
+	ok, err := jsonMatchesConstAt(&v, jsonConstOf(true, want))
+	return err == nil && ok
 }
 
 // _dynMultipleOf avoids the floating point error that plain math.Mod shows for
@@ -917,7 +913,7 @@ func _dynUnique(arr []any) bool {
 		}
 		ids[i] = id
 	}
-	return jsonFirstDuplicate(arr, ids) < 0
+	return jsonFirstDuplicate(arr, ids, jsonIdentifyAt[any]) < 0
 }
 
 // _dynSortedKeys returns an object's keys in a fixed order, so a document with

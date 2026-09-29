@@ -49,6 +49,17 @@ func (c *schemagenIdentityCheck) compare(p reflect.Value, path, how string) {
 	if err != nil || got != want {
 		c.diffs = append(c.diffs, fmt.Sprintf("%s%s (%s): identity is not that of %s", path, how, p.Type().Elem(), b))
 	}
+	// The tree the same rules read, which is what a const, an enum and a
+	// duplicate are decided on, is what encoding/json decodes the text into.
+	m := &jsonValidation{tree: true}
+	if _, err := id.jsonIdentity(m); err != nil || len(m.trees) != 1 {
+		c.diffs = append(c.diffs, fmt.Sprintf("%s%s (%s): reading its tree: %v, %d trees", path, how, p.Type().Elem(), err, len(m.trees)))
+		return
+	}
+	wantTree, err := jsonTreeRaw(b, false)
+	if err != nil || !jsonTreeEqual(m.trees[0], wantTree) {
+		c.diffs = append(c.diffs, fmt.Sprintf("%s%s (%s): tree %v is not that of %s", path, how, p.Type().Elem(), m.trees[0], b))
+	}
 }
 
 func (c *schemagenIdentityCheck) compareAny(v any, path string) {
@@ -62,6 +73,11 @@ func (c *schemagenIdentityCheck) compareAny(v any, path string) {
 		want, err := jsonIDRaw(b)
 		if err != nil || got != want {
 			c.diffs = append(c.diffs, fmt.Sprintf("%s (any %T): identity is not that of %s", path, v, b))
+		}
+		tree, tErr := jsonTreeAny(v, nil)
+		wantTree, err := jsonTreeRaw(b, false)
+		if tErr != nil || err != nil || !jsonTreeEqual(tree, wantTree) {
+			c.diffs = append(c.diffs, fmt.Sprintf("%s (any %T): tree is not that of %s", path, v, b))
 		}
 	}
 }

@@ -88,9 +88,9 @@ func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 	if {{$recv}}._isRaw {
 		if len({{$recv}}._raw) == 0 {
-			return jsonIDOfKind(jsonIDNullKind), nil
+			return jsonIDNull(_m)
 		}
-		return jsonIDRaw({{$recv}}._raw)
+		return jsonIDRawIn({{$recv}}._raw, _m)
 	}
 	return jsonIdentifyAt(&{{$recv}}._value, _m)
 }
@@ -252,7 +252,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		if _err != nil {
 			return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", _i, jsonMarshalError(&{{$recv}}._value[_i], _err))
 		}
-		if _i := jsonFirstDuplicate({{$recv}}._value, _ids); _i >= 0 {
+		if _i := jsonFirstDuplicate({{$recv}}._value, _ids, jsonIdentifyAt[any]); _i >= 0 {
 			return jsonValueErrorf("items are not unique (duplicate at index %d)", _i)
 		}
 	}
@@ -790,8 +790,8 @@ func ({{$recv}} {{.Name}}) Validate() error {
 						{{- /* Compared by identity (see jsonID): the item was
 						       marshalled and its text compared with the const's
 						       spelling. */}}
-						_ib, _ie := jsonIdentifyAt(&arr[{{.Index}}], nil)
-						if _ie != nil || !jsonIDIn(_ib, jsonIDsOfTexts([]string{ {{- printf "%q" .JSONValue -}} })) {
+						_ib, _ie := jsonMatchesConstAt(&arr[{{.Index}}], jsonConstOf(false, {{printf "%q" .JSONValue}}))
+						if _ie != nil || !_ib {
 							_ifMatch = false
 						}
 					}
@@ -831,8 +831,8 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				{{- else if .Contains.ConstJSON}}
 				{
 					{{- /* Compared by identity, as the cardinality check compares it. */}}
-					_cID, _cErr := jsonIdentifyAt(&_uiElem, nil)
-					if _cErr == nil && jsonIDIn(_cID, jsonIDsOfTexts([]string{ {{- printf "%q" .Contains.ConstJSON -}} })) {
+					_cOK, _cErr := jsonMatchesConstAt(&_uiElem, jsonConstOf(false, {{printf "%q" .Contains.ConstJSON}}))
+					if _cErr == nil && _cOK {
 						_evaluatedByContains = true
 					}
 				}

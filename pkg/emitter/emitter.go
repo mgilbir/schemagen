@@ -373,6 +373,8 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	// package does not write itself is read by, the spelling of its numbers, the
 	// base64 encoding/json writes a []byte as, and the time.Time whose
 	// MarshalJSON it reads as a string.
+	add(helpers.Identity, "bytes")
+	add(helpers.Identity, "sync")
 	add(helpers.Identity, "encoding/base64")
 	add(helpers.Identity, "encoding/json")
 	add(helpers.Identity, "errors")

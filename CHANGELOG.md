@@ -351,7 +351,10 @@
   read off the value as it is held -- by the rules its `MarshalJSON` writes it
   by -- and the identities an array's check computes are kept for the checks
   of the arrays below it, so each is computed once however deeply they nest.
-  Validating the 45 example BOMs the CycloneDX 1.6 specification ships takes
+  An identity only decides a mismatch: a `const` or `enum` match and a
+  `uniqueItems` duplicate are confirmed by reading both values and comparing
+  them as JSON, so no hash collision decides a verdict. Validating the 45
+  example BOMs the CycloneDX 1.6 specification ships takes
   a third of the time and a quarter of the allocations it did, and writes
   nothing out.
 - `uniqueItems`, `const` and `enum` compare values as JSON wherever they are

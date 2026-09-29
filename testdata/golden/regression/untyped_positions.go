@@ -52,19 +52,19 @@ func (a AnythingList) validateIn(_vc *jsonValidation) error {
 		if _err != nil {
 			return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", _at, jsonMarshalError(&a[_at], _err))
 		}
-		if _at := jsonFirstDuplicate(a, _ids); _at >= 0 {
+		if _at := jsonFirstDuplicate(a, _ids, jsonIdentifyAt[any]); _at >= 0 {
 			return jsonValueErrorf("items are not unique (duplicate at index %d)", _at)
 		}
 	}
 	// contains validation: count elements matching the contains sub-schema.
 	{
 		_containsCount := 0
-		_cWant := jsonIDsOfTexts([]string{
+		_cWant := jsonConstOf(false,
 			"1",
-		})
+		)
 		_cArr := a
 		for _ci := range _cArr {
-			if _cID, _cErr := jsonIdentifyAt(&_cArr[_ci], nil); _cErr == nil && jsonIDIn(_cID, _cWant) {
+			if _cOK, _cErr := jsonMatchesConstAt(&_cArr[_ci], _cWant); _cErr == nil && _cOK {
 				_containsCount++
 			}
 		}
@@ -149,14 +149,14 @@ func (u UntypedPositionsBounded) Validate() error {
 
 type UntypedPositionsChoices json.RawMessage
 
-// The members as the schema wrote them, read at package initialisation into the
-// identity every JSON value equal to each of them shares -- which is how
-// Validate reads the instance. See jsonID.
-var untypedPositionsChoicesAllowedJSON = jsonIDsOfTexts([]string{
+// The members as the schema wrote them, read at package initialisation: the
+// identity every JSON value equal to each shares, and its tree, which is what
+// Validate compares the instance with. See jsonMatchesConst.
+var untypedPositionsChoicesAllowedJSON = jsonConstOf(false,
 	"1",
 	"\"two\"",
 	"[3]",
-})
+)
 
 // UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
 //
@@ -188,15 +188,14 @@ func (u UntypedPositionsChoices) MarshalJSON() ([]byte, error) {
 
 // Validate checks UntypedPositionsChoices against its JSON Schema constraints.
 func (u UntypedPositionsChoices) Validate() error {
-	// Compared by identity, which is what the member list was read into as
-	// well: whitespace, member order and number spelling are not what an enum
-	// is decided on. It used to reduce the value to canonical text, re-encoding
-	// every string and key in it, to decide.
-	_id, _idErr := jsonIDRaw(u)
-	if _idErr != nil {
+	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// number spelling are not what an enum is decided on. It used to reduce the
+	// value to canonical text, re-encoding every string and key in it, to decide.
+	_ok, _okErr := jsonMatchesConstRaw(u, untypedPositionsChoicesAllowedJSON)
+	if _okErr != nil {
 		return jsonValueErrorf("invalid UntypedPositionsChoices value: %s", _schemagenClipText(string(u)))
 	}
-	if jsonIDIn(_id, untypedPositionsChoicesAllowedJSON) {
+	if _ok {
 		return nil
 	}
 	_canon, _ := _jsonCanonical([]byte(u))
@@ -205,12 +204,12 @@ func (u UntypedPositionsChoices) Validate() error {
 
 type UntypedPositionsConstant json.RawMessage
 
-// The members as the schema wrote them, read at package initialisation into the
-// identity every JSON value equal to each of them shares -- which is how
-// Validate reads the instance. See jsonID.
-var untypedPositionsConstantAllowedJSON = jsonIDsOfTexts([]string{
+// The members as the schema wrote them, read at package initialisation: the
+// identity every JSON value equal to each shares, and its tree, which is what
+// Validate compares the instance with. See jsonMatchesConst.
+var untypedPositionsConstantAllowedJSON = jsonConstOf(false,
 	"{\"k\":1.0}",
-})
+)
 
 // UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
 //
@@ -242,15 +241,14 @@ func (u UntypedPositionsConstant) MarshalJSON() ([]byte, error) {
 
 // Validate checks UntypedPositionsConstant against its JSON Schema constraints.
 func (u UntypedPositionsConstant) Validate() error {
-	// Compared by identity, which is what the member list was read into as
-	// well: whitespace, member order and number spelling are not what an enum
-	// is decided on. It used to reduce the value to canonical text, re-encoding
-	// every string and key in it, to decide.
-	_id, _idErr := jsonIDRaw(u)
-	if _idErr != nil {
+	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// number spelling are not what an enum is decided on. It used to reduce the
+	// value to canonical text, re-encoding every string and key in it, to decide.
+	_ok, _okErr := jsonMatchesConstRaw(u, untypedPositionsConstantAllowedJSON)
+	if _okErr != nil {
 		return jsonValueErrorf("invalid UntypedPositionsConstant value: %s", _schemagenClipText(string(u)))
 	}
-	if jsonIDIn(_id, untypedPositionsConstantAllowedJSON) {
+	if _ok {
 		return nil
 	}
 	_canon, _ := _jsonCanonical([]byte(u))
@@ -828,7 +826,7 @@ func (u UntypedPositions) validateIn(_vc *jsonValidation) error {
 			if _err != nil {
 				return fmt.Errorf("unique: uniqueItems check: marshal error at index %d: %w", _at, jsonMarshalError(&arr[_at], _err))
 			}
-			if _at := jsonFirstDuplicate(arr, _ids); _at >= 0 {
+			if _at := jsonFirstDuplicate(arr, _ids, jsonIdentifyAt[any]); _at >= 0 {
 				return fmt.Errorf("unique: items are not unique (duplicate at index %d)", _at)
 			}
 		}
@@ -863,7 +861,7 @@ func (u UntypedPositions) validateIn(_vc *jsonValidation) error {
 			if _uqErr != nil {
 				return fmt.Errorf("nestedUnique[%d]: uniqueItems check: marshal error at index %d: %w", _i0, _uqIdx, jsonMarshalError(&_uqArr[_uqIdx], _uqErr))
 			}
-			if _uqIdx := jsonFirstDuplicate(_uqArr, _uqIDs); _uqIdx >= 0 {
+			if _uqIdx := jsonFirstDuplicate(_uqArr, _uqIDs, jsonIdentifyAt[any]); _uqIdx >= 0 {
 				return fmt.Errorf("nestedUnique[%d]: items are not unique (duplicate at index %d)", _i0, _uqIdx)
 			}
 		}
@@ -872,12 +870,12 @@ func (u UntypedPositions) validateIn(_vc *jsonValidation) error {
 		// contains validation: count elements matching the contains sub-schema.
 		{
 			_containsCount := 0
-			_cWant := jsonIDsOfTexts([]string{
+			_cWant := jsonConstOf(false,
 				"1",
-			})
+			)
 			_cArr := u.ContainsConst
 			for _ci := range _cArr {
-				if _cID, _cErr := jsonIdentifyAt(&_cArr[_ci], nil); _cErr == nil && jsonIDIn(_cID, _cWant) {
+				if _cOK, _cErr := jsonMatchesConstAt(&_cArr[_ci], _cWant); _cErr == nil && _cOK {
 					_containsCount++
 				}
 			}
@@ -890,13 +888,13 @@ func (u UntypedPositions) validateIn(_vc *jsonValidation) error {
 		// contains validation: count elements matching the contains sub-schema.
 		{
 			_containsCount := 0
-			_cWant := jsonIDsOfTexts([]string{
+			_cWant := jsonConstOf(false,
 				"1.5",
 				"{\"k\":1}",
-			})
+			)
 			_cArr := u.ContainsEnum
 			for _ci := range _cArr {
-				if _cID, _cErr := jsonIdentifyAt(&_cArr[_ci], nil); _cErr == nil && jsonIDIn(_cID, _cWant) {
+				if _cOK, _cErr := jsonMatchesConstAt(&_cArr[_ci], _cWant); _cErr == nil && _cOK {
 					_containsCount++
 				}
 			}

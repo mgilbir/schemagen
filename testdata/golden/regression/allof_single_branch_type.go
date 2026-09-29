@@ -60,14 +60,14 @@ func (c Choice) Validate() error {
 
 type Raw json.RawMessage
 
-// The members as the schema wrote them, read at package initialisation into the
-// identity every JSON value equal to each of them shares -- which is how
-// Validate reads the instance. See jsonID.
-var rawAllowedJSON = jsonIDsOfTexts([]string{
+// The members as the schema wrote them, read at package initialisation: the
+// identity every JSON value equal to each shares, and its tree, which is what
+// Validate compares the instance with. See jsonMatchesConst.
+var rawAllowedJSON = jsonConstOf(false,
 	"\"a\"",
 	"1",
 	"null",
-})
+)
 
 // UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
 //
@@ -99,15 +99,14 @@ func (r Raw) MarshalJSON() ([]byte, error) {
 
 // Validate checks Raw against its JSON Schema constraints.
 func (r Raw) Validate() error {
-	// Compared by identity, which is what the member list was read into as
-	// well: whitespace, member order and number spelling are not what an enum
-	// is decided on. It used to reduce the value to canonical text, re-encoding
-	// every string and key in it, to decide.
-	_id, _idErr := jsonIDRaw(r)
-	if _idErr != nil {
+	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// number spelling are not what an enum is decided on. It used to reduce the
+	// value to canonical text, re-encoding every string and key in it, to decide.
+	_ok, _okErr := jsonMatchesConstRaw(r, rawAllowedJSON)
+	if _okErr != nil {
 		return jsonValueErrorf("invalid Raw value: %s", _schemagenClipText(string(r)))
 	}
-	if jsonIDIn(_id, rawAllowedJSON) {
+	if _ok {
 		return nil
 	}
 	_canon, _ := _jsonCanonical([]byte(r))
@@ -217,14 +216,14 @@ func (w WrappedLevel) Validate() error {
 
 type WrappedRaw json.RawMessage
 
-// The members as the schema wrote them, read at package initialisation into the
-// identity every JSON value equal to each of them shares -- which is how
-// Validate reads the instance. See jsonID.
-var wrappedRawAllowedJSON = jsonIDsOfTexts([]string{
+// The members as the schema wrote them, read at package initialisation: the
+// identity every JSON value equal to each shares, and its tree, which is what
+// Validate compares the instance with. See jsonMatchesConst.
+var wrappedRawAllowedJSON = jsonConstOf(false,
 	"\"a\"",
 	"1",
 	"null",
-})
+)
 
 // UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
 //
@@ -256,15 +255,14 @@ func (w WrappedRaw) MarshalJSON() ([]byte, error) {
 
 // Validate checks WrappedRaw against its JSON Schema constraints.
 func (w WrappedRaw) Validate() error {
-	// Compared by identity, which is what the member list was read into as
-	// well: whitespace, member order and number spelling are not what an enum
-	// is decided on. It used to reduce the value to canonical text, re-encoding
-	// every string and key in it, to decide.
-	_id, _idErr := jsonIDRaw(w)
-	if _idErr != nil {
+	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// number spelling are not what an enum is decided on. It used to reduce the
+	// value to canonical text, re-encoding every string and key in it, to decide.
+	_ok, _okErr := jsonMatchesConstRaw(w, wrappedRawAllowedJSON)
+	if _okErr != nil {
 		return jsonValueErrorf("invalid WrappedRaw value: %s", _schemagenClipText(string(w)))
 	}
-	if jsonIDIn(_id, wrappedRawAllowedJSON) {
+	if _ok {
 		return nil
 	}
 	_canon, _ := _jsonCanonical([]byte(w))

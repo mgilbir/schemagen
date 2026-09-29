@@ -169,11 +169,11 @@ func (c Circle) Validate() error {
 	}
 	{
 		_constV := c.Type
-		_constID, _constErr := (jsonIdentifyAt[string])(&_constV, nil)
+		_constOK, _constErr := jsonMatchesConst(&_constV, jsonIdentifyAt[string], jsonConstOf(false, "\"circle\""))
 		if _constErr != nil {
 			return fmt.Errorf("type: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 		}
-		if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"\"circle\""})) {
+		if !_constOK {
 			return fmt.Errorf("type: value must be %s, got %s", "\"circle\"", _schemagenClipText(jsonMarshalText(&_constV)))
 		}
 	}
@@ -342,11 +342,11 @@ func (s Square) Validate() error {
 	}
 	{
 		_constV := s.Type
-		_constID, _constErr := (jsonIdentifyAt[string])(&_constV, nil)
+		_constOK, _constErr := jsonMatchesConst(&_constV, jsonIdentifyAt[string], jsonConstOf(false, "\"square\""))
 		if _constErr != nil {
 			return fmt.Errorf("type: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 		}
-		if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"\"square\""})) {
+		if !_constOK {
 			return fmt.Errorf("type: value must be %s, got %s", "\"square\"", _schemagenClipText(jsonMarshalText(&_constV)))
 		}
 	}
@@ -531,11 +531,11 @@ func (t Triangle) Validate() error {
 	}
 	{
 		_constV := t.Type
-		_constID, _constErr := (jsonIdentifyAt[string])(&_constV, nil)
+		_constOK, _constErr := jsonMatchesConst(&_constV, jsonIdentifyAt[string], jsonConstOf(false, "\"triangle\""))
 		if _constErr != nil {
 			return fmt.Errorf("type: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 		}
-		if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"\"triangle\""})) {
+		if !_constOK {
 			return fmt.Errorf("type: value must be %s, got %s", "\"triangle\"", _schemagenClipText(jsonMarshalText(&_constV)))
 		}
 	}

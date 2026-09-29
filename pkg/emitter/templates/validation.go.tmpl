@@ -373,7 +373,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		if _err != nil {
 			return fmt.Errorf("{{jsonErrorName .JSONName}}: uniqueItems check: marshal error at index %d: %w", _at, jsonMarshalError(&arr[_at], _err))
 		}
-		if _at := jsonFirstDuplicate(arr, _ids); _at >= 0 {
+		if _at := jsonFirstDuplicate(arr, _ids, {{.Identifier}}); _at >= 0 {
 			return fmt.Errorf("{{jsonErrorName .JSONName}}: items are not unique (duplicate at index %d)", _at)
 		}
 	}
@@ -439,11 +439,11 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{{- /* A copy, so that the receiver, whose field's address would otherwise
 		       be taken, stays where it is. */}}
 		_constV := {{$recv}}.{{.FieldName}}
-		_constID, _constErr := ({{.Identifier}})(&_constV, nil)
+		_constOK, _constErr := jsonMatchesConst(&_constV, {{.Identifier}}, jsonConstOf(false, {{printf "%q" .Value}}))
 		if _constErr != nil {
 			return fmt.Errorf("{{jsonErrorName .JSONName}}: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 		}
-		if !jsonIDIn(_constID, jsonIDsOfTexts([]string{ {{- printf "%q" .Value -}} })) {
+		if !_constOK {
 			return fmt.Errorf("{{jsonErrorName .JSONName}}: value must be %s, got %s", {{printf "%q" .Value}}, _schemagenClipText(jsonMarshalText(&_constV)))
 		}
 	}
@@ -1414,15 +1414,15 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	// enum: the object as a whole must be one of the permitted documents.
 	if {{$recv}}._jsonRawProps != nil {
 		_enumProps := {{$recv}}._jsonRawProps
-		_enumID, _enumErr := jsonIDMap(_enumProps, nil, jsonIdentifyAt[json.RawMessage])
-		if _enumErr != nil {
-			return fmt.Errorf("enum: cannot encode value: %w", jsonMarshalError(&_enumProps, _enumErr))
-		}
-		if !jsonIDIn(_enumID, jsonIDsOfTexts([]string{
+		_enumOK, _enumErr := jsonMatchesConstAt(&_enumProps, jsonConstOf(false,
 			{{- range $struct.ObjectEnum}}
 			{{goStringQuote .}},
 			{{- end}}
-		})) {
+		))
+		if _enumErr != nil {
+			return fmt.Errorf("enum: cannot encode value: %w", jsonMarshalError(&_enumProps, _enumErr))
+		}
+		if !_enumOK {
 			_enumCanon, _ := _jsonCanonical([]byte(jsonMarshalText(&_enumProps)))
 			return fmt.Errorf("enum: value %s is not one of the permitted values", _schemagenClipText(_enumCanon))
 		}
@@ -1856,11 +1856,11 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{$container}} {
 	{
 		{{- /* Compared by identity; see the property form above. */}}
 		_constV := {{$elem}}
-		_constID, _constErr := ({{.Identifier}})(&_constV, nil)
+		_constOK, _constErr := jsonMatchesConst(&_constV, {{.Identifier}}, jsonConstOf(false, {{printf "%q" .Value}}))
 		if _constErr != nil {
 			return {{$errf}}("{{$path}}: failed to marshal for const check: %w", {{$args}}, jsonMarshalError(&_constV, _constErr))
 		}
-		if !jsonIDIn(_constID, jsonIDsOfTexts([]string{ {{- printf "%q" .Value -}} })) {
+		if !_constOK {
 			return {{$errf}}("{{$path}}: value must be %s, got %s", {{$args}}, {{printf "%q" .Value}}, _schemagenClipText(jsonMarshalText(&_constV)))
 		}
 	}
@@ -1888,7 +1888,7 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{$container}} {
 		if _uqErr != nil {
 			return {{$errf}}("{{$path}}: uniqueItems check: marshal error at index %d: %w", {{$args}}, _uqIdx, jsonMarshalError(&_uqArr[_uqIdx], _uqErr))
 		}
-		if _uqIdx := jsonFirstDuplicate(_uqArr, _uqIDs); _uqIdx >= 0 {
+		if _uqIdx := jsonFirstDuplicate(_uqArr, _uqIDs, {{.Identifier}}); _uqIdx >= 0 {
 			return {{$errf}}("{{$path}}: items are not unique (duplicate at index %d)", {{$args}}, _uqIdx)
 		}
 	}
@@ -2086,13 +2086,13 @@ declares a field for it at all.
 		{{- else if .Def.IsTrue}}
 		_containsCount = len({{$expr}})
 		{{- else if or .Def.ConstJSON .Def.EnumJSON}}
-		{{- /* Each element compared with the const, or the enum's members, by
-		       identity (see jsonID): equal as JSON is a match, whatever the
+		{{- /* Each element compared with the const, or the enum's members, as JSON
+		       (see jsonMatchesConst): equal as JSON is a match, whatever the
 		       spelling on either side -- the literal as the schema wrote it, every
 		       digit kept, and the element as it is held. The element used to be
 		       marshalled and its text compared, which for an element that is not
 		       raw JSON compared spellings rather than values. */}}
-		_cWant := jsonIDsOfTexts([]string{
+		_cWant := jsonConstOf(false,
 			{{- if .Def.ConstJSON}}
 			{{printf "%q" .Def.ConstJSON}},
 			{{- else}}
@@ -2100,10 +2100,10 @@ declares a field for it at all.
 			{{printf "%q" .}},
 			{{- end}}
 			{{- end}}
-		})
+		)
 		_cArr := {{$expr}}
 		for _ci := range _cArr {
-			if _cID, _cErr := jsonIdentifyAt(&_cArr[_ci], nil); _cErr == nil && jsonIDIn(_cID, _cWant) {
+			if _cOK, _cErr := jsonMatchesConstAt(&_cArr[_ci], _cWant); _cErr == nil && _cOK {
 				_containsCount++
 			}
 		}

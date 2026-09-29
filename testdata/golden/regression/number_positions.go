@@ -632,13 +632,13 @@ func (n NumberPositions) Validate() error {
 	if n._jsonKeys["constant"] {
 		{
 			_constV := n.Constant
-			_constID, _constErr := (func(_p **float64, _m *jsonValidation) (jsonID, error) {
+			_constOK, _constErr := jsonMatchesConst(&_constV, func(_p **float64, _m *jsonValidation) (jsonID, error) {
 				return jsonIDPtr[*float64, float64](*_p, _m, jsonIdentifyAt[float64])
-			})(&_constV, nil)
+			}, jsonConstOf(false, "2.5"))
 			if _constErr != nil {
 				return fmt.Errorf("constant: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 			}
-			if !jsonIDIn(_constID, jsonIDsOfTexts([]string{"2.5"})) {
+			if !_constOK {
 				return fmt.Errorf("constant: value must be %s, got %s", "2.5", _schemagenClipText(jsonMarshalText(&_constV)))
 			}
 		}

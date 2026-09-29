@@ -61,7 +61,7 @@ func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 // jsonIdentity is {{$recv}}'s identity as JSON: the number MarshalJSON writes.
 // See jsonID.
 func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
-	return jsonIDNumberLiteral(json.Number(*{{$recv}}))
+	return jsonIDNumberIn(json.Number(*{{$recv}}), _m)
 }
 {{- end}}
 {{- end}}
@@ -131,14 +131,14 @@ type {{.Name}} json.RawMessage
 {{- $recv := receiverName .Name}}
 {{- $allowedVar := .AllowedVar}}
 
-// The members as the schema wrote them, read at package initialisation into the
-// identity every JSON value equal to each of them shares -- which is how
-// Validate reads the instance. See jsonID.
-var {{$allowedVar}} = jsonIDsOfTexts([]string{
+// The members as the schema wrote them, read at package initialisation: the
+// identity every JSON value equal to each shares, and its tree, which is what
+// Validate compares the instance with. See jsonMatchesConst.
+var {{$allowedVar}} = jsonConstOf(false,
 {{- range .Values}}
 	{{goStringQuote .RawJSON}},
 {{- end}}
-})
+)
 
 // UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
 //
@@ -173,9 +173,9 @@ func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 // writes back. See jsonID.
 func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 	if len(*{{$recv}}) == 0 {
-		return jsonIDOfKind(jsonIDNullKind), nil
+		return jsonIDNull(_m)
 	}
-	return jsonIDRaw(*{{$recv}})
+	return jsonIDRawIn(*{{$recv}}, _m)
 }
 {{- end}}
 
@@ -187,15 +187,14 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	and then a comparison between the named type and a string. The underscore
 	prefix is the convention the rest of the generated code uses for exactly
 	this, and a receiver is one letter and can never carry it. */}}
-	// Compared by identity, which is what the member list was read into as
-	// well: whitespace, member order and number spelling are not what an enum
-	// is decided on. It used to reduce the value to canonical text, re-encoding
-	// every string and key in it, to decide.
-	_id, _idErr := jsonIDRaw({{$recv}})
-	if _idErr != nil {
+	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// number spelling are not what an enum is decided on. It used to reduce the
+	// value to canonical text, re-encoding every string and key in it, to decide.
+	_ok, _okErr := jsonMatchesConstRaw({{$recv}}, {{$allowedVar}})
+	if _okErr != nil {
 		return jsonValueErrorf("invalid {{.Name}} value: %s", _schemagenClipText(string({{$recv}})))
 	}
-	if jsonIDIn(_id, {{$allowedVar}}) {
+	if _ok {
 		return nil
 	}
 	_canon, _ := _jsonCanonical([]byte({{$recv}}))

@@ -637,12 +637,12 @@ func (h HiddenKeywordSpellingsOneOfConstNull) Validate() error {
 
 type HiddenKeywordSpellingsPatternConstNullPattern0 json.RawMessage
 
-// The members as the schema wrote them, read at package initialisation into the
-// identity every JSON value equal to each of them shares -- which is how
-// Validate reads the instance. See jsonID.
-var hiddenKeywordSpellingsPatternConstNullPattern0AllowedJSON = jsonIDsOfTexts([]string{
+// The members as the schema wrote them, read at package initialisation: the
+// identity every JSON value equal to each shares, and its tree, which is what
+// Validate compares the instance with. See jsonMatchesConst.
+var hiddenKeywordSpellingsPatternConstNullPattern0AllowedJSON = jsonConstOf(false,
 	"null",
-})
+)
 
 // UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
 //
@@ -674,15 +674,14 @@ func (h HiddenKeywordSpellingsPatternConstNullPattern0) MarshalJSON() ([]byte, e
 
 // Validate checks HiddenKeywordSpellingsPatternConstNullPattern0 against its JSON Schema constraints.
 func (h HiddenKeywordSpellingsPatternConstNullPattern0) Validate() error {
-	// Compared by identity, which is what the member list was read into as
-	// well: whitespace, member order and number spelling are not what an enum
-	// is decided on. It used to reduce the value to canonical text, re-encoding
-	// every string and key in it, to decide.
-	_id, _idErr := jsonIDRaw(h)
-	if _idErr != nil {
+	// Compared as JSON (see jsonMatchesConst): whitespace, member order and
+	// number spelling are not what an enum is decided on. It used to reduce the
+	// value to canonical text, re-encoding every string and key in it, to decide.
+	_ok, _okErr := jsonMatchesConstRaw(h, hiddenKeywordSpellingsPatternConstNullPattern0AllowedJSON)
+	if _okErr != nil {
 		return jsonValueErrorf("invalid HiddenKeywordSpellingsPatternConstNullPattern0 value: %s", _schemagenClipText(string(h)))
 	}
-	if jsonIDIn(_id, hiddenKeywordSpellingsPatternConstNullPattern0AllowedJSON) {
+	if _ok {
 		return nil
 	}
 	_canon, _ := _jsonCanonical([]byte(h))

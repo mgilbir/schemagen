@@ -1967,12 +1967,8 @@ func _dynStrOK(v any, ok func(string) bool) bool {
 // comparison then differs only where the values do. It used to re-encode the
 // value to compare the text.
 func _dynConstOK(v any, want string) bool {
-	got, err := jsonIDAny(v, nil)
-	if err != nil {
-		return false
-	}
-	w, err := jsonIDRawAsDecoded([]byte(want))
-	return err == nil && got == w
+	ok, err := jsonMatchesConstAt(&v, jsonConstOf(true, want))
+	return err == nil && ok
 }
 {{- end}}
 
@@ -3234,10 +3230,13 @@ func (a *jsonIDArray) id() jsonID {
 }
 
 // jsonIDObject sums the identities of an object's members: a sum, because a
-// member's place in the object is no part of the value.
+// member's place in the object is no part of the value. With m reading trees
+// (see jsonValidation.reading) it gathers the members' trees instead.
 type jsonIDObject struct {
-	sum jsonID
-	n   uint64
+	m    *jsonValidation
+	tree map[string]any
+	sum  jsonID
+	n    uint64
 }
 
 func jsonIDMemberOf(key, val jsonID) jsonID {
@@ -3251,9 +3250,27 @@ func (o *jsonIDObject) addID(key, val jsonID) {
 	o.n++
 }
 
-func (o *jsonIDObject) add(key string, val jsonID) { o.addID(jsonIDString(key), val) }
+// add counts a member whose identity was just read -- and, reading trees, takes
+// the tree that reading left.
+func (o *jsonIDObject) add(key string, val jsonID) {
+	if o.m.reading() {
+		if o.tree == nil {
+			o.tree = map[string]any{}
+		}
+		o.tree[jsonValidString(key)] = o.m.pop()
+		return
+	}
+	o.addID(jsonIDString(key), val)
+}
 
 func (o *jsonIDObject) id() jsonID {
+	if o.m.reading() {
+		if o.tree == nil {
+			o.tree = map[string]any{}
+		}
+		o.m.push(o.tree)
+		return jsonID{}
+	}
 	return jsonIDMix(o.sum, jsonIDObjectKind, jsonID{o.n, 2})
 }
 
@@ -3264,12 +3281,14 @@ func (o *jsonIDObject) id() jsonID {
 // complete, as jsonObj writes them only then: a member that is replaced or taken
 // out before is never read, as it was never written.
 type jsonIDObj struct {
+	m     *jsonValidation
 	at    map[string]int
 	ms    []jsonIDObjMember
 	small [8]jsonIDObjMember
 }
 
 type jsonIDObjMember struct {
+	tree any
 	key  string
 	raw  []byte
 	id   jsonID
@@ -3325,8 +3344,14 @@ func (o *jsonIDObj) set(m jsonIDObjMember) {
 	}
 }
 
+// computed sets a member to the identity just read -- and, reading trees, to
+// the tree that reading left.
 func (o *jsonIDObj) computed(key string, id jsonID) {
-	o.set(jsonIDObjMember{key: key, id: id, kind: jsonIDObjComputed})
+	mb := jsonIDObjMember{key: key, id: id, kind: jsonIDObjComputed}
+	if o.m.reading() {
+		mb.tree = o.m.pop()
+	}
+	o.set(mb)
 }
 
 func (o *jsonIDObj) held(key string, raw []byte) {
@@ -3345,7 +3370,7 @@ func (o *jsonIDObj) del(key string) {
 
 // id is the object's identity, its deferred and raw members read now.
 func (o *jsonIDObj) id(member jsonIDMemberFunc, m *jsonValidation) (jsonID, error) {
-	var obj jsonIDObject
+	obj := jsonIDObject{m: m}
 	for i := range o.ms {
 		mb := &o.ms[i]
 		if mb.gone {
@@ -3357,7 +3382,11 @@ func (o *jsonIDObj) id(member jsonIDMemberFunc, m *jsonValidation) (jsonID, erro
 		case jsonIDObjDeferred:
 			id, err = member(mb.idx, mb.key, m)
 		case jsonIDObjRaw:
-			id, err = jsonIDRawMessage(mb.raw)
+			id, err = jsonIDRawIn(mb.raw, m)
+		default:
+			if m.reading() {
+				m.push(mb.tree)
+			}
 		}
 		if err != nil {
 			return jsonID{}, err
@@ -3385,8 +3414,66 @@ type jsonIdentifier interface {
 // its own read the whole subtree again, and a check at every level of a
 // recursive document was quadratic in its depth. What the table relies on is
 // that a value does not change during one call of Validate.
+//
+// A jsonValidation with tree set reads trees rather than identities: the value
+// as encoding/json decodes the JSON it writes into an any -- map[string]any,
+// []any, string, bool, nil, and a float64 or json.Number -- read off the value
+// by the same functions and the same rules, each leaving its tree on trees for
+// the caller to take. It is what a check asks where an identity cannot answer
+// for certain: whether two values that share one are equal (see
+// jsonTreeEqual). Nothing is written out to read one.
 type jsonValidation struct {
-	ids map[jsonArrayKey][]jsonID
+	ids   map[jsonArrayKey][]jsonID
+	trees []any
+	tree  bool
+}
+
+// reading reports whether m reads trees.
+func (m *jsonValidation) reading() bool { return m != nil && m.tree }
+
+func (m *jsonValidation) push(t any) { m.trees = append(m.trees, t) }
+
+func (m *jsonValidation) pop() any {
+	t := m.trees[len(m.trees)-1]
+	m.trees = m.trees[:len(m.trees)-1]
+	return t
+}
+
+// jsonIDNull is the identity of null, or its tree.
+func jsonIDNull(m *jsonValidation) (jsonID, error) {
+	if m.reading() {
+		m.push(nil)
+	}
+	return jsonIDOfKind(jsonIDNullKind), nil
+}
+
+// jsonIDRawIn is jsonIDRawMessage, or the tree of the raw JSON.
+func jsonIDRawIn(b []byte, m *jsonValidation) (jsonID, error) {
+	if m.reading() {
+		t, err := jsonTreeRaw(b, false)
+		if err != nil {
+			return jsonID{}, err
+		}
+		m.push(t)
+		return jsonID{}, nil
+	}
+	return jsonIDRawMessage(b)
+}
+
+// jsonIDNumberIn is the identity of a number written as text, or its tree:
+// jsonIDNumberLiteral's, which refuses a text that is not a number.
+func jsonIDNumberIn(n json.Number, m *jsonValidation) (jsonID, error) {
+	if m.reading() {
+		if n == "" {
+			n = "0"
+		}
+		if !jsonIsNumberLiteral(string(n)) {
+			return jsonID{}, errors.New("json: invalid number literal " + strconv.Quote(string(n)))
+		}
+		m.push(n)
+		return jsonID{}, nil
+	}
+	return jsonIDNumberLiteral(n)
 }
 
 // jsonArrayKey is an array by where its elements are: the address of its first,
@@ -3408,14 +3495,25 @@ type jsonIdentify[T any] func(*T, *jsonValidation) (jsonID, error)
 // decode helpers' are.
 func jsonIDPtr[P ~*E, E any](p P, m *jsonValidation, f jsonIdentify[E]) (jsonID, error) {
 	if p == nil {
-		return jsonIDOfKind(jsonIDNullKind), nil
+		return jsonIDNull(m)
 	}
 	return f(p, m)
 }
 
 func jsonIDSlice[S ~[]E, E any](s S, m *jsonValidation, f jsonIdentify[E]) (jsonID, error) {
 	if s == nil {
-		return jsonIDOfKind(jsonIDNullKind), nil
+		return jsonIDNull(m)
+	}
+	if m.reading() {
+		t := make([]any, 0, len(s))
+		for i := range s {
+			if _, err := f(&s[i], m); err != nil {
+				return jsonID{}, err
+			}
+			t = append(t, m.pop())
+		}
+		m.push(t)
+		return jsonID{}, nil
 	}
 	var a jsonIDArray
 	for i := range s {
@@ -3432,8 +3530,8 @@ func jsonIDSlice[S ~[]E, E any](s S, m *jsonValidation, f jsonIdentify[E]) (json
 // its elements' identities: they are kept in m for it, and read back from m
 // where a check above already computed them.
 func jsonIDSliceKept[S ~[]E, E any](s S, m *jsonValidation, f jsonIdentify[E]) (jsonID, error) {
-	if s == nil {
-		return jsonIDOfKind(jsonIDNullKind), nil
+	if s == nil || m.reading() {
+		return jsonIDSlice(s, m, f)
 	}
 	ids, _, err := jsonIDsOf(s, m, f)
 	if err != nil {
@@ -3448,11 +3546,11 @@ func jsonIDSliceKept[S ~[]E, E any](s S, m *jsonValidation, f jsonIdentify[E]) (
 
 func jsonIDMap[M ~map[string]V, V any](mp M, m *jsonValidation, f jsonIdentify[V]) (jsonID, error) {
 	if mp == nil {
-		return jsonIDOfKind(jsonIDNullKind), nil
+		return jsonIDNull(m)
 	}
-	var o jsonIDObject
+	o := jsonIDObject{m: m}
 	var v V
-	{{- /* maporder: sums the members, which no order of the loop changes. */}}
+	{{- /* maporder: sums the members, or gathers them into a map, which no order of the loop changes. */}}
 	for k, x := range mp {
 		v = x
 		id, err := f(&v, m)
@@ -3496,18 +3594,19 @@ func jsonIDsOf[S ~[]E, E any](s S, m *jsonValidation, f jsonIdentify[E]) ([]json
 }
 
 // jsonFirstDuplicate is the index of the first element of s that is equal to an
-// earlier one, or -1, given the elements' identities. Two elements sharing an
-// identity are confirmed equal by jsonSameValue before they are called
-// duplicates, and a collision -- two different values with one identity -- is
-// compared against every earlier element that has it, which is all it costs.
-func jsonFirstDuplicate[S ~[]E, E any](s S, ids []jsonID) int {
+// earlier one, or -1, given the elements' identities as f reads them. Two
+// elements sharing an identity are confirmed equal by jsonSameValue before they
+// are called duplicates, and a collision -- two different values with one
+// identity -- is compared against every earlier element that has it, which is
+// all it costs.
+func jsonFirstDuplicate[S ~[]E, E any](s S, ids []jsonID, f jsonIdentify[E]) int {
 	if len(ids) < 2 {
 		return -1
 	}
 	if len(ids) <= 8 {
 		for j := 1; j < len(ids); j++ {
 			for i := 0; i < j; i++ {
-				if ids[i] == ids[j] && jsonSameValue(&s[i], &s[j]) {
+				if ids[i] == ids[j] && jsonSameValue(&s[i], &s[j], f) {
 					return j
 				}
 			}
@@ -3522,7 +3621,7 @@ func jsonFirstDuplicate[S ~[]E, E any](s S, ids []jsonID) int {
 			continue
 		}
 		for k := i; k < j; k++ {
-			if ids[k] == id && jsonSameValue(&s[k], &s[j]) {
+			if ids[k] == id && jsonSameValue(&s[k], &s[j], f) {
 				return j
 			}
 		}
@@ -3532,22 +3631,416 @@ func jsonFirstDuplicate[S ~[]E, E any](s S, ids []jsonID) int {
 
 // jsonSameValue reports whether two values are equal as JSON, for certain: the
 // one question an identity answers only almost surely, asked only of two values
-// that share one -- which is a duplicate, and an array about to be refused.
-func jsonSameValue[T any](x, y *T) bool {
-	bx, err := json.Marshal(x)
+// that share one. Their trees are read and compared (see jsonTreeEqual);
+// nothing is written out.
+func jsonSameValue[T any](x, y *T, f jsonIdentify[T]) bool {
+	tx, err := jsonTreeOf(x, f)
 	if err != nil {
 		return false
 	}
-	by, err := json.Marshal(y)
-	if err != nil {
-		return false
+	ty, err := jsonTreeOf(y, f)
+	return err == nil && jsonTreeEqual(tx, ty)
+}
+
+// jsonTreeOf reads the tree of the value at p, by the function that reads its
+// identity. See jsonValidation.
+func jsonTreeOf[T any](p *T, f jsonIdentify[T]) (any, error) {
+	m := &jsonValidation{tree: true}
+	if _, err := f(p, m); err != nil {
+		return nil, err
 	}
-	cx, err := _jsonCanonical(bx)
-	if err != nil {
-		return false
+	if len(m.trees) != 1 {
+		// Structural: every reading leaves exactly one tree.
+		return nil, errors.New("schemagen: reading a value left " + strconv.Itoa(len(m.trees)) + " trees")
 	}
-	cy, err := _jsonCanonical(by)
-	return err == nil && cx == cy
+	return m.trees[0], nil
+}
+
+// jsonConst is what a const or an enum permits: each member's identity and its
+// tree, read once from the literal the schema wrote. Numbers are read as the
+// literal writes them, or, with floats, as a float64 -- which is how the
+// runtime evaluator, reading a decoded value, compares them.
+type jsonConst struct {
+	ids   []jsonID
+	trees []any
+}
+
+var jsonConsts sync.Map
+
+// jsonConstOf is the const or enum the texts write, read once per process. A
+// text that is not JSON permits nothing.
+func jsonConstOf(floats bool, texts ...string) *jsonConst {
+	key := make([]byte, 0, 64)
+	if floats {
+		key = append(key, 'f')
+	}
+	for _, t := range texts {
+		key = append(append(key, 0), t...)
+	}
+	if c, ok := jsonConsts.Load(string(key)); ok {
+		return c.(*jsonConst)
+	}
+	c := &jsonConst{}
+	for _, t := range texts {
+		tree, err := jsonTreeRaw([]byte(t), floats)
+		if err != nil {
+			continue
+		}
+		var id jsonID
+		if floats {
+			id, err = jsonIDRawAsDecoded([]byte(t))
+		} else {
+			id, err = jsonIDRaw([]byte(t))
+		}
+		if err != nil {
+			continue
+		}
+		c.ids = append(c.ids, id)
+		c.trees = append(c.trees, tree)
+	}
+	got, _ := jsonConsts.LoadOrStore(string(key), c)
+	return got.(*jsonConst)
+}
+
+// jsonMatchesConst reports whether the value at p is one of the values c
+// permits, reading it with f. An identity decides only a mismatch: a value whose
+// identity is not among c's is not among its values, and one whose identity is
+// is read as a tree and compared with the member it shares that identity with,
+// so a collision of identities can never admit a value the schema forbids.
+func jsonMatchesConst[T any](p *T, f jsonIdentify[T], c *jsonConst) (bool, error) {
+	id, err := f(p, nil)
+	if err != nil {
+		return false, err
+	}
+	if !jsonIDIn(id, c.ids) {
+		return false, nil
+	}
+	t, err := jsonTreeOf(p, f)
+	if err != nil {
+		return false, err
+	}
+	for i := range c.ids {
+		if c.ids[i] == id && jsonTreeEqual(t, c.trees[i]) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// jsonMatchesConstAt is jsonMatchesConst for a value read by its Go kind.
+func jsonMatchesConstAt[T any](p *T, c *jsonConst) (bool, error) {
+	return jsonMatchesConst(p, jsonIdentifyAt[T], c)
+}
+
+// jsonMatchesConstRaw is jsonMatchesConst for raw JSON a value holds.
+func jsonMatchesConstRaw(b []byte, c *jsonConst) (bool, error) {
+	id, err := jsonIDRaw(b)
+	if err != nil {
+		return false, err
+	}
+	if !jsonIDIn(id, c.ids) {
+		return false, nil
+	}
+	t, err := jsonTreeRaw(b, false)
+	if err != nil {
+		return false, err
+	}
+	for i := range c.ids {
+		if c.ids[i] == id && jsonTreeEqual(t, c.trees[i]) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// jsonTreeRaw is the tree of raw JSON: what encoding/json decodes it into, with
+// every number a json.Number -- or, with floats, a float64. It is a decode of
+// bytes already held, not an encoding.
+func jsonTreeRaw(b []byte, floats bool) (any, error) {
+	var v any
+	if floats {
+		err := json.Unmarshal(b, &v)
+		return v, err
+	}
+	if !json.Valid(b) {
+		// encoding/json's own words for what is wrong with it.
+		return nil, json.Unmarshal(b, &v)
+	}
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	err := dec.Decode(&v)
+	return v, err
+}
+
+// jsonTreeEqual reports whether two trees are one JSON value: numbers by their
+// canonical reading (see _jsonCanonicalNumber), members in any order.
+func jsonTreeEqual(a, b any) bool {
+	switch x := a.(type) {
+	case nil:
+		return b == nil
+	case bool:
+		y, ok := b.(bool)
+		return ok && x == y
+	case string:
+		y, ok := b.(string)
+		return ok && x == y
+	case float64, json.Number:
+		xs, _ := jsonTreeNumber(a)
+		ys, ok := jsonTreeNumber(b)
+		return ok && _jsonCanonicalNumber(xs) == _jsonCanonicalNumber(ys)
+	case []any:
+		y, ok := b.([]any)
+		if !ok || len(x) != len(y) {
+			return false
+		}
+		for i := range x {
+			if !jsonTreeEqual(x[i], y[i]) {
+				return false
+			}
+		}
+		return true
+	case map[string]any:
+		y, ok := b.(map[string]any)
+		if !ok || len(x) != len(y) {
+			return false
+		}
+		{{- /* maporder: a conjunction over every member, which no order of the loop changes. */}}
+		for k, xv := range x {
+			yv, ok := y[k]
+			if !ok || !jsonTreeEqual(xv, yv) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// jsonTreeNumber is a tree's number as a literal.
+func jsonTreeNumber(v any) (string, bool) {
+	switch n := v.(type) {
+	case float64:
+		return strconv.FormatFloat(n, 'g', -1, 64), true
+	case json.Number:
+		return string(n), true
+	}
+	return "", false
+}
+
+// jsonTreeAny is the tree of a value held as an any -- what encoding/json
+// decodes the JSON it writes for the value into -- read off the value: a type of
+// this package by its jsonIdentity, reading trees, and anything else by its Go
+// kind, as jsonIDAny reads an identity.
+func jsonTreeAny(v any, m *jsonValidation) (any, error) {
+	switch x := v.(type) {
+	case nil:
+		return nil, nil
+	case string:
+		return jsonValidString(x), nil
+	case bool:
+		return x, nil
+	case float64:
+		if math.IsNaN(x) || math.IsInf(x, 0) {
+			return nil, &json.UnsupportedValueError{Str: strconv.FormatFloat(x, 'g', -1, 64)}
+		}
+		return x, nil
+	case json.Number:
+		if x == "" {
+			return json.Number("0"), nil
+		}
+		if !jsonIsNumberLiteral(string(x)) {
+			return nil, errors.New("json: invalid number literal " + strconv.Quote(string(x)))
+		}
+		return x, nil
+	case []any:
+		if x == nil {
+			return nil, nil
+		}
+		out := make([]any, len(x))
+		for i := range x {
+			t, err := jsonTreeAny(x[i], m)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = t
+		}
+		return out, nil
+	case map[string]any:
+		if x == nil {
+			return nil, nil
+		}
+		out := make(map[string]any, len(x))
+		{{- /* maporder: copies members under their own keys, which no order of the loop changes. */}}
+		for k, e := range x {
+			t, err := jsonTreeAny(e, m)
+			if err != nil {
+				return nil, err
+			}
+			out[jsonValidString(k)] = t
+		}
+		return out, nil
+	case map[string]string:
+		if x == nil {
+			return nil, nil
+		}
+		out := make(map[string]any, len(x))
+		{{- /* maporder: copies members under their own keys, which no order of the loop changes. */}}
+		for k, e := range x {
+			out[jsonValidString(k)] = jsonValidString(e)
+		}
+		return out, nil
+	case map[string]json.RawMessage:
+		if x == nil {
+			return nil, nil
+		}
+		out := make(map[string]any, len(x))
+		{{- /* maporder: copies members under their own keys, which no order of the loop changes. */}}
+		for k, e := range x {
+			t, err := jsonTreeAny(e, m)
+			if err != nil {
+				return nil, err
+			}
+			out[jsonValidString(k)] = t
+		}
+		return out, nil
+	case json.RawMessage:
+		if x == nil {
+			return nil, nil
+		}
+		return jsonTreeRaw(x, false)
+	case jsonIdentifier:
+		return jsonTreeOfIdentifier(x, m)
+	}
+	rv := reflect.ValueOf(v)
+	if rv.Kind() != reflect.Pointer {
+		p := reflect.New(rv.Type())
+		p.Elem().Set(rv)
+		rv = p.Elem()
+	}
+	return jsonTreeReflect(rv, m)
+}
+
+// jsonTreeOfIdentifier reads the tree of a value of this package's.
+func jsonTreeOfIdentifier(x jsonIdentifier, m *jsonValidation) (any, error) {
+	if !m.reading() {
+		m = &jsonValidation{tree: true}
+	}
+	if _, err := x.jsonIdentity(m); err != nil {
+		return nil, err
+	}
+	return m.pop(), nil
+}
+
+// jsonTreeReflect is jsonIDReflect for a tree.
+func jsonTreeReflect(rv reflect.Value, m *jsonValidation) (any, error) {
+	t := rv.Type()
+	switch t {
+	case jsonNumberType:
+		return jsonTreeAny(json.Number(rv.String()), m)
+	case jsonRawMessageType:
+		if rv.IsNil() {
+			return nil, nil
+		}
+		return jsonTreeRaw(rv.Bytes(), false)
+	case jsonTimeType:
+		tm := rv.Interface().(time.Time)
+		if _, err := jsonIDTime(tm); err != nil {
+			return nil, err
+		}
+		return tm.Format(time.RFC3339Nano), nil
+	}
+	if rv.CanAddr() && reflect.PointerTo(t).Implements(jsonIdentifierType) {
+		return jsonTreeOfIdentifier(rv.Addr().Interface().(jsonIdentifier), m)
+	}
+	if t.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			return nil, nil
+		}
+		return jsonTreeReflect(rv.Elem(), m)
+	}
+	addressable := rv.CanAddr()
+	if t.Implements(jsonMarshalerType) || addressable && reflect.PointerTo(t).Implements(jsonMarshalerType) {
+		return jsonTreeMarshaled(rv)
+	}
+	if t.Implements(jsonTextMarshalerType) || addressable && reflect.PointerTo(t).Implements(jsonTextMarshalerType) {
+		var tm jsonTextMarshaler
+		if t.Implements(jsonTextMarshalerType) {
+			tm = rv.Interface().(jsonTextMarshaler)
+		} else {
+			tm = rv.Addr().Interface().(jsonTextMarshaler)
+		}
+		text, err := tm.MarshalText()
+		if err != nil {
+			return nil, &json.MarshalerError{Type: t, Err: err}
+		}
+		return jsonValidString(string(text)), nil
+	}
+	switch t.Kind() {
+	case reflect.Interface:
+		if rv.IsNil() {
+			return nil, nil
+		}
+		return jsonTreeAny(rv.Elem().Interface(), m)
+	case reflect.Bool:
+		return rv.Bool(), nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return json.Number(strconv.FormatInt(rv.Int(), 10)), nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return json.Number(strconv.FormatUint(rv.Uint(), 10)), nil
+	case reflect.Float32, reflect.Float64:
+		bits := 64
+		if t.Kind() == reflect.Float32 {
+			bits = 32
+		}
+		f := rv.Float()
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return nil, &json.UnsupportedValueError{Str: strconv.FormatFloat(f, 'g', -1, bits)}
+		}
+		return json.Number(strconv.FormatFloat(f, 'g', -1, bits)), nil
+	case reflect.String:
+		return jsonValidString(rv.String()), nil
+	case reflect.Slice:
+		if rv.IsNil() {
+			return nil, nil
+		}
+		if e := t.Elem(); e.Kind() == reflect.Uint8 && !reflect.PointerTo(e).Implements(jsonMarshalerType) && !reflect.PointerTo(e).Implements(jsonTextMarshalerType) {
+			return base64.StdEncoding.EncodeToString(rv.Bytes()), nil
+		}
+		fallthrough
+	case reflect.Array:
+		out := make([]any, rv.Len())
+		for i := range out {
+			e, err := jsonTreeReflect(rv.Index(i), m)
+			if err != nil {
+				return nil, err
+			}
+			out[i] = e
+		}
+		return out, nil
+	case reflect.Map:
+		if rv.IsNil() {
+			return nil, nil
+		}
+	}
+	return jsonTreeMarshaled(rv)
+}
+
+// jsonTreeMarshaled is jsonIDMarshaled for a tree: what encoding/json writes for
+// a value no rule here reads -- another package's type with a MarshalJSON of its
+// own, a struct this package did not declare, a map of a type the generator did
+// not plan -- decoded.
+func jsonTreeMarshaled(rv reflect.Value) (any, error) {
+	var v any
+	if rv.CanAddr() {
+		v = rv.Addr().Interface()
+	} else {
+		v = rv.Interface()
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil, err
+	}
+	return jsonTreeRaw(b, false)
 }
 
 // jsonMarshalError is what a check reports for a value whose identity could
@@ -3566,21 +4059,6 @@ func jsonMarshalError[T any](p *T, err error) error {
 func jsonMarshalText[T any](p *T) string {
 	b, _ := json.Marshal(*p)
 	return string(b)
-}
-
-// jsonIDsOfTexts is the identity of each JSON text a schema wrote -- the
-// members of an enum -- as jsonIDRaw reads them. A literal that is not JSON is
-// given one only its own spelling shares, which no value has.
-func jsonIDsOfTexts(texts []string) []jsonID {
-	ids := make([]jsonID, len(texts))
-	for i, t := range texts {
-		id, err := jsonIDRaw([]byte(t))
-		if err != nil {
-			id = jsonIDText(jsonIDLiteralKind, t)
-		}
-		ids[i] = id
-	}
-	return ids
 }
 
 // jsonIDIn reports whether id is one of ids.
@@ -3668,63 +4146,14 @@ func jsonKindAny(v any) (byte, string) {
 		return jsonKindRaw(x.d.raw(x.sp), true)
 	{{- end}}
 	}
-	rv := reflect.ValueOf(v)
-	t := rv.Type()
-	if t.Implements(jsonMarshalerType) || reflect.PointerTo(t).Implements(jsonMarshalerType) ||
-		t.Implements(jsonTextMarshalerType) || reflect.PointerTo(t).Implements(jsonTextMarshalerType) {
-		// A type that writes itself says what kind it writes only by writing it.
-		b, err := json.Marshal(v)
-		if err != nil {
-			return 0, ""
-		}
-		return jsonKindRaw(b, false)
+	// Anything else is read as a tree (see jsonTreeAny), whose kind is the
+	// value's: a type that writes itself says what kind it writes by the rules
+	// it writes by.
+	t, err := jsonTreeAny(v, nil)
+	if err != nil {
+		return 0, ""
 	}
-	switch t.Kind() {
-	case reflect.Pointer, reflect.Interface:
-		if rv.IsNil() {
-			return jsonIDNullKind, ""
-		}
-		return jsonKindAny(rv.Elem().Interface())
-	case reflect.String:
-		return jsonIDStringKind, jsonValidString(rv.String())
-	case reflect.Bool:
-		if rv.Bool() {
-			return jsonIDTrueKind, ""
-		}
-		return jsonIDFalseKind, ""
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return jsonIDNumberKind, strconv.FormatInt(rv.Int(), 10)
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
-		return jsonIDNumberKind, strconv.FormatUint(rv.Uint(), 10)
-	case reflect.Float32, reflect.Float64:
-		f := rv.Float()
-		if math.IsNaN(f) || math.IsInf(f, 0) {
-			return 0, ""
-		}
-		bits := 64
-		if t.Kind() == reflect.Float32 {
-			bits = 32
-		}
-		return jsonIDNumberKind, strconv.FormatFloat(f, 'g', -1, bits)
-	case reflect.Slice:
-		if rv.IsNil() {
-			return jsonIDNullKind, ""
-		}
-		if t.Elem().Kind() == reflect.Uint8 {
-			return jsonIDStringKind, base64.StdEncoding.EncodeToString(rv.Bytes())
-		}
-		return jsonIDArrayKind, ""
-	case reflect.Array:
-		return jsonIDArrayKind, ""
-	case reflect.Map:
-		if rv.IsNil() {
-			return jsonIDNullKind, ""
-		}
-		return jsonIDObjectKind, ""
-	case reflect.Struct:
-		return jsonIDObjectKind, ""
-	}
-	return 0, ""
+	return jsonKindAny(t)
 }
 
 // jsonFloatOf is a number jsonKindAt read, as the float64 encoding/json decodes
@@ -3821,6 +4250,17 @@ func jsonValidString(s string) string {
 // The commonest types are read directly; anything else goes through
 // jsonIDReflect.
 func jsonIdentifyAt[T any](p *T, m *jsonValidation) (jsonID, error) {
+	if m.reading() {
+		if v, ok := any(p).(jsonIdentifier); ok {
+			return v.jsonIdentity(m)
+		}
+		t, err := jsonTreeAny(any(*p), m)
+		if err != nil {
+			return jsonID{}, err
+		}
+		m.push(t)
+		return jsonID{}, nil
+	}
 	switch v := any(p).(type) {
 	case jsonIdentifier:
 		return v.jsonIdentity(m)
@@ -3878,6 +4318,8 @@ func jsonIdentifyAt[T any](p *T, m *jsonValidation) (jsonID, error) {
 			o.add(k, jsonIDString(s))
 		}
 		return o.id(), nil
+	case *map[string]json.RawMessage:
+		return jsonIDMap(*v, m, jsonIdentifyAt[json.RawMessage])
 	case *time.Time:
 		return jsonIDTime(*v)
 	case **time.Time:
@@ -3892,6 +4334,14 @@ func jsonIdentifyAt[T any](p *T, m *jsonValidation) (jsonID, error) {
 // jsonIDAny is the identity of a value held as an any: what encoding/json
 // decodes into one, or whatever a caller put there.
 func jsonIDAny(v any, m *jsonValidation) (jsonID, error) {
+	if m.reading() {
+		t, err := jsonTreeAny(v, m)
+		if err != nil {
+			return jsonID{}, err
+		}
+		m.push(t)
+		return jsonID{}, nil
+	}
 	switch x := v.(type) {
 	case nil:
 		return jsonIDOfKind(jsonIDNullKind), nil
@@ -4143,6 +4593,14 @@ func (c *jsonIDCache) put(at int, id jsonID) {
 // level of a document for the identity of what is below it, and each object and
 // array is read once however many levels ask.
 func (l jsonLazy) jsonIdentity(m *jsonValidation) (jsonID, error) {
+	if m.reading() {
+		t, err := jsonTreeRaw(l.d.raw(l.sp), true)
+		if err != nil {
+			return jsonID{}, err
+		}
+		m.push(t)
+		return jsonID{}, nil
+	}
 	c := l.d.ids.Load()
 	if c == nil {
 		l.d.ids.CompareAndSwap(nil, &jsonIDCache{ids: make(map[int]jsonID)})

@@ -142,13 +142,13 @@ func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 	{{- if .AllowsNull}}
 	if {{$recv}}._isNull {
-		return jsonIDOfKind(jsonIDNullKind), nil
+		return jsonIDNull(_m)
 	}
 	{{- end}}
 	if {{$recv}}._isBigInt && {{$recv}}._bigInt != nil {
-		return jsonIDNumber({{$recv}}._bigInt.String()), nil
+		return jsonIDNumberIn(json.Number({{$recv}}._bigInt.String()), _m)
 	}
-	return jsonIDInt({{$recv}}._int64), nil
+	return jsonIdentifyAt(&{{$recv}}._int64, _m)
 }
 {{- end}}
 {{- end}}

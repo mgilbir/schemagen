@@ -72,7 +72,7 @@ func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 	if _err != nil {
 		return jsonID{}, _err
 	}
-	return jsonIDRaw(_b)
+	return jsonIDRawIn(_b, _m)
 }
 {{- end}}
 {{- else}}
