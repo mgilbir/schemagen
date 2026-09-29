@@ -65,8 +65,9 @@ func ({{$recv}} {{.Name}}) Raw() json.RawMessage { return append(json.RawMessage
 {{- if .HasIdentity}}
 
 // jsonIdentity is {{$recv}}'s identity as JSON: that of what MarshalJSON writes,
-// which is the value's bytes with the writeOnly locations stripped by reading
-// them back -- so it is read off that. See jsonID.
+// the value's bytes with the writeOnly locations stripped -- read off the
+// value's tree with them taken out of it (see _accessStripTree), rather than
+// off what MarshalJSON writes. See jsonID.
 func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 	if len({{$recv}}._raw) == 0 {
 		return jsonIDNull(_m)
@@ -75,7 +76,14 @@ func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
 	if _err != nil {
 		return jsonID{}, _err
 	}
-	return jsonIDRawIn(_b, _m)
+	if _t, _err = _accessStripTree(_t, {{.AccessRulesVar}}); _err != nil {
+		return jsonID{}, _err
+	}
+	if _m.reading() {
+		_m.push(_t)
+		return jsonID{}, nil
+	}
+	return jsonIDAny(_t, _m)
 }
 {{- end}}
 {{- else}}

@@ -3368,6 +3368,109 @@ func (o *jsonIDObj) del(key string) {
 	}
 }
 
+// nulled sets a member to null.
+func (o *jsonIDObj) nulled(key string) {
+	o.set(jsonIDObjMember{key: key, id: jsonIDOfKind(jsonIDNullKind), kind: jsonIDObjComputed})
+}
+
+// tree is the tree of a member, m reading trees: a deferred member is read for
+// the asking, and holds its tree from then on. empty says the member is raw JSON
+// of no bytes at all, which jsonObj.value hands back as it is.
+func (o *jsonIDObj) tree(mb *jsonIDObjMember, member jsonIDMemberFunc, m *jsonValidation) (any, bool, error) {
+	switch mb.kind {
+	case jsonIDObjDeferred:
+		if _, err := member(mb.idx, mb.key, m); err != nil {
+			return nil, false, err
+		}
+		mb.tree, mb.kind = m.pop(), jsonIDObjComputed
+	case jsonIDObjRaw:
+		if len(mb.raw) == 0 {
+			return nil, true, nil
+		}
+		t, err := jsonTreeRaw(mb.raw, false)
+		if err != nil {
+			return nil, false, err
+		}
+		mb.tree, mb.kind = t, jsonIDObjComputed
+	}
+	return mb.tree, false, nil
+}
+
+// value is jsonObj.value for an identity, m reading trees: the member's tree,
+// whether it is there, and whether it is raw JSON of no bytes.
+func (o *jsonIDObj) value(key string, member jsonIDMemberFunc, m *jsonValidation) (any, bool, bool, error) {
+	i := o.find(key)
+	if i < 0 || o.ms[i].gone {
+		return nil, false, false, nil
+	}
+	t, empty, err := o.tree(&o.ms[i], member, m)
+	return t, true, empty, err
+}
+
+// jsonTreeWritten reports whether two trees are written as the same bytes by
+// encoding/json -- which is what a check that compared what two values wrote
+// decided. It is jsonTreeEqual with numbers compared by the literal each is
+// written as rather than by its value: 0 and 0.0, or 0 and -0, are one JSON
+// value written two ways. Strings compare by their text, members in any order,
+// as encoding/json writes both one way.
+func jsonTreeWritten(a, b any) bool {
+	switch x := a.(type) {
+	case float64, json.Number:
+		xs, _ := jsonTreeWrittenNumber(a)
+		ys, ok := jsonTreeWrittenNumber(b)
+		return ok && xs == ys
+	case []any:
+		y, ok := b.([]any)
+		if !ok || len(x) != len(y) {
+			return false
+		}
+		for i := range x {
+			if !jsonTreeWritten(x[i], y[i]) {
+				return false
+			}
+		}
+		return true
+	case map[string]any:
+		y, ok := b.(map[string]any)
+		if !ok || len(x) != len(y) {
+			return false
+		}
+		{{- /* maporder: a conjunction over every member, which no order of the loop changes. */}}
+		for k, xv := range x {
+			yv, ok := y[k]
+			if !ok || !jsonTreeWritten(xv, yv) {
+				return false
+			}
+		}
+		return true
+	}
+	return jsonTreeEqual(a, b)
+}
+
+// jsonTreeWrittenNumber is the literal encoding/json writes a tree's number as:
+// a json.Number's own text, and a float64 as encoding/json formats one.
+func jsonTreeWrittenNumber(v any) (string, bool) {
+	switch n := v.(type) {
+	case json.Number:
+		return string(n), true
+	case float64:
+		format := byte('f')
+		if abs := math.Abs(n); abs != 0 && (abs < 1e-6 || abs >= 1e21) {
+			format = 'e'
+		}
+		b := strconv.AppendFloat(nil, n, format, -1, 64)
+		if format == 'e' {
+			// clean up e-09 to e-9, as encoding/json does
+			if k := len(b); k >= 4 && b[k-4] == 'e' && b[k-3] == '-' && b[k-2] == '0' {
+				b[k-2] = b[k-1]
+				b = b[:k-1]
+			}
+		}
+		return string(b), true
+	}
+	return "", false
+}
+
 // id is the object's identity, its deferred and raw members read now.
 func (o *jsonIDObj) id(member jsonIDMemberFunc, m *jsonValidation) (jsonID, error) {
 	obj := jsonIDObject{m: m}

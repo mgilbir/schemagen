@@ -191,6 +191,34 @@ var costShapes = []costShape{
 		unit: 1, open: `{"n":"x","c":`, close: `}`, good: `"y"`, invalid: `{"n":"long"}`,
 	},
 	{
+		// The raw-JSON wrappers that judge what they hold by decoding it into an
+		// any -- a bare "not", a multi-type "type", a schema held as data -- at
+		// every level of a struct that recurses beside them, and then holding
+		// the rest of the document themselves. Nothing below a wrapper is typed,
+		// so nothing below one is judged again: the wrapper decodes what it holds
+		// once.
+		name: "not wrapper",
+		schema: `{"type":"object","properties":{"c":{"$ref":"#"},"n":{"type":"string","maxLength":3},
+		  "d":{"not":{"type":"number"}}}}`,
+		unit: 2, open: `{"n":"x","d":[{"n":"x"}],"c":`, close: `}`, good: `{"n":"y"}`, bad: `{"n":1}`, invalid: `{"n":"long"}`,
+	},
+	{
+		name: "type-only wrapper",
+		schema: `{"type":"object","properties":{"c":{"$ref":"#"},"n":{"type":"string","maxLength":3},
+		  "d":{"anyOf":[{"minItems":1},{"type":"string"}]}}}`,
+		unit: 2, open: `{"n":"x","d":[{"n":"x"}],"c":`, close: `}`, good: `{"n":"y"}`, bad: `{"n":1}`, invalid: `{"n":"long"}`,
+	},
+	{
+		// A schema held as data that recurses through itself: the whole
+		// document is one wrapper's, judged by the evaluator, which reads the
+		// document lazily -- a level at a time -- rather than decoding it whole
+		// at the top and again at every level below.
+		name: "dynamic root",
+		schema: `{"$schema":"https://json-schema.org/draft/2020-12/schema","$dynamicAnchor":"n",
+		  "not":{"type":"number"},"properties":{"c":{"$dynamicRef":"#n"},"n":{"type":"string","maxLength":3}}}`,
+		unit: 1, open: `{"n":"x","c":`, close: `}`, good: `{"n":"y"}`, invalid: `{"n":"long"}`,
+	},
+	{
 		// uniqueItems over the type that holds it, two elements a level: the
 		// check at every level compares elements whose subtrees are the rest of
 		// the document. Each element was marshalled to be compared, subtree and

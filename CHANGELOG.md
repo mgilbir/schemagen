@@ -356,7 +356,11 @@
   them as JSON, so no hash collision decides a verdict. Validating the 45
   example BOMs the CycloneDX 1.6 specification ships takes
   a third of the time and a quarter of the allocations it did, and writes
-  nothing out.
+  nothing out. What `MarshalJSON` decides by what it writes is decided the
+  same way, on the value read as a tree: the `writeOnly` locations
+  `--strict-read-write` strips from below a struct's members and from a value
+  held whole, the nulls a document wrote that are written back, and a member
+  left out for writing what its Go zero writes.
 - An element held as decoded JSON whose sub-schema has a type of its own -- a
   tuple position of a `[]any`, an element `contains` counts, an inferred
   array's items and tail -- is judged as it is held, by that schema compiled for

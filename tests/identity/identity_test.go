@@ -561,6 +561,163 @@ func main() {
 }
 `
 
+// TestStrippedAndNulledValuesAreReadWithoutWriting holds the three rulings
+// appendJSON makes by what it writes -- the writeOnly locations
+// --strict-read-write strips from below a struct's members and from a value
+// held whole, the nulls a document wrote that are written back, and a
+// hand-written member whose Go zero is left out -- to what they were when the
+// identity was read off the text appendJSON wrote. Now they are made on trees:
+// each identity, and each tree, is compared with what MarshalJSON writes, for
+// decoded values and for the same values changed the ways a document never
+// changes them; and then Validate, comparing the values by uniqueItems, runs
+// with coverage and must write nothing out.
+func TestStrippedAndNulledValuesAreReadWithoutWriting(t *testing.T) {
+	if testing.Short() {
+		t.Skip("generates, compiles and runs a package with coverage")
+	}
+	t.Parallel()
+	for _, c := range []struct {
+		name  string
+		flags []string
+	}{
+		{"strict", []string{"--strict-read-write"}},
+		// Named without a comma: covdata reads one in its input directory as
+		// a list of two.
+		{"strict-noomit", []string{"--strict-read-write", "--omit-empty=false"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			out := t.TempDir()
+			schemaPath := filepath.Join(out, "sn.json")
+			if err := os.WriteFile(schemaPath, []byte(strippedNulledSchema), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			runSchemagen(t, schemagenBinary(t), append([]string{"generate", schemaPath, "-o", filepath.Join(out, "sn"), "-p", "sn", "--root-name", "sn.json=Root"}, c.flags...)...)
+			if err := writeTestGoMod(out, "ex.test/sn"); err != nil {
+				t.Fatal(err)
+			}
+			for rel, content := range map[string]string{
+				"sn/identity_check.go": identityCheckSource("sn"),
+				"covdrv/main.go":       strippedNulledDriver,
+			} {
+				p := filepath.Join(out, rel)
+				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			writes, executed := validateUnderCoverage(t, out, "sn", nil, "PASS")
+			if executed < 50 {
+				t.Fatalf("only %d blocks of the generated package ran during Validate; the counters are not reading it", executed)
+			}
+			if len(writes) > 0 {
+				t.Errorf("Validate wrote values out to compare them, %d places:\n\t%s", len(writes), strings.Join(writes, "\n\t"))
+			}
+		})
+	}
+}
+
+// strippedNulledSchema has a type of each kind: Holder strips writeOnly members
+// from below a tuple slot and a patternProperties value, Leftover is held whole
+// and strips from its bytes, Nulls writes back the nulls a document wrote, and
+// Zero's members, named so no struct tag can carry them, are left out where they
+// write what their Go zero writes.
+const strippedNulledSchema = `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+ "$defs":{
+  "Access":{"type":"object","properties":{"ro":{"type":"integer","readOnly":true},"wo":{"type":"integer","writeOnly":true},"ok":{"type":"integer"}}},
+  "Holder":{"type":"object","properties":{
+      "tuple":{"type":"array","prefixItems":[{"$ref":"#/$defs/Access"}]},
+      "patterned":{"type":"object","patternProperties":{"^k":{"$ref":"#/$defs/Access"}}},
+      "plain":{"type":"string"}}},
+  "Nulls":{"type":"object","properties":{
+      "ns":{"type":["string","null"]},
+      "nn":{"type":["number","null"]},
+      "nl":{"type":["array","null"],"items":{"type":"string"}},
+      "any":{},
+      "s":{"type":"string"}}},
+  "Zero":{"type":"object","properties":{"c,d":{"const":"fixed"},"e,f":{"type":"integer","minimum":5},"g,h":{"minLength":2},"i,j":{"type":"number","minimum":5}}},
+  "Leftover":{"type":"object","unevaluatedProperties":{"$ref":"#/$defs/Access"}}
+ },
+ "type":"object",
+ "properties":{
+   "holders":{"type":"array","uniqueItems":true,"items":{"$ref":"#/$defs/Holder"}},
+   "nulls":{"type":"array","uniqueItems":true,"items":{"$ref":"#/$defs/Nulls"}},
+   "zeros":{"type":"array","uniqueItems":true,"items":{"$ref":"#/$defs/Zero"}},
+   "leftovers":{"type":"array","uniqueItems":true,"items":{"$ref":"#/$defs/Leftover"}}
+ }}`
+
+// strippedNulledDriver checks every decoded document's identities against what
+// MarshalJSON writes (see identityCheckSource), then clears the counters and
+// validates each, holding it to its verdict. The duplicates are values written
+// the same: the same members in another order, a number spelled another way, a
+// null written back where the document wrote one.
+const strippedNulledDriver = `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"runtime/coverage"
+
+	"ex.test/sn/sn"
+)
+
+func main() {
+	docs := []struct {
+		doc   string
+		valid bool
+	}{
+		{` + "`" + `{"holders":[{"tuple":[{"wo":1,"ok":2,"x":[1,{"a":1.50}]}],"patterned":{"k1":{"wo":3,"ok":4},"z":{"wo":5}},"plain":"p"},{"tuple":[{"ok":3}]}]}` + "`" + `, true},
+		{` + "`" + `{"holders":[{"tuple":[{"ok":2}],"plain":"p"},{"plain":"p","tuple":[{"ok":2.0}]}]}` + "`" + `, false},
+		{` + "`" + `{"nulls":[{"ns":null,"nn":null,"nl":null,"any":null,"s":"a"},{"ns":"x","nn":-0.0,"nl":["a"],"any":{"b":[1,2]},"s":"a"},{"s":"b"}]}` + "`" + `, true},
+		{` + "`" + `{"nulls":[{"ns":null,"s":"a"},{"s":"a","ns":null}]}` + "`" + `, false},
+		{` + "`" + `{"zeros":[{"c,d":"fixed","e,f":7,"g,h":"xy"},{"e,f":8},{}]}` + "`" + `, true},
+		{` + "`" + `{"zeros":[{"e,f":7},{"e,f":7.0}]}` + "`" + `, false},
+		{` + "`" + `{"leftovers":[{"a":{"wo":1,"ok":2}},{"a":{"ok":3}},{"b":{"ok":2}}]}` + "`" + `, true},
+		{` + "`" + `{"leftovers":[{"a":{"ok":2e0,"wo":1}},{"a":{"wo":2,"ok":2}}]}` + "`" + `, false},
+	}
+	var decoded []sn.Root
+	values, changed := 0, 0
+	for _, d := range docs {
+		var r sn.Root
+		if err := json.Unmarshal([]byte(d.doc), &r); err != nil {
+			fmt.Println("decode:", d.doc, err)
+			os.Exit(1)
+		}
+		diffs, v, c := sn.SchemagenIdentityDiffs(&r)
+		for _, diff := range diffs {
+			fmt.Println(d.doc, diff)
+		}
+		if len(diffs) > 0 {
+			os.Exit(1)
+		}
+		values += v
+		changed += c
+		decoded = append(decoded, r)
+	}
+	// A floor: a walk that reached nothing would find nothing.
+	if values < 30 || changed < 50 {
+		fmt.Println("the identity walk compared", values, "values and", changed, "changed ones")
+		os.Exit(1)
+	}
+	if err := coverage.ClearCounters(); err != nil {
+		panic(err)
+	}
+	for i, r := range decoded {
+		if err := r.Validate(); (err == nil) != docs[i].valid {
+			fmt.Println("decoded:", docs[i].doc, "valid:", docs[i].valid, "Validate:", err)
+			os.Exit(1)
+		}
+	}
+	if err := coverage.WriteCountersDir(os.Args[1]); err != nil {
+		panic(err)
+	}
+	fmt.Println("PASS")
+}
+`
+
 // encodingCall is every way generated code writes a value out: encoding/json,
 // a MarshalJSON, the generated encoder, and the reduction to canonical text,
 // which writes strings through encoding/json.

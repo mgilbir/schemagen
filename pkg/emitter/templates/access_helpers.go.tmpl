@@ -450,4 +450,134 @@ func _accessStripWriteOnly(data []byte, rules []_accessRule) ([]byte, error) {
 	}
 	return out, nil
 }
+{{- if .Identity}}
+
+// _accessStripTree is _accessStripWriteOnly over a tree (see jsonValidation):
+// the members the rules reach are taken out of it, by the same steps in the same
+// key order, and nothing is written out or read back to do it. It is how the
+// identity of a value whose writing strips members is read.
+//
+// The tree is changed in place. Every tree a reading leaves is built for that
+// reading -- copied off the value, or decoded from bytes -- so nothing else
+// holds it.
+func _accessStripTree(t any, rules []_accessRule) (any, error) {
+	for _, rule := range rules {
+		if !rule.WriteOnly {
+			continue
+		}
+		next, err := _accessStripTreeAt(t, rule.Path)
+		if err != nil {
+			return nil, err
+		}
+		t = next
+	}
+	return t, nil
+}
+
+// _accessStripTreeAt is _accessApply, stripping, over a tree. A value of the
+// wrong JSON kind is left as it is, as _accessApply leaves it.
+func _accessStripTreeAt(t any, path []_accessStep) (any, error) {
+	if len(path) == 0 {
+		return t, nil
+	}
+	step := path[0]
+	switch step.Kind {
+	case _accessProperty, _accessPattern, _accessOther:
+		obj, ok := t.(map[string]any)
+		if !ok {
+			return t, nil
+		}
+		keys := make([]string, 0, len(obj))
+		{{- /* maporder: gathers the keys, which are sorted before any is read. */}}
+		for k := range obj {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			matched, err := _accessKeyMatches(step, key)
+			if err != nil {
+				return t, fmt.Errorf("%s: %w", _schemagenQuote(key), err)
+			}
+			if !matched {
+				continue
+			}
+			if len(path) == 1 {
+				delete(obj, key)
+				continue
+			}
+			next, err := _accessStripTreeAt(obj[key], path[1:])
+			if err != nil {
+				return t, err
+			}
+			obj[key] = next
+		}
+		return obj, nil
+	case _accessItems, _accessTuple:
+		arr, ok := t.([]any)
+		if !ok {
+			return t, nil
+		}
+		for i := range arr {
+			if step.Kind == _accessTuple && i != step.Index {
+				continue
+			}
+			if step.Kind == _accessItems && i < step.Index {
+				continue
+			}
+			next, err := _accessStripTreeAt(arr[i], path[1:])
+			if err != nil {
+				return t, err
+			}
+			arr[i] = next
+		}
+		return arr, nil
+	}
+	return t, nil
+}
+
+// stripWriteOnly is jsonObj.stripWriteOnly for an identity, over trees: a member
+// matched by a one-step rule is taken out, and a member a longer rule reaches
+// into is read as its tree and has the rest of the path taken out of that. m
+// reads trees, so every member read so far holds one.
+func (o *jsonIDObj) stripWriteOnly(rules []_accessRule, member jsonIDMemberFunc, m *jsonValidation) error {
+	for _, rule := range rules {
+		if !rule.WriteOnly || len(rule.Path) == 0 {
+			continue
+		}
+		step := rule.Path[0]
+		// In key order, as _accessApply reads an object, so that a key no
+		// pattern match could be decided for is the same one reported.
+		live := make([]*jsonIDObjMember, 0, len(o.ms))
+		for i := range o.ms {
+			if !o.ms[i].gone {
+				live = append(live, &o.ms[i])
+			}
+		}
+		sort.Slice(live, func(i, j int) bool { return live[i].key < live[j].key })
+		for _, mb := range live {
+			matched, mErr := _accessKeyMatches(step, mb.key)
+			if mErr != nil {
+				return fmt.Errorf("%s: %w", _schemagenQuote(mb.key), mErr)
+			}
+			if !matched {
+				continue
+			}
+			if len(rule.Path) == 1 {
+				mb.gone = true
+				continue
+			}
+			t, _, err := o.tree(mb, member, m)
+			if err != nil {
+				return err
+			}
+			next, err := _accessStripTreeAt(t, rule.Path[1:])
+			if err != nil {
+				return err
+			}
+			mb.tree, mb.kind = next, jsonIDObjComputed
+		}
+	}
+	return nil
+}
+{{- end}}
 {{- end}}
