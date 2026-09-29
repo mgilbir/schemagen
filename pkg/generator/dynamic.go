@@ -131,10 +131,10 @@ func modelledChecks(s *schema.Schema) ([]DynamicCheck, bool) {
 		checks = append(checks, DynamicCheck{Kind: "multipleOf", Value: *s.MultipleOf})
 	}
 	if s.MinLength != nil {
-		checks = append(checks, DynamicCheck{Kind: "minLength", Value: s.MinLength.Int()})
+		checks = append(checks, DynamicCheck{Kind: "minLength", Value: countBound(*s.MinLength)})
 	}
 	if s.MaxLength != nil {
-		checks = append(checks, DynamicCheck{Kind: "maxLength", Value: s.MaxLength.Int()})
+		checks = append(checks, DynamicCheck{Kind: "maxLength", Value: countBound(*s.MaxLength)})
 	}
 	if s.Pattern != nil {
 		checks = append(checks, DynamicCheck{Kind: "pattern", Value: *s.Pattern})

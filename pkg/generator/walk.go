@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/mgilbir/schemagen/pkg/schema"
@@ -98,15 +99,19 @@ func walkSchemaNode(s *schema.Schema, visit func(*schema.Schema), seen map[*sche
 }
 
 // checkNullSubschemas reports the first JSON null sitting in a position that
-// must hold a schema, identified by a JSON Pointer into the document.
+// must hold a schema, or the first keyword whose value is malformed (see
+// schema.Schema.MalformedKeywords), identified by a JSON Pointer into the
+// document.
 //
-// json.Unmarshal cannot flag these for us. A null inside a []*Schema or a
-// map[string]*Schema lands as a nil *element*, and only the container can tell
-// it apart from an entry that was never there -- which is why the check has to
-// happen over the parsed tree rather than in an UnmarshalJSON hook. Nil pointer
-// *fields* ("not", "if", "contains", ...) are deliberately not checked: for
-// those, absent and null both arrive as a nil pointer, so rejecting nil would
-// reject every schema that simply omits the keyword.
+// A null the document wrote is recorded by the decode, at the entry, as a
+// malformed value of the keyword that holds it (schema.KeywordError.Path), so
+// this reports it where the document wrote it. A nil *element* of a []*Schema
+// or a map[string]*Schema is what a null is in a tree built through the Go API,
+// and only the container can tell it apart from an entry that was never there,
+// so the walk checks for those too. Nil pointer *fields* ("not", "if",
+// "contains", ...) are deliberately not checked: for those, absent and null
+// both arrive as a nil pointer, so rejecting nil would reject every schema that
+// simply omits the keyword.
 //
 // The nulls are rejected, not dropped. {"allOf":[null]} is not a schema, and
 // silently generating for {"allOf":[]} instead would hand back a type that
@@ -120,41 +125,111 @@ func walkSchemaNode(s *schema.Schema, visit func(*schema.Schema), seen map[*sche
 // tree. Same for a document the resolver fetched -- it was never in the tree at
 // all. See the call in resolveRefInContext.
 //
-// rootPtr is what the reported pointers are relative to: "#" for the document
-// Generate was handed, and the $ref string for a document reached through one,
-// so "#/examples/0" plus "/allOf/0" reads as the path a caller can follow.
+// The location reported is where the document wrote the value, which is not
+// the path this walk took to it: the walk sees the tree Normalize rewrote, where
+// draft 3's "extends" is "allOf", "disallow" is "not", "dependencies" is
+// "dependentSchemas" and "definitions" is mirrored as "$defs", and a path
+// through that names a location in no document. So every node that has a
+// location of its own (schema.Schema.SourceLocation, recorded when the
+// document was read) is reported at it, and the path the walk took is used only
+// for a node that has none -- one built through the Go API. See docLocator.
 //
-// The pointer names the *normalized* document, which is what the generator
-// works on. That only shows for "definitions": Normalize aliases it to "$defs",
-// so a draft-07 document's null definition is reported under "$defs" -- the
-// definition name, which is the part that locates the problem, is unchanged.
+// rootPtr is the fallback for s itself: "#" for the document Generate was
+// handed, and the $ref string for a node reached through one.
 //
 // verified carries across calls for the lifetime of one Generate, so a node is
 // walked once no matter how many refs land on it. A node joins it only once its
 // whole subtree is clear: marking on entry would let a walk that gave up
 // part-way still record the nodes it had touched as checked, and a later ref
 // onto one of those would then be waved through with the null still under it.
-func checkNullSubschemas(s *schema.Schema, rootPtr string, verified map[*schema.Schema]bool) error {
-	return checkNullSubschemasIn(s, strings.TrimSuffix(rootPtr, "/"), verified, make(map[*schema.Schema]bool))
+func checkNullSubschemas(s *schema.Schema, rootPtr string, home *schema.Schema, verified map[*schema.Schema]bool) error {
+	w := nullWalk{locator: docLocator{home: home}, verified: verified, onPath: make(map[*schema.Schema]bool)}
+	return w.check(s, strings.TrimSuffix(rootPtr, "/"))
 }
 
-func checkNullSubschemasIn(s *schema.Schema, ptr string, verified, onPath map[*schema.Schema]bool) error {
+// docLocator names where a document wrote a node.
+type docLocator struct {
+	// home is the root of the document Generate was handed, whose locations
+	// are written as a bare fragment ("#/extends/1"), as the reports about the
+	// input document always have been. A node in any other document is
+	// written with that document's URI in front.
+	home *schema.Schema
+}
+
+// name returns the location of n as a URI reference -- a fragment for the home
+// document -- and whether n has one. The fragment is schema.PointerFragment,
+// which schema.FragmentPointer reads back to the same tokens.
+func (l docLocator) name(n *schema.Schema) (string, bool) {
+	doc, tokens, ok := n.SourceLocation()
+	if !ok {
+		return "", false
+	}
+	fragment := schema.PointerFragment(tokens...)
+	if doc == l.home {
+		return fragment, true
+	}
+	if doc.BaseURI == nil {
+		return "", false
+	}
+	u := *doc.BaseURI
+	u.Fragment, u.RawFragment = "", ""
+	return u.String() + fragment, true
+}
+
+// below extends a location by reference tokens.
+func below(ptr string, tokens ...string) string {
+	return ptr + strings.TrimPrefix(schema.PointerFragment(tokens...), "#")
+}
+
+type nullWalk struct {
+	locator  docLocator
+	verified map[*schema.Schema]bool
 	// onPath keeps the walk finite. A tree parsed from JSON cannot contain a
 	// cycle, but a Schema built through the Go API can, and "verified" is no
 	// help there because it is only written on the way out.
-	if s == nil || verified[s] || onPath[s] {
+	onPath map[*schema.Schema]bool
+}
+
+// at is where the document wrote s, which the walk reached at ptr: worked out
+// only when there is something to report, since most walks find nothing, and
+// ptr, the path the walk took, when s is a node no document wrote.
+func (w nullWalk) at(s *schema.Schema, ptr string) string {
+	if loc, ok := w.locator.name(s); ok {
+		return loc
+	}
+	return ptr
+}
+
+// check walks s, which the walk reached at ptr.
+func (w nullWalk) check(s *schema.Schema, ptr string) error {
+	if s == nil || w.verified[s] || w.onPath[s] {
 		return nil
 	}
-	onPath[s] = true
-	defer delete(onPath, s)
+	w.onPath[s] = true
+	defer delete(w.onPath, s)
 
+	// A keyword whose value is malformed is the same mistake one level up: the
+	// document wrote something the keyword cannot hold, and generating as though
+	// it had written nothing would certify data against a document nobody
+	// wrote. schema.Schema records these while decoding and the dialect pass
+	// drops the records for keywords the node's dialect does not define, so
+	// what is left here is exactly the set to refuse. See
+	// schema.Schema.MalformedKeywords. The record says where below the keyword
+	// the value is, so a null entry is reported at the entry.
+	if bad := s.MalformedKeywords(); len(bad) > 0 {
+		return fmt.Errorf("%s: %w", below(w.at(s, ptr), append([]string{bad[0].Keyword}, bad[0].Path...)...), bad[0].Err)
+	}
+
+	// A nil entry of a container is what a null becomes in a tree built
+	// through the Go API; the decode records a null the document wrote as a
+	// malformed value, above. Reported at the path the walk took, which is all
+	// such a tree has.
 	list := func(keyword string, subs []*schema.Schema) error {
 		for i, sub := range subs {
-			at := fmt.Sprintf("%s/%s/%d", ptr, keyword, i)
 			if sub == nil {
-				return nullSubschemaError(at)
+				return nullSubschemaError(below(w.at(s, ptr), keyword, strconv.Itoa(i)))
 			}
-			if err := checkNullSubschemasIn(sub, at, verified, onPath); err != nil {
+			if err := w.check(sub, below(ptr, keyword, strconv.Itoa(i))); err != nil {
 				return err
 			}
 		}
@@ -162,11 +237,10 @@ func checkNullSubschemasIn(s *schema.Schema, ptr string, verified, onPath map[*s
 	}
 	byKey := func(keyword string, m map[string]*schema.Schema) error {
 		for _, k := range sortedKeys(m) {
-			at := ptr + "/" + keyword + "/" + escapeJSONPointerToken(k)
 			if m[k] == nil {
-				return nullSubschemaError(at)
+				return nullSubschemaError(below(w.at(s, ptr), keyword, k))
 			}
-			if err := checkNullSubschemasIn(m[k], at, verified, onPath); err != nil {
+			if err := w.check(m[k], below(ptr, keyword, k)); err != nil {
 				return err
 			}
 		}
@@ -199,7 +273,7 @@ func checkNullSubschemasIn(s *schema.Schema, ptr string, verified, onPath map[*s
 		{"unevaluatedItems", s.UnevaluatedItems},
 		{"unevaluatedProperties", s.UnevaluatedProperties},
 	} {
-		if err := checkNullSubschemasIn(f.sub, ptr+"/"+f.keyword, verified, onPath); err != nil {
+		if err := w.check(f.sub, below(ptr, f.keyword)); err != nil {
 			return err
 		}
 	}
@@ -220,34 +294,27 @@ func checkNullSubschemasIn(s *schema.Schema, ptr string, verified, onPath map[*s
 	}
 
 	if s.AdditionalProperties != nil {
-		if err := checkNullSubschemasIn(s.AdditionalProperties.Schema, ptr+"/additionalProperties", verified, onPath); err != nil {
+		if err := w.check(s.AdditionalProperties.Schema, below(ptr, "additionalProperties")); err != nil {
 			return err
 		}
 	}
 	if s.AdditionalItems != nil {
-		if err := checkNullSubschemasIn(s.AdditionalItems.Schema, ptr+"/additionalItems", verified, onPath); err != nil {
+		if err := w.check(s.AdditionalItems.Schema, below(ptr, "additionalItems")); err != nil {
 			return err
 		}
 	}
 	if s.Items != nil {
-		if err := checkNullSubschemasIn(s.Items.Schema, ptr+"/items", verified, onPath); err != nil {
+		if err := w.check(s.Items.Schema, below(ptr, "items")); err != nil {
 			return err
 		}
 		if err := list("items", s.Items.Schemas); err != nil {
 			return err
 		}
 	}
-	verified[s] = true
+	w.verified[s] = true
 	return nil
 }
 
 func nullSubschemaError(ptr string) error {
 	return fmt.Errorf("%s: schema is null (a schema must be an object or boolean)", ptr)
-}
-
-// escapeJSONPointerToken applies RFC 6901 escaping so a property name
-// containing "/" or "~" still yields a pointer that names it unambiguously.
-func escapeJSONPointerToken(token string) string {
-	token = strings.ReplaceAll(token, "~", "~0")
-	return strings.ReplaceAll(token, "/", "~1")
 }

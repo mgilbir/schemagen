@@ -220,7 +220,7 @@ var refReadingSites = map[string]refReadingSite{
 			"because it does not: its target is chosen from the resources an evaluation entered. Widening it " +
 			"would silently hand every caller a reference resolved by the wrong rule",
 	},
-	"schema/schema.go | (*Schema).UnmarshalJSON": {
+	"schema/parse.go | (*Schema).decodeSpecialKeyword": {
 		Verdict: refAsksAboutOneKeyword, Reads: "$ref",
 		Why: `rewrites the empty "$ref": "" to "#". No draft gives $recursiveRef or $dynamicRef that spelling`,
 	},

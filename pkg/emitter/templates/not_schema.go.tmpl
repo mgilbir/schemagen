@@ -147,13 +147,13 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				_branchMatches = false
 			} else {
 				{{- if eq .RuleType "minimum"}}
-				if _num < {{numLit .Value}} { _branchMatches = false }
+				if _num < {{countExpr .Value}} { _branchMatches = false }
 				{{- else if eq .RuleType "maximum"}}
-				if _num > {{numLit .Value}} { _branchMatches = false }
+				if _num > {{countExpr .Value}} { _branchMatches = false }
 				{{- else if eq .RuleType "exclusiveMinimum"}}
-				if _num <= {{numLit .Value}} { _branchMatches = false }
+				if _num <= {{countExpr .Value}} { _branchMatches = false }
 				{{- else if eq .RuleType "exclusiveMaximum"}}
-				if _num >= {{numLit .Value}} { _branchMatches = false }
+				if _num >= {{countExpr .Value}} { _branchMatches = false }
 				{{- else if eq .RuleType "multipleOf"}}
 				_q := _num / {{numLit .Value}}
 				if math.Abs(_q - math.Round(_q)) > 1e-9 { _branchMatches = false }
@@ -165,9 +165,9 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				_branchMatches = false
 			} else {
 				{{- if eq .RuleType "minLength"}}
-				if utf8.RuneCountInString(_s) < {{numLit .Value}} { _branchMatches = false }
+				if utf8.RuneCountInString(_s) < {{countExpr .Value}} { _branchMatches = false }
 				{{- else if eq .RuleType "maxLength"}}
-				if utf8.RuneCountInString(_s) > {{numLit .Value}} { _branchMatches = false }
+				if utf8.RuneCountInString(_s) > {{countExpr .Value}} { _branchMatches = false }
 				{{- else if eq .RuleType "pattern"}}
 				if _matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, _s); !_matched { _branchMatches = false }
 				{{- end}}
@@ -178,9 +178,9 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				_branchMatches = false
 			} else {
 				{{- if eq .RuleType "minItems"}}
-				if len(_arr) < {{numLit .Value}} { _branchMatches = false }
+				if len(_arr) < {{countExpr .Value}} { _branchMatches = false }
 				{{- else if eq .RuleType "maxItems"}}
-				if len(_arr) > {{numLit .Value}} { _branchMatches = false }
+				if len(_arr) > {{countExpr .Value}} { _branchMatches = false }
 				{{- end}}
 			}
 			{{- end}}

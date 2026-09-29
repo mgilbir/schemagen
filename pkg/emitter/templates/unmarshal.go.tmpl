@@ -403,10 +403,10 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 						oneofOK := true
 						{{- range $v.Checks}}
 						{{- if eq .RuleType "minLength"}}
-						if utf8.RuneCountInString(candidate) < {{numLit .Value}} { oneofOK = false }
+						if utf8.RuneCountInString(candidate) < {{countExpr .Value}} { oneofOK = false }
 						{{- end}}
 						{{- if eq .RuleType "maxLength"}}
-						if utf8.RuneCountInString(candidate) > {{numLit .Value}} { oneofOK = false }
+						if utf8.RuneCountInString(candidate) > {{countExpr .Value}} { oneofOK = false }
 						{{- end}}
 						{{- if eq .RuleType "pattern"}}
 						if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, candidate); !matched { oneofOK = false }
@@ -415,28 +415,28 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 						{{- if .ExactCompare}}
 						if {{numOperand . "candidate"}} < {{numBound .}} { oneofOK = false }
 						{{- else}}
-						if float64(candidate) < {{numLit .Value}} { oneofOK = false }
+						if float64(candidate) < {{countExpr .Value}} { oneofOK = false }
 						{{- end}}
 						{{- end}}
 						{{- if eq .RuleType "maximum"}}
 						{{- if .ExactCompare}}
 						if {{numOperand . "candidate"}} > {{numBound .}} { oneofOK = false }
 						{{- else}}
-						if float64(candidate) > {{numLit .Value}} { oneofOK = false }
+						if float64(candidate) > {{countExpr .Value}} { oneofOK = false }
 						{{- end}}
 						{{- end}}
 						{{- if eq .RuleType "exclusiveMinimum"}}
 						{{- if .ExactCompare}}
 						if {{numOperand . "candidate"}} <= {{numBound .}} { oneofOK = false }
 						{{- else}}
-						if float64(candidate) <= {{numLit .Value}} { oneofOK = false }
+						if float64(candidate) <= {{countExpr .Value}} { oneofOK = false }
 						{{- end}}
 						{{- end}}
 						{{- if eq .RuleType "exclusiveMaximum"}}
 						{{- if .ExactCompare}}
 						if {{numOperand . "candidate"}} >= {{numBound .}} { oneofOK = false }
 						{{- else}}
-						if float64(candidate) >= {{numLit .Value}} { oneofOK = false }
+						if float64(candidate) >= {{countExpr .Value}} { oneofOK = false }
 						{{- end}}
 						{{- end}}
 						{{- if eq .RuleType "multipleOf"}}
@@ -450,10 +450,10 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 						{{- end}}
 						{{- end}}
 						{{- if eq .RuleType "minItems"}}
-						if len(candidate) < {{numLit .Value}} { oneofOK = false }
+						if len(candidate) < {{countExpr .Value}} { oneofOK = false }
 						{{- end}}
 						{{- if eq .RuleType "maxItems"}}
-						if len(candidate) > {{numLit .Value}} { oneofOK = false }
+						if len(candidate) > {{countExpr .Value}} { oneofOK = false }
 						{{- end}}
 						{{- end}}
 						if oneofOK {

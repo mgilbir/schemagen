@@ -2,6 +2,7 @@ package schema
 
 import (
 	"encoding/json"
+	"fmt"
 	"maps"
 	"reflect"
 	"slices"
@@ -16,7 +17,7 @@ import (
 // not recognise is to be ignored. encoding/json reads keys the other way round --
 // a key matching no field exactly is matched a second time case-insensitively --
 // so every keyword on Schema was accepted in every casing and enforced as the
-// keyword it resembles. See exactKeywordObject for the four ways that came out
+// keyword it resembles. See parse.go for the four ways that came out
 // wrong; tests/keyword_case_test.go is the same defect seen through the verdict a
 // generated type gives.
 
@@ -117,8 +118,8 @@ func TestTheExactSpellingWinsOverACaseVariantInEitherOrder(t *testing.T) {
 	}
 }
 
-// TestACaseVariantOfAKeywordIsNotFoldedByAnASCIIRule is why exactKeywordObject
-// asks strings.EqualFold rather than comparing lower-cased ASCII.
+// TestACaseVariantOfAKeywordIsNotFoldedByAnASCIIRule is why the decoder looks a
+// keyword up by its exact name rather than asking encoding/json to match it.
 //
 // U+017F LATIN SMALL LETTER LONG S folds to "s" under Unicode simple folding, so
 // "$ſchema" is a key encoding/json matches to the $schema field -- and $schema
@@ -194,36 +195,55 @@ func TestDiscriminatorFieldsAreMatchedByTheirExactNames(t *testing.T) {
 	}
 }
 
-// TestAnOrdinaryDocumentIsDecodedFromItsOwnBytes pins the fast path.
+// TestADuplicateKeyMeansItsLastValueWhateverElseTheObjectHolds pins the one
+// duplicate-key policy: the last value of a key is its value, for every keyword
+// type and independently of every other key.
 //
-// The rebuild costs a copy of the node's subtree, and Schema.UnmarshalJSON runs
-// once per node, so a rebuild taken unconditionally would be paid by every schema
-// at every level. exactKeywordObject answering nil is what confines it to the
-// documents that need it, and this is what says it still does.
-func TestAnOrdinaryDocumentIsDecodedFromItsOwnBytes(t *testing.T) {
+// Two things made it otherwise. encoding/json decodes a repeated key into a
+// struct field holding a map by filling the map the first value already
+// filled, so {"properties":{"a":{}},"properties":{"b":{}}} read as properties a
+// and b -- a merge no reading of the document asks for. And the case-folding
+// guard that preceded this decoder rebuilt the object from its key set whenever
+// some key folded onto a keyword, and the key set holds only the last value; so
+// adding an unrelated {"Title":"x"} flipped the same document to properties b
+// alone. Each case below is stated bare and beside such a key, and the two must
+// agree.
+func TestADuplicateKeyMeansItsLastValueWhateverElseTheObjectHolds(t *testing.T) {
 	cases := []struct {
 		name string
-		doc  string
-		want bool // does the document need the rebuild?
+		body string // the object's members, without braces
+		want func(*Schema) string
+		is   string
 	}{
-		{name: "a plain schema", doc: `{"type":"string","minLength":1}`, want: false},
-		{name: "an unrecognised keyword that folds onto nothing", doc: `{"x-vendor":1,"type":"string"}`, want: false},
-		{name: "a keyword stated twice in one casing", doc: `{"minLength":1,"minLength":2}`, want: false},
-		{name: "a property whose name happens to be a keyword", doc: `{"properties":{"MinLength":{"type":"string"}}}`, want: false},
-		{name: "a case variant of a keyword", doc: `{"MinLength":5}`, want: true},
-		{name: "a case variant beside the keyword itself", doc: `{"minLength":1,"MinLength":9}`, want: true},
+		{"a map-valued keyword", `"properties":{"a":{}},"properties":{"b":{}}`,
+			func(s *Schema) string { return strings.Join(slices.Sorted(maps.Keys(s.Properties)), ",") }, "b"},
+		{"a scalar keyword", `"minLength":1,"minLength":2`,
+			func(s *Schema) string { return fmt.Sprint(s.MinLength.Int()) }, "2"},
+		{"an array keyword", `"required":["a"],"required":["b"]`,
+			func(s *Schema) string { return strings.Join(s.Required, ",") }, "b"},
+		{"an unrecognised keyword", `"x-vendor":1,"x-vendor":2`,
+			func(s *Schema) string { return string(s.Extensions["x-vendor"]) }, "2"},
+		{"a key inside a map-valued keyword", `"properties":{"a":{"type":"string"},"a":{"type":"integer"}}`,
+			func(s *Schema) string { return strings.Join(s.Properties["a"].Type, ",") }, "integer"},
+		{"a legacy keyword read as schemas", `"dependencies":{"a":["x"]},"dependencies":{"b":["y"]}`,
+			func(s *Schema) string { return strings.Join(slices.Sorted(maps.Keys(s.DependencyRequired)), ",") }, "b"},
 	}
 	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			var raw map[string]json.RawMessage
-			if err := json.Unmarshal([]byte(c.doc), &raw); err != nil {
-				t.Fatalf("decoding %s: %v", c.doc, err)
-			}
-			got := exactKeywordObject(raw, knownSchemaKeys, knownSchemaKeyOrder) != nil
-			if got != c.want {
-				t.Errorf("%s: rebuilt=%v, want %v", c.doc, got, c.want)
-			}
-		})
+		for _, beside := range []string{"", `,"Title":"x"`} {
+			doc := "{" + c.body + beside + "}"
+			t.Run(c.name+beside, func(t *testing.T) {
+				var s Schema
+				if err := json.Unmarshal([]byte(doc), &s); err != nil {
+					t.Fatalf("%s was refused: %v", doc, err)
+				}
+				if bad := s.MalformedKeywords(); len(bad) > 0 {
+					t.Fatalf("%s reported malformed keywords: %v", doc, bad)
+				}
+				if got := c.want(&s); got != c.is {
+					t.Errorf("%s read as %q, want %q (the last value)", doc, got, c.is)
+				}
+			})
+		}
 	}
 }
 

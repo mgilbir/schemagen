@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -122,33 +123,23 @@ func bigNumberConstFixtures() []notFixture {
 	}
 }
 
-// disallowFixtures are issue #272(2): draft 3's "disallow" with a JSON null
-// among its entries.
+// disallowFixtures are the half of issue #272(2) that is about draft 3's
+// "disallow" binding where it is legible and nowhere else.
 //
-// A null decodes into a Schema without error and leaves it at its zero value,
-// which is the empty schema -- the schema that matches everything. "not"
-// everything admits nothing, so {"disallow":[null]} refused every document
-// there is: {}, "x", 5, [] and null alike.
+// #272(2) itself was {"disallow":[null]}: a null decoded into a Schema without
+// error and left it at its zero value, the schema that matches everything, and
+// "not" everything admits nothing -- so the document refused {}, "x", 5, [] and
+// null alike. The first fix skipped the null entry instead, and that is not
+// right either: no dialect gives a null entry a meaning, and reading the
+// document as though the entry were absent is the same guess in the other
+// direction. The entry is now refused as the malformed value it is, like a null
+// subschema anywhere else; TestMalformedDisallowEntryIsRefused holds that half.
 //
-// The three controls are what tell the fix from switching the keyword off.
-// Draft 3's own spellings must still bind, an entry list that mixes a legible
-// entry with an illegible one must still enforce the legible one, and a dialect
-// that does not define the keyword at all must go on ignoring it.
+// The two fixtures here are what tell that refusal from switching the keyword
+// off: draft 3's own spellings must still bind, and a dialect that does not
+// define the keyword must go on ignoring it.
 func disallowFixtures() []notFixture {
 	return []notFixture{
-		{
-			Name:       "disallow_array_null",
-			SchemaPath: "testdata/schemas/adversarial/nil2/disallow-array-null.json",
-			Instances: []notInstance{
-				{Name: "an object", Doc: `{}`, Valid: true,
-					Why: "issue #272: a null entry names nothing to forbid, and no dialect reading of this document refuses an object"},
-				{Name: "a string", Doc: `"x"`, Valid: true, Why: "control"},
-				{Name: "a number", Doc: `5`, Valid: true, Why: "control"},
-				{Name: "an array", Doc: `[]`, Valid: true, Why: "control"},
-				{Name: "a null", Doc: `null`, Valid: true,
-					Why: "control: not even the value that looks like the entry is forbidden by it"},
-			},
-		},
 		{
 			Name:       "disallow_draft3_entries",
 			SchemaPath: "testdata/schemas/regression/disallow_draft3_entries.json",
@@ -161,19 +152,6 @@ func disallowFixtures() []notFixture {
 			},
 		},
 		{
-			Name:       "disallow_draft3_null_entry",
-			SchemaPath: "testdata/schemas/regression/disallow_draft3_null_entry.json",
-			Instances: []notInstance{
-				{Name: "a forbidden string", Doc: `"x"`, Valid: false,
-					Why: "the legible entries of a mixed list must still bind: dropping the null must not drop the list"},
-				{Name: "a forbidden integer", Doc: `5`, Valid: false,
-					Why: "control: the schema-valued entry beside the null is legible and forbids integers"},
-				{Name: "a permitted null", Doc: `null`, Valid: true,
-					Why: "the null entry itself names nothing, so a null is not forbidden by it"},
-				{Name: "a permitted object", Doc: `{}`, Valid: true, Why: "control"},
-			},
-		},
-		{
 			Name:       "disallow_outside_draft3",
 			SchemaPath: "testdata/schemas/regression/disallow_outside_draft3.json",
 			Instances: []notInstance{
@@ -182,6 +160,52 @@ func disallowFixtures() []notFixture {
 				{Name: "anything else", Doc: `5`, Valid: true, Why: "control"},
 			},
 		},
+	}
+}
+
+// TestMalformedDisallowEntryIsRefused is the other half of issue #272(2): a
+// "disallow" entry that is neither a type name nor a schema is refused, with a
+// pointer to it, wherever the keyword is defined -- and ignored, with the rest
+// of the keyword, where it is not.
+func TestMalformedDisallowEntryIsRefused(t *testing.T) {
+	for _, tc := range []struct {
+		path string
+		want string // "" means the document must generate
+	}{
+		// No $schema: read as the union of every dialect, draft 3 included.
+		{"testdata/schemas/adversarial/nil2/disallow-array-null.json", "#/disallow/0: schema is null"},
+		{"testdata/schemas/regression/disallow_draft3_null_entry.json", "#/disallow/1: schema is null"},
+	} {
+		t.Run(filepath.Base(tc.path), func(t *testing.T) {
+			s, err := schema.LoadFromFile(filepath.Join("..", tc.path))
+			if err != nil {
+				t.Fatalf("loading: %v", err)
+			}
+			s.Normalize()
+			_, err = generator.New(generator.Config{PackageName: "testpkg", OmitEmpty: true}).Generate(s)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("generate: %v, want an error containing %q", err, tc.want)
+			}
+		})
+	}
+
+	// Under a dialect without the keyword, its value is nobody's business.
+	for _, uri := range []string{
+		"http://json-schema.org/draft-04/schema#",
+		"http://json-schema.org/draft-07/schema#",
+		"https://json-schema.org/draft/2020-12/schema",
+	} {
+		t.Run(uri, func(t *testing.T) {
+			var s schema.Schema
+			doc := `{"$schema":"` + uri + `","disallow":["string",null,7]}`
+			if err := json.Unmarshal([]byte(doc), &s); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			s.Normalize()
+			if _, err := generator.New(generator.Config{PackageName: "testpkg", OmitEmpty: true}).Generate(&s); err != nil {
+				t.Fatalf("%s: the dialect has no \"disallow\", so its value states nothing, but generation failed: %v", doc, err)
+			}
+		})
 	}
 }
 

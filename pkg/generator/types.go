@@ -282,11 +282,11 @@ type DependentRequiredDef struct {
 // PropertyNamesDef describes a propertyNames constraint on a struct.
 // All property names in the JSON object must satisfy these string validation rules.
 type PropertyNamesDef struct {
-	IsForbidden bool     // true when propertyNames: false (any property is invalid)
-	MaxLength   *int     // maximum length of property names
-	MinLength   *int     // minimum length of property names
-	Pattern     string   // regex pattern property names must match
-	Enum        []string // allowed property name values (from enum or const)
+	IsForbidden bool        // true when propertyNames: false (any property is invalid)
+	MaxLength   *CountBound // maximum length of property names
+	MinLength   *CountBound // minimum length of property names
+	Pattern     string      // regex pattern property names must match
+	Enum        []string    // allowed property name values (from enum or const)
 
 	// Format is the format keyword the sub-schema states, where the dialect
 	// asserts it and this generator has a check for it. Empty otherwise.
@@ -304,12 +304,12 @@ type PropertyNamesDef struct {
 // DependentSchemaConstraint describes a dependentSchemas entry. When the trigger key
 // is present in the JSON object, the sub-schema's constraints are applied.
 type DependentSchemaConstraint struct {
-	TriggerKey    string   // JSON property name that activates the constraint
-	IsFalse       bool     // boolean false schema — always reject when trigger is present
-	AllowedKeys   []string // set of JSON property names allowed (additionalProperties: false)
-	RequiredProps []string // required properties from the sub-schema
-	MinProperties *int     // minProperties from the sub-schema
-	MaxProperties *int     // maxProperties from the sub-schema
+	TriggerKey    string      // JSON property name that activates the constraint
+	IsFalse       bool        // boolean false schema — always reject when trigger is present
+	AllowedKeys   []string    // set of JSON property names allowed (additionalProperties: false)
+	RequiredProps []string    // required properties from the sub-schema
+	MinProperties *CountBound // minProperties from the sub-schema
+	MaxProperties *CountBound // maxProperties from the sub-schema
 
 	// Branch carries what the sub-schema demands of the object's *shape*,
 	// beyond which keys it demands be present. A dependentSchemas branch is an
@@ -1870,8 +1870,8 @@ type AliasDef struct {
 	TupleTail        *TupleItemDef       // what every position past the prefix must satisfy (2020-12 items, pre-2020 additionalItems)
 	ItemValidations  []ItemValidationDef // per-element checks when the alias is an array with a single items sub-schema, or a map with a single additionalProperties sub-schema
 	Contains         *ContainsDef        // contains sub-schema validation
-	MinContains      *int                // minContains (default 1 if contains is present)
-	MaxContains      *int                // maxContains
+	MinContains      *CountBound         // minContains (default 1 if contains is present)
+	MaxContains      *CountBound         // maxContains
 	UnevaluatedItems *UnevaluatedItemsDef
 	ValidateAs       string // named underlying type whose Validate method should be delegated to
 	UnmarshalAs      string // named underlying type whose UnmarshalJSON behavior should be delegated to
@@ -1924,13 +1924,13 @@ func (d *AliasDef) HasContainsValidation() bool {
 // matching loop assigns to it, and with no bound left to test nothing ever
 // reads it, which Go rejects outright as "declared and not used".
 // {"type":"array","contains":true,"minContains":0} was enough to produce it.
-func containsCanReject(def *ContainsDef, minContains, maxContains *int) bool {
+func containsCanReject(def *ContainsDef, minContains, maxContains *CountBound) bool {
 	if def == nil {
 		return false
 	}
 	min := 1
 	if minContains != nil {
-		min = *minContains
+		min = minContains.N
 	}
 	if def.IsFalse {
 		// No element ever matches, so the count is fixed at 0. Only the lower
@@ -2045,8 +2045,8 @@ type FieldContainsDef struct {
 	Optional bool
 
 	Contains    *ContainsDef
-	MinContains *int // nil means the default of 1
-	MaxContains *int // nil means no upper bound
+	MinContains *CountBound // nil means the default of 1
+	MaxContains *CountBound // nil means no upper bound
 }
 
 // FieldTupleDef carries the positional shape an array *property* states through
@@ -2130,8 +2130,8 @@ type ItemLevel struct {
 	// FieldContainsDef existed. That is issue #179, and the check emitted here
 	// is the same contains_check template every other position uses.
 	Contains    *ContainsDef
-	MinContains *int // nil means the default of 1
-	MaxContains *int // nil means no upper bound
+	MinContains *CountBound // nil means the default of 1
+	MaxContains *CountBound // nil means no upper bound
 }
 
 // carries reports whether this level emits a check of its own.
@@ -2200,8 +2200,8 @@ type InferredAliasDef struct {
 
 	// Contains validation for inferred arrays:
 	Contains    *ContainsDef // contains sub-schema validation
-	MinContains *int         // minContains (default 1 when contains is present)
-	MaxContains *int         // maxContains (nil = no upper bound)
+	MinContains *CountBound  // minContains (default 1 when contains is present)
+	MaxContains *CountBound  // maxContains (nil = no upper bound)
 
 	// UnevaluatedItems validation for inferred arrays:
 	UnevaluatedItems *UnevaluatedItemsDef // unevaluatedItems constraint (Draft 2019-09+)

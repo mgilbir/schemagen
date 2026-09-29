@@ -90,6 +90,6 @@ func TestConjoinAllOfPropertyResolvesTheBooleanSchemas(t *testing.T) {
 }
 
 func flexInt(n int) *schema.FlexInt {
-	f := schema.FlexInt(n)
+	f := schema.NewFlexInt(n)
 	return &f
 }

@@ -1,6 +1,11 @@
 package schema
 
-import "reflect"
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"reflect"
+)
 
 // This file holds the one answer to "does this dialect define this keyword",
 // and the pass that acts on it.
@@ -68,13 +73,33 @@ const (
 	formBoolean
 	formNumber
 	formStringArray
+
+	// formSchema and formSchemaArray are the two shapes of "items": one schema
+	// for every element, or draft 3-2019-09's tuple of one schema per position.
+	formSchema
+	formSchemaArray
+
+	// formTypeNames and formTypeSchemas are the two shapes of "type": names
+	// only, or draft 3's list that may also hold schemas.
+	formTypeNames
+	formTypeSchemas
 )
 
 // keywordForm is one spelling of a keyword and the span in which that spelling
 // is defined.
+//
+// A value written in a spelling the node's dialect does not define, of a keyword
+// that dialect does define, is refused (see dropKeywordsOutsideDialect), and the
+// refusal is written from the three strings: what the value is (Shape), whose
+// spelling that is (Dialects), and what a dialect without it writes instead
+// (Instead). TestEveryKeywordFormSaysWhatToWriteInstead holds all three present.
 type keywordForm struct {
 	Form     valueForm
 	From, To Draft
+
+	Shape    string
+	Dialects string
+	Instead  string
 }
 
 // keywordDialect is one row of the table: the drafts that define a keyword, and
@@ -207,7 +232,18 @@ var keywordDialects = map[string]keywordDialect{
 	"$dynamicRef": {From: Draft202012, To: DraftV1, Gate: gateDrop},
 
 	// ── Any-instance assertions ──────────────────────────────────────────
-	"type":  {From: Draft03, To: DraftV1, Gate: gateDrop},
+	// "type" names types in every draft. Draft 3 alone also lets an entry of
+	// the array be a schema -- {"type":["string",{"minimum":3}]} -- and a later
+	// dialect has no reading of that value at all, so it is gated per shape like
+	// "required" below.
+	"type": {Gate: gateDrop, Forms: []keywordForm{
+		{Form: formTypeNames, From: Draft03, To: DraftV1,
+			Shape: "a type name or an array of type names", Dialects: "every draft's",
+			Instead: "name the types"},
+		{Form: formTypeSchemas, From: Draft03, To: Draft03,
+			Shape: "an array holding schemas beside type names", Dialects: "draft 3's",
+			Instead: `write the alternatives as "anyOf", and "type" as type names only`},
+	}},
 	"enum":  {From: Draft03, To: DraftV1, Gate: gateDrop},
 	"const": {From: Draft06, To: DraftV1, Gate: gateDrop},
 
@@ -247,8 +283,12 @@ var keywordDialects = map[string]keywordDialect{
 	// per shape: a draft-6 document writing {"a":{"required":true}} states a
 	// boolean where the keyword takes an array, and the property is not required.
 	"required": {Gate: gateDrop, Forms: []keywordForm{
-		{Form: formBoolean, From: Draft03, To: Draft03},
-		{Form: formStringArray, From: Draft04, To: DraftV1},
+		{Form: formBoolean, From: Draft03, To: Draft03,
+			Shape: "a boolean on the property's own schema", Dialects: "draft 3's",
+			Instead: `list the property's name in its parent's "required" array`},
+		{Form: formStringArray, From: Draft04, To: DraftV1,
+			Shape: "an array of property names", Dialects: "draft 4 and later's",
+			Instead: `write "required": true on each named property's own schema`},
 	}},
 
 	// "dependencies" was split into dependentRequired and dependentSchemas in
@@ -329,7 +369,24 @@ var keywordDialects = map[string]keywordDialect{
 			"writes the keyword in full has stated a constraint that dropping it would discard in silence"},
 
 	// ── Arrays ───────────────────────────────────────────────────────────
-	"items":       {From: Draft03, To: DraftV1, Gate: gateDrop},
+	// "items" is two keywords under one name, like "required". Up to 2019-09
+	// an array of schemas is a tuple -- one schema per position, with
+	// additionalItems for the rest; 2020-12 moved the tuple to prefixItems and
+	// defines "items" as a single schema only. Under 2020-12 and v1 an array
+	// there is therefore a value the dialect has no reading of, and it is
+	// ignored exactly as additionalItems is. Gating only additionalItems, as
+	// this row once did, made a draft-07 document forced to 2020-12 keep its
+	// tuple and lose the bound on everything after it -- a reading neither
+	// dialect gives -- so {"items":[{"type":"string"}],"additionalItems":false}
+	// accepted ["x",1,2].
+	"items": {Gate: gateDrop, Forms: []keywordForm{
+		{Form: formSchema, From: Draft03, To: DraftV1,
+			Shape: "a single schema for every element", Dialects: "every draft's",
+			Instead: "give one schema for every element"},
+		{Form: formSchemaArray, From: Draft03, To: Draft201909,
+			Shape: "an array of schemas, one per position", Dialects: "drafts 3 to 2019-09's",
+			Instead: `write the positions as "prefixItems", and the schema for the elements after them as "items"`},
+	}},
 	"prefixItems": {From: Draft202012, To: DraftV1, Gate: gateDrop},
 
 	// additionalItems was superseded by 2020-12's items-past-the-prefix and
@@ -371,12 +428,20 @@ var keywordDialects = map[string]keywordDialect{
 	// itself. Each dialect knows exactly one of the two spellings, and the other
 	// is an unknown value it has to ignore -- which is why the row is by shape.
 	"exclusiveMinimum": {Gate: gateDrop, Forms: []keywordForm{
-		{Form: formBoolean, From: Draft03, To: Draft04},
-		{Form: formNumber, From: Draft06, To: DraftV1},
+		{Form: formBoolean, From: Draft03, To: Draft04,
+			Shape: `a boolean making "minimum" exclusive`, Dialects: "drafts 3 and 4's",
+			Instead: `write the bound itself as "exclusiveMinimum", in place of "minimum"`},
+		{Form: formNumber, From: Draft06, To: DraftV1,
+			Shape: "a number, the exclusive bound itself", Dialects: "draft 6 and later's",
+			Instead: `write the bound as "minimum" with "exclusiveMinimum": true`},
 	}},
 	"exclusiveMaximum": {Gate: gateDrop, Forms: []keywordForm{
-		{Form: formBoolean, From: Draft03, To: Draft04},
-		{Form: formNumber, From: Draft06, To: DraftV1},
+		{Form: formBoolean, From: Draft03, To: Draft04,
+			Shape: `a boolean making "maximum" exclusive`, Dialects: "drafts 3 and 4's",
+			Instead: `write the bound itself as "exclusiveMaximum", in place of "maximum"`},
+		{Form: formNumber, From: Draft06, To: DraftV1,
+			Shape: "a number, the exclusive bound itself", Dialects: "draft 6 and later's",
+			Instead: `write the bound as "maximum" with "exclusiveMaximum": true`},
 	}},
 
 	// draft 3 spells this "divisibleBy"; see that row.
@@ -421,8 +486,13 @@ var keywordDialects = map[string]keywordDialect{
 // TestSchemaFieldsAreClassifiedForPresence holds that list; this one is held by
 // TestSchemaFieldsAreClassifiedForDialect.
 var hiddenFieldKeywords = map[string]string{
-	"ConstIsNull": "const",
-	"TypeSchemas": "type",
+	"ConstIsNull":        "const",
+	"TypeSchemas":        "type",
+	"Draft3Required":     "required",
+	"ExtendsSchemas":     "extends",
+	"DisallowSchemas":    "disallow",
+	"DependencySchemas":  "dependencies",
+	"DependencyRequired": "dependencies",
 }
 
 // nonKeywordFields names the exported fields of Schema that carry no keyword at
@@ -450,10 +520,20 @@ func (s *Schema) statedForm(keyword string) valueForm {
 	case "exclusiveMaximum":
 		return exclusiveBoundForm(s.ExclusiveMaximum)
 	case "required":
-		if s.Required.IsDraft3Required() {
+		if s.Draft3Required != nil {
 			return formBoolean
 		}
 		return formStringArray
+	case "items":
+		if s.Items != nil && s.Items.Schemas != nil {
+			return formSchemaArray
+		}
+		return formSchema
+	case "type":
+		if len(s.TypeSchemas) > 0 {
+			return formTypeSchemas
+		}
+		return formTypeNames
 	default:
 		return formAny
 	}
@@ -484,7 +564,19 @@ func exclusiveBoundForm(b *SchemaOrFloat) valueForm {
 // Clearing is what "ignore an unknown keyword" means to everything downstream. A
 // node whose dialect is unknown keeps everything, for the reason
 // keywordDialect.definedIn gives.
-func (s *Schema) dropKeywordsOutsideDialect(d Draft) {
+//
+// A keyword the dialect defines, written in a form the dialect does not, is not
+// an unknown keyword and is not ignored: it is a malformed value, refused like
+// any other (see Schema.MalformedKeywords), with a message naming whose
+// spelling it is and what the dialect writes instead. Ignoring it would drop a
+// constraint the author wrote -- {"items":[{"type":"string"}]} read under
+// 2020-12 said nothing about the array at all -- and every dialect's
+// meta-schema rejects the value, which is the spec's own test of a schema.
+// declared is the dialect the document itself states for the node, which
+// differs from d only when d was chosen from outside it (--draft), and the
+// refusal says so, because the fix is then as likely to be the flag as the
+// document.
+func (s *Schema) dropKeywordsOutsideDialect(d, declared Draft) {
 	if s == nil || d == DraftUnknown {
 		return
 	}
@@ -504,10 +596,43 @@ func (s *Schema) dropKeywordsOutsideDialect(d Draft) {
 		if fv.IsZero() {
 			continue
 		}
-		if !kd.definedIn(d, s.statedForm(keyword)) {
+		form := s.statedForm(keyword)
+		if !kd.definedIn(d, form) {
+			if len(kd.Forms) > 0 && KeywordDefinedIn(keyword, d) {
+				s.noteMalformed(keyword, kd.formError(keyword, form, d, declared))
+			} else if jsonTagName(f) != "" {
+				// An unknown keyword to this dialect: keep its value reachable
+				// by pointer, as an unknown keyword's is. The field is the
+				// document's own value (a json-tagged field decodes the key
+				// directly), so re-encoding it is the value the document wrote.
+				if raw, err := json.Marshal(fv.Interface()); err == nil {
+					if s.droppedKeywords == nil {
+						s.droppedKeywords = make(map[string]json.RawMessage)
+					}
+					s.droppedKeywords[keyword] = raw
+				}
+			}
 			fv.Set(reflect.Zero(f.Type))
 		}
 	}
+}
+
+// formError is the refusal for a keyword written in a form the dialect d does
+// not define.
+func (kd keywordDialect) formError(keyword string, form valueForm, d, declared Draft) error {
+	var f keywordForm
+	for _, cand := range kd.Forms {
+		if cand.Form == form {
+			f = cand
+		}
+	}
+	msg := fmt.Sprintf("%q is written as %s, which is %s spelling of it; %v does not define that form -- %s",
+		keyword, f.Shape, f.Dialects, d, f.Instead)
+	if declared != DraftUnknown && declared != d {
+		msg += fmt.Sprintf(" (the document's own $schema declares %v, and it is being read as %v, which was chosen "+
+			"from outside it, as --draft does)", declared, d)
+	}
+	return errors.New(msg)
 }
 
 // fieldKeyword returns the keyword a field of Schema carries, or "" when it
@@ -541,4 +666,36 @@ func jsonTagName(f reflect.StructField) string {
 		}
 	}
 	return tag
+}
+
+// negativeCountDefinedIn reports whether a dialect defines a negative value of
+// an integer-count keyword. Only one does: draft 3's maxLength is a plain
+// "integer" in its meta-schema, where every other count, in every dialect, is
+// non-negative. A negative maximum is then a legal schema admitting no string.
+//
+// DraftUnknown answers as definedIn does, for the same reason: a document with
+// no recognised dialect is read as the union of them, and draft 3 is in it.
+func negativeCountDefinedIn(keyword string, d Draft) bool {
+	return keyword == "maxLength" && (d == Draft03 || d == DraftUnknown)
+}
+
+// settleMalformedKeywords decides, now that the node's dialect is known, which
+// of the malformed values the decode recorded are refusals.
+//
+// A keyword the dialect does not define is ignored whatever its value, so its
+// record goes with it -- dropKeywordsOutsideDialect has already cleared the
+// field, or the decode never filled it. A negative count the dialect defines is
+// legal and its record goes too, keeping the value. Every other record stands,
+// and MalformedKeywords reports it.
+func (s *Schema) settleMalformedKeywords(d Draft) {
+	// maporder: each record is kept or deleted on its own keyword and value alone, so no order leaves a different map.
+	for keyword, err := range s.malformed {
+		if !KeywordDefinedIn(keyword, d) {
+			delete(s.malformed, keyword)
+			continue
+		}
+		if errors.Is(err, errNegativeCount) && negativeCountDefinedIn(keyword, d) {
+			delete(s.malformed, keyword)
+		}
+	}
 }

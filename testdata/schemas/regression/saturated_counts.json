@@ -1,0 +1,500 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "sMax": {
+      "type": "string",
+      "maxLength": 9223372036854775808
+    },
+    "sMin": {
+      "type": "string",
+      "minLength": 1e19
+    },
+    "sExact": {
+      "type": "string",
+      "maxLength": 9223372036854775807
+    },
+    "sWide": {
+      "type": "string",
+      "maxLength": 3000000000
+    },
+    "req": {
+      "$ref": "#/$defs/Required"
+    },
+    "reqArr": {
+      "$ref": "#/$defs/RequiredArray"
+    },
+    "aMax": {
+      "type": "array",
+      "maxItems": 1e30
+    },
+    "aMin": {
+      "type": "array",
+      "minItems": 18446744073709551616
+    },
+    "oMax": {
+      "type": "object",
+      "maxProperties": 1e400
+    },
+    "oMin": {
+      "type": "object",
+      "minProperties": 1e22
+    },
+    "cMax": {
+      "type": "array",
+      "contains": {
+        "type": "integer"
+      },
+      "maxContains": 1e23
+    },
+    "cMin": {
+      "type": "array",
+      "contains": {
+        "type": "integer"
+      },
+      "minContains": 1e24
+    },
+    "cStr": {
+      "type": "array",
+      "contains": {
+        "type": "string",
+        "minLength": 1e25
+      }
+    },
+    "names": {
+      "type": "object",
+      "propertyNames": {
+        "maxLength": 1e26
+      }
+    },
+    "namesMin": {
+      "type": "object",
+      "propertyNames": {
+        "minLength": 1e27
+      }
+    },
+    "elems": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1e28
+      }
+    },
+    "elemArrs": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "minItems": 1e29
+      }
+    },
+    "pattern": {
+      "type": "object",
+      "patternProperties": {
+        "^p": {
+          "type": "array",
+          "maxItems": 1e31
+        }
+      }
+    },
+    "patternMin": {
+      "type": "object",
+      "patternProperties": {
+        "^p": {
+          "type": "string",
+          "minLength": 1e32
+        }
+      }
+    },
+    "patternArrMin": {
+      "type": "object",
+      "patternProperties": {
+        "^p": {
+          "type": "array",
+          "minItems": 1e33
+        }
+      }
+    },
+    "dep": {
+      "type": "object",
+      "dependentSchemas": {
+        "a": {
+          "minProperties": 1e34
+        }
+      }
+    },
+    "depMax": {
+      "type": "object",
+      "dependentSchemas": {
+        "a": {
+          "maxProperties": 1e35
+        }
+      }
+    },
+    "notMin": {
+      "type": "string",
+      "not": {
+        "minLength": 1e36
+      }
+    },
+    "notMax": {
+      "type": "string",
+      "not": {
+        "maxLength": 1e37
+      }
+    },
+    "notArr": {
+      "type": "array",
+      "not": {
+        "minItems": 1e38
+      }
+    },
+    "oneStr": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1e39
+        },
+        {
+          "type": "string",
+          "maxLength": 1e40
+        }
+      ]
+    },
+    "oneArr": {
+      "oneOf": [
+        {
+          "type": "array",
+          "minItems": 1e41
+        },
+        {
+          "type": "array",
+          "maxItems": 1e42
+        }
+      ]
+    },
+    "alias": {
+      "$ref": "#/$defs/LongStr"
+    },
+    "aliasArr": {
+      "$ref": "#/$defs/BigArr"
+    },
+    "inferred": {
+      "$ref": "#/$defs/Untyped"
+    },
+    "ueItems": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "string"
+        }
+      ],
+      "unevaluatedItems": {
+        "type": "string",
+        "minLength": 1e43
+      }
+    },
+    "ueProps": {
+      "type": "object",
+      "properties": {
+        "s": {
+          "type": "string"
+        }
+      },
+      "unevaluatedProperties": {
+        "type": "string",
+        "minLength": 1e44
+      }
+    },
+    "merged": {
+      "allOf": [
+        {
+          "type": "string",
+          "maxLength": 3
+        },
+        {
+          "maxLength": 1e45
+        }
+      ]
+    },
+    "reqMax": {
+      "$ref": "#/$defs/RequiredMax"
+    },
+    "nullArr": {
+      "type": ["array", "null"],
+      "minItems": 1e51
+    },
+    "nullArrMax": {
+      "type": ["array", "null"],
+      "maxItems": 1e52
+    },
+    "elemsMax": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "maxLength": 1e53
+      }
+    },
+    "elemArrsMax": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "maxItems": 1e54
+      }
+    },
+    "uePropsMax": {
+      "type": "object",
+      "properties": {
+        "s": {
+          "type": "string"
+        }
+      },
+      "unevaluatedProperties": {
+        "type": "string",
+        "maxLength": 1e55
+      }
+    },
+    "ueItemsMax": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "string"
+        }
+      ],
+      "unevaluatedItems": {
+        "type": "string",
+        "maxLength": 1e56
+      }
+    },
+    "cStrMax": {
+      "type": "array",
+      "contains": {
+        "type": "string",
+        "maxLength": 1e57
+      }
+    },
+    "patternMax": {
+      "type": "object",
+      "patternProperties": {
+        "^p": {
+          "type": "string",
+          "maxLength": 1e58
+        }
+      }
+    },
+    "aliasMax": {
+      "$ref": "#/$defs/LongStrMax"
+    },
+    "aliasArrMax": {
+      "$ref": "#/$defs/BigArrMax"
+    },
+    "aliasAny": {
+      "$ref": "#/$defs/StrAny"
+    },
+    "aliasOne": {
+      "$ref": "#/$defs/StrOne"
+    },
+    "aliasArrAny": {
+      "$ref": "#/$defs/ArrAny"
+    },
+    "aliasArrOne": {
+      "$ref": "#/$defs/ArrOne"
+    },
+    "inferredMax": {
+      "$ref": "#/$defs/UntypedStrMax"
+    },
+    "inferredArrMax": {
+      "$ref": "#/$defs/UntypedArrMax"
+    },
+    "inferredArrMin": {
+      "$ref": "#/$defs/UntypedArrMin"
+    },
+    "inferredAny": {
+      "$ref": "#/$defs/UntypedAny"
+    },
+    "inferredOne": {
+      "$ref": "#/$defs/UntypedOne"
+    },
+    "inferredArrAny": {
+      "$ref": "#/$defs/UntypedArrAny"
+    },
+    "inferredArrOne": {
+      "$ref": "#/$defs/UntypedArrOne"
+    },
+    "notBranch": {
+      "not": {
+        "anyOf": [
+          {
+            "type": "string",
+            "minLength": 1e78
+          },
+          {
+            "type": "array",
+            "minItems": 1e79
+          }
+        ]
+      }
+    },
+    "notBranchMax": {
+      "not": {
+        "anyOf": [
+          {
+            "type": "string",
+            "maxLength": 1e80
+          },
+          {
+            "type": "array",
+            "maxItems": 1e81
+          }
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "Required": {
+      "type": "object",
+      "required": ["rMin"],
+      "properties": {
+        "rMin": {
+          "type": "string",
+          "minLength": 1e20
+        }
+      }
+    },
+    "RequiredArray": {
+      "type": "object",
+      "required": ["raMin"],
+      "properties": {
+        "raMin": {
+          "type": "array",
+          "minItems": 1e21
+        }
+      }
+    },
+    "LongStr": {
+      "type": "string",
+      "minLength": 1e46
+    },
+    "BigArr": {
+      "type": "array",
+      "minItems": 1e47
+    },
+    "Untyped": {
+      "minLength": 1e48
+    },
+    "RequiredMax": {
+      "type": "object",
+      "required": ["rMax"],
+      "properties": {
+        "rMax": {
+          "type": "string",
+          "maxLength": 1e50
+        }
+      }
+    },
+    "LongStrMax": {
+      "type": "string",
+      "maxLength": 1e63
+    },
+    "BigArrMax": {
+      "type": "array",
+      "maxItems": 1e64
+    },
+    "StrAny": {
+      "type": "string",
+      "anyOf": [
+        {
+          "minLength": 1e65
+        },
+        {
+          "maxLength": 1e66
+        }
+      ]
+    },
+    "StrOne": {
+      "type": "string",
+      "oneOf": [
+        {
+          "minLength": 1e67
+        },
+        {
+          "maxLength": 1e68
+        }
+      ]
+    },
+    "ArrAny": {
+      "type": "array",
+      "anyOf": [
+        {
+          "minItems": 1e69
+        },
+        {
+          "maxItems": 1e70
+        }
+      ]
+    },
+    "ArrOne": {
+      "type": "array",
+      "oneOf": [
+        {
+          "minItems": 1e71
+        },
+        {
+          "maxItems": 1e72
+        }
+      ]
+    },
+    "UntypedAny": {
+      "maxLength": 1e87,
+      "anyOf": [
+        {
+          "minLength": 1e75
+        },
+        {
+          "maxLength": 1e76
+        }
+      ]
+    },
+    "UntypedOne": {
+      "maxLength": 1e88,
+      "oneOf": [
+        {
+          "minLength": 1e77
+        },
+        {
+          "maxLength": 1e82
+        }
+      ]
+    },
+    "UntypedArrAny": {
+      "maxItems": 1e89,
+      "anyOf": [
+        {
+          "minItems": 1e83
+        },
+        {
+          "maxItems": 1e84
+        }
+      ]
+    },
+    "UntypedArrOne": {
+      "maxItems": 1e90,
+      "oneOf": [
+        {
+          "minItems": 1e85
+        },
+        {
+          "maxItems": 1e86
+        }
+      ]
+    },
+    "UntypedStrMax": {
+      "maxLength": 1e73
+    },
+    "UntypedArrMax": {
+      "maxItems": 1e74
+    },
+    "UntypedArrMin": {
+      "minItems": 1e91
+    }
+  }
+}

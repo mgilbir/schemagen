@@ -132,8 +132,8 @@ func TestTwoSpellingsReportWhatWasSplit(t *testing.T) {
 		t.Fatalf("generate: %v\nstderr:\n%s", err, stderr)
 	}
 	want := "warning: " + paths[0] + " declares the Go type name X in 2 places, and those declarations do not describe the same type, so they cannot be one:\n" +
-		"  " + paths[0] + " $defs/X becomes DefsX\n" +
-		"  " + paths[0] + " definitions/X becomes DefinitionsX\n" +
+		"  " + paths[0] + " #/$defs/X becomes DefsX\n" +
+		"  " + paths[0] + " #/definitions/X becomes DefinitionsX\n" +
 		"one Go package holds one type per name, so declaring them all as X would have given every $ref whichever was generated first and discarded the rest -- a position typed by a schema the document never wrote there. " +
 		"Each definition is qualified instead with the keyword that declared it, which is the only thing in the document that tells them apart. " +
 		"$defs and definitions name the same container in every draft that defines both, so if these were meant to be one definition make them identical or delete one; otherwise rename one of them in the schema to choose the Go names yourself.\n"
@@ -185,7 +185,7 @@ func TestDefinitionNamedAfterItsOwnRootTypeSaysWhatToChange(t *testing.T) {
 		t.Fatalf("generate: %v", err)
 	}
 	want := "warning: " + paths[0] + " declares the Go type name X in 2 places, and those declarations do not describe the same type, so they cannot be one:\n" +
-		"  " + paths[0] + " $defs/X becomes DefsX\n" +
+		"  " + paths[0] + " #/$defs/X becomes DefsX\n" +
 		"  " + paths[0] + " root type keeps X\n" +
 		"one Go package holds one type per name, so declaring them all as X would have given every $ref whichever was generated first and discarded the rest -- a position typed by a schema the document never wrote there. " +
 		"Each definition is qualified instead with the keyword that declared it, which is the only thing in the document that tells them apart. " +

@@ -306,7 +306,7 @@ func TestSubschemaKeywordTakenByTheEvaluatorIsNotAlsoReadStatically(t *testing.T
 		"propertyNames": {"maxLength": 3}
 	}`)
 	plainDoc := structNamed(t, plain, "Doc")
-	if plainDoc.PropertyNames == nil || plainDoc.PropertyNames.MaxLength == nil || *plainDoc.PropertyNames.MaxLength != 3 {
+	if plainDoc.PropertyNames == nil || plainDoc.PropertyNames.MaxLength == nil || plainDoc.PropertyNames.MaxLength.N != 3 {
 		t.Errorf("PropertyNames = %+v, want the static reading kept for a sub-schema it reads whole", plainDoc.PropertyNames)
 	}
 	if hasRuntimeKeyword(plainDoc, "propertyNames") {

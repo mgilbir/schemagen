@@ -54,10 +54,10 @@ const (
 //     escapeCommentText for the exact rule.
 //   - Interpreted string literal: stringText, from goStringLiteral, which is
 //     strconv.Quote without its quotes.
-//   - A fmt format literal: formatText, from jsonErrorName and fmtText, which
-//     are the same with every "%" doubled, and from the path builders, which
-//     add their own verbs. fmtCat joins formatText without laundering it
-//     through printf.
+//   - A fmt format literal: formatText, from jsonErrorName, fmtText and
+//     countText, which are the same with every "%" doubled, and from the
+//     path builders, which add their own verbs. fmtCat joins formatText
+//     without laundering it through printf.
 //   - Raw string literal, which is only ever a struct tag: tagText, from
 //     jsonTagName, which refuses a name encoding/json would not read back.
 //   - Block comment and rune literal: no action may write into either;

@@ -106,8 +106,8 @@ func TestFoldedDefsKeysReportWhatWasSplit(t *testing.T) {
 		t.Fatalf("generate: %v", err)
 	}
 	want := "warning: " + paths[0] + " declares the Go type name X in 2 places, and those declarations do not describe the same type, so they cannot be one:\n" +
-		"  " + paths[0] + " $defs/! becomes X2\n" +
-		"  " + paths[0] + " $defs/X keeps X\n" +
+		"  " + paths[0] + " #/$defs/! becomes X2\n" +
+		"  " + paths[0] + " #/$defs/X keeps X\n" +
 		"one Go package holds one type per name, so declaring them all as X would have given every $ref whichever was generated first and discarded the rest -- a position typed by a schema the document never wrote there. " +
 		"These keys derive one Go name -- the derivation drops what separates them, as it does for \"my-type\" and \"my_type\", for the two spellings of a JSON Pointer escape, and for a key with no letters in it at all -- so the ones after the first are numbered. " +
 		"Make the definitions identical if they were meant to be one type, or rename one of the keys in the schema -- to something that differs by more than punctuation or case -- to choose the Go names yourself.\n"

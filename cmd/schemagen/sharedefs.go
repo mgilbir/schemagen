@@ -81,6 +81,10 @@ type nameClaim struct {
 	// document's root type.
 	defKey string
 	node   *schema.Schema
+	// root is the document or resource path names -- the listed document's
+	// root, or the resource a $ref reached -- which the claim's location is
+	// written relative to. See definitionLocation.
+	root *schema.Schema
 	// final is the name the claim ends up with: the name it asked for, or the
 	// qualified one when the claims on that name could not be merged.
 	final string
@@ -97,16 +101,32 @@ type nameClaim struct {
 	external bool
 }
 
-// what describes the claim in the schema author's own terms.
+// what describes the claim in the schema author's own terms: its root type, or
+// where the document wrote the definition. See definitionLocation.
 func (c nameClaim) what() string {
-	switch {
-	case c.defKey == "":
+	if c.defKey == "" {
 		return "root type"
-	case c.keyword == "":
-		return c.defKey
-	default:
-		return c.keyword + "/" + c.defKey
 	}
+	return definitionLocation(c.node, c.root, c.keyword, c.defKey)
+}
+
+// definitionLocation names where a document wrote a definition: the location
+// its node was read at (schema.Schema.SourceLocation), relative to root -- the
+// document or embedded resource the message names it in -- as a URI fragment
+// schema.FragmentPointer reads back. The claims are collected from the
+// normalized document, where a draft-07 document's "definitions" is mirrored
+// as "$defs" and "$defs" is read first -- so naming the keyword the collection
+// found it under told the author about a "$defs" their document does not
+// contain. keyword/key, the collection's own path, is the fallback for a node
+// no document located.
+func definitionLocation(node, root *schema.Schema, keyword, key string) string {
+	if tokens, ok := node.SourceLocationWithin(root); ok {
+		return schema.PointerFragment(tokens...)
+	}
+	if keyword == "" {
+		return key
+	}
+	return keyword + "/" + key
 }
 
 // ownRoot reports whether the claim is the root type of a document the caller
@@ -463,7 +483,7 @@ func collectNameClaims(paths []string, byPath map[string]*schema.Schema, externa
 					return // the same node reached twice ($defs mirrored into definitions)
 				}
 			}
-			claims[name] = append(claims[name], nameClaim{path: path, keyword: keyword, defKey: defKey, node: node, final: name})
+			claims[name] = append(claims[name], nameClaim{path: path, keyword: keyword, defKey: defKey, node: node, root: s, final: name})
 		}
 
 		add(rootNameOf(path, s), "", "", s)
@@ -742,28 +762,32 @@ func definitionCanonicalForm(s *schema.Schema) (form string, refs []string, ok b
 // not a claim this file tracks, so nothing here can say whether two documents'
 // versions of it agree.
 //
-// The unescaping is the resolver's own -- schema.UnescapePointerToken, which
-// percent-decodes and then applies RFC 6901 -- and the choice is not incidental.
-// The claims this file keys on are named after the *$defs key*, and what that
-// function returns for the last pointer token is exactly that key; so the lookup
-// hits by construction rather than by two derivations happening to agree. The
-// split on "/" above happens first and must: a slash separating tokens is the
-// pointer's own syntax, while one written "~1" or "%2F" is a character inside a
-// single key.
+// The pointer is read by the resolver's own decoder, schema.FragmentPointer --
+// percent-decode the fragment once, split on "/", then RFC 6901 -- and the
+// choice is not incidental. The claims this file keys on are named after the
+// *$defs key*, and the last token that decoder returns is exactly that key; so
+// the lookup hits by construction rather than by two derivations happening to
+// agree. A "/" written "~1" is a character inside a single key; one written
+// "%2F" is a "/" once the fragment is decoded, and so a separator (RFC 6901
+// §6), and the ref names something inside a definition rather than one.
 //
 // This used to claim, in this comment, to percent-decode and then not do it, so
 // "#/$defs/foo%22bar" answered Foo22bar while the definition it names is called
 // FooBar. The lookup missed, the name was demoted out of shareableNames, and two
 // identical documents got a duplicate type each. Issue #305.
 func localDefinitionRef(ref string) (string, bool) {
-	for _, prefix := range []string{"#/$defs/", "#/definitions/"} {
-		rest, found := strings.CutPrefix(ref, prefix)
-		if !found || rest == "" || strings.Contains(rest, "/") {
-			continue
-		}
-		return generator.SchemaNameToGoName(schema.UnescapePointerToken(rest)), true
+	fragment, ok := strings.CutPrefix(ref, "#")
+	if !ok {
+		return "", false
 	}
-	return "", false
+	tokens, isPointer, err := schema.FragmentPointer(fragment)
+	if err != nil || !isPointer || len(tokens) != 2 || tokens[1] == "" {
+		return "", false
+	}
+	if tokens[0] != "$defs" && tokens[0] != "definitions" {
+		return "", false
+	}
+	return generator.SchemaNameToGoName(tokens[1]), true
 }
 
 // canonicalJSON re-encodes arbitrary JSON so that two spellings of one value
@@ -911,7 +935,7 @@ func explainPinnedNameCollision(schemaPath string, collision *generator.PinnedNa
 			for _, key := range sortedSchemaKeys(container.m) {
 				if name, ok := pinned[container.m[key]]; ok {
 					if _, seen := owner[name]; !seen {
-						owner[name] = fmt.Sprintf("%s/%s in %s", container.keyword, key, path)
+						owner[name] = fmt.Sprintf("%s in %s", definitionLocation(container.m[key], s, container.keyword, key), path)
 					}
 				}
 			}

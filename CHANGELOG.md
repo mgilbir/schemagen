@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+### Changed
+
+- A keyword whose value is not a legal value of it is refused, naming its
+  location, wherever the node's dialect defines the keyword, and ignored
+  wherever it does not — the policy a null subschema such as
+  `{"allOf":[null]}` already had. Before, which of the two a malformed value
+  got depended on how it was parsed: `{"type":[1,2]}` became no type at all,
+  `{"dependencies":{"a":null}}` a dependency every object satisfies,
+  `{"not":null}` and `{"minLength":null}` no keyword, `{"required":["a",null]}`
+  a required property named `""`, and `{"disallow":[null]}` a keyword that
+  forbids nothing — while `{"divisibleBy":"x"}` was refused under 2020-12,
+  which has no `divisibleBy`. An `$id` that is not a URI-reference is one such
+  value. Draft 3's `maxLength`, a plain integer in its meta-schema, may be
+  negative.
+- A keyword written in the form another dialect gives it is refused under a
+  dialect — stated, or forced with `--draft` — that defines the keyword but not
+  that form, with a message naming whose spelling it is and what to write
+  instead: array-form `items` under 2020-12 and v1, a boolean
+  `exclusiveMinimum`/`exclusiveMaximum` under draft 6 and later and a number
+  under drafts 3 and 4, draft 3's per-property boolean `required` under draft 4
+  and later and the `required` array under draft 3, and draft 3's
+  schema-valued `type` entries anywhere else. Such a value used to be read
+  inconsistently: a draft-07 tuple forced to 2020-12 kept `items` as a tuple
+  and dropped `additionalItems`, a reading neither dialect gives, and under
+  draft 4 `{"minimum":3,"exclusiveMinimum":5}` accepted 4. With no recognised
+  `$schema` every form binds, as before.
+
 ### Fixed
 
 - Schema text can no longer become code in the generated file. A property name
@@ -40,6 +67,64 @@
   hand did not compile (`v.AB undefined`), neither did a `multipleOf` on a
   property of a type named `Q…`, and on an alias named `Q…` the refusal reported
   the quotient as the value that failed.
+- Schema parsing no longer uses in-band markers, wrapping integers, a
+  second percent-decode, or a dialect gate that could not see every subschema.
+  - Draft 3's boolean `"required": true` was stored as the property name
+    `"\x00__draft3_required_true__"` in the required list. At a draft-3 root, or
+    under `additionalProperties` with no `$schema`, it reached the generator as
+    a required property of that name and the type refused every object; and a
+    2020-12 document that really requires a property of that name had the
+    requirement gated away as draft 3's boolean. It is now a field of its own.
+  - An integer count past int64 (`minLength`, `maxItems`, `minContains`, …) was
+    read through `float64` and wrapped to `MinInt64`, so `{"maxLength":2^63}`
+    refused `""` and `{"minLength":1e19}` accepted `"x"`. Counts are read
+    exactly, and one too large for an `int` is held at `MaxInt`, which keeps the
+    schema's verdict exactly: a maximum that large admits every value and a
+    minimum that large admits none. An error message states the bound as the
+    schema wrote it (`1e19`, not `9223372036854775807`), and a bound past int32
+    is emitted as a constant expression that compiles on a 32-bit target too.
+  - A JSON Pointer in a `$ref` is percent-decoded once, then split, then
+    RFC 6901-unescaped, by one decoder every resolver and the generator share
+    (RFC 6901 §6). A reference into another document was decoded twice, so
+    `#/$defs/a%2525b` named the key `a%b` there and `a%25b` locally; and a local
+    pointer was split before decoding, so `#/$defs/a%2Fb` named the key `a/b`
+    where every implementation Bowtie runs walks `a`, then `b`.
+  - The subschemas inside `dependencies`, `extends` and `disallow` are parsed
+    with the document, so the dialect pass gates them like any other subschema:
+    a draft-4 `dependencies.a.properties.b.const` was enforced although draft 4
+    has no `const`. A vendor keyword's value reached by `$ref` is read under
+    its parent's dialect for the same reason. A `$ref` naming such a subschema
+    where the document wrote it — `#/dependencies/a`, `#/extends/0`,
+    `#/disallow/1`, draft 3's `#/type/1` — resolves; it failed once Normalize
+    had moved the subschema to the keyword that replaced it. So does a `$ref`
+    into any keyword the node's dialect does not define (draft 3's `#/not`),
+    as one into an unknown keyword always did.
+  - `$schema` is matched as a whole URI (http or https, with or without the
+    trailing `#`), so `https://example.com/my-draft-07-extension/schema` is no
+    longer read as draft 7.
+  - A duplicated key means its last value, for every key of every object:
+    `{"properties":{"a":{}},"properties":{"b":{}}}` read as both `a` and `b`,
+    and as `b` alone when the object also held an unrelated case-variant key.
+  - `Normalize` is idempotent. A second call on a draft-3 document dropped
+    the required list the first call had built.
+  - A refusal names the location the document wrote the value at, not the path
+    into the rewritten document: a null `minLength` in the second `extends`
+    entry was reported at `#/allOf/1/minLength` and is now at
+    `#/extends/1/minLength`; a draft-07 `definitions` member at `#/$defs/a` is
+    now at `#/definitions/a`; `{"disallow":{"not":"a type"}}` at `#/not/not` is
+    now at `#/disallow/not`. A null or non-schema entry is named at the entry
+    (`#/extends/0`, `#/dependencies/a`, `#/type/1`) rather than at its keyword
+    with the entry in the message, and a location is written as a URI
+    fragment, so a key a fragment cannot hold literally is percent-encoded
+    (`#/patternProperties/%5Ea`). A value in another document is named by that
+    document's URI, and a definition in the name-collision warnings by the
+    location its document or embedded resource wrote it at
+    (`#/definitions/Thing`, not the `$defs/Thing` mirror).
+  - Two URLs that redirect to one remote document share one parsed copy of it,
+    and a remote document served as `text/plain` — as `raw.githubusercontent.com`
+    serves every file — is read. Whether a body is a schema is decided by
+    parsing it; the `Content-Type` is named only to explain one that does not
+    parse.
 
 ## 0.1.3
 

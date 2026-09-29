@@ -620,8 +620,8 @@ func TestSharedTypesReportsTheDefinitionsItSplit(t *testing.T) {
 		t.Fatalf("generate: %v\nstderr:\n%s", err, stderr)
 	}
 	want := "warning: 2 documents claim the Go type name Thing, and those claims do not describe the same type, so they cannot be one:\n" +
-		"  " + paths[0] + " $defs/Thing becomes AlphaThing\n" +
-		"  " + paths[1] + " $defs/Thing becomes BetaThing\n" +
+		"  " + paths[0] + " #/$defs/Thing becomes AlphaThing\n" +
+		"  " + paths[1] + " #/$defs/Thing becomes BetaThing\n" +
 		"one package holds one type per name, so sharing it would have given every document whichever schema was generated first and discarded the rest. " +
 		"Each definition is qualified with its own document's root type name -- all of them, not only the later ones, so the generated names do not depend on the order the inputs were listed. " +
 		"A listed document's own root type keeps the name it was given; --root-name sets both. " +
@@ -716,7 +716,7 @@ func TestSharedTypesRefusesAQualifiedNameThatIsAlreadyTaken(t *testing.T) {
 			}
 			msg := err.Error()
 			for _, want := range []string{
-				"$defs/Thing in " + paths[0] + " was renamed to ADocThing, which another schema in this package already declares",
+				"#/$defs/Thing in " + paths[0] + " was renamed to ADocThing, which another schema in this package already declares",
 				"a property \"thing\" under a root named Alpha is also AlphaThing, and --root-name moves both of them together",
 				"Rename the definition, or whatever else holds that name, in the schema",
 				"--schema-package",

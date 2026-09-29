@@ -16,8 +16,9 @@ import (
 // first finds no literal "~1" and leaves a token naming "~1". Two different
 // members of the same document.
 //
-// pkg/schema.UnescapePointerToken is now the single implementation, and these
-// are the three places a disagreement with it was observable. Issue #305.
+// pkg/schema.FragmentPointer is now the single implementation -- percent-decode
+// the whole fragment once, split it on "/", then unescape each token -- and
+// these are the three places a disagreement with it was observable. Issue #305.
 
 // ---------- the demotion (#305) ----------
 
@@ -193,8 +194,9 @@ func TestDiscriminatorMappingDispatchesOnWhatThePointerNames(t *testing.T) {
 // them as the same key. The claimed name has to be X for both, or the two never
 // contest at all and no diagnostic is produced -- which is what the old
 // derivation did, deriving X1 for the escaped one -- and the claim each is
-// reported under has to be "properties//", the key itself, rather than the
-// escape the ref reached it by.
+// reported under has to be one location for both, where the document holds the
+// key -- the canonical pointer "#/properties/~1", which schema.FragmentPointer
+// reads back as the key "/" -- rather than the escape either ref reached it by.
 func TestClaimDiagnosticNamesTheKeyTheDocumentHolds(t *testing.T) {
 	dir, paths := writeSchemas(t,
 		"a.json", `{
@@ -220,8 +222,8 @@ func TestClaimDiagnosticNamesTheKeyTheDocumentHolds(t *testing.T) {
 	}
 	for _, want := range []string{
 		"2 documents claim the Go type name X",
-		"a.json (reached by $ref) properties// becomes AX",
-		"b.json (reached by $ref) properties// becomes BX",
+		"a.json (reached by $ref) #/properties/~1 becomes AX",
+		"b.json (reached by $ref) #/properties/~1 becomes BX",
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("missing %q in:\n%s", want, stderr)

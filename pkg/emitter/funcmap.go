@@ -55,7 +55,9 @@ func FuncMap() template.FuncMap {
 		"ppTypeValue":            ppTypeValueFunc,
 		"ppTypeValues":           ppTypeValuesFunc,
 		"ppTypeValuesMsg":        ppTypeValuesMsgFunc,
-		"deref":                  derefIntFunc,
+		"countExpr":              countExprFunc,
+		"countText":              countTextFunc,
+		"countN":                 countNFunc,
 		"validationFeatures":     validationFeaturesFunc,
 		"stringList":             stringListFunc,
 		"accessRules":            accessRulesFunc,
@@ -161,11 +163,11 @@ type ContainsContext struct {
 	Path        formatText
 	Args        string // see TupleContext.Args
 	Def         generator.ContainsDef
-	MinContains *int
-	MaxContains *int
+	MinContains *generator.CountBound
+	MaxContains *generator.CountBound
 }
 
-func mkContainsCtxFunc(expr string, path formatText, def *generator.ContainsDef, minContains, maxContains *int) ContainsContext {
+func mkContainsCtxFunc(expr string, path formatText, def *generator.ContainsDef, minContains, maxContains *generator.CountBound) ContainsContext {
 	ctx := ContainsContext{Expr: expr, Path: path, MinContains: minContains, MaxContains: maxContains}
 	if def != nil {
 		ctx.Def = *def
@@ -176,7 +178,7 @@ func mkContainsCtxFunc(expr string, path formatText, def *generator.ContainsDef,
 // mkContainsCtxIn is mkContainsCtx for an array reached inside an enclosing
 // loop -- an array that is another container's element -- whose error path
 // carries that loop's verbs and needs its variables to fill them.
-func mkContainsCtxInFunc(expr string, path formatText, args string, def *generator.ContainsDef, minContains, maxContains *int) ContainsContext {
+func mkContainsCtxInFunc(expr string, path formatText, args string, def *generator.ContainsDef, minContains, maxContains *generator.CountBound) ContainsContext {
 	ctx := mkContainsCtxFunc(expr, path, def, minContains, maxContains)
 	ctx.Args = args
 	return ctx
@@ -914,13 +916,63 @@ func ppTypeValuesMsgFunc(v any) formatText {
 	return fmtTextFunc(strings.Join(ppTypeValuesFunc(v), ", "))
 }
 
-// derefIntFunc dereferences an *int pointer for use in templates.
-// Returns 0 if the pointer is nil.
-func derefIntFunc(v *int) int {
-	if v == nil {
-		return 0
+// countOf reads a count bound out of the shapes a template holds one in: a
+// generator.CountBound, a pointer to one, or a plain int (a bound the
+// generator derived rather than read, such as a closed tuple's length).
+func countOf(v any) (generator.CountBound, bool) {
+	switch c := v.(type) {
+	case generator.CountBound:
+		return c, true
+	case *generator.CountBound:
+		if c == nil {
+			return generator.CountBound{}, false
+		}
+		return *c, true
+	case int:
+		return generator.CountBound{N: c}, true
 	}
-	return *v
+	return generator.CountBound{}, false
+}
+
+// countExprFunc writes a value where generated *code* compares against it.
+//
+// For a count bound it is CountBound.GoExpr, which compiles on every target;
+// see CountBound for why the literal does not. GoExpr is built from the bound's
+// int alone -- a decimal, or that decimal inside a fixed min/max expression --
+// so nothing the schema spelled reaches the code. Every other value -- a
+// numeric bound, which the same template positions also compare against -- is
+// numLit's: written exactly as printing it always wrote it, and refused unless
+// it is a number. Routing a comparison through here therefore changes nothing
+// for anything but a count, and admits nothing numLit would refuse.
+func countExprFunc(v any) (string, error) {
+	if c, ok := countOf(v); ok {
+		return c.GoExpr(), nil
+	}
+	return numLitFunc(v)
+}
+
+// countTextFunc writes a count bound where a *message* states it: the number
+// the schema wrote, which for a saturated bound is the schema's own literal
+// (CountBound.String). The messages that state a count are fmt formats, so the
+// text is escaped for one, as fmtText escapes any value; a JSON number needs
+// none of it, but the literal came from the schema and the format context
+// accepts nothing that has not been through its escaper. Anything that is not a
+// count bound is refused: the function exists for the pointer-valued bounds a
+// template cannot hand to fmtText directly, and a nil one is a template that
+// forgot its presence test.
+func countTextFunc(v any) (formatText, error) {
+	c, ok := countOf(v)
+	if !ok {
+		return "", fmt.Errorf("%w: %T %q where a count bound was expected", errEscape, v, printedValue(v))
+	}
+	return fmtTextFunc(c.String()), nil
+}
+
+// countNFunc is a count bound's compared value, for a template's own
+// decisions (is minContains zero?).
+func countNFunc(v any) int {
+	c, _ := countOf(v)
+	return c.N
 }
 
 // requiredFieldsListFunc formats a list of required field names as Go string literals.

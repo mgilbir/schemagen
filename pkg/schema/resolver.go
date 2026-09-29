@@ -87,20 +87,16 @@ func (r *LocalResolver) resolve(ref string) (*Schema, error) {
 		return r.root, nil
 	}
 
-	// Plain-name anchor: "#foo" (no slash after #)
-	if !strings.HasPrefix(ref, "#/") {
-		anchor := ref[1:] // strip leading "#"
-		return r.findAnchor(r.root, anchor)
+	decoded, err := DecodeFragment(ref[1:])
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", ref, err)
 	}
-
-	// JSON Pointer: "#/path/to/thing"
-	path := strings.TrimPrefix(ref, "#/")
-	parts := strings.Split(path, "/")
-	for i, p := range parts {
-		parts[i] = UnescapePointerToken(p)
+	tokens, isPointer := pointerTokens(decoded)
+	if !isPointer {
+		// A plain-name anchor: "#foo".
+		return r.findAnchor(r.root, decoded)
 	}
-
-	return r.walkPath(r.root, parts, ref)
+	return r.walkPath(r.root, tokens, ref)
 }
 
 // plainNameFragment returns the anchor name an id declares when it is a
@@ -193,7 +189,40 @@ func hasAnchorName(s *Schema, anchor string) bool {
 // a plain-name fragment id names a node inside the *current* scope, so the
 // subtree must still be searched.
 func changesScope(s *Schema) bool {
-	return s.ID != "" && plainNameFragment(s.ID) == ""
+	_, ok := scopeID(s)
+	return ok
+}
+
+// scopeID returns the identifier with which s starts a resource of its own,
+// parsed, and reports whether it does.
+//
+// It is the one answer to that question: ComputeBaseURIs, which the resource
+// graph is built from, and the resolver's anchor search both ask it, because
+// two walks that decide it separately give two answers for one document. They
+// did, twice: the resolver read only "$id" where ComputeBaseURIs also read a
+// draft-4 "id", and ComputeBaseURIs skipped an id url.Parse refused where the
+// resolver counted it -- so an anchor under such a node was in one index and
+// not the other.
+//
+// "$id" is read before draft 3/4's "id", as Normalize copies one to the other.
+// A plain-name fragment ({"id": "#foo"}) names a node rather than starting a
+// scope. An id that does not parse as a URI-reference starts nothing, because
+// no base URI can be computed from it; the decode also records it as malformed
+// (see MalformedKeywords), so a document that states one is refused wherever
+// its dialect defines the keyword.
+func scopeID(s *Schema) (*url.URL, bool) {
+	id := s.ID
+	if id == "" {
+		id = s.LegacyID
+	}
+	if id == "" || plainNameFragment(id) != "" {
+		return nil, false
+	}
+	u, err := url.Parse(id)
+	if err != nil {
+		return nil, false
+	}
+	return u, true
 }
 
 // findAnchor searches the schema tree for a node answering to the given
@@ -338,6 +367,15 @@ func (r *LocalResolver) walkPath(current *Schema, parts []string, originalRef st
 
 	key := parts[0]
 	rest := parts[1:]
+
+	// A keyword the node's dialect does not define is an unknown keyword there,
+	// whichever keyword it is, and a pointer reaches its value the way it
+	// reaches any unknown keyword's. The dialect pass cleared the field, so the
+	// arm below that names the keyword would find nothing; the value it had is
+	// kept for exactly this (Schema.droppedKeywords).
+	if raw, ok := current.droppedKeywords[key]; ok {
+		return r.walkUnknownKeyword(current, key, rest, raw, originalRef)
+	}
 
 	switch key {
 	case "$defs":
@@ -534,35 +572,46 @@ func (r *LocalResolver) walkPath(current *Schema, parts []string, originalRef st
 		return r.walkPath(current.ContentSchema, rest, originalRef)
 
 	default:
+		// A subschema inside a keyword Normalize rewrote, at the location the
+		// document wrote it at. The longer path first: "#/extends/0" names an
+		// entry, "#/extends" the whole value when it is one schema.
+		if target, remaining, ok := current.legacyTarget(key, rest); ok {
+			return r.walkPath(target, remaining, originalRef)
+		}
 		// Check Extensions for unknown keywords (e.g., vendor extensions,
 		// arbitrary keywords referenced via JSON Pointer $ref).
-		if current.Extensions != nil {
-			if raw, ok := current.Extensions[key]; ok {
-				// Try the whole value as a schema first, then walk any remaining
-				// pointer inside it. That is the right order for a keyword whose
-				// value *is* a schema (a vendor keyword holding "properties",
-				// say), where the remaining tokens name schema fields.
-				if sub, err := current.extensionSchema(key, nil, raw); err == nil {
-					if len(rest) == 0 {
-						return sub, nil
-					}
-					if target, err := r.walkPath(sub, rest, originalRef); err == nil {
-						return target, nil
-					}
-				}
-				// Otherwise the keyword holds a collection and the *element* is
-				// the schema: "examples" is an array, so "#/examples/0" must
-				// index it before parsing. This also covers a keyword whose
-				// value is a plain object of schemas.
-				sub, err := current.extensionSchema(key, rest, raw)
-				if err != nil {
-					return nil, fmt.Errorf("cannot parse extension %q as schema in: %s: %w", key, originalRef, err)
-				}
-				return sub, nil
-			}
+		if raw, ok := current.Extensions[key]; ok {
+			return r.walkUnknownKeyword(current, key, rest, raw, originalRef)
 		}
 		return nil, fmt.Errorf("unsupported ref path segment %q in: %s", key, originalRef)
 	}
+}
+
+// walkUnknownKeyword follows a pointer into the value of a keyword the node's
+// dialect does not know -- one it has no field for (Extensions) or one its
+// dialect does not define (droppedKeywords).
+func (r *LocalResolver) walkUnknownKeyword(current *Schema, key string, rest []string, raw json.RawMessage, originalRef string) (*Schema, error) {
+	// Try the whole value as a schema first, then walk any remaining
+	// pointer inside it. That is the right order for a keyword whose
+	// value *is* a schema (a vendor keyword holding "properties",
+	// say), where the remaining tokens name schema fields.
+	if sub, err := current.extensionSchema(key, nil, raw); err == nil {
+		if len(rest) == 0 {
+			return sub, nil
+		}
+		if target, err := r.walkPath(sub, rest, originalRef); err == nil {
+			return target, nil
+		}
+	}
+	// Otherwise the keyword holds a collection and the *element* is
+	// the schema: "examples" is an array, so "#/examples/0" must
+	// index it before parsing. This also covers a keyword whose
+	// value is a plain object of schemas.
+	sub, err := current.extensionSchema(key, rest, raw)
+	if err != nil {
+		return nil, fmt.Errorf("cannot parse extension %q as schema in: %s: %w", key, originalRef, err)
+	}
+	return sub, nil
 }
 
 // parseIndex parses a string as a non-negative integer index.
@@ -595,40 +644,109 @@ func parseIndex(s string) (int, error) {
 // maxInt is the largest value an int can hold on this platform.
 const maxInt = int(^uint(0) >> 1)
 
-// UnescapePointerToken decodes one reference token of a JSON Pointer that
-// arrived as a URI fragment, which is the only way a $ref ever carries one.
+// DecodeFragment percent-decodes a URI fragment -- the text after "#", as the
+// reference wrote it -- once.
 //
-// Per RFC 6901 §6 the two decodings happen in one order and not the other:
-// percent-decoding first (RFC 3986 §3.5), then the JSON Pointer escapes. The
-// fragment is a URI component, so its percent-escapes belong to the outer
-// encoding layer and have to come off before anything reads the pointer syntax
-// underneath. The orders are not interchangeable -- "%7E1" percent-decodes to
-// "~1" and then unescapes to "/", while unescaping first finds no literal "~1"
-// and leaves the token naming "~1" -- so a caller that picks the wrong one
-// names a different member of the document than the pointer does.
+// This is the first of the two decodings a JSON Pointer in a $ref goes through,
+// and it has to happen exactly once and before the second. RFC 6901 §6: a JSON
+// Pointer in a URI fragment is represented by percent-encoding its characters,
+// so reading one back is "percent-decode the fragment, then read the result as
+// a JSON Pointer". Two consequences follow, and this package used to get both
+// wrong:
 //
-// It is exported because that answer has three consumers and must be one
-// function: the resolver below, which decides what a $ref reaches; the
-// generator's ref-to-name derivation, which names what it reached; and
-// cmd/schemagen's shared-definition bookkeeping, which has to agree with both
-// about which definition a pointer names. Two of the three had their own copy
-// and one of those copies was wrong -- it never percent-decoded at all, though
-// its comment said it did (issue #305). The same collapse as #178 and #203/#211:
-// one rule, one implementation.
-func UnescapePointerToken(token string) string {
-	if decoded, err := url.PathUnescape(token); err == nil {
-		token = decoded
+//   - A "%2F" is a "/" and therefore a separator between reference tokens.
+//     "#/$defs/a%2Fb" is the pointer /$defs/a/b, which walks $defs, then a, then
+//     b. Splitting before decoding read it as a single key "a/b" -- a key only
+//     "~1" can name -- and every implementation Bowtie runs walks a -> b.
+//   - Decoding twice is a different function from decoding once:
+//     "#/$defs/a%2525b" names the key "a%25b", and a second decode names "a%b".
+//     The resolvers split a reference with url.Parse, which had already decoded
+//     the fragment, and then handed it to a LocalResolver that decoded it
+//     again, so a pointer reached one key inside its own document and another
+//     through any other document.
+//
+// A fragment whose percent-encoding is malformed ("100%") is refused, as
+// url.Parse refuses the same reference when it names another document: the two
+// paths agreeing is the point.
+func DecodeFragment(fragment string) (string, error) {
+	decoded, err := url.PathUnescape(fragment)
+	if err != nil {
+		return "", fmt.Errorf("fragment %q is not validly percent-encoded: %w", fragment, err)
 	}
-	return unescapeJSONPointer(token)
+	return decoded, nil
 }
 
-// unescapeJSONPointer decodes JSON Pointer escaping (RFC 6901):
-// ~1 → / and ~0 → ~
-func unescapeJSONPointer(token string) string {
-	// Order matters: ~1 first, then ~0
-	token = strings.ReplaceAll(token, "~1", "/")
-	token = strings.ReplaceAll(token, "~0", "~")
-	return token
+// FragmentPointer reads a URI fragment, as the reference wrote it and without
+// its "#", as a JSON Pointer. It returns the pointer's reference tokens and
+// reports whether the fragment is a JSON Pointer at all -- empty (the whole
+// document) or beginning with "/" once decoded -- rather than a plain-name
+// anchor.
+//
+// This is the one decoder of a pointer in a reference. Every resolver in this
+// package walks the tokens it returns, and pkg/generator and cmd/schemagen read
+// what a pointer names through it too: a name derived from a pointer has to be
+// the name of the node the resolver reached, and a second implementation is
+// how the two came apart before (issue #305).
+func FragmentPointer(fragment string) (tokens []string, isPointer bool, err error) {
+	decoded, err := DecodeFragment(fragment)
+	if err != nil {
+		return nil, false, err
+	}
+	tokens, isPointer = pointerTokens(decoded)
+	return tokens, isPointer, nil
+}
+
+// pointerTokens splits an already percent-decoded fragment into JSON Pointer
+// reference tokens: split on "/", then unescape "~1" to "/" and "~0" to "~" in
+// each token, in that order (RFC 6901 §4) -- "~01" is the key "~1", not "/".
+func pointerTokens(decoded string) ([]string, bool) {
+	if decoded == "" {
+		return nil, true
+	}
+	if decoded[0] != '/' {
+		return nil, false
+	}
+	tokens := strings.Split(decoded[1:], "/")
+	for i, t := range tokens {
+		t = strings.ReplaceAll(t, "~1", "/")
+		tokens[i] = strings.ReplaceAll(t, "~0", "~")
+	}
+	return tokens, true
+}
+
+// PointerFragment writes reference tokens as the canonical fragment naming
+// them: "#" followed by the JSON Pointer, each token escaped per RFC 6901, and
+// then percent-encoded exactly where RFC 3986 §3.5 requires it -- every
+// character a fragment may not hold literally, "%" included, and nothing else.
+// FragmentPointer reads it back as the same tokens, and every spelling of one
+// pointer that FragmentPointer accepts maps to this one string, which makes it
+// a key two spellings of a reference share.
+func PointerFragment(tokens ...string) string {
+	var b strings.Builder
+	b.WriteByte('#')
+	for _, t := range tokens {
+		b.WriteByte('/')
+		t = strings.ReplaceAll(t, "~", "~0")
+		t = strings.ReplaceAll(t, "/", "~1")
+		for i := 0; i < len(t); i++ {
+			if c := t[i]; isFragmentChar(c) {
+				b.WriteByte(c)
+			} else {
+				b.WriteString(fmt.Sprintf("%%%02X", c))
+			}
+		}
+	}
+	return b.String()
+}
+
+// isFragmentChar reports whether RFC 3986 lets a fragment hold c literally:
+// pchar, "/" and "?", less pct-encoded's "%", which has to be escaped itself.
+func isFragmentChar(c byte) bool {
+	switch {
+	case 'a' <= c && c <= 'z', 'A' <= c && c <= 'Z', '0' <= c && c <= '9':
+		return true
+	}
+	return strings.IndexByte("-._~!$&'()*+,;=:@/?", c) >= 0
 }
 
 // ---------- MappingResolver (static URI → Schema map) ----------
@@ -662,10 +780,12 @@ func (m *MappingResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, 
 		resolved = baseURI.ResolveReference(refURL)
 	}
 
-	// Split into document URI (without fragment) and fragment.
-	fragment := resolved.Fragment
+	// Split into document URI (without fragment) and fragment. The fragment is
+	// taken still percent-encoded: url.Parse has decoded Fragment once already,
+	// and the LocalResolver decodes what it is handed. See DecodeFragment.
+	fragment := resolved.EscapedFragment()
 	docURI := *resolved
-	docURI.Fragment = ""
+	docURI.Fragment, docURI.RawFragment = "", ""
 	docKey := docURI.String()
 
 	// Look up the document schema.
@@ -847,8 +967,8 @@ func (f *FileResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 		return nil, fmt.Errorf("FileResolver: refusing to read %q outside base directory %q", filePath, f.baseDir)
 	}
 
-	// Check cache.
-	fragment := refURL.Fragment
+	// Check cache. The fragment stays percent-encoded; see MappingResolver.
+	fragment := refURL.EscapedFragment()
 	if cached, ok := f.cache[filePath]; ok {
 		if fragment != "" {
 			local := NewLocalResolver(cached)
@@ -992,19 +1112,16 @@ func (h *HTTPResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 		return nil, fmt.Errorf("HTTPResolver: fragment-only ref %q not handled", ref)
 	}
 
-	// Split into document URI (without fragment) and fragment.
-	fragment := resolved.Fragment
+	// Split into document URI (without fragment) and fragment. The fragment
+	// stays percent-encoded; see MappingResolver.
+	fragment := resolved.EscapedFragment()
 	docURI := *resolved
-	docURI.Fragment = ""
+	docURI.Fragment, docURI.RawFragment = "", ""
 	docKey := docURI.String()
 
 	// Check cache.
 	if cached, ok := h.cache[docKey]; ok {
-		if fragment != "" {
-			local := NewLocalResolver(cached)
-			return local.ResolveLocal("#" + fragment)
-		}
-		return cached, nil
+		return h.resolveFragment(cached, fragment)
 	}
 
 	// Fetch the schema.
@@ -1028,7 +1145,7 @@ func (h *HTTPResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 	retrievalKey := docKey
 	if resp.Request != nil && resp.Request.URL != nil {
 		final := *resp.Request.URL
-		final.Fragment = ""
+		final.Fragment, final.RawFragment = "", ""
 		retrievalKey = final.String()
 	}
 
@@ -1036,11 +1153,17 @@ func (h *HTTPResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 		return nil, &RemoteFetchError{URL: docKey, Reason: fmt.Errorf("HTTP %d", resp.StatusCode)}
 	}
 
-	// An HTML error page parses as neither schema nor useful error, so reject a
-	// clearly non-JSON body up front. An absent Content-Type is tolerated: some
-	// schema hosts omit it, and json.Unmarshal is the real check either way.
-	if ct := resp.Header.Get("Content-Type"); ct != "" && !isJSONContentType(ct) {
-		return nil, &RemoteFetchError{URL: docKey, Reason: fmt.Errorf("Content-Type %q, want JSON", ct)}
+	// A document already fetched under the URL this request ended at is that
+	// document, whatever URL asked for it. The cache is keyed by final URL as
+	// well as requested URL, but the lookup above can only ask the requested
+	// one -- which final URL a request lands on is not known until it has been
+	// made -- so without this a second URL redirecting to the same place
+	// fetched and parsed the document again. Two instances of one document are
+	// two Go types for one schema, and two answers to every question that
+	// compares nodes by identity (cycle detection, the resource graph).
+	if cached, ok := h.cache[retrievalKey]; ok {
+		h.cache[docKey] = cached
+		return h.resolveFragment(cached, fragment)
 	}
 
 	body, err := h.readCapped(resp.Body, docKey)
@@ -1048,9 +1171,24 @@ func (h *HTTPResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 		return nil, err
 	}
 
+	// The Content-Type does not decide whether the body is a schema; parsing it
+	// does. The header is read only to explain a body that does not parse --
+	// an HTML error page served with a 200 is the case it was checked for --
+	// and it used to be a gate instead: anything but a JSON media type was
+	// refused before the body was read. That refused every schema served as
+	// text/plain, which is what raw.githubusercontent.com serves every file as
+	// and so the usual host for a GitHub-hosted schema, and what many static
+	// servers send for a .json file they have no mapping for. RFC 8259 §11
+	// registers application/json, but nothing in JSON Schema requires a
+	// server to use it, and a body that parses as a schema is one whatever the
+	// header says.
 	var s Schema
 	if err := json.Unmarshal(body, &s); err != nil {
-		return nil, &RemoteFetchError{URL: docKey, Reason: fmt.Errorf("parsing schema: %w", err)}
+		reason := fmt.Errorf("parsing schema: %w", err)
+		if ct := resp.Header.Get("Content-Type"); ct != "" && !isJSONContentType(ct) {
+			reason = fmt.Errorf("Content-Type %q, and the body is not JSON: %w", ct, err)
+		}
+		return nil, &RemoteFetchError{URL: docKey, Reason: reason}
 	}
 	normalizeLoadedDocument(&s, h.draft)
 	if retrievalURL, err := url.Parse(retrievalKey); err == nil {
@@ -1061,13 +1199,16 @@ func (h *HTTPResolver) ResolveSchema(ref string, baseURI *url.URL) (*Schema, err
 	if retrievalKey != docKey {
 		h.cache[retrievalKey] = &s
 	}
+	return h.resolveFragment(&s, fragment)
+}
 
+// resolveFragment resolves a fragment, still percent-encoded, within a fetched
+// document, or returns the document for an empty one.
+func (h *HTTPResolver) resolveFragment(doc *Schema, fragment string) (*Schema, error) {
 	if fragment != "" {
-		local := NewLocalResolver(&s)
-		return local.ResolveLocal("#" + fragment)
+		return NewLocalResolver(doc).ResolveLocal("#" + fragment)
 	}
-
-	return &s, nil
+	return doc, nil
 }
 
 // RemoteFetchError reports a remote $ref the HTTP resolver was permitted to
@@ -1184,3 +1325,49 @@ func (e *ResolveError) Error() string {
 }
 
 func (e *ResolveError) Unwrap() []error { return e.Errs }
+
+// rewrittenKeywords are the keywords whose subschemas Normalize moves to the
+// keywords that replaced them, so that a pointer written against the document
+// has to be answered from where the decode found them (Schema.srcChildren)
+// rather than from the rewritten tree.
+var rewrittenKeywords = map[string]bool{
+	"extends":      true,
+	"disallow":     true,
+	"dependencies": true,
+	"type":         true,
+}
+
+// legacyTarget answers a pointer into a keyword Normalize rewrote, from the
+// locations recorded when the document was read (Schema.srcChildren), and
+// returns the tokens still to walk inside it.
+//
+// A target the dialect pass dropped with its keyword -- "extends" under a
+// dialect that does not define it -- was never normalized with the tree. It is
+// then a subschema of an unknown keyword, which a pointer still reaches (an
+// unknown keyword's value is reached the same way, through Extensions), and it
+// is normalized on demand, under this node's dialect, as such a value is.
+func (s *Schema) legacyTarget(key string, rest []string) (*Schema, []string, bool) {
+	if !rewrittenKeywords[key] {
+		return nil, nil, false
+	}
+	lookup := func(tokens ...string) *Schema {
+		target := s.childAt(tokens...)
+		if target != nil && !target.normalized {
+			d := s.DetectedDraft
+			if own := DetectDraft(target); own != DraftUnknown {
+				d = own
+			}
+			target.NormalizeForDraft(d)
+		}
+		return target
+	}
+	if len(rest) > 0 {
+		if target := lookup(key, rest[0]); target != nil {
+			return target, rest[1:], true
+		}
+	}
+	if target := lookup(key); target != nil {
+		return target, rest, true
+	}
+	return nil, nil, false
+}
