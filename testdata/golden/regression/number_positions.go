@@ -413,7 +413,7 @@ func (n NumberPositions) Validate() error {
 				return fmt.Errorf("constant: failed to marshal for const check: %w", _constErr)
 			}
 			if string(_constGot) != "2.5" {
-				return fmt.Errorf("constant: value must be %s, got %s", "2.5", string(_constGot))
+				return fmt.Errorf("constant: value must be %s, got %s", "2.5", _schemagenClipText(string(_constGot)))
 			}
 		}
 	}
@@ -475,9 +475,11 @@ func (n NumberPositions) Validate() error {
 				_cMatch := true
 				if _cMatch {
 					_cBytes, _ := json.Marshal(_cElem)
-					var _cf float64
-					if json.Unmarshal(_cBytes, &_cf) != nil || _cf < 7.5 {
-						_cMatch = false
+					if len(_cBytes) > 0 && (_cBytes[0] == '-' || _cBytes[0] >= '0' && _cBytes[0] <= '9') {
+						var _cf float64
+						if json.Unmarshal(_cBytes, &_cf) != nil || _cf < 7.5 {
+							_cMatch = false
+						}
 					}
 				}
 				if _cMatch {

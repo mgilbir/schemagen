@@ -117,7 +117,7 @@ func (l *Lower) UnmarshalJSON(data []byte) error {
 					}
 					var val LowerValue
 					if err := json.Unmarshal(rawVal, &val); err != nil {
-						return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
+						return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 					}
 					l.AdditionalProperties[rawKey] = val
 					return nil
@@ -165,7 +165,7 @@ func (l Lower) MarshalJSON() ([]byte, error) {
 			if _err := func() error {
 				raw, err := json.Marshal(_member)
 				if err != nil {
-					return fmt.Errorf("marshaling additional property %q: %w", _key, err)
+					return fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), err)
 				}
 				obj[_key] = raw
 				return nil
@@ -521,10 +521,10 @@ func (a AllOfOverflowPositionsNamedKey) Validate() error {
 							// enforces its shape and the Validate enforces the rest.
 							var _bVal AllOfOverflowPositionsNamedKeyBranch0Value
 							if _bErr := json.Unmarshal(_bv, &_bVal); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %q: %w", _key, _bErr)
+								return fmt.Errorf("additionalProperties: property %s: %w", _schemagenQuote(_key), _bErr)
 							}
 							if _bErr := _bVal.Validate(); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %q: %w", _key, _bErr)
+								return fmt.Errorf("additionalProperties: property %s: %w", _schemagenQuote(_key), _bErr)
 							}
 						}
 					}
@@ -555,10 +555,10 @@ func (a AllOfOverflowPositionsNamedKey) Validate() error {
 							// enforces its shape and the Validate enforces the rest.
 							var _bVal AllOfOverflowPositionsNamedKeyBranch1Value
 							if _bErr := json.Unmarshal(_bv, &_bVal); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %q: %w", _key, _bErr)
+								return fmt.Errorf("additionalProperties: property %s: %w", _schemagenQuote(_key), _bErr)
 							}
 							if _bErr := _bVal.Validate(); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %q: %w", _key, _bErr)
+								return fmt.Errorf("additionalProperties: property %s: %w", _schemagenQuote(_key), _bErr)
 							}
 						}
 					}
@@ -676,7 +676,7 @@ func (a *AllOfOverflowPositionsSoleBranch) UnmarshalJSON(data []byte) error {
 					}
 					var val AllOfOverflowPositionsSoleBranchValue
 					if err := json.Unmarshal(rawVal, &val); err != nil {
-						return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
+						return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 					}
 					a.AdditionalProperties[rawKey] = val
 					return nil
@@ -717,7 +717,7 @@ func (a AllOfOverflowPositionsSoleBranch) MarshalJSON() ([]byte, error) {
 			if _err := func() error {
 				raw, err := json.Marshal(_member)
 				if err != nil {
-					return fmt.Errorf("marshaling additional property %q: %w", _key, err)
+					return fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), err)
 				}
 				obj[_key] = raw
 				return nil

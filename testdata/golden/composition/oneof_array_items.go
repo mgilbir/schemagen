@@ -390,7 +390,7 @@ func (c *CanvasShapesItem) UnmarshalJSON(data []byte) error {
 				}
 				c.Value = &CanvasShapesItem_Rectangle{Rectangle: candidate}
 			default:
-				return oneofErrf("unknown discriminator value %q for property %q", discVal, "kind")
+				return oneofErrf("unknown discriminator value %s for property %q", _schemagenQuote(discVal), "kind")
 			}
 		}
 	}

@@ -791,12 +791,18 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption0{OneOfBooleanAndConstBranchesObjectsOnlyOption0: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant OneOfBooleanAndConstBranchesObjectsOnlyOption0: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant OneOfBooleanAndConstBranchesObjectsOnlyOption0: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant OneOfBooleanAndConstBranchesObjectsOnlyOption0: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -814,12 +820,18 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption1{OneOfBooleanAndConstBranchesObjectsOnlyOption1: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant OneOfBooleanAndConstBranchesObjectsOnlyOption1: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant OneOfBooleanAndConstBranchesObjectsOnlyOption1: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant OneOfBooleanAndConstBranchesObjectsOnlyOption1: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -883,6 +895,8 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 				if err := json.Unmarshal(oneofData, &candidate); err == nil {
 					o.ScalarsOnly = &OneOfBooleanAndConstBranches_String{String: candidate}
 					oneofMatched++
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant String: %w", err)
 				} else {
 					oneofLastErr = err
 				}
@@ -903,6 +917,8 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 				if err := _ivErr; err == nil {
 					o.ScalarsOnly = &OneOfBooleanAndConstBranches_Integer{Integer: candidate}
 					oneofMatched++
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant Integer: %w", err)
 				} else {
 					oneofLastErr = err
 				}
@@ -962,12 +978,18 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesTrueBranchOption0{OneOfBooleanAndConstBranchesTrueBranchOption0: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant OneOfBooleanAndConstBranchesTrueBranchOption0: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant OneOfBooleanAndConstBranchesTrueBranchOption0: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant OneOfBooleanAndConstBranchesTrueBranchOption0: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -984,6 +1006,8 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 					// carry, so matching it is satisfying it.
 					oneofStrict++
 					oneofStrictSel = &OneOfBooleanAndConstBranches_Any{Any: candidate}
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant Any: %w", err)
 				} else {
 					oneofLastErr = err
 				}

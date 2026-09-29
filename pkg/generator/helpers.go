@@ -123,6 +123,31 @@ type HelperSet struct {
 	// here -- a package with no struct decode emits none of it.
 	DecodePath bool
 
+	// Patterns are the schema regular expressions the package's generated code
+	// matches with, sorted and without duplicates. The helper file declares one
+	// package-level variable per pattern, compiled once when the package is
+	// initialised, and the type that matches through it; generated code names
+	// the variable (see PatternVarName) and never compiles a pattern itself.
+	// A list rather than a flag for the reason AnnotationsFormats is one: what
+	// the block declares depends on which patterns, not only on whether any.
+	// It is also the only block that imports the ECMA-262 engine for a pattern,
+	// so a package whose schemas state none does not take the dependency.
+	Patterns []string
+
+	// Quote is _schemagenQuote, the rule every message quoting a string taken
+	// from the document goes through: quoted whole up to 128 bytes, and cut to
+	// its first 64 with its length beyond that, so that an error about a huge
+	// value is not itself huge.
+	Quote bool
+
+	// Undecided is _schemagenUndecided, the test every site that reads an
+	// error as a boolean -- a union branch that did not decode or validate, a
+	// contains element that did not count -- asks first, so that a pattern
+	// match with no answer is returned rather than read as "no". A block of
+	// its own rather than part of the pattern block: the error may come from a
+	// type another package declares, in a package that states no pattern.
+	Undecided bool
+
 	// FormatHostname pulls in the two hostname checks, which are kept apart
 	// from the rest because they are the only ones that need a dependency the
 	// caller would not otherwise take: golang.org/x/net/idna, for punycode, the
@@ -139,7 +164,7 @@ func (h HelperSet) Empty() bool {
 		!h.Annotations && !h.Integer && !h.Number && !h.NumberCompare && !h.DateTime &&
 		!h.Canonical && !h.NullCheck &&
 		!h.Format && !h.FormatHostname && !h.Content && !h.Access && !h.ExactProperties &&
-		!h.PathJoin && !h.DecodePath && !h.IPAddr
+		!h.PathJoin && !h.DecodePath && !h.IPAddr && len(h.Patterns) == 0 && !h.Quote && !h.Undecided
 }
 
 // Merge folds another set into this one.
@@ -168,6 +193,9 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.ExactProperties = h.ExactProperties || other.ExactProperties
 	h.PathJoin = h.PathJoin || other.PathJoin
 	h.DecodePath = h.DecodePath || other.DecodePath
+	h.Patterns = mergeSortedUnique(h.Patterns, other.Patterns)
+	h.Quote = h.Quote || other.Quote
+	h.Undecided = h.Undecided || other.Undecided
 }
 
 // CloseOverCalls adds the blocks the selected blocks themselves call.
@@ -191,6 +219,13 @@ func (h *HelperSet) CloseOverCalls() {
 	// jsonValueErrorf as jsonInteger does, so it closes over the same block.
 	if h.Integer || h.Number || h.DateTime || h.IPAddr || h.NullCheck || h.DecodePath || h.Annotations {
 		h.PathJoin = true
+	}
+	// Every block below writes a string taken from the document into a
+	// message -- a format checker the value it refused, a walker the key it
+	// was under -- and does it through the one quoting rule, which lives in a
+	// block of its own. See Quote.
+	if h.Format || h.FormatHostname || h.DateTime || h.IPAddr || h.NullCheck || h.DecodePath || h.Access || h.Annotations || h.Canonical {
+		h.Quote = true
 	}
 }
 
@@ -217,6 +252,18 @@ func (h *HelperSet) CloseOverCalls() {
 // a file that is written once. Under-matching breaks the build.
 func HelpersReferencedBy(src string) HelperSet {
 	var set HelperSet
+	// The compiled patterns. A generated file names the package-level variable
+	// each pattern is held in, and the registry PatternVarName filled while the
+	// file was rendered says which pattern that is. So the one reading here is
+	// both which patterns to compile and whether the block that compiles them
+	// is needed at all.
+	set.Patterns = patternsReferencedBy(src)
+	if strings.Contains(src, "_schemagenQuote(") || strings.Contains(src, "_schemagenClipText(") || strings.Contains(src, "_schemagenClipErr(") {
+		set.Quote = true
+	}
+	if strings.Contains(src, "_schemagenUndecided(") {
+		set.Undecided = true
+	}
 	if strings.Contains(src, "oneofHasRequiredFields(") {
 		set.OneOf = true
 	}
@@ -256,20 +303,19 @@ func HelpersReferencedBy(src string) HelperSet {
 	if strings.Contains(src, "_schemaNode") || strings.Contains(src, "_evalNode(") {
 		set.Annotations = true
 		set.Dynamic = true
-		// The evaluator's ECMA-262 arms are the one part of a helper block that
-		// is compiled in conditionally, because the engine is a third-party
-		// dependency and a package that never names a pattern should not
-		// acquire it. It is also the one signal here that is not a call:
-		// _dynPatternOK is reached from inside the block and never from the
-		// file, so what the file carries is the literal the arms exist to
+		// The evaluator's pattern arms are the one part of a helper block that
+		// is compiled in conditionally, because the engine behind them is a
+		// third-party dependency and a package that never names a pattern
+		// should not acquire it. It is also the one signal here that is not a
+		// call: the arms are reached from inside the block and never from the
+		// file, so what the file carries is the field the arms exist to
 		// interpret. Both spellings that set it are matched -- "pattern" on a
 		// node, and a patternProperties member list, which is also what makes
 		// an additionalProperties node have to run the patterns to know what is
 		// left over. Missing one would leave the field set with nothing reading
-		// it, which is a check dropped in silence rather than a build failure,
-		// so this errs towards matching; naming the arms where they are not
-		// needed costs an import and compiles.
-		if strings.Contains(src, "Pattern: _strPtr(") || strings.Contains(src, "PatternProperties:") {
+		// it, which does not compile: the node field is typed by the pattern
+		// block, which the arms are what need.
+		if strings.Contains(src, "Pattern: "+patternVarPrefix) || strings.Contains(src, "PatternProperties:") {
 			set.AnnotationsPattern = true
 		}
 		// "format" and the content vocabulary are read the same way, and are the
@@ -313,7 +359,13 @@ func HelpersReferencedBy(src string) HelperSet {
 		strings.Contains(src, "_decodeIgnoringReadOnly(") || strings.Contains(src, "_isReadOnlyRefusal(") ||
 		strings.Contains(src, "_readOnlyRefusal{") {
 		set.Access = true
-		if strings.Contains(src, "Kind: _accessPattern") {
+		// Both spellings a pattern takes in a rule are matched: a step that
+		// names members by pattern, and the patterns an additionalProperties
+		// step steps past. The second was once missed, which left an
+		// ExceptPatterns list emitted and nothing reading it -- a member a
+		// pattern claims then read as additional. Each is now typed by the
+		// pattern block, so a miss no longer compiles.
+		if strings.Contains(src, "Kind: _accessPattern") || strings.Contains(src, "ExceptPatterns:") {
 			set.AccessPattern = true
 		}
 	}

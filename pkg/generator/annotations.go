@@ -409,11 +409,17 @@ func (b *nodeBuilder) subList(subs []*schema.Schema, indent int) (string, bool) 
 	return lit, ok
 }
 
-func (b *nodeBuilder) subMemberList(members map[string]*schema.Schema, indent int) (string, bool) {
+func (b *nodeBuilder) subMemberList(members map[string]*schema.Schema, indent int, byPattern bool) (string, bool) {
 	b.descents++
 	conjunct := b.inConjunct
 	b.inConjunct = false
-	lit, ok := b.memberList(members, indent)
+	var lit string
+	var ok bool
+	if byPattern {
+		lit, ok = b.patternMemberList(members, indent)
+	} else {
+		lit, ok = b.memberList(members, indent)
+	}
 	b.inConjunct = conjunct
 	b.descents--
 	return lit, ok
@@ -608,7 +614,11 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		add(fmt.Sprintf("MaxLength: _intPtr(%s),", countBound(*s.MaxLength).GoExpr()))
 	}
 	if s.Pattern != nil {
-		add(fmt.Sprintf("Pattern: _strPtr(%q),", *s.Pattern))
+		name, err := PatternVarName(*s.Pattern)
+		if err != nil {
+			return b.refuse(err.Error())
+		}
+		add(fmt.Sprintf("Pattern: %s,", name))
 		b.usesPattern = true
 	}
 
@@ -752,7 +762,7 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		if len(members) == 0 {
 			continue
 		}
-		list, ok := b.subMemberList(members, indent+2)
+		list, ok := b.subMemberList(members, indent+2, group.name == "PatternProperties")
 		if !ok {
 			return "", false
 		}
@@ -1032,6 +1042,30 @@ func (b *nodeBuilder) memberList(members map[string]*schema.Schema, indent int) 
 		parts = append(parts, fmt.Sprintf("%s{Key: %q, Node: %s},", pad, key, lit))
 	}
 	return "[]_schemaMember{\n" + strings.Join(parts, "\n") + "\n" + closePad + "}", true
+}
+
+// patternMemberList is memberList for patternProperties, whose members are
+// keyed by a pattern the evaluator has to match rather than by a name: each
+// carries the package-level variable its pattern is compiled into, so the
+// evaluator never compiles one while it runs.
+func (b *nodeBuilder) patternMemberList(members map[string]*schema.Schema, indent int) (string, bool) {
+	pad := strings.Repeat("\t", indent)
+	closePad := strings.Repeat("\t", indent-1)
+	parts := make([]string, 0, len(members))
+	for _, key := range sortedKeys(members) {
+		name, err := PatternVarName(key)
+		if err != nil {
+			// Generation refuses an uncompilable pattern before any node is
+			// built (checkSchemaPatterns); a node is not the place to find out.
+			return b.refuse(err.Error())
+		}
+		lit, ok := b.literal(members[key], indent+1)
+		if !ok {
+			return "", false
+		}
+		parts = append(parts, fmt.Sprintf("%s{Pattern: %s, Node: %s},", pad, name, lit))
+	}
+	return "[]_schemaPatternMember{\n" + strings.Join(parts, "\n") + "\n" + closePad + "}", true
 }
 
 func dependentRequiredLiteral(deps map[string][]string, indent int) string {

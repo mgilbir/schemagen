@@ -5,8 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	ecma262 "github.com/mgilbir/goecma262"
-	ecmaflags "github.com/mgilbir/goecma262/flags"
 	"math"
 )
 
@@ -268,7 +266,7 @@ func (n NoNameAllowed) Validate() error {
 				continue
 			}
 			if _err := func() error {
-				return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+				return fmt.Errorf("propertyNames: property %s is not allowed (schema is false)", _schemagenQuote(_pnKey))
 			}(); _err != nil {
 				_least, _failed = _pnKey, _err
 			}
@@ -447,7 +445,7 @@ func (e EnumOutsideDeclaredTypeArrayEnum) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(e))
 	if _canonErr != nil {
-		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeArrayEnum value: %s", string(e))
+		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeArrayEnum value: %s", _schemagenClipText(string(e)))
 	}
 	for _, allowed := range enumOutsideDeclaredTypeArrayEnumAllowedJSON {
 		if _canon == allowed {
@@ -651,31 +649,44 @@ func (e *EnumOutsideDeclaredTypeConstOutsidePattern) UnmarshalJSON(data []byte) 
 			return err
 		}
 		knownFields := map[string]bool{}
-		patternRegexps := []*ecma262.Regexp{
-			ecma262.MustCompile("^a", ecmaflags.Unicode),
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			matchesPattern := false
-			for _, re := range patternRegexps {
-				if re.MatchString(rawKey) {
-					matchesPattern = true
-					break
+		{
+			var _least string
+			var _failed error
+			for rawKey, rawVal := range raw { // refused for the least failing key
+				if _failed != nil && rawKey >= _least {
+					continue
+				}
+				if _err := func() error {
+					if knownFields[rawKey] {
+						return nil
+					}
+					matchesPattern := false
+					if !matchesPattern {
+						_ppMatched, _ppErr := _schemagenPattern_5cd67a1734052155.matches(rawKey)
+						if _ppErr != nil {
+							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
+						}
+						matchesPattern = _ppMatched
+					}
+					if matchesPattern {
+						if e.PatternProperties == nil {
+							e.PatternProperties = make(map[string]json.RawMessage)
+						}
+						e.PatternProperties[rawKey] = rawVal
+						return nil
+					}
+					if e.AdditionalProperties == nil {
+						e.AdditionalProperties = make(map[string]json.RawMessage)
+					}
+					e.AdditionalProperties[rawKey] = rawVal
+					return nil
+				}(); _err != nil {
+					_least, _failed = rawKey, _err
 				}
 			}
-			if matchesPattern {
-				if e.PatternProperties == nil {
-					e.PatternProperties = make(map[string]json.RawMessage)
-				}
-				e.PatternProperties[rawKey] = rawVal
-				continue
+			if _failed != nil {
+				return _failed
 			}
-			if e.AdditionalProperties == nil {
-				e.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			e.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
@@ -707,30 +718,37 @@ func (e EnumOutsideDeclaredTypeConstOutsidePattern) MarshalJSON() ([]byte, error
 
 // Validate checks EnumOutsideDeclaredTypeConstOutsidePattern against its JSON Schema constraints.
 func (e EnumOutsideDeclaredTypeConstOutsidePattern) Validate() error {
-	// patternProperties validation: check matched values against sub-schema constraints.
-	if len(e.PatternProperties) > 0 {
-		ppRegexps := []*ecma262.Regexp{
-			ecma262.MustCompile("^a", ecmaflags.Unicode),
-		}
-		{
-			var _least string
-			var _failed error
-			for _key, _member := range e.PatternProperties { // refused for the least failing key
-				if _failed != nil && _key >= _least {
-					continue
-				}
-				if _err := func() error {
-					_ = _member
-					if ppRegexps[0].MatchString(_key) {
-						return fmt.Errorf("patternProperties: key %q matches forbidden pattern %s", _key, "^a")
-					}
-					return nil
-				}(); _err != nil {
-					_least, _failed = _key, _err
-				}
+	// patternProperties: every member whose key a pattern matches is held to that
+	// pattern's sub-schema. That is the members the decoder filed in
+	// PatternProperties, and the declared ones a pattern also matches, which
+	// "properties" governs as well -- the two keywords apply side by side.
+	{
+		_ppMember := func(_key string, _member json.RawMessage) error {
+			_ = _member
+			if _ppMatched, _ppErr := _schemagenPattern_5cd67a1734052155.matches(_key); _ppErr != nil {
+				return fmt.Errorf("patternProperties: key %s: %w", _schemagenQuote(_key), _ppErr)
+			} else if _ppMatched {
+				return fmt.Errorf("patternProperties: key %s matches forbidden pattern %s", _schemagenQuote(_key), "^a")
 			}
-			if _failed != nil {
-				return _failed
+			return nil
+		}
+		if len(e.PatternProperties) > 0 {
+			{
+				var _least string
+				var _failed error
+				for _key, _member := range e.PatternProperties { // refused for the least failing key
+					if _failed != nil && _key >= _least {
+						continue
+					}
+					if _err := func() error {
+						return _ppMember(_key, _member)
+					}(); _err != nil {
+						_least, _failed = _key, _err
+					}
+				}
+				if _failed != nil {
+					return _failed
+				}
 			}
 		}
 	}
@@ -862,7 +880,7 @@ func (e EnumOutsideDeclaredTypeConstOutsideUnevalProps) Validate() error {
 						evaluated = true
 					}
 					if !evaluated {
-						return jsonValueErrorf("unevaluated property %q is not allowed", _key)
+						return jsonValueErrorf("unevaluated property %s is not allowed", _schemagenQuote(_key))
 					}
 					return nil
 				}(); _err != nil {
@@ -1059,31 +1077,44 @@ func (e *EnumOutsideDeclaredTypeEnumPartialPattern) UnmarshalJSON(data []byte) e
 			return err
 		}
 		knownFields := map[string]bool{}
-		patternRegexps := []*ecma262.Regexp{
-			ecma262.MustCompile("^a", ecmaflags.Unicode),
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			matchesPattern := false
-			for _, re := range patternRegexps {
-				if re.MatchString(rawKey) {
-					matchesPattern = true
-					break
+		{
+			var _least string
+			var _failed error
+			for rawKey, rawVal := range raw { // refused for the least failing key
+				if _failed != nil && rawKey >= _least {
+					continue
+				}
+				if _err := func() error {
+					if knownFields[rawKey] {
+						return nil
+					}
+					matchesPattern := false
+					if !matchesPattern {
+						_ppMatched, _ppErr := _schemagenPattern_5cd67a1734052155.matches(rawKey)
+						if _ppErr != nil {
+							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
+						}
+						matchesPattern = _ppMatched
+					}
+					if matchesPattern {
+						if e.PatternProperties == nil {
+							e.PatternProperties = make(map[string]json.RawMessage)
+						}
+						e.PatternProperties[rawKey] = rawVal
+						return nil
+					}
+					if e.AdditionalProperties == nil {
+						e.AdditionalProperties = make(map[string]json.RawMessage)
+					}
+					e.AdditionalProperties[rawKey] = rawVal
+					return nil
+				}(); _err != nil {
+					_least, _failed = rawKey, _err
 				}
 			}
-			if matchesPattern {
-				if e.PatternProperties == nil {
-					e.PatternProperties = make(map[string]json.RawMessage)
-				}
-				e.PatternProperties[rawKey] = rawVal
-				continue
+			if _failed != nil {
+				return _failed
 			}
-			if e.AdditionalProperties == nil {
-				e.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			e.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
@@ -1115,41 +1146,48 @@ func (e EnumOutsideDeclaredTypeEnumPartialPattern) MarshalJSON() ([]byte, error)
 
 // Validate checks EnumOutsideDeclaredTypeEnumPartialPattern against its JSON Schema constraints.
 func (e EnumOutsideDeclaredTypeEnumPartialPattern) Validate() error {
-	// patternProperties validation: check matched values against sub-schema constraints.
-	if len(e.PatternProperties) > 0 {
-		ppRegexps := []*ecma262.Regexp{
-			ecma262.MustCompile("^a", ecmaflags.Unicode),
-		}
-		{
-			var _least string
-			var _failed error
-			for _key, _member := range e.PatternProperties { // refused for the least failing key
-				if _failed != nil && _key >= _least {
-					continue
-				}
-				if _err := func() error {
-					_ = _member
-					if ppRegexps[0].MatchString(_key) {
-						{
-							// The sub-schema's own type answers for it: the value is
-							// decoded into it, so the decode enforces shape and the
-							// Validate enforces everything beyond it.
-							var _pv EnumOutsideDeclaredTypeEnumPartialPatternPattern0
-							if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^a", _key, _uErr)
-							}
-							if _vErr := _pv.Validate(); _vErr != nil {
-								return fmt.Errorf("patternProperties %s: key %q: %w", "^a", _key, _vErr)
-							}
-						}
+	// patternProperties: every member whose key a pattern matches is held to that
+	// pattern's sub-schema. That is the members the decoder filed in
+	// PatternProperties, and the declared ones a pattern also matches, which
+	// "properties" governs as well -- the two keywords apply side by side.
+	{
+		_ppMember := func(_key string, _member json.RawMessage) error {
+			_ = _member
+			if _ppMatched, _ppErr := _schemagenPattern_5cd67a1734052155.matches(_key); _ppErr != nil {
+				return fmt.Errorf("patternProperties: key %s: %w", _schemagenQuote(_key), _ppErr)
+			} else if _ppMatched {
+				{
+					// The sub-schema's own type answers for it: the value is
+					// decoded into it, so the decode enforces shape and the
+					// Validate enforces everything beyond it.
+					var _pv EnumOutsideDeclaredTypeEnumPartialPatternPattern0
+					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
+						return fmt.Errorf("patternProperties %s: key %s: %w", "^a", _schemagenQuote(_key), _uErr)
 					}
-					return nil
-				}(); _err != nil {
-					_least, _failed = _key, _err
+					if _vErr := _pv.Validate(); _vErr != nil {
+						return fmt.Errorf("patternProperties %s: key %s: %w", "^a", _schemagenQuote(_key), _vErr)
+					}
 				}
 			}
-			if _failed != nil {
-				return _failed
+			return nil
+		}
+		if len(e.PatternProperties) > 0 {
+			{
+				var _least string
+				var _failed error
+				for _key, _member := range e.PatternProperties { // refused for the least failing key
+					if _failed != nil && _key >= _least {
+						continue
+					}
+					if _err := func() error {
+						return _ppMember(_key, _member)
+					}(); _err != nil {
+						_least, _failed = _key, _err
+					}
+				}
+				if _failed != nil {
+					return _failed
+				}
 			}
 		}
 	}
@@ -1362,7 +1400,7 @@ func (e EnumOutsideDeclaredTypeObjectEnum) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(e))
 	if _canonErr != nil {
-		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeObjectEnum value: %s", string(e))
+		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeObjectEnum value: %s", _schemagenClipText(string(e)))
 	}
 	for _, allowed := range enumOutsideDeclaredTypeObjectEnumAllowedJSON {
 		if _canon == allowed {
@@ -1435,7 +1473,7 @@ func (e EnumOutsideDeclaredTypeUnionEnum) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(e))
 	if _canonErr != nil {
-		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeUnionEnum value: %s", string(e))
+		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeUnionEnum value: %s", _schemagenClipText(string(e)))
 	}
 	for _, allowed := range enumOutsideDeclaredTypeUnionEnumAllowedJSON {
 		if _canon == allowed {
@@ -1474,7 +1512,7 @@ func (e EnumOutsideDeclaredTypeUntypedEnum) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(e))
 	if _canonErr != nil {
-		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeUntypedEnum value: %s", string(e))
+		return jsonValueErrorf("invalid EnumOutsideDeclaredTypeUntypedEnum value: %s", _schemagenClipText(string(e)))
 	}
 	for _, allowed := range enumOutsideDeclaredTypeUntypedEnumAllowedJSON {
 		if _canon == allowed {
@@ -1864,7 +1902,7 @@ func (e EnumOutsideDeclaredType) Validate() error {
 				return fmt.Errorf("boolEnum: failed to marshal for const check: %w", _constErr)
 			}
 			if string(_constGot) != "true" {
-				return fmt.Errorf("boolEnum: value must be %s, got %s", "true", string(_constGot))
+				return fmt.Errorf("boolEnum: value must be %s, got %s", "true", _schemagenClipText(string(_constGot)))
 			}
 		}
 	}
@@ -1875,7 +1913,7 @@ func (e EnumOutsideDeclaredType) Validate() error {
 				return fmt.Errorf("constOutsideProp: failed to marshal for const check: %w", _constErr)
 			}
 			if string(_constGot) != "5" {
-				return fmt.Errorf("constOutsideProp: value must be %s, got %s", "5", string(_constGot))
+				return fmt.Errorf("constOutsideProp: value must be %s, got %s", "5", _schemagenClipText(string(_constGot)))
 			}
 		}
 	}
@@ -1891,7 +1929,7 @@ func (e EnumOutsideDeclaredType) Validate() error {
 				return fmt.Errorf("fracOutsideInteger: failed to marshal for const check: %w", _constErr)
 			}
 			if string(_constGot) != "2.5" {
-				return fmt.Errorf("fracOutsideInteger: value must be %s, got %s", "2.5", string(_constGot))
+				return fmt.Errorf("fracOutsideInteger: value must be %s, got %s", "2.5", _schemagenClipText(string(_constGot)))
 			}
 		}
 	}
@@ -1902,7 +1940,7 @@ func (e EnumOutsideDeclaredType) Validate() error {
 				return fmt.Errorf("integerFloatSpelling: failed to marshal for const check: %w", _constErr)
 			}
 			if string(_constGot) != "1" {
-				return fmt.Errorf("integerFloatSpelling: value must be %s, got %s", "1", string(_constGot))
+				return fmt.Errorf("integerFloatSpelling: value must be %s, got %s", "1", _schemagenClipText(string(_constGot)))
 			}
 		}
 	}
@@ -1913,7 +1951,7 @@ func (e EnumOutsideDeclaredType) Validate() error {
 				return fmt.Errorf("typedConst: failed to marshal for const check: %w", _constErr)
 			}
 			if string(_constGot) != "\"a\"" {
-				return fmt.Errorf("typedConst: value must be %s, got %s", "\"a\"", string(_constGot))
+				return fmt.Errorf("typedConst: value must be %s, got %s", "\"a\"", _schemagenClipText(string(_constGot)))
 			}
 		}
 	}
@@ -2010,7 +2048,7 @@ func (e EnumOutsideDeclaredType) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "constOutsideValues[%q]", _k)
+					return jsonPathf(err, "constOutsideValues[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {
@@ -2068,7 +2106,7 @@ func (e EnumOutsideDeclaredType) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "enumPartialValues[%q]", _k)
+					return jsonPathf(err, "enumPartialValues[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {

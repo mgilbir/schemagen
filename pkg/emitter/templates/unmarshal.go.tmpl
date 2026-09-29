@@ -353,7 +353,7 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 				       `for field "kind"` behind a Go-spelled prefix. Passed as an
 				       argument rather than pasted into the format string, so a name
 				       carrying a quote cannot break the literal. Issue #289. */}}
-				return oneofErrf("unknown discriminator value %q for property %q", discVal, {{printf "%q" $oof.DiscriminatorField}})
+				return oneofErrf("unknown discriminator value %s for property %q", _schemagenQuote(discVal), {{printf "%q" $oof.DiscriminatorField}})
 			}
 			{{- else}}
 			var oneofMatched int
@@ -409,7 +409,13 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 						if utf8.RuneCountInString(candidate) > {{countExpr .Value}} { oneofOK = false }
 						{{- end}}
 						{{- if eq .RuleType "pattern"}}
-						if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, candidate); !matched { oneofOK = false }
+						if _matched, _mErr := {{patternVar .Value}}.matches(string(candidate)); _mErr != nil {
+							// With no verdict on this branch there is no
+							// telling which one the document selects.
+							return oneofErrf("oneOf: %w", _mErr)
+						} else if !_matched {
+							oneofOK = false
+						}
 						{{- end}}
 						{{- if eq .RuleType "minimum"}}
 						{{- if .ExactCompare}}
@@ -480,6 +486,10 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant {{$v.FieldName}}: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant {{$v.FieldName}}: %w", _vErr)
 							}
@@ -490,6 +500,8 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 						if _vErr := candidate.Validate(); _vErr == nil {
 							oneofStrict++
 							oneofStrictSel = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: candidate}
+						} else if _schemagenUndecided(_vErr) {
+							return oneofErrf("variant {{$v.FieldName}}: %w", _vErr)
 						} else {
 							oneofStrictErr = fmt.Errorf("variant {{$v.FieldName}}: %w", _vErr)
 						}
@@ -507,6 +519,8 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 						{{- end}}
 						{{- end}}
 						{{- end}}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant {{$v.FieldName}}: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -669,20 +683,14 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			{{- end}}
 			{{- end}}
 		}
-		{{- if $struct.HasPatternProperties}}
-		patternRegexps := []*ecma262.Regexp{
-			{{- range $struct.PatternProperties}}
-			ecma262.MustCompile({{ecmaPattern .Pattern}}, ecmaflags.Unicode),
-			{{- end}}
-		}
-		{{- end}}
 		{{- /* Where a member can be refused -- a null the schema forbids, a value
-		       that does not decode -- in least-key terms rather than map order:
-		       the refusal is for the least key, not for whichever member the
-		       randomised map order reached first. See least_key_open. Where
-		       nothing can be refused the loop only files each member under its
-		       own key, and stays a plain loop. */}}
-		{{- $refuses := or $struct.OverflowNullCheck (and $struct.AdditionalProperties (not (isRawMessage $struct.AdditionalProperties.ValueType)))}}
+		       that does not decode, a key no pattern match could be decided for
+		       -- in least-key terms rather than map order: the refusal is for
+		       the least key, not for whichever member the randomised map order
+		       reached first. See least_key_open. Where nothing can be refused
+		       the loop only files each member under its own key, and stays a
+		       plain loop. */}}
+		{{- $refuses := or $struct.OverflowNullCheck (and $struct.AdditionalProperties (not (isRawMessage $struct.AdditionalProperties.ValueType))) $struct.HasPatternProperties}}
 		{{- $lk := leastKey "rawKey" "rawVal" "raw" "_failed"}}
 		{{- if $refuses}}
 		{{- template "least_key_open" $lk}}
@@ -694,13 +702,19 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 				{{if $refuses}}return nil{{else}}continue{{end}}
 			}
 			{{- if $struct.HasPatternProperties}}
+			{{- /* Which bucket a member is filed in is itself a pattern match,
+			       so a key no match could be decided for has nowhere to go:
+			       the decode reports it rather than guessing. */}}
 			matchesPattern := false
-			for _, re := range patternRegexps {
-				if re.MatchString(rawKey) {
-					matchesPattern = true
-					break
+			{{- range $struct.PatternProperties}}
+			if !matchesPattern {
+				_ppMatched, _ppErr := {{patternVar .Pattern}}.matches(rawKey)
+				if _ppErr != nil {
+					return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
 				}
+				matchesPattern = _ppMatched
 			}
+			{{- end}}
 			if matchesPattern {
 				if {{$recv}}.PatternProperties == nil {
 					{{$recv}}.PatternProperties = make(map[string]json.RawMessage)
@@ -716,11 +730,11 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			       reports no error at all. */}}
 			{{- if .Nested}}
 			if err := checkJSONNullsAt(rawVal, {{template "nullrule" .}}); err != nil {
-				return jsonElemPathf(err, "[%q]", rawKey)
+				return jsonElemPathf(err, "[%s]", _schemagenQuote(rawKey))
 			}
 			{{- else}}
 			if string(rawVal) == "null" {
-				return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%q]", rawKey)
+				return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%s]", _schemagenQuote(rawKey))
 			}
 			{{- end}}
 			{{- end}}
@@ -733,13 +747,13 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 			{{- else if $struct.AdditionalProperties.LeafDecode}}
 			var _iv {{goType $struct.AdditionalProperties.LeafDecode.ShadowType}}
 			if err := json.Unmarshal(rawVal, &_iv); err != nil {
-				return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
+				return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 			}
 			{{$recv}}.AdditionalProperties[rawKey] = {{$struct.AdditionalProperties.LeafDecode.Convert}}
 			{{- else}}
 			var val {{goType $struct.AdditionalProperties.ValueType}}
 			if err := json.Unmarshal(rawVal, &val); err != nil {
-				return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
+				return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 			}
 			{{$recv}}.AdditionalProperties[rawKey] = val
 			{{- end}}

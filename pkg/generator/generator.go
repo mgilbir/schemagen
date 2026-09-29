@@ -7,7 +7,6 @@ import (
 	"math"
 	"net/url"
 	"path"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -1384,7 +1383,7 @@ func (g *Generator) addRequiredImports() {
 					needsUTF8 = true
 				}
 				if sd.ConditionalNeedsPattern() {
-					needsRegexp = true // pattern uses ecma262
+					needsRegexp = true // matched through a compiled package-level pattern
 				}
 			}
 			if sd.NeedsUnmarshal {
@@ -1542,7 +1541,7 @@ func (g *Generator) addRequiredImports() {
 					needsUTF8 = true
 				}
 				if sd.PropertyNames.Pattern != "" {
-					needsRegexp = true // pattern uses ecma262
+					needsRegexp = true // matched through a compiled package-level pattern
 				}
 			}
 			if sd.UnevaluatedProperties != nil && !sd.UnevaluatedProperties.IsAllowed && !sd.UnevaluatedProperties.AllEvaluated {
@@ -2039,15 +2038,21 @@ func (g *Generator) addRequiredImports() {
 		}
 	}
 
+	// A check that matches a pattern does so through the package-level variable
+	// the helper file compiles it into (see HelperSet.Patterns), so the file
+	// imports no regular expression engine of its own -- not ECMA-262's, and
+	// not the standard library's, which is a different language and is no
+	// longer used for any schema pattern. What such a check does need is fmt:
+	// a match the engine could not decide is reported as an error, wrapped
+	// with the position it was raised at.
+	if needsRegexp || needsStdRegexp {
+		needsFmt = true
+	}
 	if needsJSON {
 		g.output.Imports = append(g.output.Imports, Import{Path: "encoding/json"})
 	}
 	if needsFmt {
 		g.output.Imports = append(g.output.Imports, Import{Path: "fmt"})
-	}
-	if needsRegexp {
-		g.output.Imports = append(g.output.Imports, Import{Path: "github.com/mgilbir/goecma262", Alias: "ecma262"})
-		g.output.Imports = append(g.output.Imports, Import{Path: "github.com/mgilbir/goecma262/flags", Alias: "ecmaflags"})
 	}
 	if needsMath {
 		g.output.Imports = append(g.output.Imports, Import{Path: "math"})
@@ -2075,9 +2080,6 @@ func (g *Generator) addRequiredImports() {
 	}
 	if needsNetURL {
 		g.output.Imports = append(g.output.Imports, Import{Path: "net/url"})
-	}
-	if needsStdRegexp {
-		g.output.Imports = append(g.output.Imports, Import{Path: "regexp"})
 	}
 	if needsValidationRuntime {
 		g.output.Imports = append(g.output.Imports, Import{Path: "github.com/mgilbir/schemagen/pkg/validationruntime"})
@@ -4999,16 +5001,14 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				// plain Go string or int64 and its keywords reach nothing.
 				rules = append(rules, allOfConstraintRules(goFieldName, propName, propSchema, fieldTypes[goFieldName])...)
 			}
-			// Also apply constraints from patternProperties whose pattern matches this
-			// property name, in pattern order: the rules land in Validate in the order
-			// they are appended, so iterating the map would reorder the generated
-			// checks, and which of two failing checks reports, from run to run.
-			for _, pattern := range sortedKeys(s.PatternProperties) {
-				patSchema := s.PatternProperties[pattern]
-				if re, err := regexp.Compile(pattern); err == nil && re.MatchString(propName) {
-					rules = append(rules, extractValidationRules(goFieldName, propName, patSchema)...)
-				}
-			}
+			// A patternProperties key matching this property's name is not
+			// read here. It used to be: the matched sub-schema's keywords were
+			// turned into field rules, which decided the match with Go's RE2
+			// (a lookahead pattern did not compile, and the rule was dropped),
+			// passed over an untyped field altogether, and carried only the
+			// keywords a field rule can express -- never "type" or "enum". The
+			// member is held to the whole sub-schema instead, by the check an
+			// undeclared member gets; see declaredPatternMembers.
 		}
 		// Filter out rules that don't make sense for the Go type (e.g.,
 		// minimum/maximum on an 'any' field can't be compiled).
@@ -5333,6 +5333,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		needsMarshal = true
 		needsUnmarshal = true
 	}
+	declaredPatternMembers := g.declaredPatternMembers(s, propNames, goFieldNames, fieldTypes, requiredSet)
 
 	// Add struct-level property count validations. These count present JSON keys
 	// (tracked in _jsonKeys), so they require the custom unmarshaler.
@@ -5647,6 +5648,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		OneOfs:                 oneOfs,
 		AdditionalProperties:   additionalProps,
 		PatternProperties:      patternProps,
+		DeclaredPatternMembers: declaredPatternMembers,
 		DependentSchemas:       depSchemas,
 		DependentRequired:      depRequired,
 		PropertyNames:          propertyNamesDef,
@@ -14306,17 +14308,15 @@ func zeroJSONLiteral(kind string) string {
 // patternRefusesEmptyString reports whether a "pattern" demonstrably does not
 // match the empty string.
 //
-// The pattern is an ECMA-262 regular expression and Go's regexp is RE2, so the
-// two do not accept the same language -- but the failure is in the safe
-// direction: a pattern RE2 cannot compile answers false, which leaves the field
-// exactly as it is today. Both engines search rather than anchor, so a pattern
-// that matches the empty string anywhere matches it in both.
+// It is decided by the engine generated code matches with (PatternMatches), so
+// the two cannot disagree about a pattern RE2 reads differently or cannot read
+// at all. A pattern with no answer -- one that does not compile, which
+// generation has already refused, or one that exhausts the engine's budget on
+// the empty string -- answers false, which is the safe direction: the field is
+// left exactly as it would be with no pattern.
 func patternRefusesEmptyString(pattern string) bool {
-	re, err := regexp.Compile(pattern)
-	if err != nil {
-		return false
-	}
-	return !re.MatchString("")
+	matched, err := PatternMatches(pattern, "")
+	return err == nil && !matched
 }
 
 // numericBoundsExcludeZero reports whether this schema's numeric bounds place
@@ -16282,9 +16282,11 @@ func (g *Generator) buildFieldContains(parentName, fieldName, jsonName string, f
 
 // noteFieldContainsImports records what the emitted contains checks need. Every
 // test marshals the element first, so json is needed for all but the boolean
-// forms, and the count is always reported through fmt. The pattern test uses
-// the standard library's regexp, not ecma262, which is why it reports through
-// needsStdRegexp -- matching what the alias form of the same check already does.
+// forms, and the count is always reported through fmt. The pattern test is
+// recorded in needsStdRegexp, which addRequiredImports reads exactly as it
+// reads needsRegexp: the test matches through the package's compiled pattern
+// (it once compiled the pattern with the standard library's regexp, a
+// different language, on every element).
 func noteFieldContainsImports(defs []FieldContainsDef, needsFmt, needsJSON, needsMath, needsStdRegexp *bool) {
 	for _, fc := range defs {
 		*needsFmt = true

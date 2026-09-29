@@ -328,14 +328,14 @@ func (o *Overflow) UnmarshalJSON(data []byte) error {
 						return nil
 					}
 					if string(rawVal) == "null" {
-						return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%q]", rawKey)
+						return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%s]", _schemagenQuote(rawKey))
 					}
 					if o.AdditionalProperties == nil {
 						o.AdditionalProperties = make(map[string]string)
 					}
 					var val string
 					if err := json.Unmarshal(rawVal, &val); err != nil {
-						return jsonElemPathf(jsonDecodeRefusal(err), "[%q]", rawKey)
+						return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 					}
 					o.AdditionalProperties[rawKey] = val
 					return nil
@@ -376,7 +376,7 @@ func (o Overflow) MarshalJSON() ([]byte, error) {
 			if _err := func() error {
 				raw, err := json.Marshal(_member)
 				if err != nil {
-					return fmt.Errorf("marshaling additional property %q: %w", _key, err)
+					return fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), err)
 				}
 				obj[_key] = raw
 				return nil
@@ -920,12 +920,18 @@ func (e *ExplicitNullPositions) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &ExplicitNullPositions_Tagged{Tagged: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant Tagged: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant Tagged: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant Tagged: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -943,12 +949,18 @@ func (e *ExplicitNullPositions) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &ExplicitNullPositions_Numbered{Numbered: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant Numbered: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant Numbered: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant Numbered: %w", err)
 					} else {
 						oneofLastErr = err
 					}

@@ -31,6 +31,40 @@
 
 ### Fixed
 
+- Every JSON Schema pattern is matched by one engine, compiled once, and a
+  match the engine cannot decide is an error rather than a "no". A `contains`
+  whose sub-schema had a `pattern` compiled it with Go's RE2 on every element,
+  so `{"contains":{"type":"string","pattern":"^(?!a)"}}` made `Validate()`
+  panic; a `patternProperties` key was matched against a *declared* property
+  name with RE2, so a lookahead key was dropped in silence; and every
+  ECMA-262 match discarded the engine's error, so `^[a-z]+$` rejected a valid
+  600,000-character string (its step budget ran out) and quoted all of it back
+  in the message. Patterns are now compiled with the ECMA-262 engine and the
+  `u` flag into package-level variables of the helper file, `Validate()`
+  compiles nothing, and a match with no answer returns an error wrapping
+  `ecma262.ErrStepLimit` in every position -- including inside `not`,
+  `anyOf`, `oneOf`, `if` and `contains`, where reading it either way would
+  flip the verdict. A pattern that is not a regular expression is refused at
+  generation time with the JSON Pointer of the keyword. The engine dependency
+  moves to goecma262 at the commit that makes matching stack-safe and linear
+  for common patterns (`v0.1.1-0.20260926235716-c30bf4ed5344`).
+- A property declared in `properties` whose name a `patternProperties` key
+  matches is held to the whole of that pattern's schema, as an undeclared
+  member is. Only the handful of keywords a field rule could express reached it
+  before, and never on an untyped property: `"bar": {"type":"string"}` beside
+  `"^b": {"type":"integer"}` accepted `{"bar":"abc"}`.
+- Error messages bound the document text they quote: a value, key, `const` or
+  `enum` value longer than 128 bytes is cut to its first 64 and marked
+  `(N bytes, truncated)`, and a parser error that echoes its input is cut by
+  the same rule.
+- A `contains` check no longer refuses an element of a type its keyword says
+  nothing about: `{"contains":{"minimum":3}}` refused `["a"]`,
+  `{"contains":{"pattern":"^a"}}` refused `[5]`, and a null was measured as
+  the `0` or `""` encoding/json decodes it into. Each keyword judges its own
+  JSON type only -- the numeric bounds and `multipleOf` a number, `minLength`,
+  `maxLength` and `pattern` a string -- including where `contains` decides
+  which items `unevaluatedItems` may still refuse.
+
 - Schema text can no longer become code in the generated file. A property name
   or a `$ref` string was written into a `//` comment as it stood, so a newline
   in it ended the comment and the rest was compiled:

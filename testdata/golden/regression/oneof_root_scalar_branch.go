@@ -214,12 +214,18 @@ func (o *OneOfRootScalarBranch) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &OneOfRootScalarBranch_OneOfRootScalarBranchValueOption0{OneOfRootScalarBranchValueOption0: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant OneOfRootScalarBranchValueOption0: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant OneOfRootScalarBranchValueOption0: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant OneOfRootScalarBranchValueOption0: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -236,6 +242,8 @@ func (o *OneOfRootScalarBranch) UnmarshalJSON(data []byte) error {
 					// carry, so matching it is satisfying it.
 					oneofStrict++
 					oneofStrictSel = &OneOfRootScalarBranch_String{String: candidate}
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant String: %w", err)
 				} else {
 					oneofLastErr = err
 				}

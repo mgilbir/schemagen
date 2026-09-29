@@ -203,8 +203,10 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "pattern"}}
-	if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}})); !matched {
-		return jsonValueErrorf("%q does not match pattern %s", {{$recv}}, {{printf "%q" .Value}})
+	if _matched, _mErr := {{patternVar .Value}}.matches(string({{$recv}})); _mErr != nil {
+		return jsonValueErrorf("%w", _mErr)
+	} else if !_matched {
+		return jsonValueErrorf("%s does not match pattern %s", _schemagenQuote(string({{$recv}})), {{printf "%q" .Value}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "format"}}
@@ -296,7 +298,13 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			}
 			{{- end}}
 			{{- if eq .RuleType "pattern"}}
-			if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}})); !matched { variantValid = false }
+			if _matched, _mErr := {{patternVar .Value}}.matches(string({{$recv}})); _mErr != nil {
+				// A variant with no verdict leaves the count of matching
+				// variants unknown.
+				return jsonValueErrorf("%w", _mErr)
+			} else if !_matched {
+				variantValid = false
+			}
 			{{- end}}
 			{{- if eq .RuleType "minItems"}}
 			if len({{$recv}}) < {{countExpr .Value}} { variantValid = false }
@@ -351,7 +359,13 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			}
 			{{- end}}
 			{{- if eq .RuleType "pattern"}}
-			if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$recv}})); !matched { variantValid = false }
+			if _matched, _mErr := {{patternVar .Value}}.matches(string({{$recv}})); _mErr != nil {
+				// A variant with no verdict leaves the count of matching
+				// variants unknown.
+				return jsonValueErrorf("%w", _mErr)
+			} else if !_matched {
+				variantValid = false
+			}
 			{{- end}}
 			{{- if eq .RuleType "minItems"}}
 			if len({{$recv}}) < {{countExpr .Value}} { variantValid = false }

@@ -4,8 +4,6 @@ package testpkg
 
 import (
 	"encoding/json"
-	ecma262 "github.com/mgilbir/goecma262"
-	ecmaflags "github.com/mgilbir/goecma262/flags"
 )
 
 type Root struct {
@@ -126,12 +124,12 @@ func (r Root) Validate() error {
 					if !evaluated {
 						var _uVal string
 						if _uErr := json.Unmarshal(_member, &_uVal); _uErr != nil {
-							return jsonValueErrorf("unevaluated property %q: %w", _key, _uErr)
+							return jsonValueErrorf("unevaluated property %s: %w", _schemagenQuote(_key), _uErr)
 						}
-						{
-							if matched, _ := ecma262.MatchString("^x", ecmaflags.Unicode, _uVal); !matched {
-								return jsonValueErrorf("unevaluated property %q: value does not match pattern %s", _key, "^x")
-							}
+						if _uMatched, _uMErr := _schemagenPattern_9c5b6217da284473.matches(string(_uVal)); _uMErr != nil {
+							return jsonValueErrorf("unevaluated property %s: %w", _schemagenQuote(_key), _uMErr)
+						} else if !_uMatched {
+							return jsonValueErrorf("unevaluated property %s: value does not match pattern %s", _schemagenQuote(_key), "^x")
 						}
 					}
 					return nil

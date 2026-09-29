@@ -176,7 +176,7 @@ func jsonDecodeValues(elem func([]byte) error) func([]byte) error {
 		sort.Strings(keys)
 		for _, k := range keys {
 			if err := elem(vals[k]); err != nil {
-				return jsonElemPathf(err, "[%q]", k)
+				return jsonElemPathf(err, "[%s]", _schemagenQuote(k))
 			}
 		}
 		return nil
@@ -794,7 +794,7 @@ func jsonDateTimeRefusal(data []byte) error {
 	if _err := json.Unmarshal(data, &_s); _err != nil {
 		return _err
 	}
-	return jsonValueErrorf("%q is not a valid date-time (RFC 3339)", _s)
+	return jsonValueErrorf("%s is not a valid date-time (RFC 3339)", _schemagenQuote(_s))
 }
 {{- end}}
 
@@ -860,7 +860,7 @@ func jsonIPAddrDecode(data []byte, family string) (netip.Addr, error) {
 	}
 	_a, _err := netip.ParseAddr(_s)
 	if _err != nil {
-		return netip.Addr{}, jsonValueErrorf("%q is not a valid %s address", _s, family)
+		return netip.Addr{}, jsonValueErrorf("%s is not a valid %s address", _schemagenQuote(_s), family)
 	}
 	return _a, nil
 }
@@ -1157,7 +1157,7 @@ func checkJSONNullsAt(data []byte, rule *jsonNullRule) error {
 		sort.Strings(keys)
 		for _, k := range keys {
 			if err := checkJSONNullsAt(obj[k], rule.Elem); err != nil {
-				return jsonElemPathf(err, "[%q]", k)
+				return jsonElemPathf(err, "[%s]", _schemagenQuote(k))
 			}
 		}
 		return nil
@@ -1205,7 +1205,7 @@ of arrays and maps.
 // same answer json.Unmarshal gave, and the callers report it the same way.
 func _jsonCanonical(data []byte) (string, error) {
 	if !json.Valid(data) {
-		return "", fmt.Errorf("invalid JSON value: %s", string(data))
+		return "", fmt.Errorf("invalid JSON value: %s", _schemagenClipText(string(data)))
 	}
 	_dec := json.NewDecoder(bytes.NewReader(data))
 	_dec.UseNumber()

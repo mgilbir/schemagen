@@ -43,8 +43,8 @@ const metaSchemaDir = "../testdata/external/metaschemas"
 // go.mod because the harness builds a throwaway module per test group, and a
 // module with no go.sum entry cannot build offline.
 const (
-	goecma262Version = "v0.0.0-20260219184840-8bfa4bb752b0"
-	goecma262H1      = "h1:g5uVjex1bABu72M6R0A//gQDoVXPSatqP50yZDX5wUQ="
+	goecma262Version = "v0.1.1-0.20260926235716-c30bf4ed5344"
+	goecma262H1      = "h1:2zZc67Dt926y2qtNqneP89Z2ZlLrDiZWXnGCfL5o6eM="
 	goecma262GoMod   = "h1:wQvOAFchLrhVSiF4JsSzH+yE6eLpc8gOBrvpuahNucI="
 
 	// Pinned to the newest pair whose own go directive is 1.23, which is what

@@ -572,31 +572,16 @@ func TestFuncMapLowerFirst(t *testing.T) {
 	}
 }
 
-func TestNormalizeECMA262PatternEscapedClassIdentity(t *testing.T) {
-	input := `^[A-Za-z0-9_\-\.\:]+$`
-	got := normalizeECMA262Pattern(input)
-	want := `^[A-Za-z0-9_\x2d\.\x3a]+$`
-	if got != want {
-		t.Fatalf("normalizeECMA262Pattern(%q) = %q, want %q", input, got, want)
-	}
-}
-
-func TestNormalizeECMA262PatternLiteralClosingBracketInClass(t *testing.T) {
-	input := `^[\]\:]+$`
-	got := normalizeECMA262Pattern(input)
-	want := `^[\]\x3a]+$`
-	if got != want {
-		t.Fatalf("normalizeECMA262Pattern(%q) = %q, want %q", input, got, want)
-	}
-}
-
+// TestGeneratedPatternValidationAcceptsEscapedClassIdentity compiles and runs
+// a pattern the "u" flag refuses as written, `\-` and `\:` being identity
+// escapes of non-syntax characters. The engine is handed the \xHH spelling of
+// the same characters (see generator.PatternEngineSource), and the check
+// accepts the value the pattern describes.
 func TestGeneratedPatternValidationAcceptsEscapedClassIdentity(t *testing.T) {
 	e := mustNew(t)
 	f := &generator.File{
 		PackageName: "main",
 		Imports: []generator.Import{
-			{Path: "github.com/mgilbir/goecma262", Alias: "ecma262"},
-			{Path: "github.com/mgilbir/goecma262/flags", Alias: "ecmaflags"},
 			{Path: "fmt"},
 		},
 		TypeDefs: []generator.TypeDef{
@@ -614,11 +599,6 @@ func TestGeneratedPatternValidationAcceptsEscapedClassIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Emit() error: %v", err)
 	}
-	src := string(out)
-	if !strings.Contains(src, `^[A-Za-z0-9_\\x2d\\.\\x3a]+$`) {
-		t.Fatalf("expected normalized pattern in generated code, got:\n%s", src)
-	}
-
 	tmp := t.TempDir()
 	if err := os.WriteFile(filepath.Join(tmp, "types.go"), out, 0o644); err != nil {
 		t.Fatalf("write types.go: %v", err)
@@ -630,10 +610,16 @@ func TestGeneratedPatternValidationAcceptsEscapedClassIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("EmitHelpers() error: %v", err)
 	}
-	if needed {
-		if err := os.WriteFile(filepath.Join(tmp, "schemagen_helpers.go"), helperSrc, 0o644); err != nil {
-			t.Fatalf("write helpers: %v", err)
-		}
+	if !needed {
+		t.Fatal("EmitHelpers: no helper file for a type matching a pattern; the pattern is compiled there")
+	}
+	// The schema's text is what a message quotes, and the \xHH spelling is what
+	// the engine compiles.
+	if !strings.Contains(string(helperSrc), `_schemagenCompilePattern("^[A-Za-z0-9_\\-\\.\\:]+$", "^[A-Za-z0-9_\\x2d\\.\\x3a]+$")`) {
+		t.Fatalf("expected the pattern compiled from its escaped spelling in the helper file, got:\n%s", helperSrc)
+	}
+	if err := os.WriteFile(filepath.Join(tmp, "schemagen_helpers.go"), helperSrc, 0o644); err != nil {
+		t.Fatalf("write helpers: %v", err)
 	}
 	mainSrc := `package main
 
@@ -656,15 +642,7 @@ func main() {
 	if err := os.WriteFile(filepath.Join(tmp, "main.go"), []byte(mainSrc), 0o644); err != nil {
 		t.Fatalf("write main.go: %v", err)
 	}
-	goMod := "module patternrepro\n\ngo 1.23\n\nrequire github.com/mgilbir/goecma262 v0.0.0-20260219184840-8bfa4bb752b0\n"
-	if err := os.WriteFile(filepath.Join(tmp, "go.mod"), []byte(goMod), 0o644); err != nil {
-		t.Fatalf("write go.mod: %v", err)
-	}
-	goSum := "github.com/mgilbir/goecma262 v0.0.0-20260219184840-8bfa4bb752b0 h1:g5uVjex1bABu72M6R0A//gQDoVXPSatqP50yZDX5wUQ=\n" +
-		"github.com/mgilbir/goecma262 v0.0.0-20260219184840-8bfa4bb752b0/go.mod h1:wQvOAFchLrhVSiF4JsSzH+yE6eLpc8gOBrvpuahNucI=\n"
-	if err := os.WriteFile(filepath.Join(tmp, "go.sum"), []byte(goSum), 0o644); err != nil {
-		t.Fatalf("write go.sum: %v", err)
-	}
+	writeEngineModule(t, tmp, "patternrepro")
 
 	cmd := testgo.Command(context.Background(), tmp, "run", ".")
 	output, err := cmd.CombinedOutput()
@@ -673,6 +651,39 @@ func main() {
 	}
 	if programOutput(output) != "ok" {
 		t.Fatalf("output = %q, want ok", programOutput(output))
+	}
+}
+
+// writeEngineModule writes a go.mod requiring the ECMA-262 engine at the
+// version this repository's own go.mod names, and this repository's go.sum
+// beside it, so a throwaway module builds offline against exactly the engine
+// generation compiled the patterns with. Read from go.mod rather than written
+// out here, so that moving the dependency cannot leave a test on the old one.
+func writeEngineModule(t *testing.T, dir, module string) {
+	t.Helper()
+	mod, err := os.ReadFile(filepath.Join("..", "..", "go.mod"))
+	if err != nil {
+		t.Fatalf("read go.mod: %v", err)
+	}
+	version := ""
+	for _, line := range strings.Split(string(mod), "\n") {
+		if f := strings.Fields(line); len(f) >= 2 && f[0] == "github.com/mgilbir/goecma262" {
+			version = f[1]
+		}
+	}
+	if version == "" {
+		t.Fatal("go.mod does not require github.com/mgilbir/goecma262")
+	}
+	goMod := "module " + module + "\n\ngo 1.23\n\nrequire github.com/mgilbir/goecma262 " + version + "\n"
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o644); err != nil {
+		t.Fatalf("write go.mod: %v", err)
+	}
+	sum, err := os.ReadFile(filepath.Join("..", "..", "go.sum"))
+	if err != nil {
+		t.Fatalf("read go.sum: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "go.sum"), sum, 0o644); err != nil {
+		t.Fatalf("write go.sum: %v", err)
 	}
 }
 

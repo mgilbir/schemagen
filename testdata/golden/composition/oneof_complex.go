@@ -653,12 +653,18 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &Notification_TextContent{TextContent: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant TextContent: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant TextContent: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant TextContent: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -676,12 +682,18 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &Notification_HTMLContent{HTMLContent: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant HTMLContent: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant HTMLContent: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant HTMLContent: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -759,12 +771,18 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &Notification_EmailTarget{EmailTarget: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant EmailTarget: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant EmailTarget: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant EmailTarget: %w", err)
 					} else {
 						oneofLastErr = err
 					}
@@ -782,12 +800,18 @@ func (n *Notification) UnmarshalJSON(data []byte) error {
 							if _vErr := candidate.Validate(); _vErr == nil {
 								oneofStrict++
 								oneofStrictSel = &Notification_SmsTarget{SmsTarget: candidate}
+							} else if _schemagenUndecided(_vErr) {
+								// No verdict on this branch, so no telling
+								// which one the document selects.
+								return oneofErrf("variant SmsTarget: %w", _vErr)
 							} else {
 								oneofStrictErr = fmt.Errorf("variant SmsTarget: %w", _vErr)
 							}
 						} else {
 							oneofOpaque++
 						}
+					} else if _schemagenUndecided(err) {
+						return oneofErrf("variant SmsTarget: %w", err)
 					} else {
 						oneofLastErr = err
 					}

@@ -36,7 +36,7 @@ func (p Pair) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(p))
 	if _canonErr != nil {
-		return jsonValueErrorf("invalid Pair value: %s", string(p))
+		return jsonValueErrorf("invalid Pair value: %s", _schemagenClipText(string(p)))
 	}
 	for _, allowed := range pairAllowedJSON {
 		if _canon == allowed {
@@ -176,7 +176,7 @@ func (a AllOfObjectEnumConstMember) Validate() error {
 			}
 		}
 		if !_enumOK {
-			return fmt.Errorf("enum: value %s is not one of the permitted values", string(_enumCanon))
+			return fmt.Errorf("enum: value %s is not one of the permitted values", _schemagenClipText(string(_enumCanon)))
 		}
 	}
 	return nil
@@ -313,7 +313,7 @@ func (a AllOfObjectEnumInline) Validate() error {
 			}
 		}
 		if !_enumOK {
-			return fmt.Errorf("enum: value %s is not one of the permitted values", string(_enumCanon))
+			return fmt.Errorf("enum: value %s is not one of the permitted values", _schemagenClipText(string(_enumCanon)))
 		}
 	}
 	return nil
@@ -440,7 +440,7 @@ func (a AllOfObjectEnumNested) Validate() error {
 			}
 		}
 		if !_enumOK {
-			return fmt.Errorf("enum: value %s is not one of the permitted values", string(_enumCanon))
+			return fmt.Errorf("enum: value %s is not one of the permitted values", _schemagenClipText(string(_enumCanon)))
 		}
 	}
 	return nil
@@ -712,7 +712,7 @@ func (a AllOfObjectEnumReordered) Validate() error {
 			}
 		}
 		if !_enumOK {
-			return fmt.Errorf("enum: value %s is not one of the permitted values", string(_enumCanon))
+			return fmt.Errorf("enum: value %s is not one of the permitted values", _schemagenClipText(string(_enumCanon)))
 		}
 	}
 	return nil
@@ -747,7 +747,7 @@ func (a AllOfObjectEnumStandalone) Validate() error {
 	// what an enum is decided on.
 	_canon, _canonErr := _jsonCanonical([]byte(a))
 	if _canonErr != nil {
-		return jsonValueErrorf("invalid AllOfObjectEnumStandalone value: %s", string(a))
+		return jsonValueErrorf("invalid AllOfObjectEnumStandalone value: %s", _schemagenClipText(string(a)))
 	}
 	for _, allowed := range allOfObjectEnumStandaloneAllowedJSON {
 		if _canon == allowed {
@@ -888,7 +888,7 @@ func (a AllOfObjectEnumViaRef) Validate() error {
 			}
 		}
 		if !_enumOK {
-			return fmt.Errorf("enum: value %s is not one of the permitted values", string(_enumCanon))
+			return fmt.Errorf("enum: value %s is not one of the permitted values", _schemagenClipText(string(_enumCanon)))
 		}
 	}
 	return nil

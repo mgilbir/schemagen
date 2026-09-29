@@ -379,17 +379,20 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	add(helpers.Annotations, "strconv")
 	// The regexp engine only comes in when a compiled schema actually names a
 	// pattern: it is a third-party dependency, and a package that never asks for
-	// one should not acquire it. The format block needs the same engine for
-	// `format: regex`, so both routes go through addAliased rather than
-	// appending: a package that compiles a pattern to the runtime evaluator
-	// *and* asserts a format reaches this path from both sides, and the list
-	// goes straight into the import block. go/format happens to drop a
-	// duplicate spec on its way out, which is why appending twice was never
-	// seen to break anything -- but that is the formatter's tidying and not a
-	// property of the list, and this list is what the rest of this function is
-	// written to keep unique.
-	addAliased(helpers.AnnotationsPattern, "github.com/mgilbir/goecma262", "ecma262")
-	addAliased(helpers.AnnotationsPattern, "github.com/mgilbir/goecma262/flags", "ecmaflags")
+	// one should not acquire it. Every pattern a package matches with is
+	// compiled in the pattern block, once, so that block is the one importer
+	// for patterns -- the evaluator's arms, the --strict-read-write walker and
+	// every generated check match through the variables it declares. The
+	// format block needs the same engine for `format: regex`, whose argument is
+	// the document's own text and so cannot be compiled ahead. Both routes go
+	// through addAliased rather than appending, because the list goes straight
+	// into the import block and must name each package once.
+	addAliased(len(helpers.Patterns) > 0, "github.com/mgilbir/goecma262", "ecma262")
+	addAliased(len(helpers.Patterns) > 0, "github.com/mgilbir/goecma262/flags", "ecmaflags")
+	// The quoting rule counts and cuts bytes at a character boundary.
+	add(helpers.Quote, "strconv")
+	add(helpers.Quote, "unicode/utf8")
+	add(helpers.Undecided, "errors")
 	// The walker reports the first offending key in name order, so that a
 	// document with several of them fails the same way every time. The runtime
 	// evaluator visits an object's properties in the same fixed order, for the
@@ -406,7 +409,6 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	// helper it cannot compile; see HelperSet.Format.
 	add(helpers.Format, "net/netip")
 	add(helpers.Format, "net/url")
-	add(helpers.Format, "regexp")
 	add(helpers.Format, "strings")
 	add(helpers.Format, "time")
 	addAliased(helpers.Format, "github.com/mgilbir/goecma262", "ecma262")
@@ -438,8 +440,6 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	add(helpers.Access, "errors")
 	add(helpers.Access, "fmt")
 	add(helpers.Access, "sort")
-	addAliased(helpers.AccessPattern, "github.com/mgilbir/goecma262", "ecma262")
-	addAliased(helpers.AccessPattern, "github.com/mgilbir/goecma262/flags", "ecmaflags")
 
 	if err := checkPackageIdentifiers(packageName, imports); err != nil {
 		return nil, false, err

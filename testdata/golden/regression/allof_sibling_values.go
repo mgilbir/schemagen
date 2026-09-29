@@ -612,7 +612,7 @@ func (a AllOfSiblingValues) Validate() error {
 				return fmt.Errorf("constOnProperty: failed to marshal for const check: %w", _constErr)
 			}
 			if string(_constGot) != "\"q\"" {
-				return fmt.Errorf("constOnProperty: value must be %s, got %s", "\"q\"", string(_constGot))
+				return fmt.Errorf("constOnProperty: value must be %s, got %s", "\"q\"", _schemagenClipText(string(_constGot)))
 			}
 		}
 	}
@@ -660,7 +660,7 @@ func (a AllOfSiblingValues) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "mapValues[%q]", _k)
+					return jsonPathf(err, "mapValues[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {

@@ -151,7 +151,7 @@ func (c ClickEvent) Validate() error {
 			return fmt.Errorf("kind: failed to marshal for const check: %w", _constErr)
 		}
 		if string(_constGot) != "\"click\"" {
-			return fmt.Errorf("kind: value must be %s, got %s", "\"click\"", string(_constGot))
+			return fmt.Errorf("kind: value must be %s, got %s", "\"click\"", _schemagenClipText(string(_constGot)))
 		}
 	}
 	return nil
@@ -282,7 +282,7 @@ func (k KeypressEvent) Validate() error {
 			return fmt.Errorf("kind: failed to marshal for const check: %w", _constErr)
 		}
 		if string(_constGot) != "\"keypress\"" {
-			return fmt.Errorf("kind: value must be %s, got %s", "\"keypress\"", string(_constGot))
+			return fmt.Errorf("kind: value must be %s, got %s", "\"keypress\"", _schemagenClipText(string(_constGot)))
 		}
 	}
 	return nil
@@ -413,7 +413,7 @@ func (s ScrollEvent) Validate() error {
 			return fmt.Errorf("kind: failed to marshal for const check: %w", _constErr)
 		}
 		if string(_constGot) != "\"scroll\"" {
-			return fmt.Errorf("kind: value must be %s, got %s", "\"scroll\"", string(_constGot))
+			return fmt.Errorf("kind: value must be %s, got %s", "\"scroll\"", _schemagenClipText(string(_constGot)))
 		}
 	}
 	return nil
@@ -566,7 +566,7 @@ func (e *Event) UnmarshalJSON(data []byte) error {
 				}
 				e.Payload = &Event_ScrollEvent{ScrollEvent: candidate}
 			default:
-				return oneofErrf("unknown discriminator value %q for property %q", discVal, "kind")
+				return oneofErrf("unknown discriminator value %s for property %q", _schemagenQuote(discVal), "kind")
 			}
 		}
 	}

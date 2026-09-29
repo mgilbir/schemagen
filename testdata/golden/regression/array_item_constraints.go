@@ -5,8 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	ecma262 "github.com/mgilbir/goecma262"
-	ecmaflags "github.com/mgilbir/goecma262/flags"
 	"math"
 	"unicode/utf8"
 )
@@ -403,8 +401,10 @@ func (i ItemConstraints) Validate() error {
 		}
 	}
 	for _i0, _e0 := range i.Codes {
-		if _matched, _ := ecma262.MatchString("^x[0-9][0-9]$", ecmaflags.Unicode, string(_e0)); !_matched {
-			return fmt.Errorf("codes[%d]: value %q does not match pattern %s", _i0, _e0, "^x[0-9][0-9]$")
+		if _matched, _mErr := _schemagenPattern_77ac3e3fc3a4f326.matches(string(_e0)); _mErr != nil {
+			return fmt.Errorf("codes[%d]: %w", _i0, _mErr)
+		} else if !_matched {
+			return fmt.Errorf("codes[%d]: value %s does not match pattern %s", _i0, _schemagenQuote(string(_e0)), "^x[0-9][0-9]$")
 		}
 	}
 	for _i0, _e0 := range i.Counts {

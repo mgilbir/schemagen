@@ -5,7 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"unicode/utf8"
 )
 
@@ -281,11 +280,12 @@ func (e EventRecord) Validate() error {
 			if _cMatch {
 				_cBytes, _ := json.Marshal(_cElem)
 				var _cs string
-				if json.Unmarshal(_cBytes, &_cs) != nil {
-					_cMatch = false
-				} else {
-					_cRe := regexp.MustCompile("^event_")
-					if !_cRe.MatchString(_cs) {
+				if len(_cBytes) > 0 && _cBytes[0] == '"' && json.Unmarshal(_cBytes, &_cs) == nil {
+					if _cMatched, _cMErr := _schemagenPattern_1634cd6f9b28ccde.matches(_cs); _cMErr != nil {
+						// An element that may or may not match leaves the count
+						// unknown, so there is no verdict to give.
+						return fmt.Errorf("contains: %w", _cMErr)
+					} else if !_cMatched {
 						_cMatch = false
 					}
 				}

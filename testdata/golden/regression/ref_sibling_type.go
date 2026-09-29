@@ -467,7 +467,7 @@ func (r RefSiblingType) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "boundedMapv[%q]", _k)
+					return jsonPathf(err, "boundedMapv[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {
@@ -492,7 +492,7 @@ func (r RefSiblingType) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "mapv[%q]", _k)
+					return jsonPathf(err, "mapv[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {

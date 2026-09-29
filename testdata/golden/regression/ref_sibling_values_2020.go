@@ -430,7 +430,7 @@ func (r RefSiblingValues2020) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "mapSibling[%q]", _k)
+					return jsonPathf(err, "mapSibling[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {

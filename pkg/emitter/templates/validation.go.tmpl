@@ -79,7 +79,11 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			var _s *string
 			if err := json.Unmarshal(_nonObj, &_s); err == nil && _s != nil {
 				_str := *_s
-				if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, _str); !matched {
+				_matched, _err := {{patternVar .Value}}.matches(_str)
+				if _err != nil {
+					return jsonValueErrorf("%w", _err)
+				}
+				if !_matched {
 					return jsonValueErrorf("value does not match pattern {{fmtText .Value}}")
 				}
 			}
@@ -305,13 +309,17 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- if eq .RuleType "pattern"}}
 	{{- if .IsPointer}}
 	if {{validationNonNil $recv .}} {
-		if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, {{$value}}); !matched {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q does not match pattern %s", {{$value}}, {{printf "%q" .Value}})
+		if _matched, _err := {{patternVar .Value}}.matches({{$value}}); _err != nil {
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: %w", _err)
+		} else if !_matched {
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value %s does not match pattern %s", _schemagenQuote({{$value}}), {{printf "%q" .Value}})
 		}
 	}
 	{{- else}}
-	if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, {{$value}}); !matched {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %q does not match pattern %s", {{$value}}, {{printf "%q" .Value}})
+	if _matched, _err := {{patternVar .Value}}.matches({{$value}}); _err != nil {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: %w", _err)
+	} else if !_matched {
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value %s does not match pattern %s", _schemagenQuote({{$value}}), {{printf "%q" .Value}})
 	}
 	{{- end}}
 	{{- end}}
@@ -411,11 +419,11 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	       constants; they are one number, and the schema named the number. */}}
 	{{- if .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil && {{exactConstViolated . (printf "*%s.%s" $recv .FieldName)}} {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value must be %s, got %v", {{printf "%q" .Value}}, *{{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value must be %s, got %s", {{printf "%q" .Value}}, _schemagenClipText(fmt.Sprint(*{{$recv}}.{{.FieldName}})))
 	}
 	{{- else}}
 	if {{exactConstViolated . (printf "%s.%s" $recv .FieldName)}} {
-		return fmt.Errorf("{{jsonErrorName .JSONName}}: value must be %s, got %v", {{printf "%q" .Value}}, {{$recv}}.{{.FieldName}})
+		return fmt.Errorf("{{jsonErrorName .JSONName}}: value must be %s, got %s", {{printf "%q" .Value}}, _schemagenClipText(fmt.Sprint({{$recv}}.{{.FieldName}})))
 	}
 	{{- end}}
 	{{- else}}
@@ -425,7 +433,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			return fmt.Errorf("{{jsonErrorName .JSONName}}: failed to marshal for const check: %w", _constErr)
 		}
 		if string(_constGot) != {{printf "%q" .Value}} {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value must be %s, got %s", {{printf "%q" .Value}}, string(_constGot))
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value must be %s, got %s", {{printf "%q" .Value}}, _schemagenClipText(string(_constGot)))
 		}
 	}
 	{{- end}}
@@ -497,7 +505,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	       randomised map order reached first. */}}
 	{{- $lk := leastKey "_key" "_" (printf "%s.AdditionalProperties" $recv) "_failed"}}
 	{{- template "least_key_open" $lk}}
-		return jsonValueErrorf("additional property %q is not allowed", _key)
+		return jsonValueErrorf("additional property %s is not allowed", _schemagenQuote(_key))
 	{{- template "least_key_close" $lk}}
 	{{- end}}
 	{{- range $oi, $oneOf := $struct.ObjectOneOfs}}
@@ -676,9 +684,19 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		if _condHolds {
 			if _raw, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .JSONName}}]; _ok {
 				var _v any
+				{{- if dynChecksMatchPattern .Checks}}
+				var _undecided error
+				{{- end}}
 				if _err := json.Unmarshal(_raw, &_v); _err != nil || !({{template "dyn_branch" .Checks}}) {
 					_condHolds = false
 				}
+				{{- if dynChecksMatchPattern .Checks}}
+				if _undecided != nil {
+					// With no verdict on the condition there is no telling
+					// which consequence applies.
+					return fmt.Errorf("if: property %q: %w", {{printf "%q" .JSONName}}, _undecided)
+				}
+				{{- end}}
 			}
 		}
 		{{- end}}
@@ -700,21 +718,20 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- if $struct.HasPatternPropertyValidation}}
-	// patternProperties validation: check matched values against sub-schema constraints.
-	if len({{$recv}}.PatternProperties) > 0 {
-		ppRegexps := []*ecma262.Regexp{
-			{{- range $struct.PatternProperties}}
-			ecma262.MustCompile({{ecmaPattern .Pattern}}, ecmaflags.Unicode),
-			{{- end}}
-		}
-		{{- $lk := leastKey "_key" "_member" (printf "%s.PatternProperties" $recv) "_failed"}}
-		{{- template "least_key_open" $lk}}
+	// patternProperties: every member whose key a pattern matches is held to that
+	// pattern's sub-schema. That is the members the decoder filed in
+	// PatternProperties, and the declared ones a pattern also matches, which
+	// "properties" governs as well -- the two keywords apply side by side.
+	{
+		_ppMember := func(_key string, _member json.RawMessage) error {
 			_ = _member
 			{{- range $i, $pp := $struct.PatternProperties}}
 			{{- if or $pp.IsForbidden (ne $pp.TypeName "") (gt (len $pp.Validations) 0)}}
-			if ppRegexps[{{$i}}].MatchString(_key) {
+			if _ppMatched, _ppErr := {{patternVar $pp.Pattern}}.matches(_key); _ppErr != nil {
+				return fmt.Errorf("patternProperties: key %s: %w", _schemagenQuote(_key), _ppErr)
+			} else if _ppMatched {
 				{{- if $pp.IsForbidden}}
-				return fmt.Errorf("patternProperties: key %q matches forbidden pattern %s", _key, {{printf "%q" $pp.Pattern}})
+				return fmt.Errorf("patternProperties: key %s matches forbidden pattern %s", _schemagenQuote(_key), {{printf "%q" $pp.Pattern}})
 				{{- end}}
 				{{- if $pp.TypeName}}
 				{
@@ -723,10 +740,10 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					// Validate enforces everything beyond it.
 					var _pv {{$pp.TypeName}}
 					if _uErr := {{if $pp.StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %q: %w", {{printf "%q" $pp.Pattern}}, _key, _uErr)
+						return fmt.Errorf("patternProperties %s: key %s: %w", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), _uErr)
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %q: %w", {{printf "%q" $pp.Pattern}}, _key, _vErr)
+						return fmt.Errorf("patternProperties %s: key %s: %w", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), _vErr)
 					}
 				}
 				{{- end}}
@@ -778,15 +795,15 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					{{- $want := index $wants 0}}
 					{{- if eq $want "integer"}}
 					if jt != "integer" {
-						return fmt.Errorf("patternProperties %s: key %q value must be integer", {{printf "%q" $pp.Pattern}}, _key)
+						return fmt.Errorf("patternProperties %s: key %s value must be integer", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key))
 					}
 					{{- else if eq $want "number"}}
 					if jt != "integer" && jt != "number" {
-						return fmt.Errorf("patternProperties %s: key %q value must be number", {{printf "%q" $pp.Pattern}}, _key)
+						return fmt.Errorf("patternProperties %s: key %s value must be number", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key))
 					}
 					{{- else}}
 					if jt != {{printf "%q" $want}} {
-						return fmt.Errorf("patternProperties %s: key %q value must be {{fmtText $want}}", {{printf "%q" $pp.Pattern}}, _key)
+						return fmt.Errorf("patternProperties %s: key %s value must be {{fmtText $want}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key))
 					}
 					{{- end}}
 					{{- else}}
@@ -801,7 +818,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					{{- end}}
 					{{- end}}
 					if !_ppTypeOK {
-						return fmt.Errorf("patternProperties %s: key %q value must be one of: {{ppTypeValuesMsg .Value}}", {{printf "%q" $pp.Pattern}}, _key)
+						return fmt.Errorf("patternProperties %s: key %s value must be one of: {{ppTypeValuesMsg .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key))
 					}
 					{{- end}}
 				}
@@ -817,28 +834,28 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 						num := *_num
 						{{- if eq .RuleType "ppMinimum"}}
 						if num < {{countExpr .Value}} {
-							return fmt.Errorf("patternProperties %s: key %q value %v is less than minimum {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _key, num)
+							return fmt.Errorf("patternProperties %s: key %s value %v is less than minimum {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), num)
 						}
 						{{- end}}
 						{{- if eq .RuleType "ppMaximum"}}
 						if num > {{countExpr .Value}} {
-							return fmt.Errorf("patternProperties %s: key %q value %v exceeds maximum {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _key, num)
+							return fmt.Errorf("patternProperties %s: key %s value %v exceeds maximum {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), num)
 						}
 						{{- end}}
 						{{- if eq .RuleType "ppExclusiveMinimum"}}
 						if num <= {{countExpr .Value}} {
-							return fmt.Errorf("patternProperties %s: key %q value %v must be greater than {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _key, num)
+							return fmt.Errorf("patternProperties %s: key %s value %v must be greater than {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), num)
 						}
 						{{- end}}
 						{{- if eq .RuleType "ppExclusiveMaximum"}}
 						if num >= {{countExpr .Value}} {
-							return fmt.Errorf("patternProperties %s: key %q value %v must be less than {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _key, num)
+							return fmt.Errorf("patternProperties %s: key %s value %v must be less than {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), num)
 						}
 						{{- end}}
 						{{- if eq .RuleType "ppMultipleOf"}}
 						_quot := num / {{numLit .Value}}
 						if math.Abs(_quot - math.Round(_quot)) > 1e-9 {
-							return fmt.Errorf("patternProperties %s: key %q value %v is not a multiple of {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _key, num)
+							return fmt.Errorf("patternProperties %s: key %s value %v is not a multiple of {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), num)
 						}
 						{{- end}}
 					}
@@ -853,12 +870,12 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 						arr := *_arr
 						{{- if eq .RuleType "ppMinItems"}}
 						if len(arr) < {{countExpr .Value}} {
-							return fmt.Errorf("patternProperties %s: key %q array length %d is less than minItems {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _key, len(arr))
+							return fmt.Errorf("patternProperties %s: key %s array length %d is less than minItems {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), len(arr))
 						}
 						{{- end}}
 						{{- if eq .RuleType "ppMaxItems"}}
 						if len(arr) > {{countExpr .Value}} {
-							return fmt.Errorf("patternProperties %s: key %q array length %d exceeds maxItems {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _key, len(arr))
+							return fmt.Errorf("patternProperties %s: key %s array length %d exceeds maxItems {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), len(arr))
 						}
 						{{- end}}
 					}
@@ -873,12 +890,12 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 						_str := *_s
 						{{- if eq .RuleType "ppMinLength"}}
 						if utf8.RuneCountInString(_str) < {{countExpr .Value}} {
-							return fmt.Errorf("patternProperties %s: key %q string length is less than minLength {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _key)
+							return fmt.Errorf("patternProperties %s: key %s string length is less than minLength {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key))
 						}
 						{{- end}}
 						{{- if eq .RuleType "ppMaxLength"}}
 						if utf8.RuneCountInString(_str) > {{countExpr .Value}} {
-							return fmt.Errorf("patternProperties %s: key %q string length exceeds maxLength {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _key)
+							return fmt.Errorf("patternProperties %s: key %s string length exceeds maxLength {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key))
 						}
 						{{- end}}
 					}
@@ -891,8 +908,10 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					var _s *string
 					if err := json.Unmarshal(_member, &_s); err == nil && _s != nil {
 						_str := *_s
-						if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, _str); !matched {
-							return fmt.Errorf("patternProperties %s: key %q value does not match pattern {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _key)
+						if _vMatched, _vErr := {{patternVar .Value}}.matches(_str); _vErr != nil {
+							return fmt.Errorf("patternProperties %s: key %s: %w", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), _vErr)
+						} else if !_vMatched {
+							return fmt.Errorf("patternProperties %s: key %s value does not match pattern {{fmtText .Value}}", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key))
 						}
 					}
 				}
@@ -902,7 +921,38 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- end}}
 			{{- end}}
 			return nil
-		{{- template "least_key_close" $lk}}
+		}
+		{{- range $struct.DeclaredPatternMembers}}
+		{{- /* A declared member never reaches the bucket, so it is handed to the
+		       same check from the bytes the document wrote -- or, for a value
+		       built in Go, from its field marshalled, where the member counts as
+		       present. See generator.DeclaredPatternMember. */}}
+		if {{$recv}}._jsonRawProps != nil {
+			if _raw, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .JSONName}}]; _ok {
+				if _err := _ppMember({{printf "%q" .JSONName}}, _raw); _err != nil {
+					return _err
+				}
+			}
+		}
+		{{- if .FieldName}}
+		{{- if or .Required .FieldNilable}}{{if .Required}} else {{else}} else if {{$recv}}.{{.FieldName}} != nil {{end}}{
+			_raw, _err := json.Marshal({{$recv}}.{{.FieldName}})
+			if _err != nil {
+				return fmt.Errorf("{{jsonErrorName .JSONName}}: %w", _err)
+			}
+			if _err := _ppMember({{printf "%q" .JSONName}}, _raw); _err != nil {
+				return _err
+			}
+		}
+		{{- end}}
+		{{- end}}
+		{{- end}}
+		if len({{$recv}}.PatternProperties) > 0 {
+			{{- $lk := leastKey "_key" "_member" (printf "%s.PatternProperties" $recv) "_failed"}}
+			{{- template "least_key_open" $lk}}
+				return _ppMember(_key, _member)
+			{{- template "least_key_close" $lk}}
+		}
 	}
 	{{- end}}
 	{{- range $struct.ValidatableFields}}
@@ -946,14 +996,14 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- if .ElemIsPointer}}
 			if _val == nil {
 				{{- if .ElemRejectsNull}}
-				return fmt.Errorf("{{jsonErrorName .JSONName}}[%q]: null is not allowed", _k)
+				return fmt.Errorf("{{jsonErrorName .JSONName}}[%s]: null is not allowed", _schemagenQuote(_k))
 				{{- else}}
 				return nil // a JSON null left no value behind to check
 				{{- end}}
 			}
 			{{- end}}
 			if err := _val.Validate(); err != nil {
-				return jsonPathf(err, "{{jsonErrorName .JSONName}}[%q]", _k)
+				return jsonPathf(err, "{{jsonErrorName .JSONName}}[%s]", _schemagenQuote(_k))
 			}
 			return nil
 		{{- template "least_key_close" $lk}}
@@ -964,14 +1014,14 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{{- if .ElemIsPointer}}
 		if _val == nil {
 			{{- if .ElemRejectsNull}}
-			return fmt.Errorf("{{jsonErrorName .JSONName}}[%q]: null is not allowed", _k)
+			return fmt.Errorf("{{jsonErrorName .JSONName}}[%s]: null is not allowed", _schemagenQuote(_k))
 			{{- else}}
 			return nil // a JSON null left no value behind to check
 			{{- end}}
 		}
 		{{- end}}
 		if err := _val.Validate(); err != nil {
-			return jsonPathf(err, "{{jsonErrorName .JSONName}}[%q]", _k)
+			return jsonPathf(err, "{{jsonErrorName .JSONName}}[%s]", _schemagenQuote(_k))
 		}
 		return nil
 	{{- template "least_key_close" $lk}}
@@ -1121,7 +1171,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- $lk := leastKey "_k" "_" (printf "%s._jsonKeys" $recv) "_failed"}}
 			{{- template "least_key_open" $lk}}
 				if !_allowedKeys[_k] {
-					return fmt.Errorf("dependentSchema %q: property %q is not allowed", {{printf "%q" $dep.TriggerKey}}, _k)
+					return fmt.Errorf("dependentSchema %q: property %s is not allowed", {{printf "%q" $dep.TriggerKey}}, _schemagenQuote(_k))
 				}
 				return nil
 			{{- template "least_key_close" $lk}}
@@ -1176,25 +1226,27 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- $lk := leastKey "_pnKey" "_" (printf "%s._jsonKeys" $recv) "_failed"}}
 	{{- template "least_key_open" $lk}}
 		{{- if $struct.PropertyNames.IsForbidden}}
-		return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+		return fmt.Errorf("propertyNames: property %s is not allowed (schema is false)", _schemagenQuote(_pnKey))
 		{{- end}}
 		{{- if $struct.PropertyNames.MaxLength}}
 		if utf8.RuneCountInString(_pnKey) > {{countExpr $struct.PropertyNames.MaxLength}} {
-			return fmt.Errorf("propertyNames: property name %q exceeds maxLength {{countText $struct.PropertyNames.MaxLength}}", _pnKey)
+			return fmt.Errorf("propertyNames: property name %s exceeds maxLength {{countText $struct.PropertyNames.MaxLength}}", _schemagenQuote(_pnKey))
 		}
 		{{- end}}
 		{{- if $struct.PropertyNames.MinLength}}
 		if utf8.RuneCountInString(_pnKey) < {{countExpr $struct.PropertyNames.MinLength}} {
-			return fmt.Errorf("propertyNames: property name %q is shorter than minLength {{countText $struct.PropertyNames.MinLength}}", _pnKey)
+			return fmt.Errorf("propertyNames: property name %s is shorter than minLength {{countText $struct.PropertyNames.MinLength}}", _schemagenQuote(_pnKey))
 		}
 		{{- end}}
 		{{- if $struct.PropertyNames.Pattern}}
-		if !ecma262.MustCompile({{ecmaPattern $struct.PropertyNames.Pattern}}, ecmaflags.Unicode).MatchString(_pnKey) {
-			return fmt.Errorf("propertyNames: property name %q does not match pattern %q", _pnKey, {{printf "%q" $struct.PropertyNames.Pattern}})
+		if _pnMatched, _pnErr := {{patternVar $struct.PropertyNames.Pattern}}.matches(_pnKey); _pnErr != nil {
+			return fmt.Errorf("propertyNames: property name %s: %w", _schemagenQuote(_pnKey), _pnErr)
+		} else if !_pnMatched {
+			return fmt.Errorf("propertyNames: property name %s does not match pattern %q", _schemagenQuote(_pnKey), {{printf "%q" $struct.PropertyNames.Pattern}})
 		}
 		{{- end}}
 		{{- if $struct.PropertyNames.Format}}
-		{{- template "string_format_check" (mkStringFormatCtxArgs "_pnKey" "propertyNames: property name %q" "_pnKey" $struct.PropertyNames.Format true)}}
+		{{- template "string_format_check" (mkStringFormatCtxArgs "_pnKey" "propertyNames: property name %s" "_schemagenQuote(_pnKey)" $struct.PropertyNames.Format true)}}
 		{{- end}}
 		{{- if $struct.PropertyNames.Enum}}
 		{
@@ -1204,7 +1256,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				{{- end}}
 			}
 			if !_pnAllowed[_pnKey] {
-				return fmt.Errorf("propertyNames: property name %q is not in the allowed set", _pnKey)
+				return fmt.Errorf("propertyNames: property name %s is not in the allowed set", _schemagenQuote(_pnKey))
 			}
 		}
 		{{- end}}
@@ -1232,13 +1284,6 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- end}}
 		}
 		{{- end}}
-		{{- if gt (len $branch.AccountedPatterns) 0}}
-		_branchPat{{$ci}} := []*ecma262.Regexp{
-			{{- range $branch.AccountedPatterns}}
-			ecma262.MustCompile({{ecmaPattern .}}, ecmaflags.Unicode),
-			{{- end}}
-		}
-		{{- end}}
 		{{- $lk := leastKey "_key" "_bv" (printf "%s._jsonRawProps" $recv) "_failed"}}
 		{{- template "least_key_open" $lk}}
 			_ = _bv
@@ -1246,26 +1291,28 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- if gt (len $branch.AccountedNames) 0}}
 			if _branchAcct{{$ci}}[_key] { _bAcct = true }
 			{{- end}}
-			{{- if gt (len $branch.AccountedPatterns) 0}}
+			{{- range $branch.AccountedPatterns}}
 			if !_bAcct {
-				for _, _re := range _branchPat{{$ci}} {
-					if _re.MatchString(_key) { _bAcct = true; break }
+				_bMatched, _bErr := {{patternVar .}}.matches(_key)
+				if _bErr != nil {
+					return fmt.Errorf("{{fmtText $branch.Keyword}}: property %s: %w", _schemagenQuote(_key), _bErr)
 				}
+				_bAcct = _bMatched
 			}
 			{{- end}}
 			if !_bAcct {
 				{{- if $branch.IsForbidden}}
-				return fmt.Errorf("{{fmtText $branch.Keyword}}: property %q is not allowed", _key)
+				return fmt.Errorf("{{fmtText $branch.Keyword}}: property %s is not allowed", _schemagenQuote(_key))
 				{{- else if $branch.TypeName}}
 				{
 					// The sub-schema's own type answers for the value: the decode
 					// enforces its shape and the Validate enforces the rest.
 					var _bVal {{$branch.TypeName}}
 					if _bErr := json.Unmarshal(_bv, &_bVal); _bErr != nil {
-						return fmt.Errorf("{{fmtText $branch.Keyword}}: property %q: %w", _key, _bErr)
+						return fmt.Errorf("{{fmtText $branch.Keyword}}: property %s: %w", _schemagenQuote(_key), _bErr)
 					}
 					if _bErr := _bVal.Validate(); _bErr != nil {
-						return fmt.Errorf("{{fmtText $branch.Keyword}}: property %q: %w", _key, _bErr)
+						return fmt.Errorf("{{fmtText $branch.Keyword}}: property %s: %w", _schemagenQuote(_key), _bErr)
 					}
 				}
 				{{- end}}
@@ -1299,7 +1346,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{{- template "least_key_open" $lk}}
 			var _rbVal any
 			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-				return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+				return jsonValueErrorf("cannot decode property %s: %w", _schemagenQuote(_rbKey), _rbErr)
 			}
 			_rbInstance[_rbKey] = _rbVal
 			return nil
@@ -1367,7 +1414,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			}
 		}
 		if !_enumOK {
-			return fmt.Errorf("enum: value %s is not one of the permitted values", string(_enumCanon))
+			return fmt.Errorf("enum: value %s is not one of the permitted values", _schemagenClipText(string(_enumCanon)))
 		}
 	}
 	{{- end}}
@@ -1384,9 +1431,9 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		}
 		{{- end}}
 		{{- if gt (len $uneval.EvaluatedPatterns) 0}}
-		evaluatedPatterns := []*ecma262.Regexp{
+		evaluatedPatterns := [...]*_schemagenRegexp{
 			{{- range $uneval.EvaluatedPatterns}}
-			ecma262.MustCompile({{ecmaPattern .}}, ecmaflags.Unicode),
+			{{patternVar .}},
 			{{- end}}
 		}
 		{{- end}}
@@ -1500,13 +1547,14 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				}
 				{{- end}}
 				{{- range $branch.Patterns}}
-				{
-					_re := ecma262.MustCompile({{ecmaPattern .}}, ecmaflags.Unicode)
-					{{- /* maporder: fills a set; the same members end up in it in any order. */}}
-					for _k := range {{$recv}}._jsonKeys {
-						if _re.MatchString(_k) {
-							evaluatedNames[_k] = true
-						}
+				{{- /* maporder: fills a set; the same members end up in it in any order, and a match with no answer returns an error that names the pattern and no key, so it is the same error whichever key reaches it. */}}
+				for _k := range {{$recv}}._jsonKeys {
+					_reMatched, _reErr := {{patternVar .}}.matches(_k)
+					if _reErr != nil {
+						return jsonValueErrorf("unevaluatedProperties: %w", _reErr)
+					}
+					if _reMatched {
+						evaluatedNames[_k] = true
 					}
 				}
 				{{- end}}
@@ -1527,9 +1575,13 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- end}}
 			{{- if gt (len $uneval.EvaluatedPatterns) 0}}
 			if !evaluated {
-				{{- /* maporder: not a map: ranges a slice, evaluatedPatterns is a []*ecma262.Regexp. */}}
-				for _, re := range evaluatedPatterns {
-					if re.MatchString(_key) {
+				{{- /* maporder: not a map: ranges an array, evaluatedPatterns is a [N]*_schemagenRegexp. */}}
+				for _, _re := range evaluatedPatterns {
+					_reMatched, _reErr := _re.matches(_key)
+					if _reErr != nil {
+						return jsonValueErrorf("unevaluated property %s: %w", _schemagenQuote(_key), _reErr)
+					}
+					if _reMatched {
 						evaluated = true
 						break
 					}
@@ -1538,7 +1590,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- end}}
 			if !evaluated {
 				{{- if $uneval.IsForbidden}}
-				return jsonValueErrorf("unevaluated property %q is not allowed", _key)
+				return jsonValueErrorf("unevaluated property %s is not allowed", _schemagenQuote(_key))
 				{{- else if $uneval.HasSchemaValuedUnevalProps}}
 				{{- if $uneval.ValueIsNull}}
 				{{- /* No Go type holds only null, so the raw bytes are what
@@ -1546,12 +1598,12 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				       the same sub-schema. Both overflow maps hold
 				       json.RawMessage, which is the value's own bytes. */}}
 				if string(_member) != "null" {
-					return jsonValueErrorf("unevaluated property %q: must be null", _key)
+					return jsonValueErrorf("unevaluated property %s: must be null", _schemagenQuote(_key))
 				}
 				{{- else if $uneval.ValueType}}
 				var _uVal {{$uneval.ValueType}}
 				if _uErr := json.Unmarshal(_member, &_uVal); _uErr != nil {
-					return jsonValueErrorf("unevaluated property %q: %w", _key, _uErr)
+					return jsonValueErrorf("unevaluated property %s: %w", _schemagenQuote(_key), _uErr)
 				}
 				{{- range $uneval.Validations}}
 				{{- template "validation_rule_inline" .}}
@@ -1573,9 +1625,13 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- end}}
 			{{- if gt (len $uneval.EvaluatedPatterns) 0}}
 			if !evaluated {
-				{{- /* maporder: not a map: ranges a slice, evaluatedPatterns is a []*ecma262.Regexp. */}}
-				for _, re := range evaluatedPatterns {
-					if re.MatchString(_key) {
+				{{- /* maporder: not a map: ranges an array, evaluatedPatterns is a [N]*_schemagenRegexp. */}}
+				for _, _re := range evaluatedPatterns {
+					_reMatched, _reErr := _re.matches(_key)
+					if _reErr != nil {
+						return jsonValueErrorf("unevaluated property %s: %w", _schemagenQuote(_key), _reErr)
+					}
+					if _reMatched {
 						evaluated = true
 						break
 					}
@@ -1584,7 +1640,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- end}}
 			if !evaluated {
 				{{- if $uneval.IsForbidden}}
-				return jsonValueErrorf("unevaluated property %q is not allowed", _key)
+				return jsonValueErrorf("unevaluated property %s is not allowed", _schemagenQuote(_key))
 				{{- else if $uneval.HasSchemaValuedUnevalProps}}
 				{{- if $uneval.ValueIsNull}}
 				{{- /* No Go type holds only null, so the raw bytes are what
@@ -1592,12 +1648,12 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				       the same sub-schema. Both overflow maps hold
 				       json.RawMessage, which is the value's own bytes. */}}
 				if string(_member) != "null" {
-					return jsonValueErrorf("unevaluated property %q: must be null", _key)
+					return jsonValueErrorf("unevaluated property %s: must be null", _schemagenQuote(_key))
 				}
 				{{- else if $uneval.ValueType}}
 				var _uVal {{$uneval.ValueType}}
 				if _uErr := json.Unmarshal(_member, &_uVal); _uErr != nil {
-					return jsonValueErrorf("unevaluated property %q: %w", _key, _uErr)
+					return jsonValueErrorf("unevaluated property %s: %w", _schemagenQuote(_key), _uErr)
 				}
 				{{- range $uneval.Validations}}
 				{{- template "validation_rule_inline" .}}
@@ -1685,8 +1741,10 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{$container}} {
 	}
 	{{- end}}
 	{{- if eq .RuleType "pattern"}}
-	if _matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, string({{$elem}})); !_matched {
-		return {{$errf}}("{{$path}}: value %q does not match pattern %s", {{$args}}, {{$elem}}, {{printf "%q" .Value}})
+	if _matched, _mErr := {{patternVar .Value}}.matches(string({{$elem}})); _mErr != nil {
+		return {{$errf}}("{{$path}}: %w", {{$args}}, _mErr)
+	} else if !_matched {
+		return {{$errf}}("{{$path}}: value %s does not match pattern %s", {{$args}}, _schemagenQuote(string({{$elem}})), {{printf "%q" .Value}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "minimum"}}
@@ -1782,7 +1840,7 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{$container}} {
 	{{- if eq .RuleType "const"}}
 	{{- if .ExactCompare}}
 	if {{exactConstViolated . $elem}} {
-		return {{$errf}}("{{$path}}: value must be %s, got %v", {{$args}}, {{printf "%q" .Value}}, {{$elem}})
+		return {{$errf}}("{{$path}}: value must be %s, got %s", {{$args}}, {{printf "%q" .Value}}, _schemagenClipText(fmt.Sprint({{$elem}})))
 	}
 	{{- else}}
 	{
@@ -1791,7 +1849,7 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{$container}} {
 			return {{$errf}}("{{$path}}: failed to marshal for const check: %w", {{$args}}, _constErr)
 		}
 		if string(_constGot) != {{printf "%q" .Value}} {
-			return {{$errf}}("{{$path}}: value must be %s, got %s", {{$args}}, {{printf "%q" .Value}}, string(_constGot))
+			return {{$errf}}("{{$path}}: value must be %s, got %s", {{$args}}, {{printf "%q" .Value}}, _schemagenClipText(string(_constGot)))
 		}
 	}
 	{{- end}}
@@ -1868,75 +1926,75 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{$container}} {
 {{define "validation_rule_inline"}}
 {{- if eq .RuleType "minLength"}}
 				if utf8.RuneCountInString(_uVal) < {{countExpr .Value}} {
-					return jsonValueErrorf("unevaluated property %q: length %d is less than minimum {{fmtText .Value}}", _key, utf8.RuneCountInString(_uVal))
+					return jsonValueErrorf("unevaluated property %s: length %d is less than minimum {{fmtText .Value}}", _schemagenQuote(_key), utf8.RuneCountInString(_uVal))
 				}
 {{- end}}
 {{- if eq .RuleType "maxLength"}}
 				if utf8.RuneCountInString(_uVal) > {{countExpr .Value}} {
-					return jsonValueErrorf("unevaluated property %q: length %d exceeds maximum {{fmtText .Value}}", _key, utf8.RuneCountInString(_uVal))
+					return jsonValueErrorf("unevaluated property %s: length %d exceeds maximum {{fmtText .Value}}", _schemagenQuote(_key), utf8.RuneCountInString(_uVal))
 				}
 {{- end}}
 {{- if eq .RuleType "minimum"}}
 {{- if .ExactCompare}}
 				if {{numOperand . "_uVal"}} < {{numBound .}} {
-					return jsonValueErrorf("unevaluated property %q: value %v is less than minimum {{numBoundMsg .}}", _key, _uVal)
+					return jsonValueErrorf("unevaluated property %s: value %v is less than minimum {{numBoundMsg .}}", _schemagenQuote(_key), _uVal)
 				}
 {{- else}}
 				if float64(_uVal) < {{countExpr .Value}} {
-					return jsonValueErrorf("unevaluated property %q: value %v is less than minimum {{fmtText .Value}}", _key, _uVal)
+					return jsonValueErrorf("unevaluated property %s: value %v is less than minimum {{fmtText .Value}}", _schemagenQuote(_key), _uVal)
 				}
 {{- end}}
 {{- end}}
 {{- if eq .RuleType "maximum"}}
 {{- if .ExactCompare}}
 				if {{numOperand . "_uVal"}} > {{numBound .}} {
-					return jsonValueErrorf("unevaluated property %q: value %v exceeds maximum {{numBoundMsg .}}", _key, _uVal)
+					return jsonValueErrorf("unevaluated property %s: value %v exceeds maximum {{numBoundMsg .}}", _schemagenQuote(_key), _uVal)
 				}
 {{- else}}
 				if float64(_uVal) > {{countExpr .Value}} {
-					return jsonValueErrorf("unevaluated property %q: value %v exceeds maximum {{fmtText .Value}}", _key, _uVal)
+					return jsonValueErrorf("unevaluated property %s: value %v exceeds maximum {{fmtText .Value}}", _schemagenQuote(_key), _uVal)
 				}
 {{- end}}
 {{- end}}
 {{- if eq .RuleType "exclusiveMinimum"}}
 {{- if .ExactCompare}}
 				if {{numOperand . "_uVal"}} <= {{numBound .}} {
-					return jsonValueErrorf("unevaluated property %q: value %v must be greater than {{numBoundMsg .}}", _key, _uVal)
+					return jsonValueErrorf("unevaluated property %s: value %v must be greater than {{numBoundMsg .}}", _schemagenQuote(_key), _uVal)
 				}
 {{- else}}
 				if float64(_uVal) <= {{countExpr .Value}} {
-					return jsonValueErrorf("unevaluated property %q: value %v must be greater than {{fmtText .Value}}", _key, _uVal)
+					return jsonValueErrorf("unevaluated property %s: value %v must be greater than {{fmtText .Value}}", _schemagenQuote(_key), _uVal)
 				}
 {{- end}}
 {{- end}}
 {{- if eq .RuleType "exclusiveMaximum"}}
 {{- if .ExactCompare}}
 				if {{numOperand . "_uVal"}} >= {{numBound .}} {
-					return jsonValueErrorf("unevaluated property %q: value %v must be less than {{numBoundMsg .}}", _key, _uVal)
+					return jsonValueErrorf("unevaluated property %s: value %v must be less than {{numBoundMsg .}}", _schemagenQuote(_key), _uVal)
 				}
 {{- else}}
 				if float64(_uVal) >= {{countExpr .Value}} {
-					return jsonValueErrorf("unevaluated property %q: value %v must be less than {{fmtText .Value}}", _key, _uVal)
+					return jsonValueErrorf("unevaluated property %s: value %v must be less than {{fmtText .Value}}", _schemagenQuote(_key), _uVal)
 				}
 {{- end}}
 {{- end}}
 {{- if eq .RuleType "pattern"}}
-				{
-					if matched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, _uVal); !matched {
-						return jsonValueErrorf("unevaluated property %q: value does not match pattern %s", _key, {{printf "%q" .Value}})
-					}
+				if _uMatched, _uMErr := {{patternVar .Value}}.matches(string(_uVal)); _uMErr != nil {
+					return jsonValueErrorf("unevaluated property %s: %w", _schemagenQuote(_key), _uMErr)
+				} else if !_uMatched {
+					return jsonValueErrorf("unevaluated property %s: value does not match pattern %s", _schemagenQuote(_key), {{printf "%q" .Value}})
 				}
 {{- end}}
 {{- if eq .RuleType "multipleOf"}}
 {{- if .ExactCompare}}
 				if !{{exactMultipleOf . "_uVal"}} {
-					return jsonValueErrorf("unevaluated property %q: value %v is not a multiple of {{numBoundMsg .}}", _key, _uVal)
+					return jsonValueErrorf("unevaluated property %s: value %v is not a multiple of {{numBoundMsg .}}", _schemagenQuote(_key), _uVal)
 				}
 {{- else}}
 				{
 					_q := float64(_uVal) / {{numLit .Value}}
 					if math.Abs(_q - math.Round(_q)) > 1e-9 {
-						return jsonValueErrorf("unevaluated property %q: value %v is not a multiple of {{fmtText .Value}}", _key, _uVal)
+						return jsonValueErrorf("unevaluated property %s: value %v is not a multiple of {{fmtText .Value}}", _schemagenQuote(_key), _uVal)
 					}
 				}
 {{- end}}
@@ -1969,9 +2027,20 @@ declares a field for it at all.
 				if _err := json.Unmarshal(_raw, &_v); _err != nil {
 					return fmt.Errorf("{{$kw}}: property %q: cannot decode value: %w", {{printf "%q" .JSONName}}, _err)
 				}
+				{{- if dynChecksMatchPattern .Checks}}
+				var _undecided error
+				_branchOK := {{template "dyn_branch" .Checks}}
+				if _undecided != nil {
+					return fmt.Errorf("{{$kw}}: property %q: %w", {{printf "%q" .JSONName}}, _undecided)
+				}
+				if !_branchOK {
+					return fmt.Errorf("{{$kw}}: property %q does not satisfy the {{$kw}} schema", {{printf "%q" .JSONName}})
+				}
+				{{- else}}
 				if !({{template "dyn_branch" .Checks}}) {
 					return fmt.Errorf("{{$kw}}: property %q does not satisfy the {{$kw}} schema", {{printf "%q" .JSONName}})
 				}
+				{{- end}}
 			}
 {{- end}}
 {{- end}}
@@ -2088,10 +2157,18 @@ declares a field for it at all.
 				continue
 			}
 			var _cTyped {{.Def.TypeName}}
-			if {{if .Def.StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_cBytes, &_cTyped) != nil {
+			if _cDErr := {{if .Def.StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_cBytes, &_cTyped); _cDErr != nil {
+				if _schemagenUndecided(_cDErr) {
+					// An element that may or may not match leaves the count
+					// unknown.
+					return {{$errf}}("{{$path}}: %w", {{$args}}_cDErr)
+				}
 				continue
 			}
-			if _cTyped.Validate() != nil {
+			if _cVErr := _cTyped.Validate(); _cVErr != nil {
+				if _schemagenUndecided(_cVErr) {
+					return {{$errf}}("{{$path}}: %w", {{$args}}_cVErr)
+				}
 				continue
 			}
 			_containsCount++
@@ -2154,91 +2231,109 @@ declares a field for it at all.
 				}
 			}
 			{{- end}}
+			{{- /* Every keyword below judges one JSON type and says nothing about
+			       any other: a numeric bound is satisfied by a string, a length
+			       bound by a number, both by a null. So each arm reads the
+			       element only when it is of that keyword's type, and otherwise
+			       leaves _cMatch as it is. They used to count such an element as
+			       a non-match -- {"contains":{"minimum":3}} refused ["a"] -- and
+			       a null, which encoding/json decodes into a float64 as 0 and
+			       into a string as "", was measured as that zero. */}}
 			{{- else if eq .CheckType "minimum"}}
 			if _cMatch {
 				_cBytes, _ := json.Marshal(_cElem)
-				{{- if $.Def.ExactNumbers}}
-				var _cn jsonNumber
-				if json.Unmarshal(_cBytes, &_cn) != nil || jsonNumberCmp(json.Number(_cn), {{jsonNumberLiteral .Value}}) < 0 {
-					_cMatch = false
+				if len(_cBytes) > 0 && (_cBytes[0] == '-' || _cBytes[0] >= '0' && _cBytes[0] <= '9') {
+					{{- if $.Def.ExactNumbers}}
+					var _cn jsonNumber
+					if json.Unmarshal(_cBytes, &_cn) != nil || jsonNumberCmp(json.Number(_cn), {{jsonNumberLiteral .Value}}) < 0 {
+						_cMatch = false
+					}
+					{{- else}}
+					var _cf float64
+					if json.Unmarshal(_cBytes, &_cf) != nil || _cf < {{countExpr .Value}} {
+						_cMatch = false
+					}
+					{{- end}}
 				}
-				{{- else}}
-				var _cf float64
-				if json.Unmarshal(_cBytes, &_cf) != nil || _cf < {{countExpr .Value}} {
-					_cMatch = false
-				}
-				{{- end}}
 			}
 			{{- else if eq .CheckType "maximum"}}
 			if _cMatch {
 				_cBytes, _ := json.Marshal(_cElem)
-				{{- if $.Def.ExactNumbers}}
-				var _cn jsonNumber
-				if json.Unmarshal(_cBytes, &_cn) != nil || jsonNumberCmp(json.Number(_cn), {{jsonNumberLiteral .Value}}) > 0 {
-					_cMatch = false
+				if len(_cBytes) > 0 && (_cBytes[0] == '-' || _cBytes[0] >= '0' && _cBytes[0] <= '9') {
+					{{- if $.Def.ExactNumbers}}
+					var _cn jsonNumber
+					if json.Unmarshal(_cBytes, &_cn) != nil || jsonNumberCmp(json.Number(_cn), {{jsonNumberLiteral .Value}}) > 0 {
+						_cMatch = false
+					}
+					{{- else}}
+					var _cf float64
+					if json.Unmarshal(_cBytes, &_cf) != nil || _cf > {{countExpr .Value}} {
+						_cMatch = false
+					}
+					{{- end}}
 				}
-				{{- else}}
-				var _cf float64
-				if json.Unmarshal(_cBytes, &_cf) != nil || _cf > {{countExpr .Value}} {
-					_cMatch = false
-				}
-				{{- end}}
 			}
 			{{- else if eq .CheckType "exclusiveMinimum"}}
 			if _cMatch {
 				_cBytes, _ := json.Marshal(_cElem)
-				{{- if $.Def.ExactNumbers}}
-				var _cn jsonNumber
-				if json.Unmarshal(_cBytes, &_cn) != nil || jsonNumberCmp(json.Number(_cn), {{jsonNumberLiteral .Value}}) <= 0 {
-					_cMatch = false
+				if len(_cBytes) > 0 && (_cBytes[0] == '-' || _cBytes[0] >= '0' && _cBytes[0] <= '9') {
+					{{- if $.Def.ExactNumbers}}
+					var _cn jsonNumber
+					if json.Unmarshal(_cBytes, &_cn) != nil || jsonNumberCmp(json.Number(_cn), {{jsonNumberLiteral .Value}}) <= 0 {
+						_cMatch = false
+					}
+					{{- else}}
+					var _cf float64
+					if json.Unmarshal(_cBytes, &_cf) != nil || _cf <= {{countExpr .Value}} {
+						_cMatch = false
+					}
+					{{- end}}
 				}
-				{{- else}}
-				var _cf float64
-				if json.Unmarshal(_cBytes, &_cf) != nil || _cf <= {{countExpr .Value}} {
-					_cMatch = false
-				}
-				{{- end}}
 			}
 			{{- else if eq .CheckType "exclusiveMaximum"}}
 			if _cMatch {
 				_cBytes, _ := json.Marshal(_cElem)
-				{{- if $.Def.ExactNumbers}}
-				var _cn jsonNumber
-				if json.Unmarshal(_cBytes, &_cn) != nil || jsonNumberCmp(json.Number(_cn), {{jsonNumberLiteral .Value}}) >= 0 {
-					_cMatch = false
+				if len(_cBytes) > 0 && (_cBytes[0] == '-' || _cBytes[0] >= '0' && _cBytes[0] <= '9') {
+					{{- if $.Def.ExactNumbers}}
+					var _cn jsonNumber
+					if json.Unmarshal(_cBytes, &_cn) != nil || jsonNumberCmp(json.Number(_cn), {{jsonNumberLiteral .Value}}) >= 0 {
+						_cMatch = false
+					}
+					{{- else}}
+					var _cf float64
+					if json.Unmarshal(_cBytes, &_cf) != nil || _cf >= {{countExpr .Value}} {
+						_cMatch = false
+					}
+					{{- end}}
 				}
-				{{- else}}
-				var _cf float64
-				if json.Unmarshal(_cBytes, &_cf) != nil || _cf >= {{countExpr .Value}} {
-					_cMatch = false
-				}
-				{{- end}}
 			}
 			{{- else if eq .CheckType "multipleOf"}}
 			if _cMatch {
 				_cBytes, _ := json.Marshal(_cElem)
-				{{- if $.Def.ExactNumbers}}
-				var _cn jsonNumber
-				if json.Unmarshal(_cBytes, &_cn) != nil || !jsonNumberIsMultipleOf(json.Number(_cn), {{jsonNumberLiteral .Value}}) {
-					_cMatch = false
-				}
-				{{- else}}
-				var _cf float64
-				if json.Unmarshal(_cBytes, &_cf) != nil {
-					_cMatch = false
-				} else {
-					_cq := _cf / {{numLit .Value}}
-					if math.Abs(_cq - math.Round(_cq)) > 1e-9 {
+				if len(_cBytes) > 0 && (_cBytes[0] == '-' || _cBytes[0] >= '0' && _cBytes[0] <= '9') {
+					{{- if $.Def.ExactNumbers}}
+					var _cn jsonNumber
+					if json.Unmarshal(_cBytes, &_cn) != nil || !jsonNumberIsMultipleOf(json.Number(_cn), {{jsonNumberLiteral .Value}}) {
 						_cMatch = false
 					}
+					{{- else}}
+					var _cf float64
+					if json.Unmarshal(_cBytes, &_cf) != nil {
+						_cMatch = false
+					} else {
+						_cq := _cf / {{numLit .Value}}
+						if math.Abs(_cq - math.Round(_cq)) > 1e-9 {
+							_cMatch = false
+						}
+					}
+					{{- end}}
 				}
-				{{- end}}
 			}
 			{{- else if eq .CheckType "minLength"}}
 			if _cMatch {
 				_cBytes, _ := json.Marshal(_cElem)
 				var _cs string
-				if json.Unmarshal(_cBytes, &_cs) != nil || len([]rune(_cs)) < {{countExpr .Value}} {
+				if len(_cBytes) > 0 && _cBytes[0] == '"' && (json.Unmarshal(_cBytes, &_cs) != nil || len([]rune(_cs)) < {{countExpr .Value}}) {
 					_cMatch = false
 				}
 			}
@@ -2246,7 +2341,7 @@ declares a field for it at all.
 			if _cMatch {
 				_cBytes, _ := json.Marshal(_cElem)
 				var _cs string
-				if json.Unmarshal(_cBytes, &_cs) != nil || len([]rune(_cs)) > {{countExpr .Value}} {
+				if len(_cBytes) > 0 && _cBytes[0] == '"' && (json.Unmarshal(_cBytes, &_cs) != nil || len([]rune(_cs)) > {{countExpr .Value}}) {
 					_cMatch = false
 				}
 			}
@@ -2254,11 +2349,16 @@ declares a field for it at all.
 			if _cMatch {
 				_cBytes, _ := json.Marshal(_cElem)
 				var _cs string
-				if json.Unmarshal(_cBytes, &_cs) != nil {
-					_cMatch = false
-				} else {
-					_cRe := regexp.MustCompile({{printf "%q" .Value}})
-					if !_cRe.MatchString(_cs) {
+				{{- /* A pattern constrains strings only, so an element that is not
+				       one -- a number, a null, which encoding/json would decode
+				       into a string as "" -- satisfies it and leaves _cMatch
+				       as it is. It used to be counted as a non-match. */}}
+				if len(_cBytes) > 0 && _cBytes[0] == '"' && json.Unmarshal(_cBytes, &_cs) == nil {
+					if _cMatched, _cMErr := {{patternVar .Value}}.matches(_cs); _cMErr != nil {
+						// An element that may or may not match leaves the count
+						// unknown, so there is no verdict to give.
+						return {{$errf}}("{{$path}}: %w", {{$args}}_cMErr)
+					} else if !_cMatched {
 						_cMatch = false
 					}
 				}
@@ -2536,8 +2636,12 @@ declares a field for it at all.
 				{
 					_uiStrBytes, _ := json.Marshal(_uiElem)
 					var _uiStrVal string
-					if json.Unmarshal(_uiStrBytes, &_uiStrVal) == nil {
-						if _uiMatched, _ := ecma262.MatchString({{ecmaPattern .Value}}, ecmaflags.Unicode, _uiStrVal); !_uiMatched {
+					{{- /* A string only: a null decodes into a Go string as "",
+					       and a pattern says nothing about a null. */}}
+					if len(_uiStrBytes) > 0 && _uiStrBytes[0] == '"' && json.Unmarshal(_uiStrBytes, &_uiStrVal) == nil {
+						if _uiMatched, _uiMErr := {{patternVar .Value}}.matches(_uiStrVal); _uiMErr != nil {
+							return {{$errf}}("{{$path}}[%d]: %w", {{$args}}_ui, _uiMErr)
+						} else if !_uiMatched {
 							return {{$errf}}("{{$path}}[%d]: value does not match pattern %s", {{$args}}_ui, {{printf "%q" .Value}})
 						}
 					}

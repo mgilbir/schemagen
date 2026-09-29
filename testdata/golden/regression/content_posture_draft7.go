@@ -493,9 +493,13 @@ func (c *ContentPostureDraft7) UnmarshalJSON(data []byte) error {
 					if _vErr := candidate.Validate(); _vErr == nil {
 						oneofStrict++
 						oneofStrictSel = &ContentPostureDraft7_ContentPostureDraft7BranchOption0{ContentPostureDraft7BranchOption0: candidate}
+					} else if _schemagenUndecided(_vErr) {
+						return oneofErrf("variant ContentPostureDraft7BranchOption0: %w", _vErr)
 					} else {
 						oneofStrictErr = fmt.Errorf("variant ContentPostureDraft7BranchOption0: %w", _vErr)
 					}
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant ContentPostureDraft7BranchOption0: %w", err)
 				} else {
 					oneofLastErr = err
 				}
@@ -511,6 +515,8 @@ func (c *ContentPostureDraft7) UnmarshalJSON(data []byte) error {
 					// carry, so matching it is satisfying it.
 					oneofStrict++
 					oneofStrictSel = &ContentPostureDraft7_Boolean{Boolean: candidate}
+				} else if _schemagenUndecided(err) {
+					return oneofErrf("variant Boolean: %w", err)
 				} else {
 					oneofLastErr = err
 				}

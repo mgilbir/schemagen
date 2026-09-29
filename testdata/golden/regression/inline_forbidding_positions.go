@@ -5,8 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	ecma262 "github.com/mgilbir/goecma262"
-	ecmaflags "github.com/mgilbir/goecma262/flags"
 )
 
 // Never accepts any JSON value and validates a root-level "not" constraint.
@@ -231,7 +229,7 @@ func (n NoNames) Validate() error {
 				continue
 			}
 			if _err := func() error {
-				return fmt.Errorf("propertyNames: property %q is not allowed (schema is false)", _pnKey)
+				return fmt.Errorf("propertyNames: property %s is not allowed (schema is false)", _schemagenQuote(_pnKey))
 			}(); _err != nil {
 				_least, _failed = _pnKey, _err
 			}
@@ -437,31 +435,44 @@ func (i *InlineForbiddingPositionsEmptyEnumPattern) UnmarshalJSON(data []byte) e
 			return err
 		}
 		knownFields := map[string]bool{}
-		patternRegexps := []*ecma262.Regexp{
-			ecma262.MustCompile("^a", ecmaflags.Unicode),
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			matchesPattern := false
-			for _, re := range patternRegexps {
-				if re.MatchString(rawKey) {
-					matchesPattern = true
-					break
+		{
+			var _least string
+			var _failed error
+			for rawKey, rawVal := range raw { // refused for the least failing key
+				if _failed != nil && rawKey >= _least {
+					continue
+				}
+				if _err := func() error {
+					if knownFields[rawKey] {
+						return nil
+					}
+					matchesPattern := false
+					if !matchesPattern {
+						_ppMatched, _ppErr := _schemagenPattern_5cd67a1734052155.matches(rawKey)
+						if _ppErr != nil {
+							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
+						}
+						matchesPattern = _ppMatched
+					}
+					if matchesPattern {
+						if i.PatternProperties == nil {
+							i.PatternProperties = make(map[string]json.RawMessage)
+						}
+						i.PatternProperties[rawKey] = rawVal
+						return nil
+					}
+					if i.AdditionalProperties == nil {
+						i.AdditionalProperties = make(map[string]json.RawMessage)
+					}
+					i.AdditionalProperties[rawKey] = rawVal
+					return nil
+				}(); _err != nil {
+					_least, _failed = rawKey, _err
 				}
 			}
-			if matchesPattern {
-				if i.PatternProperties == nil {
-					i.PatternProperties = make(map[string]json.RawMessage)
-				}
-				i.PatternProperties[rawKey] = rawVal
-				continue
+			if _failed != nil {
+				return _failed
 			}
-			if i.AdditionalProperties == nil {
-				i.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			i.AdditionalProperties[rawKey] = rawVal
 		}
 	}
 
@@ -493,30 +504,37 @@ func (i InlineForbiddingPositionsEmptyEnumPattern) MarshalJSON() ([]byte, error)
 
 // Validate checks InlineForbiddingPositionsEmptyEnumPattern against its JSON Schema constraints.
 func (i InlineForbiddingPositionsEmptyEnumPattern) Validate() error {
-	// patternProperties validation: check matched values against sub-schema constraints.
-	if len(i.PatternProperties) > 0 {
-		ppRegexps := []*ecma262.Regexp{
-			ecma262.MustCompile("^a", ecmaflags.Unicode),
-		}
-		{
-			var _least string
-			var _failed error
-			for _key, _member := range i.PatternProperties { // refused for the least failing key
-				if _failed != nil && _key >= _least {
-					continue
-				}
-				if _err := func() error {
-					_ = _member
-					if ppRegexps[0].MatchString(_key) {
-						return fmt.Errorf("patternProperties: key %q matches forbidden pattern %s", _key, "^a")
-					}
-					return nil
-				}(); _err != nil {
-					_least, _failed = _key, _err
-				}
+	// patternProperties: every member whose key a pattern matches is held to that
+	// pattern's sub-schema. That is the members the decoder filed in
+	// PatternProperties, and the declared ones a pattern also matches, which
+	// "properties" governs as well -- the two keywords apply side by side.
+	{
+		_ppMember := func(_key string, _member json.RawMessage) error {
+			_ = _member
+			if _ppMatched, _ppErr := _schemagenPattern_5cd67a1734052155.matches(_key); _ppErr != nil {
+				return fmt.Errorf("patternProperties: key %s: %w", _schemagenQuote(_key), _ppErr)
+			} else if _ppMatched {
+				return fmt.Errorf("patternProperties: key %s matches forbidden pattern %s", _schemagenQuote(_key), "^a")
 			}
-			if _failed != nil {
-				return _failed
+			return nil
+		}
+		if len(i.PatternProperties) > 0 {
+			{
+				var _least string
+				var _failed error
+				for _key, _member := range i.PatternProperties { // refused for the least failing key
+					if _failed != nil && _key >= _least {
+						continue
+					}
+					if _err := func() error {
+						return _ppMember(_key, _member)
+					}(); _err != nil {
+						_least, _failed = _key, _err
+					}
+				}
+				if _failed != nil {
+					return _failed
+				}
 			}
 		}
 	}
@@ -669,7 +687,7 @@ func (i InlineForbiddingPositionsEmptyEnumUnevalProps) Validate() error {
 						evaluated = true
 					}
 					if !evaluated {
-						return jsonValueErrorf("unevaluated property %q is not allowed", _key)
+						return jsonValueErrorf("unevaluated property %s is not allowed", _schemagenQuote(_key))
 					}
 					return nil
 				}(); _err != nil {
@@ -1888,7 +1906,7 @@ func (i InlineForbiddingPositions) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "emptyEnumValues[%q]", _k)
+					return jsonPathf(err, "emptyEnumValues[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {
@@ -1978,7 +1996,7 @@ func (i InlineForbiddingPositions) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "nullableEmptyEnumValues[%q]", _k)
+					return jsonPathf(err, "nullableEmptyEnumValues[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {

@@ -125,11 +125,17 @@ type StructDef struct {
 	// so that the value is fully populated and a Validate check -- which must
 	// never see the refusal at all -- can decode into it and get an answer about
 	// the schema. See accessRulesFor and issue #219.
-	StrictReadWrite        bool
-	Fields                 []FieldDef
-	OneOfs                 []OneOfDef
-	AdditionalProperties   *AdditionalPropertiesDef
-	PatternProperties      []PatternPropertyDef
+	StrictReadWrite      bool
+	Fields               []FieldDef
+	OneOfs               []OneOfDef
+	AdditionalProperties *AdditionalPropertiesDef
+	PatternProperties    []PatternPropertyDef
+	// DeclaredPatternMembers are the properties this struct declares whose name
+	// a patternProperties key matches. JSON Schema applies both keywords to such
+	// a member, so each is held to every matching pattern's sub-schema by the
+	// check an undeclared member of the PatternProperties bucket gets. See
+	// DeclaredPatternMember.
+	DeclaredPatternMembers []DeclaredPatternMember
 	DependentSchemas       []DependentSchemaConstraint // dependent sub-schemas with additionalProperties:false
 	DependentRequired      []DependentRequiredDef      // dependentRequired constraints
 	PropertyNames          *PropertyNamesDef           // propertyNames constraint (Draft 6+)
@@ -553,6 +559,12 @@ func (d *StructDef) NeedsRawProps() bool {
 	// values too. Only the raw map has both; the declared fields have been
 	// decoded into Go types by then and the overflow map never held them.
 	if len(d.BranchOverflowChecks) > 0 {
+		return true
+	}
+	// A declared member a pattern matches is checked as the bytes the document
+	// wrote, which the raw map is the only holder of. See
+	// DeclaredPatternMember.
+	if len(d.DeclaredPatternMembers) > 0 && d.HasPatternPropertyValidation() {
 		return true
 	}
 	// The runtime branch evaluator is handed the document rebuilt from the raw
@@ -1026,6 +1038,40 @@ type PatternPropertyDef struct {
 	// read the number rather than scan for a '.'. Same distinction, and same
 	// source, as AliasDef.StrictInteger.
 	StrictInteger bool
+}
+
+// DeclaredPatternMember is a declared property whose name a patternProperties
+// key of the same schema matches.
+//
+// A declared member never reaches the PatternProperties bucket -- it is decoded
+// into its field -- so the bucket's check, which is what holds a member to the
+// whole of a pattern's sub-schema (its type, enum, const, format, nested
+// object, anything its generated type carries), used not to see it. The member
+// is handed to that same check instead, as the bytes the document wrote, read
+// from the raw member map the decoder keeps. The check matches every pattern
+// against the name again, so a pattern that does not match adds nothing: the
+// list is only the names worth asking about, decided at generation time by
+// the same engine (see PatternMatches), with a name no match could be decided
+// for kept rather than dropped.
+//
+// A value built in Go rather than decoded has no raw member map. For it the
+// field is marshalled and that is checked -- where there is a field, and where
+// the member counts as present: a required property always, an optional one
+// when its field is non-nil. That is the reading every other check takes of a
+// hand-built value: presence it cannot see is not presumed.
+type DeclaredPatternMember struct {
+	// JSONName is the property's name.
+	JSONName string
+	// FieldName is the Go field holding the property, or "" when none does (a
+	// oneOf property, a forbidden one), in which case a hand-built value has
+	// nothing to marshal and the member is checked only when decoded.
+	FieldName string
+	// Required says the property is required, so a hand-built value's field
+	// is checked whatever it holds.
+	Required bool
+	// FieldNilable says the field can be compared to nil, which is what an
+	// optional property's presence in a hand-built value is read from.
+	FieldNilable bool
 }
 
 // AdditionalPropertiesDef describes an additionalProperties field on a struct.

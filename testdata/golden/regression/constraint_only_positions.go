@@ -126,11 +126,19 @@ func (c ConstraintOnlyPositionsBranch) Validate() error {
 		{
 			// The alternative is a reference; the value matches it when it
 			// decodes into the referenced type and that type accepts it.
+			// A pattern match with no answer on the way is no verdict on the
+			// branch, so it is returned rather than read as "no match".
 			var _bv ConstraintOnlyPositionsBranchAlternative0
 			if _err := json.Unmarshal(c._raw, &_bv); _err != nil {
+				if _schemagenUndecided(_err) {
+					return fmt.Errorf("type: %w", _err)
+				}
 				_branchMatches = false
 			} else if _bvv, _ok := any(&_bv).(interface{ Validate() error }); _ok {
 				if _err := _bvv.Validate(); _err != nil {
+					if _schemagenUndecided(_err) {
+						return fmt.Errorf("type: %w", _err)
+					}
 					_branchMatches = false
 				}
 			}
@@ -144,11 +152,19 @@ func (c ConstraintOnlyPositionsBranch) Validate() error {
 		{
 			// The alternative is a reference; the value matches it when it
 			// decodes into the referenced type and that type accepts it.
+			// A pattern match with no answer on the way is no verdict on the
+			// branch, so it is returned rather than read as "no match".
 			var _bv ConstraintOnlyPositionsBranchAlternative1
 			if _err := json.Unmarshal(c._raw, &_bv); _err != nil {
+				if _schemagenUndecided(_err) {
+					return fmt.Errorf("type: %w", _err)
+				}
 				_branchMatches = false
 			} else if _bvv, _ok := any(&_bv).(interface{ Validate() error }); _ok {
 				if _err := _bvv.Validate(); _err != nil {
+					if _schemagenUndecided(_err) {
+						return fmt.Errorf("type: %w", _err)
+					}
 					_branchMatches = false
 				}
 			}
@@ -554,7 +570,7 @@ func (c ConstraintOnlyPositionsUnevaluated) Validate() error {
 				if _err := func() error {
 					var _rbVal any
 					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
-						return jsonValueErrorf("cannot decode property %q: %w", _rbKey, _rbErr)
+						return jsonValueErrorf("cannot decode property %s: %w", _schemagenQuote(_rbKey), _rbErr)
 					}
 					_rbInstance[_rbKey] = _rbVal
 					return nil
@@ -903,7 +919,7 @@ func (c ConstraintOnlyPositions) Validate() error {
 			}
 			if _err := func() error {
 				if err := _val.Validate(); err != nil {
-					return jsonPathf(err, "map[%q]", _k)
+					return jsonPathf(err, "map[%s]", _schemagenQuote(_k))
 				}
 				return nil
 			}(); _err != nil {
