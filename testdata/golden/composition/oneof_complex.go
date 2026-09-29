@@ -94,24 +94,48 @@ func (e *EmailTarget) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (e EmailTarget) MarshalJSON() ([]byte, error) {
-	type Alias EmailTarget
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(e),
+	_b, _err := e.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends e to _b as JSON. See jsonEnc.
+func (e EmailTarget) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := e.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range e.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, e.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members e's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (e EmailTarget) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(e.EmailAddress, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("email_address", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of e numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (e EmailTarget) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks EmailTarget against its JSON Schema constraints.
@@ -226,24 +250,57 @@ func (h *HTMLContent) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (h HTMLContent) MarshalJSON() ([]byte, error) {
-	type Alias HTMLContent
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(h),
+	_b, _err := h.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends h to _b as JSON. See jsonEnc.
+func (h HTMLContent) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := h.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range h.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, h.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members h's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (h HTMLContent) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(h.Subject)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("subject", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(h.HTML, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("html", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of h numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (h HTMLContent) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks HTMLContent against its JSON Schema constraints.
@@ -349,24 +406,48 @@ func (s *SmsTarget) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (s SmsTarget) MarshalJSON() ([]byte, error) {
-	type Alias SmsTarget
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(s),
+	_b, _err := s.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends s to _b as JSON. See jsonEnc.
+func (s SmsTarget) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := s.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range s.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, s.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members s's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (s SmsTarget) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(s.PhoneNumber, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("phone_number", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of s numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (s SmsTarget) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks SmsTarget against its JSON Schema constraints.
@@ -472,24 +553,48 @@ func (t *TextContent) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (t TextContent) MarshalJSON() ([]byte, error) {
-	type Alias TextContent
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(t),
+	_b, _err := t.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends t to _b as JSON. See jsonEnc.
+func (t TextContent) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := t.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range t.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, t.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members t's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (t TextContent) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(t.Body, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("body", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of t numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (t TextContent) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks TextContent against its JSON Schema constraints.
@@ -993,60 +1098,106 @@ func (n *Notification) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (n Notification) MarshalJSON() ([]byte, error) {
-	type Alias Notification
-	aux := struct {
-		Alias
-		Content json.RawMessage `json:"content,omitempty"`
-		Target  json.RawMessage `json:"target,omitempty"`
-	}{
-		Alias: (Alias)(n),
+	_b, _err := n.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
+	return _b, nil
+}
 
+// appendJSON appends n to _b as JSON. See jsonEnc.
+func (n Notification) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := n.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
+	}
 	if n.Content != nil {
-		switch _sel := n.Content.(type) {
-		case *Notification_TextContent:
-			raw, err := json.Marshal(_sel.TextContent)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling Notification.Content: %w", err)
-			}
-			aux.Content = raw
-		case *Notification_HTMLContent:
-			raw, err := json.Marshal(_sel.HTMLContent)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling Notification.Content: %w", err)
-			}
-			aux.Content = raw
+		switch n.Content.(type) {
+		case *Notification_TextContent, *Notification_HTMLContent:
+			_o.deferred("content", 1)
 		}
 	}
-
 	if n.Target != nil {
-		switch _sel := n.Target.(type) {
-		case *Notification_EmailTarget:
-			raw, err := json.Marshal(_sel.EmailTarget)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling Notification.Target: %w", err)
-			}
-			aux.Target = raw
-		case *Notification_SmsTarget:
-			raw, err := json.Marshal(_sel.SmsTarget)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling Notification.Target: %w", err)
-			}
-			aux.Target = raw
+		switch n.Target.(type) {
+		case *Notification_EmailTarget, *Notification_SmsTarget:
+			_o.deferred("target", 2)
 		}
-	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
 	}
 	for _key, _member := range n.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, n.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members n's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (n Notification) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(n.ID, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("id", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of n numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (n Notification) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 1:
+		switch _sel := n.Content.(type) {
+		case *Notification_TextContent:
+			_out, _err := (func(_v *TextContent, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*TextContent, TextContent](_v, _b, func(_v TextContent, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[TextContent](_v, _b, TextContent.appendJSON, true)
+				})
+			})(_sel.TextContent, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling Notification.Content: %w", _err)
+			}
+			return _out, nil
+		case *Notification_HTMLContent:
+			_out, _err := (func(_v *HTMLContent, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*HTMLContent, HTMLContent](_v, _b, func(_v HTMLContent, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[HTMLContent](_v, _b, HTMLContent.appendJSON, true)
+				})
+			})(_sel.HTMLContent, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling Notification.Content: %w", _err)
+			}
+			return _out, nil
+		}
+	case 2:
+		switch _sel := n.Target.(type) {
+		case *Notification_EmailTarget:
+			_out, _err := (func(_v *EmailTarget, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*EmailTarget, EmailTarget](_v, _b, func(_v EmailTarget, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[EmailTarget](_v, _b, EmailTarget.appendJSON, true)
+				})
+			})(_sel.EmailTarget, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling Notification.Target: %w", _err)
+			}
+			return _out, nil
+		case *Notification_SmsTarget:
+			_out, _err := (func(_v *SmsTarget, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*SmsTarget, SmsTarget](_v, _b, func(_v SmsTarget, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[SmsTarget](_v, _b, SmsTarget.appendJSON, true)
+				})
+			})(_sel.SmsTarget, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling Notification.Target: %w", _err)
+			}
+			return _out, nil
+		}
+	}
+	return _b, nil
 }
 
 // Validate checks Notification against its JSON Schema constraints.

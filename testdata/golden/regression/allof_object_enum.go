@@ -66,6 +66,7 @@ type AllOfObjectEnumConstMember struct {
 	K                    *int64                     `json:"k,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces a with the value the document holds. See
@@ -88,6 +89,7 @@ func (a *AllOfObjectEnumConstMember) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (a *AllOfObjectEnumConstMember) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*a = AllOfObjectEnumConstMember{}
+	a._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -161,24 +163,50 @@ func (a *AllOfObjectEnumConstMember) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) err
 	return nil
 }
 func (a AllOfObjectEnumConstMember) MarshalJSON() ([]byte, error) {
-	type Alias AllOfObjectEnumConstMember
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfObjectEnumConstMember) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfObjectEnumConstMember) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.K)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("k", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfObjectEnumConstMember) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfObjectEnumConstMember against its JSON Schema constraints.
@@ -214,6 +242,7 @@ type AllOfObjectEnumInline struct {
 	K                    *int64                     `json:"k,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces a with the value the document holds. See
@@ -236,6 +265,7 @@ func (a *AllOfObjectEnumInline) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (a *AllOfObjectEnumInline) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*a = AllOfObjectEnumInline{}
+	a._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -309,24 +339,50 @@ func (a *AllOfObjectEnumInline) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (a AllOfObjectEnumInline) MarshalJSON() ([]byte, error) {
-	type Alias AllOfObjectEnumInline
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfObjectEnumInline) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfObjectEnumInline) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.K)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("k", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfObjectEnumInline) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfObjectEnumInline against its JSON Schema constraints.
@@ -363,6 +419,7 @@ type AllOfObjectEnumNested struct {
 	K                    map[string]any             `json:"k,omitzero"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces a with the value the document holds. See
@@ -385,6 +442,7 @@ func (a *AllOfObjectEnumNested) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (a *AllOfObjectEnumNested) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*a = AllOfObjectEnumNested{}
+	a._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -452,24 +510,50 @@ func (a *AllOfObjectEnumNested) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (a AllOfObjectEnumNested) MarshalJSON() ([]byte, error) {
-	type Alias AllOfObjectEnumNested
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfObjectEnumNested) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfObjectEnumNested) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitZero(a.K)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("k", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfObjectEnumNested) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfObjectEnumNested against its JSON Schema constraints.
@@ -594,24 +678,48 @@ func (a *AllOfObjectEnumPlain) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (a AllOfObjectEnumPlain) MarshalJSON() ([]byte, error) {
-	type Alias AllOfObjectEnumPlain
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfObjectEnumPlain) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfObjectEnumPlain) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(a.K, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("k", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfObjectEnumPlain) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfObjectEnumPlain against its JSON Schema constraints.
@@ -635,6 +743,7 @@ type AllOfObjectEnumReordered struct {
 	B                    *int64                     `json:"b,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces a with the value the document holds. See
@@ -657,6 +766,7 @@ func (a *AllOfObjectEnumReordered) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (a *AllOfObjectEnumReordered) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*a = AllOfObjectEnumReordered{}
+	a._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -744,24 +854,59 @@ func (a *AllOfObjectEnumReordered) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	return nil
 }
 func (a AllOfObjectEnumReordered) MarshalJSON() ([]byte, error) {
-	type Alias AllOfObjectEnumReordered
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfObjectEnumReordered) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfObjectEnumReordered) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.A)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("a", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.B)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("b", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfObjectEnumReordered) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfObjectEnumReordered against its JSON Schema constraints.
@@ -852,6 +997,7 @@ type AllOfObjectEnumViaRef struct {
 	K                    *int64                     `json:"k,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces a with the value the document holds. See
@@ -874,6 +1020,7 @@ func (a *AllOfObjectEnumViaRef) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (a *AllOfObjectEnumViaRef) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*a = AllOfObjectEnumViaRef{}
+	a._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -947,24 +1094,50 @@ func (a *AllOfObjectEnumViaRef) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (a AllOfObjectEnumViaRef) MarshalJSON() ([]byte, error) {
-	type Alias AllOfObjectEnumViaRef
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfObjectEnumViaRef) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfObjectEnumViaRef) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.K)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("k", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfObjectEnumViaRef) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfObjectEnumViaRef against its JSON Schema constraints.
@@ -1150,24 +1323,116 @@ func (a *AllOfObjectEnum) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (a AllOfObjectEnum) MarshalJSON() ([]byte, error) {
-	type Alias AllOfObjectEnum
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfObjectEnum) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfObjectEnum) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		if !jsonIsEmpty(a.ConstMember) {
+			_o.deferred("constMember", 0)
+		}
+	}
+	{
+		if !jsonIsEmpty(a.Inline) {
+			_o.deferred("inline", 1)
+		}
+	}
+	{
+		if !jsonIsEmpty(a.Nested) {
+			_o.deferred("nested", 2)
+		}
+	}
+	{
+		if !jsonIsEmpty(a.Plain) {
+			_o.deferred("plain", 3)
+		}
+	}
+	{
+		if !jsonIsEmpty(a.Reordered) {
+			_o.deferred("reordered", 4)
+		}
+	}
+	{
+		if !jsonIsEmpty(a.ViaRef) {
+			_o.deferred("viaRef", 5)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.Standalone)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("standalone", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfObjectEnum) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 0:
+		return (func(_v *AllOfObjectEnumConstMember, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AllOfObjectEnumConstMember, AllOfObjectEnumConstMember](_v, _b, func(_v AllOfObjectEnumConstMember, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AllOfObjectEnumConstMember](_v, _b, AllOfObjectEnumConstMember.appendJSON, true)
+			})
+		})(a.ConstMember, _b)
+	case 1:
+		return (func(_v *AllOfObjectEnumInline, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AllOfObjectEnumInline, AllOfObjectEnumInline](_v, _b, func(_v AllOfObjectEnumInline, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AllOfObjectEnumInline](_v, _b, AllOfObjectEnumInline.appendJSON, true)
+			})
+		})(a.Inline, _b)
+	case 2:
+		return (func(_v *AllOfObjectEnumNested, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AllOfObjectEnumNested, AllOfObjectEnumNested](_v, _b, func(_v AllOfObjectEnumNested, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AllOfObjectEnumNested](_v, _b, AllOfObjectEnumNested.appendJSON, true)
+			})
+		})(a.Nested, _b)
+	case 3:
+		return (func(_v *AllOfObjectEnumPlain, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AllOfObjectEnumPlain, AllOfObjectEnumPlain](_v, _b, func(_v AllOfObjectEnumPlain, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AllOfObjectEnumPlain](_v, _b, AllOfObjectEnumPlain.appendJSON, true)
+			})
+		})(a.Plain, _b)
+	case 4:
+		return (func(_v *AllOfObjectEnumReordered, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AllOfObjectEnumReordered, AllOfObjectEnumReordered](_v, _b, func(_v AllOfObjectEnumReordered, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AllOfObjectEnumReordered](_v, _b, AllOfObjectEnumReordered.appendJSON, true)
+			})
+		})(a.Reordered, _b)
+	case 5:
+		return (func(_v *AllOfObjectEnumViaRef, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AllOfObjectEnumViaRef, AllOfObjectEnumViaRef](_v, _b, func(_v AllOfObjectEnumViaRef, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AllOfObjectEnumViaRef](_v, _b, AllOfObjectEnumViaRef.appendJSON, true)
+			})
+		})(a.ViaRef, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfObjectEnum against its JSON Schema constraints.

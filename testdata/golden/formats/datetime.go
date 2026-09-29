@@ -136,24 +136,73 @@ func (e *Event) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (e Event) MarshalJSON() ([]byte, error) {
-	type Alias Event
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(e),
+	_b, _err := e.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends e to _b as JSON. See jsonEnc.
+func (e Event) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := e.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range e.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, e.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members e's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (e Event) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(e.StartsAt, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("starts_at", _v)
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(e.EndsAt)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("ends_at", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(e.URL)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("url", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(e.Name, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("name", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of e numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (e Event) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks Event against its JSON Schema constraints.

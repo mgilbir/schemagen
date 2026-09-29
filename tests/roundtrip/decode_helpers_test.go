@@ -41,6 +41,7 @@ func TestDecodeHelpersAgreeWithEncodingJSON(t *testing.T) {
 	if testing.Short() {
 		t.Skip("compiles and runs a program")
 	}
+	t.Parallel()
 	em, err := emitter.New()
 	if err != nil {
 		t.Fatal(err)

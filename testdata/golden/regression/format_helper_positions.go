@@ -296,24 +296,185 @@ func (f *FormatHelperPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (f FormatHelperPositions) MarshalJSON() ([]byte, error) {
-	type Alias FormatHelperPositions
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f FormatHelperPositions) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f FormatHelperPositions) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.HostMap)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("hostMap", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.MailMap)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("mailMap", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.V4map)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("v4Map", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.DateList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dateList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.DurationList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("durationList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.HostList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("hostList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.IdnHostList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("idnHostList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.IdnMailList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("idnMailList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.MailList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("mailList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.Nested)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nested", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.RegexList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("regexList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.TimeList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("timeList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.URIList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("uriList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.UUIDList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("uuidList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.V4list)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("v4List", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.V6list)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("v6List", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f FormatHelperPositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks FormatHelperPositions against its JSON Schema constraints.

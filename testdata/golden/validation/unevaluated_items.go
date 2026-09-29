@@ -204,24 +204,68 @@ func (u *UnevaluatedItemsTest) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (u UnevaluatedItemsTest) MarshalJSON() ([]byte, error) {
-	type Alias UnevaluatedItemsTest
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(u),
+	_b, _err := u.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends u to _b as JSON. See jsonEnc.
+func (u UnevaluatedItemsTest) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := u.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range u.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, u.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members u's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (u UnevaluatedItemsTest) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.AllofExtendedTuple)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("allof_extended_tuple", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.StrictTuple)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("strict_tuple", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.TypedOverflow)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("typed_overflow", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of u numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (u UnevaluatedItemsTest) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks UnevaluatedItemsTest against its JSON Schema constraints.

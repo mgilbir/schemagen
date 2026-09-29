@@ -3,7 +3,6 @@
 package testpkg
 
 import (
-	"encoding/json"
 	"fmt"
 )
 
@@ -116,43 +115,56 @@ func (m *Metadata) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (m Metadata) MarshalJSON() ([]byte, error) {
-	type Alias Metadata
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(m),
+	_b, _err := m.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends m to _b as JSON. See jsonEnc.
+func (m Metadata) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := m.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	{
-		var _least string
-		var _failed error
-		for _key, _member := range m.AdditionalProperties { // refused for the least failing key
-			if _failed != nil && _key >= _least {
-				continue
+		// In key order, so that a member that fails is reported for the least
+		// key, whatever order the map is ranged in.
+		for _, _key := range jsonSortedKeys(m.AdditionalProperties) {
+			_v, _err := (jsonAppendLeaf[string])(m.AdditionalProperties[_key], nil)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), _err)
 			}
-			if _err := func() error {
-				raw, err := json.Marshal(_member)
-				if err != nil {
-					return fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), err)
-				}
-				obj[_key] = raw
-				return nil
-			}(); _err != nil {
-				_least, _failed = _key, _err
-			}
-		}
-		if _failed != nil {
-			return nil, _failed
+			_o.encoded(_key, _v)
 		}
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, m.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members m's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (m Metadata) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(m.Version, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("version", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of m numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (m Metadata) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks Metadata against its JSON Schema constraints.

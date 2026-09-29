@@ -112,24 +112,54 @@ func (o Obj) MarshalJSON() ([]byte, error) {
 		}
 		return []byte("null"), nil
 	}
-	type Alias Obj
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o Obj) appendJSON(_b []byte) ([]byte, error) {
+	if o._nonObject {
+		if len(o._rawNonObject) > 0 {
+			return jsonAppendLeaf(json.RawMessage(o._rawNonObject), _b)
+		}
+		return append(_b, "null"...), nil
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range o.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o Obj) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(o.A, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("a", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o Obj) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks Obj against its JSON Schema constraints.
@@ -367,24 +397,54 @@ func (p PresentNullPositionsNullableObject) MarshalJSON() ([]byte, error) {
 		}
 		return []byte("null"), nil
 	}
-	type Alias PresentNullPositionsNullableObject
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(p),
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p PresentNullPositionsNullableObject) appendJSON(_b []byte) ([]byte, error) {
+	if p._nonObject {
+		if len(p._rawNonObject) > 0 {
+			return jsonAppendLeaf(json.RawMessage(p._rawNonObject), _b)
+		}
+		return append(_b, "null"...), nil
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	var _o jsonObj
+	if _err := p.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range p.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, p.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members p's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (p PresentNullPositionsNullableObject) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(p.A, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("a", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of p numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (p PresentNullPositionsNullableObject) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks PresentNullPositionsNullableObject against its JSON Schema constraints.
@@ -705,49 +765,146 @@ func (p *PresentNullPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (p PresentNullPositions) MarshalJSON() ([]byte, error) {
-	type Alias PresentNullPositions
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(p),
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p PresentNullPositions) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := p.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(p._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range p._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero PresentNullPositions
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range p._jsonNulls {
+				_cur, _present, _err := _o.value(_k, p.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range p.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, p.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members p's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (p PresentNullPositions) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(p.Untyped)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("untyped", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(p.BoundOnly)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("boundOnly", _v)
+		}
+	}
+	{
+		if !jsonIsEmpty(p.NullableObject) {
+			_o.deferred("nullableObject", 2)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(p.NullableScalar)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nullableScalar", _v)
+		}
+	}
+	{
+		if !jsonIsEmpty(p.RefObject) {
+			_o.deferred("refObject", 4)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(p.TypedString)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("typedString", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(p.NullableList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nullableList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(p.RefList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("refList", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(p.ReqBoundOnly, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("reqBoundOnly", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of p numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (p PresentNullPositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 2:
+		return (func(_v *PresentNullPositionsNullableObject, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*PresentNullPositionsNullableObject, PresentNullPositionsNullableObject](_v, _b, func(_v PresentNullPositionsNullableObject, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[PresentNullPositionsNullableObject](_v, _b, PresentNullPositionsNullableObject.appendJSON, true)
+			})
+		})(p.NullableObject, _b)
+	case 4:
+		return (func(_v *Obj, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*Obj, Obj](_v, _b, func(_v Obj, _b []byte) ([]byte, error) { return jsonEncMarshaler[Obj](_v, _b, Obj.appendJSON, true) })
+		})(p.RefObject, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks PresentNullPositions against its JSON Schema constraints.

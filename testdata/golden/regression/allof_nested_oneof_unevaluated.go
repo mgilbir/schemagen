@@ -13,6 +13,7 @@ type PickOneValueOption0 struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	B                    int64                      `json:"b"`
 	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
@@ -38,6 +39,7 @@ func (p *PickOneValueOption0) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (p *PickOneValueOption0) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*p = PickOneValueOption0{}
+	p._doc = _d
 	// The schema admits a document that is not an object, so object constraints
 	// are type-conditional. Non-object JSON data is accepted here and judged by
 	// Validate; raw bytes are preserved for roundtrip.
@@ -150,49 +152,96 @@ func (p PickOneValueOption0) MarshalJSON() ([]byte, error) {
 		}
 		return []byte("null"), nil
 	}
-	type Alias PickOneValueOption0
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(p),
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p PickOneValueOption0) appendJSON(_b []byte) ([]byte, error) {
+	if p._nonObject {
+		if len(p._rawNonObject) > 0 {
+			return jsonAppendLeaf(json.RawMessage(p._rawNonObject), _b)
+		}
+		return append(_b, "null"...), nil
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	var _o jsonObj
+	if _err := p.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(p._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range p._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero PickOneValueOption0
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range p._jsonNulls {
+				_cur, _present, _err := _o.value(_k, p.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range p.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, p.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members p's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (p PickOneValueOption0) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(p.M)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("m", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(p.N)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("n", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(p.B, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("b", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of p numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (p PickOneValueOption0) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks PickOneValueOption0 against its JSON Schema constraints.
@@ -357,24 +406,54 @@ func (p PickOneValueOption1) MarshalJSON() ([]byte, error) {
 		}
 		return []byte("null"), nil
 	}
-	type Alias PickOneValueOption1
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(p),
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p PickOneValueOption1) appendJSON(_b []byte) ([]byte, error) {
+	if p._nonObject {
+		if len(p._rawNonObject) > 0 {
+			return jsonAppendLeaf(json.RawMessage(p._rawNonObject), _b)
+		}
+		return append(_b, "null"...), nil
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	var _o jsonObj
+	if _err := p.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range p.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, p.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members p's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (p PickOneValueOption1) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(p.A, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("a", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of p numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (p PickOneValueOption1) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks PickOneValueOption1 against its JSON Schema constraints.
@@ -401,6 +480,7 @@ type PickOne struct {
 	Value                isPickOne_Value            `json:"-"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // isPickOne_Value is a sealed interface for the Value field of PickOne.
@@ -465,6 +545,7 @@ func (p *PickOne) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (p *PickOne) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*p = PickOne{}
+	p._doc = _d
 	switch _d.data[_sp.start] {
 	case '{', 'n':
 	default:
@@ -651,16 +732,32 @@ func (p *PickOne) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (p PickOne) MarshalJSON() ([]byte, error) {
-	// Top-level oneOf: marshal the selected variant directly as the root object.
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
+	}
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p PickOne) appendJSON(_b []byte) ([]byte, error) {
 	if p.Value != nil {
 		switch _sel := p.Value.(type) {
 		case *PickOne_PickOneValueOption0:
-			return json.Marshal(_sel.PickOneValueOption0)
+			return (func(_v *PickOneValueOption0, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*PickOneValueOption0, PickOneValueOption0](_v, _b, func(_v PickOneValueOption0, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[PickOneValueOption0](_v, _b, PickOneValueOption0.appendJSON, true)
+				})
+			})(_sel.PickOneValueOption0, _b)
 		case *PickOne_PickOneValueOption1:
-			return json.Marshal(_sel.PickOneValueOption1)
+			return (func(_v *PickOneValueOption1, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*PickOneValueOption1, PickOneValueOption1](_v, _b, func(_v PickOneValueOption1, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[PickOneValueOption1](_v, _b, PickOneValueOption1.appendJSON, true)
+				})
+			})(_sel.PickOneValueOption1, _b)
 		}
 	}
-	return []byte("null"), nil
+	return append(_b, "null"...), nil
 }
 
 // Validate checks PickOne against its JSON Schema constraints.
@@ -697,8 +794,8 @@ func (p PickOne) Validate() error {
 					continue
 				}
 				if _err := func() error {
-					var _rbVal any
-					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+					_rbVal, _rbErr := jsonHeld(p._doc, _rbRaw)
+					if _rbErr != nil {
 						return jsonValueErrorf("cannot decode property %s: %w", _schemagenQuote(_rbKey), _rbErr)
 					}
 					_rbInstance[_rbKey] = _rbVal
@@ -736,10 +833,10 @@ func (p PickOne) Validate() error {
 				},
 			}
 			if _rbRes := _evalNode(&_rbNode0, _rbInstance); !_rbRes.ok {
-				if _rbRes.reason == "" {
+				if _rbRes.why.String() == "" {
 					return fmt.Errorf("oneOf: value does not satisfy the schema")
 				}
-				return fmt.Errorf("oneOf: %s", _rbRes.reason)
+				return fmt.Errorf("oneOf: %s", _rbRes.why.String())
 			}
 		}
 	}
@@ -757,6 +854,7 @@ type AllOfNestedOneOfUnevaluated struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces a with the value the document holds. See
@@ -779,6 +877,7 @@ func (a *AllOfNestedOneOfUnevaluated) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (a *AllOfNestedOneOfUnevaluated) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*a = AllOfNestedOneOfUnevaluated{}
+	a._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -909,49 +1008,110 @@ func (a *AllOfNestedOneOfUnevaluated) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) er
 	return nil
 }
 func (a AllOfNestedOneOfUnevaluated) MarshalJSON() ([]byte, error) {
-	type Alias AllOfNestedOneOfUnevaluated
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfNestedOneOfUnevaluated) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(a._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range a._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero AllOfNestedOneOfUnevaluated
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range a._jsonNulls {
+				_cur, _present, _err := _o.value(_k, a.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfNestedOneOfUnevaluated) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.M)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("m", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.N)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("n", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.A)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("a", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.B)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("b", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.Z)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("z", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfNestedOneOfUnevaluated) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfNestedOneOfUnevaluated against its JSON Schema constraints.
@@ -996,8 +1156,8 @@ func (a AllOfNestedOneOfUnevaluated) Validate() error {
 					continue
 				}
 				if _err := func() error {
-					var _rbVal any
-					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+					_rbVal, _rbErr := jsonHeld(a._doc, _rbRaw)
+					if _rbErr != nil {
 						return jsonValueErrorf("cannot decode property %s: %w", _schemagenQuote(_rbKey), _rbErr)
 					}
 					_rbInstance[_rbKey] = _rbVal
@@ -1035,10 +1195,10 @@ func (a AllOfNestedOneOfUnevaluated) Validate() error {
 				},
 			}
 			if _rbRes := _evalNode(&_rbNode0, _rbInstance); !_rbRes.ok {
-				if _rbRes.reason == "" {
+				if _rbRes.why.String() == "" {
 					return fmt.Errorf("oneOf: value does not satisfy the schema")
 				}
-				return fmt.Errorf("oneOf: %s", _rbRes.reason)
+				return fmt.Errorf("oneOf: %s", _rbRes.why.String())
 			}
 		}
 	}

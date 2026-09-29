@@ -245,24 +245,120 @@ func (f *FormatAliasPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (f FormatAliasPositions) MarshalJSON() ([]byte, error) {
-	type Alias FormatAliasPositions
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f FormatAliasPositions) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f FormatAliasPositions) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(f.Addr)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("addr", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(f.ChainedStamp)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("chained_stamp", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(f.OptionalStamp)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("optional_stamp", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.StampMap)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("stamp_map", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(f.RequiredStamp, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("required_stamp", _v)
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.AddrList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("addr_list", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.StampGrid)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("stamp_grid", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.StampList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("stamp_list", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.Tuple)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("tuple", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f FormatAliasPositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks FormatAliasPositions against its JSON Schema constraints.
@@ -337,29 +433,29 @@ func (f FormatAliasPositions) Validate() error {
 	for _idx, _elem := range f.Tuple {
 		_ = _elem
 		if _idx == 0 {
+			var _typed Stamp
 			_raw, _mErr := json.Marshal(_elem)
 			if _mErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _mErr)
+				return jsonWrapf(_mErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
-			var _typed Stamp
 			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _uErr)
+				return jsonWrapf(_uErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 			if _vErr := _typed.Validate(); _vErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _vErr)
+				return jsonWrapf(_vErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 		}
 		if _idx == 1 {
+			var _typed Addr
 			_raw, _mErr := json.Marshal(_elem)
 			if _mErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _mErr)
+				return jsonWrapf(_mErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
-			var _typed Addr
 			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _uErr)
+				return jsonWrapf(_uErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 			if _vErr := _typed.Validate(); _vErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _vErr)
+				return jsonWrapf(_vErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 		}
 	}

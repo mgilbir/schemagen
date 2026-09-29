@@ -173,24 +173,41 @@ func (f *ForbiddingSubschemaSpellingsAnyOfNames) decodeJSONAt(_d *jsonDoc, _sp j
 	return nil
 }
 func (f ForbiddingSubschemaSpellingsAnyOfNames) MarshalJSON() ([]byte, error) {
-	type Alias ForbiddingSubschemaSpellingsAnyOfNames
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f ForbiddingSubschemaSpellingsAnyOfNames) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f ForbiddingSubschemaSpellingsAnyOfNames) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f ForbiddingSubschemaSpellingsAnyOfNames) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ForbiddingSubschemaSpellingsAnyOfNames against its JSON Schema constraints.
@@ -339,6 +356,7 @@ func (f ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative1) Validate() error 
 
 // ForbiddingSubschemaSpellingsAnyOfOneFalse accepts any JSON value and validates that it is one of the allowed types.
 type ForbiddingSubschemaSpellingsAnyOfOneFalse struct {
+	_doc *jsonDoc // the document _raw is a view of, which Validate decodes the alternatives through
 	_raw json.RawMessage
 }
 
@@ -356,6 +374,7 @@ func (f *ForbiddingSubschemaSpellingsAnyOfOneFalse) UnmarshalJSON(data []byte) e
 func (f *ForbiddingSubschemaSpellingsAnyOfOneFalse) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*f = ForbiddingSubschemaSpellingsAnyOfOneFalse{}
 	f._raw = _d.keep(_sp)
+	f._doc = _d
 	return nil
 }
 
@@ -386,10 +405,11 @@ func (f ForbiddingSubschemaSpellingsAnyOfOneFalse) Validate() error {
 	if len(f._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(f._raw, &_v); _err != nil {
+	_v, _err := jsonHeld(f._doc, f._raw)
+	if _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
+	_v = jsonTop(_v)
 	_typeBranchValid := false
 	{
 		_branchMatches := true
@@ -399,7 +419,7 @@ func (f ForbiddingSubschemaSpellingsAnyOfOneFalse) Validate() error {
 			// A pattern match with no answer on the way is no verdict on the
 			// branch, so it is returned rather than read as "no match".
 			var _bv ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative0
-			if _err := json.Unmarshal(f._raw, &_bv); _err != nil {
+			if _err := jsonDecodeHeld(f._doc, f._raw, &_bv, (*ForbiddingSubschemaSpellingsAnyOfOneFalseAlternative0).decodeJSONAt); _err != nil {
 				if _schemagenUndecided(_err) {
 					return fmt.Errorf("type: %w", _err)
 				}
@@ -997,24 +1017,41 @@ func (f *ForbiddingSubschemaSpellingsInlineDepRequired) decodeJSONAt(_d *jsonDoc
 	return nil
 }
 func (f ForbiddingSubschemaSpellingsInlineDepRequired) MarshalJSON() ([]byte, error) {
-	type Alias ForbiddingSubschemaSpellingsInlineDepRequired
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f ForbiddingSubschemaSpellingsInlineDepRequired) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f ForbiddingSubschemaSpellingsInlineDepRequired) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f ForbiddingSubschemaSpellingsInlineDepRequired) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ForbiddingSubschemaSpellingsInlineDepRequired against its JSON Schema constraints.
@@ -1090,24 +1127,41 @@ func (f *ForbiddingSubschemaSpellingsInlineFalseDependent) decodeJSONAt(_d *json
 	return nil
 }
 func (f ForbiddingSubschemaSpellingsInlineFalseDependent) MarshalJSON() ([]byte, error) {
-	type Alias ForbiddingSubschemaSpellingsInlineFalseDependent
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f ForbiddingSubschemaSpellingsInlineFalseDependent) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f ForbiddingSubschemaSpellingsInlineFalseDependent) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f ForbiddingSubschemaSpellingsInlineFalseDependent) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ForbiddingSubschemaSpellingsInlineFalseDependent against its JSON Schema constraints.
@@ -1181,24 +1235,41 @@ func (f *ForbiddingSubschemaSpellingsInlineFalseNames) decodeJSONAt(_d *jsonDoc,
 	return nil
 }
 func (f ForbiddingSubschemaSpellingsInlineFalseNames) MarshalJSON() ([]byte, error) {
-	type Alias ForbiddingSubschemaSpellingsInlineFalseNames
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f ForbiddingSubschemaSpellingsInlineFalseNames) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f ForbiddingSubschemaSpellingsInlineFalseNames) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f ForbiddingSubschemaSpellingsInlineFalseNames) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ForbiddingSubschemaSpellingsInlineFalseNames against its JSON Schema constraints.
@@ -1286,24 +1357,41 @@ func (f *ForbiddingSubschemaSpellingsInlineMaxProps) decodeJSONAt(_d *jsonDoc, _
 	return nil
 }
 func (f ForbiddingSubschemaSpellingsInlineMaxProps) MarshalJSON() ([]byte, error) {
-	type Alias ForbiddingSubschemaSpellingsInlineMaxProps
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f ForbiddingSubschemaSpellingsInlineMaxProps) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f ForbiddingSubschemaSpellingsInlineMaxProps) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f ForbiddingSubschemaSpellingsInlineMaxProps) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ForbiddingSubschemaSpellingsInlineMaxProps against its JSON Schema constraints.
@@ -1385,24 +1473,41 @@ func (f *ForbiddingSubschemaSpellingsInlineMinProps) decodeJSONAt(_d *jsonDoc, _
 	return nil
 }
 func (f ForbiddingSubschemaSpellingsInlineMinProps) MarshalJSON() ([]byte, error) {
-	type Alias ForbiddingSubschemaSpellingsInlineMinProps
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f ForbiddingSubschemaSpellingsInlineMinProps) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f ForbiddingSubschemaSpellingsInlineMinProps) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f ForbiddingSubschemaSpellingsInlineMinProps) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ForbiddingSubschemaSpellingsInlineMinProps against its JSON Schema constraints.
@@ -1481,24 +1586,41 @@ func (f *ForbiddingSubschemaSpellingsInlineNotDependent) decodeJSONAt(_d *jsonDo
 	return nil
 }
 func (f ForbiddingSubschemaSpellingsInlineNotDependent) MarshalJSON() ([]byte, error) {
-	type Alias ForbiddingSubschemaSpellingsInlineNotDependent
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f ForbiddingSubschemaSpellingsInlineNotDependent) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f ForbiddingSubschemaSpellingsInlineNotDependent) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f ForbiddingSubschemaSpellingsInlineNotDependent) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ForbiddingSubschemaSpellingsInlineNotDependent against its JSON Schema constraints.
@@ -1572,24 +1694,41 @@ func (f *ForbiddingSubschemaSpellingsInlineNotNames) decodeJSONAt(_d *jsonDoc, _
 	return nil
 }
 func (f ForbiddingSubschemaSpellingsInlineNotNames) MarshalJSON() ([]byte, error) {
-	type Alias ForbiddingSubschemaSpellingsInlineNotNames
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f ForbiddingSubschemaSpellingsInlineNotNames) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f ForbiddingSubschemaSpellingsInlineNotNames) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f ForbiddingSubschemaSpellingsInlineNotNames) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ForbiddingSubschemaSpellingsInlineNotNames against its JSON Schema constraints.
@@ -1677,24 +1816,41 @@ func (f *ForbiddingSubschemaSpellingsInlineRequired) decodeJSONAt(_d *jsonDoc, _
 	return nil
 }
 func (f ForbiddingSubschemaSpellingsInlineRequired) MarshalJSON() ([]byte, error) {
-	type Alias ForbiddingSubschemaSpellingsInlineRequired
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f ForbiddingSubschemaSpellingsInlineRequired) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f ForbiddingSubschemaSpellingsInlineRequired) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f ForbiddingSubschemaSpellingsInlineRequired) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ForbiddingSubschemaSpellingsInlineRequired against its JSON Schema constraints.
@@ -1775,24 +1931,41 @@ func (f *ForbiddingSubschemaSpellingsNotDependent) decodeJSONAt(_d *jsonDoc, _sp
 	return nil
 }
 func (f ForbiddingSubschemaSpellingsNotDependent) MarshalJSON() ([]byte, error) {
-	type Alias ForbiddingSubschemaSpellingsNotDependent
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f ForbiddingSubschemaSpellingsNotDependent) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f ForbiddingSubschemaSpellingsNotDependent) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f ForbiddingSubschemaSpellingsNotDependent) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ForbiddingSubschemaSpellingsNotDependent against its JSON Schema constraints.
@@ -2006,24 +2179,41 @@ func (f *ForbiddingSubschemaSpellingsNotNames) decodeJSONAt(_d *jsonDoc, _sp jso
 	return nil
 }
 func (f ForbiddingSubschemaSpellingsNotNames) MarshalJSON() ([]byte, error) {
-	type Alias ForbiddingSubschemaSpellingsNotNames
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f ForbiddingSubschemaSpellingsNotNames) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f ForbiddingSubschemaSpellingsNotNames) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f ForbiddingSubschemaSpellingsNotNames) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ForbiddingSubschemaSpellingsNotNames against its JSON Schema constraints.
@@ -2198,6 +2388,7 @@ type ForbiddingSubschemaSpellingsNotUnevalProps struct {
 	K                    any                        `json:"k,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces f with the value the document holds. See
@@ -2220,6 +2411,7 @@ func (f *ForbiddingSubschemaSpellingsNotUnevalProps) UnmarshalJSON(data []byte) 
 // document's verdict while holding another's fields is what that left behind.
 func (f *ForbiddingSubschemaSpellingsNotUnevalProps) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*f = ForbiddingSubschemaSpellingsNotUnevalProps{}
+	f._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -2280,49 +2472,74 @@ func (f *ForbiddingSubschemaSpellingsNotUnevalProps) decodeJSONAt(_d *jsonDoc, _
 	return nil
 }
 func (f ForbiddingSubschemaSpellingsNotUnevalProps) MarshalJSON() ([]byte, error) {
-	type Alias ForbiddingSubschemaSpellingsNotUnevalProps
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f ForbiddingSubschemaSpellingsNotUnevalProps) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(f._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range f._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero ForbiddingSubschemaSpellingsNotUnevalProps
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range f._jsonNulls {
+				_cur, _present, _err := _o.value(_k, f.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f ForbiddingSubschemaSpellingsNotUnevalProps) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(f.K)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("k", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f ForbiddingSubschemaSpellingsNotUnevalProps) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ForbiddingSubschemaSpellingsNotUnevalProps against its JSON Schema constraints.
@@ -2439,24 +2656,47 @@ func (f ForbiddingSubschemaSpellingsNullableInlineNames) MarshalJSON() ([]byte, 
 		}
 		return []byte("null"), nil
 	}
-	type Alias ForbiddingSubschemaSpellingsNullableInlineNames
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f ForbiddingSubschemaSpellingsNullableInlineNames) appendJSON(_b []byte) ([]byte, error) {
+	if f._nonObject {
+		if len(f._rawNonObject) > 0 {
+			return jsonAppendLeaf(json.RawMessage(f._rawNonObject), _b)
+		}
+		return append(_b, "null"...), nil
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f ForbiddingSubschemaSpellingsNullableInlineNames) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f ForbiddingSubschemaSpellingsNullableInlineNames) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ForbiddingSubschemaSpellingsNullableInlineNames against its JSON Schema constraints.
@@ -2592,24 +2832,41 @@ func (f *ForbiddingSubschemaSpellingsOkNames) decodeJSONAt(_d *jsonDoc, _sp json
 	return nil
 }
 func (f ForbiddingSubschemaSpellingsOkNames) MarshalJSON() ([]byte, error) {
-	type Alias ForbiddingSubschemaSpellingsOkNames
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f ForbiddingSubschemaSpellingsOkNames) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f ForbiddingSubschemaSpellingsOkNames) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f ForbiddingSubschemaSpellingsOkNames) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ForbiddingSubschemaSpellingsOkNames against its JSON Schema constraints.
@@ -2700,24 +2957,41 @@ func (f *ForbiddingSubschemaSpellingsOneOfDependent) decodeJSONAt(_d *jsonDoc, _
 	return nil
 }
 func (f ForbiddingSubschemaSpellingsOneOfDependent) MarshalJSON() ([]byte, error) {
-	type Alias ForbiddingSubschemaSpellingsOneOfDependent
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f ForbiddingSubschemaSpellingsOneOfDependent) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f ForbiddingSubschemaSpellingsOneOfDependent) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f ForbiddingSubschemaSpellingsOneOfDependent) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ForbiddingSubschemaSpellingsOneOfDependent against its JSON Schema constraints.
@@ -2791,24 +3065,41 @@ func (f *ForbiddingSubschemaSpellingsOneOfNames) decodeJSONAt(_d *jsonDoc, _sp j
 	return nil
 }
 func (f ForbiddingSubschemaSpellingsOneOfNames) MarshalJSON() ([]byte, error) {
-	type Alias ForbiddingSubschemaSpellingsOneOfNames
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f ForbiddingSubschemaSpellingsOneOfNames) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f ForbiddingSubschemaSpellingsOneOfNames) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f ForbiddingSubschemaSpellingsOneOfNames) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ForbiddingSubschemaSpellingsOneOfNames against its JSON Schema constraints.
@@ -2913,6 +3204,7 @@ type ForbiddingSubschemaSpellingsOneOfUnevalProps struct {
 	K                    any                        `json:"k,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces f with the value the document holds. See
@@ -2935,6 +3227,7 @@ func (f *ForbiddingSubschemaSpellingsOneOfUnevalProps) UnmarshalJSON(data []byte
 // document's verdict while holding another's fields is what that left behind.
 func (f *ForbiddingSubschemaSpellingsOneOfUnevalProps) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*f = ForbiddingSubschemaSpellingsOneOfUnevalProps{}
+	f._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -2995,49 +3288,74 @@ func (f *ForbiddingSubschemaSpellingsOneOfUnevalProps) decodeJSONAt(_d *jsonDoc,
 	return nil
 }
 func (f ForbiddingSubschemaSpellingsOneOfUnevalProps) MarshalJSON() ([]byte, error) {
-	type Alias ForbiddingSubschemaSpellingsOneOfUnevalProps
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f ForbiddingSubschemaSpellingsOneOfUnevalProps) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(f._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range f._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero ForbiddingSubschemaSpellingsOneOfUnevalProps
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range f._jsonNulls {
+				_cur, _present, _err := _o.value(_k, f.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f ForbiddingSubschemaSpellingsOneOfUnevalProps) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(f.K)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("k", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f ForbiddingSubschemaSpellingsOneOfUnevalProps) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ForbiddingSubschemaSpellingsOneOfUnevalProps against its JSON Schema constraints.
@@ -3138,24 +3456,41 @@ func (f *ForbiddingSubschemaSpellingsRefNotNames) decodeJSONAt(_d *jsonDoc, _sp 
 	return nil
 }
 func (f ForbiddingSubschemaSpellingsRefNotNames) MarshalJSON() ([]byte, error) {
-	type Alias ForbiddingSubschemaSpellingsRefNotNames
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f ForbiddingSubschemaSpellingsRefNotNames) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f ForbiddingSubschemaSpellingsRefNotNames) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f ForbiddingSubschemaSpellingsRefNotNames) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ForbiddingSubschemaSpellingsRefNotNames against its JSON Schema constraints.
@@ -3879,67 +4214,482 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 	return nil
 }
 func (f ForbiddingSubschemaSpellings) MarshalJSON() ([]byte, error) {
-	type Alias ForbiddingSubschemaSpellings
-	aux := struct {
-		Alias
-		StrBranchRequired json.RawMessage `json:"strBranchRequired,omitempty"`
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
+	return _b, nil
+}
 
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f ForbiddingSubschemaSpellings) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
+	}
 	if f.StrBranchRequired != nil {
-		switch _sel := f.StrBranchRequired.(type) {
-		case *ForbiddingSubschemaSpellings_String:
-			raw, err := json.Marshal(_sel.String)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling ForbiddingSubschemaSpellings.StrBranchRequired: %w", err)
-			}
-			aux.StrBranchRequired = raw
-		case *ForbiddingSubschemaSpellings_Integer:
-			raw, err := json.Marshal(_sel.Integer)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling ForbiddingSubschemaSpellings.StrBranchRequired: %w", err)
-			}
-			aux.StrBranchRequired = raw
+		switch f.StrBranchRequired.(type) {
+		case *ForbiddingSubschemaSpellings_String, *ForbiddingSubschemaSpellings_Integer:
+			_o.deferred("strBranchRequired", 40)
 		}
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(f._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range f._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero ForbiddingSubschemaSpellings
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range f._jsonNulls {
+				_cur, _present, _err := _o.value(_k, f.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f ForbiddingSubschemaSpellings) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		if !jsonIsEmpty(f.AnyOfNames) {
+			_o.deferred("anyOfNames", 0)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(f.InferredNotItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("inferredNotItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(f.InferredNotSlot)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("inferredNotSlot", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(f.InferredNotTail)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("inferredNotTail", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(f.InferredOneOfItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("inferredOneOfItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(f.InferredOneOfTail)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("inferredOneOfTail", _v)
+		}
+	}
+	{
+		if !jsonIsEmpty(f.InlineDepRequired) {
+			_o.deferred("inlineDepRequired", 6)
+		}
+	}
+	{
+		if !jsonIsEmpty(f.InlineFalseDependent) {
+			_o.deferred("inlineFalseDependent", 7)
+		}
+	}
+	{
+		if !jsonIsEmpty(f.InlineFalseNames) {
+			_o.deferred("inlineFalseNames", 8)
+		}
+	}
+	{
+		if !jsonIsEmpty(f.InlineMaxProps) {
+			_o.deferred("inlineMaxProps", 9)
+		}
+	}
+	{
+		if !jsonIsEmpty(f.InlineMinProps) {
+			_o.deferred("inlineMinProps", 10)
+		}
+	}
+	{
+		if !jsonIsEmpty(f.InlineNotDependent) {
+			_o.deferred("inlineNotDependent", 11)
+		}
+	}
+	{
+		if !jsonIsEmpty(f.InlineNotNames) {
+			_o.deferred("inlineNotNames", 12)
+		}
+	}
+	{
+		if !jsonIsEmpty(f.InlineRequired) {
+			_o.deferred("inlineRequired", 13)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.MapWithMinProps)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("mapWithMinProps", _v)
+		}
+	}
+	{
+		if !jsonIsEmpty(f.NotDependent) {
+			_o.deferred("notDependent", 15)
+		}
+	}
+	{
+		if !jsonIsEmpty(f.NotNames) {
+			_o.deferred("notNames", 16)
+		}
+	}
+	{
+		if !jsonIsEmpty(f.NotUnevalProps) {
+			_o.deferred("notUnevalProps", 17)
+		}
+	}
+	{
+		if !jsonIsEmpty(f.NullableInlineNames) {
+			_o.deferred("nullableInlineNames", 18)
+		}
+	}
+	{
+		if !jsonIsEmpty(f.OkNames) {
+			_o.deferred("okNames", 19)
+		}
+	}
+	{
+		if !jsonIsEmpty(f.OneOfDependent) {
+			_o.deferred("oneOfDependent", 20)
+		}
+	}
+	{
+		if !jsonIsEmpty(f.OneOfNames) {
+			_o.deferred("oneOfNames", 21)
+		}
+	}
+	{
+		if !jsonIsEmpty(f.OneOfUnevalProps) {
+			_o.deferred("oneOfUnevalProps", 22)
+		}
+	}
+	{
+		if !jsonIsEmpty(f.RefNotNames) {
+			_o.deferred("refNotNames", 23)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.AllOfContains)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("allOfContains", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.AllOfNot)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("allOfNot", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.AnyOfNot)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyOfNot", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.AnyOfOneFalse)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyOfOneFalse", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.NotContains)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("notContains", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.NotEnumBranch)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("notEnumBranch", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.NotFalse)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("notFalse", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.NotShallowEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("notShallowEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.NotTypedConst)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("notTypedConst", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.NotUnevalItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("notUnevalItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.OkContains)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("okContains", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.OneOfContains)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("oneOfContains", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.OneOfOneFalse)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("oneOfOneFalse", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.OneOfUnevalItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("oneOfUnevalItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.PlainItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("plainItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.UnionBranchRequired)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("unionBranchRequired", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f ForbiddingSubschemaSpellings) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 0:
+		return (func(_v *ForbiddingSubschemaSpellingsAnyOfNames, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ForbiddingSubschemaSpellingsAnyOfNames, ForbiddingSubschemaSpellingsAnyOfNames](_v, _b, func(_v ForbiddingSubschemaSpellingsAnyOfNames, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ForbiddingSubschemaSpellingsAnyOfNames](_v, _b, ForbiddingSubschemaSpellingsAnyOfNames.appendJSON, true)
+			})
+		})(f.AnyOfNames, _b)
+	case 6:
+		return (func(_v *ForbiddingSubschemaSpellingsInlineDepRequired, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ForbiddingSubschemaSpellingsInlineDepRequired, ForbiddingSubschemaSpellingsInlineDepRequired](_v, _b, func(_v ForbiddingSubschemaSpellingsInlineDepRequired, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ForbiddingSubschemaSpellingsInlineDepRequired](_v, _b, ForbiddingSubschemaSpellingsInlineDepRequired.appendJSON, true)
+			})
+		})(f.InlineDepRequired, _b)
+	case 7:
+		return (func(_v *ForbiddingSubschemaSpellingsInlineFalseDependent, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ForbiddingSubschemaSpellingsInlineFalseDependent, ForbiddingSubschemaSpellingsInlineFalseDependent](_v, _b, func(_v ForbiddingSubschemaSpellingsInlineFalseDependent, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ForbiddingSubschemaSpellingsInlineFalseDependent](_v, _b, ForbiddingSubschemaSpellingsInlineFalseDependent.appendJSON, true)
+			})
+		})(f.InlineFalseDependent, _b)
+	case 8:
+		return (func(_v *ForbiddingSubschemaSpellingsInlineFalseNames, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ForbiddingSubschemaSpellingsInlineFalseNames, ForbiddingSubschemaSpellingsInlineFalseNames](_v, _b, func(_v ForbiddingSubschemaSpellingsInlineFalseNames, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ForbiddingSubschemaSpellingsInlineFalseNames](_v, _b, ForbiddingSubschemaSpellingsInlineFalseNames.appendJSON, true)
+			})
+		})(f.InlineFalseNames, _b)
+	case 9:
+		return (func(_v *ForbiddingSubschemaSpellingsInlineMaxProps, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ForbiddingSubschemaSpellingsInlineMaxProps, ForbiddingSubschemaSpellingsInlineMaxProps](_v, _b, func(_v ForbiddingSubschemaSpellingsInlineMaxProps, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ForbiddingSubschemaSpellingsInlineMaxProps](_v, _b, ForbiddingSubschemaSpellingsInlineMaxProps.appendJSON, true)
+			})
+		})(f.InlineMaxProps, _b)
+	case 10:
+		return (func(_v *ForbiddingSubschemaSpellingsInlineMinProps, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ForbiddingSubschemaSpellingsInlineMinProps, ForbiddingSubschemaSpellingsInlineMinProps](_v, _b, func(_v ForbiddingSubschemaSpellingsInlineMinProps, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ForbiddingSubschemaSpellingsInlineMinProps](_v, _b, ForbiddingSubschemaSpellingsInlineMinProps.appendJSON, true)
+			})
+		})(f.InlineMinProps, _b)
+	case 11:
+		return (func(_v *ForbiddingSubschemaSpellingsInlineNotDependent, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ForbiddingSubschemaSpellingsInlineNotDependent, ForbiddingSubschemaSpellingsInlineNotDependent](_v, _b, func(_v ForbiddingSubschemaSpellingsInlineNotDependent, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ForbiddingSubschemaSpellingsInlineNotDependent](_v, _b, ForbiddingSubschemaSpellingsInlineNotDependent.appendJSON, true)
+			})
+		})(f.InlineNotDependent, _b)
+	case 12:
+		return (func(_v *ForbiddingSubschemaSpellingsInlineNotNames, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ForbiddingSubschemaSpellingsInlineNotNames, ForbiddingSubschemaSpellingsInlineNotNames](_v, _b, func(_v ForbiddingSubschemaSpellingsInlineNotNames, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ForbiddingSubschemaSpellingsInlineNotNames](_v, _b, ForbiddingSubschemaSpellingsInlineNotNames.appendJSON, true)
+			})
+		})(f.InlineNotNames, _b)
+	case 13:
+		return (func(_v *ForbiddingSubschemaSpellingsInlineRequired, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ForbiddingSubschemaSpellingsInlineRequired, ForbiddingSubschemaSpellingsInlineRequired](_v, _b, func(_v ForbiddingSubschemaSpellingsInlineRequired, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ForbiddingSubschemaSpellingsInlineRequired](_v, _b, ForbiddingSubschemaSpellingsInlineRequired.appendJSON, true)
+			})
+		})(f.InlineRequired, _b)
+	case 15:
+		return (func(_v *ForbiddingSubschemaSpellingsNotDependent, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ForbiddingSubschemaSpellingsNotDependent, ForbiddingSubschemaSpellingsNotDependent](_v, _b, func(_v ForbiddingSubschemaSpellingsNotDependent, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ForbiddingSubschemaSpellingsNotDependent](_v, _b, ForbiddingSubschemaSpellingsNotDependent.appendJSON, true)
+			})
+		})(f.NotDependent, _b)
+	case 16:
+		return (func(_v *ForbiddingSubschemaSpellingsNotNames, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ForbiddingSubschemaSpellingsNotNames, ForbiddingSubschemaSpellingsNotNames](_v, _b, func(_v ForbiddingSubschemaSpellingsNotNames, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ForbiddingSubschemaSpellingsNotNames](_v, _b, ForbiddingSubschemaSpellingsNotNames.appendJSON, true)
+			})
+		})(f.NotNames, _b)
+	case 17:
+		return (func(_v *ForbiddingSubschemaSpellingsNotUnevalProps, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ForbiddingSubschemaSpellingsNotUnevalProps, ForbiddingSubschemaSpellingsNotUnevalProps](_v, _b, func(_v ForbiddingSubschemaSpellingsNotUnevalProps, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ForbiddingSubschemaSpellingsNotUnevalProps](_v, _b, ForbiddingSubschemaSpellingsNotUnevalProps.appendJSON, true)
+			})
+		})(f.NotUnevalProps, _b)
+	case 18:
+		return (func(_v *ForbiddingSubschemaSpellingsNullableInlineNames, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ForbiddingSubschemaSpellingsNullableInlineNames, ForbiddingSubschemaSpellingsNullableInlineNames](_v, _b, func(_v ForbiddingSubschemaSpellingsNullableInlineNames, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ForbiddingSubschemaSpellingsNullableInlineNames](_v, _b, ForbiddingSubschemaSpellingsNullableInlineNames.appendJSON, true)
+			})
+		})(f.NullableInlineNames, _b)
+	case 19:
+		return (func(_v *ForbiddingSubschemaSpellingsOkNames, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ForbiddingSubschemaSpellingsOkNames, ForbiddingSubschemaSpellingsOkNames](_v, _b, func(_v ForbiddingSubschemaSpellingsOkNames, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ForbiddingSubschemaSpellingsOkNames](_v, _b, ForbiddingSubschemaSpellingsOkNames.appendJSON, true)
+			})
+		})(f.OkNames, _b)
+	case 20:
+		return (func(_v *ForbiddingSubschemaSpellingsOneOfDependent, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ForbiddingSubschemaSpellingsOneOfDependent, ForbiddingSubschemaSpellingsOneOfDependent](_v, _b, func(_v ForbiddingSubschemaSpellingsOneOfDependent, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ForbiddingSubschemaSpellingsOneOfDependent](_v, _b, ForbiddingSubschemaSpellingsOneOfDependent.appendJSON, true)
+			})
+		})(f.OneOfDependent, _b)
+	case 21:
+		return (func(_v *ForbiddingSubschemaSpellingsOneOfNames, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ForbiddingSubschemaSpellingsOneOfNames, ForbiddingSubschemaSpellingsOneOfNames](_v, _b, func(_v ForbiddingSubschemaSpellingsOneOfNames, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ForbiddingSubschemaSpellingsOneOfNames](_v, _b, ForbiddingSubschemaSpellingsOneOfNames.appendJSON, true)
+			})
+		})(f.OneOfNames, _b)
+	case 22:
+		return (func(_v *ForbiddingSubschemaSpellingsOneOfUnevalProps, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ForbiddingSubschemaSpellingsOneOfUnevalProps, ForbiddingSubschemaSpellingsOneOfUnevalProps](_v, _b, func(_v ForbiddingSubschemaSpellingsOneOfUnevalProps, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ForbiddingSubschemaSpellingsOneOfUnevalProps](_v, _b, ForbiddingSubschemaSpellingsOneOfUnevalProps.appendJSON, true)
+			})
+		})(f.OneOfUnevalProps, _b)
+	case 23:
+		return (func(_v *ForbiddingSubschemaSpellingsRefNotNames, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ForbiddingSubschemaSpellingsRefNotNames, ForbiddingSubschemaSpellingsRefNotNames](_v, _b, func(_v ForbiddingSubschemaSpellingsRefNotNames, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ForbiddingSubschemaSpellingsRefNotNames](_v, _b, ForbiddingSubschemaSpellingsRefNotNames.appendJSON, true)
+			})
+		})(f.RefNotNames, _b)
+	case 40:
+		switch _sel := f.StrBranchRequired.(type) {
+		case *ForbiddingSubschemaSpellings_String:
+			_out, _err := (jsonAppendLeaf[string])(_sel.String, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling ForbiddingSubschemaSpellings.StrBranchRequired: %w", _err)
+			}
+			return _out, nil
+		case *ForbiddingSubschemaSpellings_Integer:
+			_out, _err := (jsonAppendLeaf[int64])(_sel.Integer, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling ForbiddingSubschemaSpellings.StrBranchRequired: %w", _err)
+			}
+			return _out, nil
+		}
+	}
+	return _b, nil
 }
 
 // Validate checks ForbiddingSubschemaSpellings against its JSON Schema constraints.

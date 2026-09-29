@@ -103,24 +103,57 @@ func (m *Member) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (m Member) MarshalJSON() ([]byte, error) {
-	type Alias Member
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(m),
+	_b, _err := m.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends m to _b as JSON. See jsonEnc.
+func (m Member) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := m.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range m.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, m.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members m's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (m Member) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(m.Role)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("role", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(m.Name, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("name", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of m numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (m Member) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks Member against its JSON Schema constraints.
@@ -241,24 +274,57 @@ func (t *Team) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (t Team) MarshalJSON() ([]byte, error) {
-	type Alias Team
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(t),
+	_b, _err := t.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends t to _b as JSON. See jsonEnc.
+func (t Team) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := t.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range t.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, t.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members t's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (t Team) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(t.Name, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("name", _v)
+	}
+	{
+		_o.deferred("members", 1)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of t numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (t Team) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 1:
+		return (func(_v []Member, _b []byte) ([]byte, error) {
+			return jsonEncSlice[[]Member, Member](_v, _b, func(_v Member, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[Member](_v, _b, Member.appendJSON, false)
+			})
+		})(t.Members, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks Team against its JSON Schema constraints.

@@ -325,6 +325,23 @@
   back as a zero its own type then refuses because two `oneOf` branches admit
   it, or because a `not` does: `{"oneOf":[{"minimum":1},{"maximum":0}]}` wrote
   `null`, which both branches admit.
+- `Validate` costs time and memory in proportion to the document. A value held as
+  raw JSON -- a `patternProperties` value, a member an `allOf` branch's
+  `additionalProperties` or an `unevaluatedProperties` judges, a draft 3
+  schema-valued `type`, a tuple position -- was decoded afresh at every level of
+  a recursive document, and a keyword judged at run time decoded every member
+  whole: a `patternProperties` chain 2,000 levels deep took 363 ms and 194 MB,
+  and one with a run-time `anyOf` six seconds. They are now read through the
+  document the value was decoded from, a level at a time, and a refusal's
+  message is written out once rather than once per level.
+- `MarshalJSON` costs time and memory in proportion to the value. Each level
+  handed its members to `encoding/json`, which checked and compacted every
+  member type's output -- the whole subtree, at every level -- and a type with
+  members written by hand parsed its output back into a map and wrote it again:
+  a value 8,000 levels deep took 4.5 s, and under `--strict-read-write` the
+  writeOnly rules re-read it again at every level. Every generated type now
+  writes itself into one buffer; the bytes, and the errors, are the ones
+  `encoding/json` wrote.
 - A draft 3 schema-valued `type` entry that leads back to its own definition no
   longer overflows the stack. `{"type":[{"$ref":"#/$defs/C"}]}` as the whole of
   `C` made `Validate` call itself on the same value until the goroutine's stack

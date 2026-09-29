@@ -13,6 +13,7 @@ import "testing"
 // nothing, so a definition is exactly what its other alternatives admit, and
 // one with no other alternative admits nothing.
 func TestTypeSchemaCyclesAreJudgedWithoutLooping(t *testing.T) {
+	t.Parallel()
 	runErrorPathFixtures(t, "type_schema_cycle_test", []errorPathFixture{
 		{
 			Name:   "a_definition_whose_only_type_is_itself_admits_nothing",

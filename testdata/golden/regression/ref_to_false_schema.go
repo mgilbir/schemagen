@@ -405,7 +405,9 @@ func (r *RefToFalseSchema) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	}
 	if _v, _ok := _raw["tuple"]; _ok {
 		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
-			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+			return jsonLazyItemsOr[[]any](_p, _d, _s, func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+			})
 		}(&r.Tuple, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "tuple")
 		}
@@ -608,61 +610,179 @@ func (r *RefToFalseSchema) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (r RefToFalseSchema) MarshalJSON() ([]byte, error) {
-	type Alias RefToFalseSchema
-	aux := struct {
-		Alias
-		ViaOneOf json.RawMessage `json:"viaOneOf,omitempty"`
-	}{
-		Alias: (Alias)(r),
+	_b, _err := r.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
+	return _b, nil
+}
 
+// appendJSON appends r to _b as JSON. See jsonEnc.
+func (r RefToFalseSchema) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := r.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
+	}
 	if r.ViaOneOf != nil {
-		switch _sel := r.ViaOneOf.(type) {
+		switch r.ViaOneOf.(type) {
 		case *RefToFalseSchema_Never:
-			raw, err := json.Marshal(_sel.Never)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling RefToFalseSchema.ViaOneOf: %w", err)
-			}
-			aux.ViaOneOf = raw
+			_o.deferred("viaOneOf", 11)
 		}
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(r._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range r._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero RefToFalseSchema
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range r._jsonNulls {
+				_cur, _present, _err := _o.value(_k, r.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range r.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, r.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members r's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (r RefToFalseSchema) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(r.Always)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("always", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(r.AlwaysAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("alwaysAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(r.Map)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("map", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(r.AlwaysList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("alwaysList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(r.Beside)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("beside", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(r.List)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("list", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(r.Prop)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("prop", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(r.Tuple)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("tuple", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(r.ViaAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("viaAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(r.ViaAnyOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("viaAnyOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(r.ViaNested)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("viaNested", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of r numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (r RefToFalseSchema) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 11:
+		switch _sel := r.ViaOneOf.(type) {
+		case *RefToFalseSchema_Never:
+			_out, _err := (jsonAppendLeaf[*Never])(_sel.Never, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling RefToFalseSchema.ViaOneOf: %w", _err)
+			}
+			return _out, nil
+		}
+	}
+	return _b, nil
 }
 
 // Validate checks RefToFalseSchema against its JSON Schema constraints.
@@ -754,17 +874,30 @@ func (r RefToFalseSchema) Validate() error {
 	// Tuple items: validate each position against its schema type.
 	for _idx, _elem := range r.Tuple {
 		_ = _elem
+		// An element read lazily (see jsonLazyItemsOr) has its first level read
+		// here, for the arms that ask its JSON type; a position of this
+		// package's type decodes it from its span instead.
+		_lz, _isLazy := _elem.(jsonLazy)
+		if _isLazy {
+			_elem = _lz.jsonLevel()
+		}
 		if _idx == 0 {
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _mErr)
-			}
 			var _typed Never
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _uErr)
+			var _uErr error
+			if _isLazy {
+				_uErr = jsonDecodeLazy(_lz, &_typed, (*Never).decodeJSONAt)
+			} else {
+				_raw, _mErr := json.Marshal(_elem)
+				if _mErr != nil {
+					return jsonWrapf(_mErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
+				}
+				_uErr = jsonDecodeHeld(nil, _raw, &_typed, (*Never).decodeJSONAt)
+			}
+			if _uErr != nil {
+				return jsonWrapf(_uErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 			if _vErr := _typed.Validate(); _vErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _vErr)
+				return jsonWrapf(_vErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 		}
 	}

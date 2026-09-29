@@ -639,24 +639,48 @@ func (n *NullableCompositionBranchesAnyObj) decodeJSONAt(_d *jsonDoc, _sp jsonSp
 	return nil
 }
 func (n NullableCompositionBranchesAnyObj) MarshalJSON() ([]byte, error) {
-	type Alias NullableCompositionBranchesAnyObj
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(n),
+	_b, _err := n.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends n to _b as JSON. See jsonEnc.
+func (n NullableCompositionBranchesAnyObj) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := n.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range n.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, n.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members n's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (n NullableCompositionBranchesAnyObj) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(n.K, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("k", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of n numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (n NullableCompositionBranchesAnyObj) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks NullableCompositionBranchesAnyObj against its JSON Schema constraints.
@@ -1027,49 +1051,184 @@ func (n *NullableCompositionBranches) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) er
 	return nil
 }
 func (n NullableCompositionBranches) MarshalJSON() ([]byte, error) {
-	type Alias NullableCompositionBranches
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(n),
+	_b, _err := n.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends n to _b as JSON. See jsonEnc.
+func (n NullableCompositionBranches) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := n.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(n._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range n._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero NullableCompositionBranches
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range n._jsonNulls {
+				_cur, _present, _err := _o.value(_k, n.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range n.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, n.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members n's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (n NullableCompositionBranches) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.AnyArr)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyArr", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.AnyEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyEnum", _v)
+		}
+	}
+	{
+		if !jsonIsEmpty(n.AnyObj) {
+			_o.deferred("anyObj", 2)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.AnyPlain)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyPlain", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.AnyBound)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyBound", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.AnyConst)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyConst", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.AnyEmpty)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyEmpty", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.AnyFalse)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyFalse", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.AnyItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.AnyLen)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyLen", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.AnyMinIt)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyMinIt", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.OneConst)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("oneConst", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.OneMapVal)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("oneMapVal", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of n numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (n NullableCompositionBranches) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 2:
+		return (func(_v *NullableCompositionBranchesAnyObj, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*NullableCompositionBranchesAnyObj, NullableCompositionBranchesAnyObj](_v, _b, func(_v NullableCompositionBranchesAnyObj, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[NullableCompositionBranchesAnyObj](_v, _b, NullableCompositionBranchesAnyObj.appendJSON, true)
+			})
+		})(n.AnyObj, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks NullableCompositionBranches against its JSON Schema constraints.

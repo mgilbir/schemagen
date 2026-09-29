@@ -103,24 +103,55 @@ func (a *AddressLocation) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (a AddressLocation) MarshalJSON() ([]byte, error) {
-	type Alias AddressLocation
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AddressLocation) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AddressLocation) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(a.Latitude, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("latitude", _v)
+	}
+	{
+		_v, _err := jsonAppendLeaf(a.Longitude, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("longitude", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AddressLocation) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AddressLocation against its JSON Schema constraints.
@@ -264,24 +295,84 @@ func (a *Address) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (a Address) MarshalJSON() ([]byte, error) {
-	type Alias Address
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a Address) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a Address) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		if !jsonIsEmpty(a.Location) {
+			_o.deferred("location", 0)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.State)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("state", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.Zip)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("zip", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(a.City, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("city", _v)
+	}
+	{
+		_v, _err := jsonAppendLeaf(a.Street, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("street", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a Address) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 0:
+		return (func(_v *AddressLocation, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AddressLocation, AddressLocation](_v, _b, func(_v AddressLocation, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AddressLocation](_v, _b, AddressLocation.appendJSON, true)
+			})
+		})(a.Location, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks Address against its JSON Schema constraints.

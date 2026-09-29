@@ -202,24 +202,154 @@ func (n *NetworkConfig) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (n NetworkConfig) MarshalJSON() ([]byte, error) {
-	type Alias NetworkConfig
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(n),
+	_b, _err := n.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends n to _b as JSON. See jsonEnc.
+func (n NetworkConfig) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := n.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range n.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, n.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members n's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (n NetworkConfig) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.AdminEmail)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("admin_email", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.ConfigPath)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("config_path", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.CreatedDate)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("created_date", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.DeviceID)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("device_id", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.DocsRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("docs_ref", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.GatewayIP)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("gateway_ip", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.Homepage)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("homepage", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.Host)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("host", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.PatternRule)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("pattern_rule", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.StartTime)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("start_time", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.TTL)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("ttl", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(n.Name, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("name", _v)
+	}
+	{
+		_v, _err := jsonAppendLeaf(n.PrimaryIP, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("primary_ip", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of n numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (n NetworkConfig) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks NetworkConfig against its JSON Schema constraints.

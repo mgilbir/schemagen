@@ -101,6 +101,7 @@ func (t TypedFormatPositionsBucketsPattern0) Validate() error {
 type TypedFormatPositionsBuckets struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	PatternProperties    map[string]json.RawMessage `json:"-"`
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces t with the value the document holds. See
@@ -123,6 +124,7 @@ func (t *TypedFormatPositionsBuckets) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (t *TypedFormatPositionsBuckets) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*t = TypedFormatPositionsBuckets{}
+	t._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -186,27 +188,44 @@ func (t *TypedFormatPositionsBuckets) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) er
 	return nil
 }
 func (t TypedFormatPositionsBuckets) MarshalJSON() ([]byte, error) {
-	type Alias TypedFormatPositionsBuckets
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(t),
+	_b, _err := t.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends t to _b as JSON. See jsonEnc.
+func (t TypedFormatPositionsBuckets) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := t.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range t.PatternProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
 	for _key, _member := range t.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, t.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members t's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (t TypedFormatPositionsBuckets) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of t numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (t TypedFormatPositionsBuckets) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks TypedFormatPositionsBuckets against its JSON Schema constraints.
@@ -227,10 +246,10 @@ func (t TypedFormatPositionsBuckets) Validate() error {
 					// Validate enforces everything beyond it.
 					var _pv TypedFormatPositionsBucketsPattern0
 					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^p", _schemagenQuote(_key), _uErr)
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^p", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^p", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^p", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -586,42 +605,154 @@ func (t *TypedFormatPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (t TypedFormatPositions) MarshalJSON() ([]byte, error) {
-	type Alias TypedFormatPositions
-	aux := struct {
-		Alias
-		Branch json.RawMessage `json:"branch,omitempty"`
-	}{
-		Alias: (Alias)(t),
+	_b, _err := t.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
+	return _b, nil
+}
 
+// appendJSON appends t to _b as JSON. See jsonEnc.
+func (t TypedFormatPositions) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := t.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
+	}
 	if t.Branch != nil {
-		switch _sel := t.Branch.(type) {
-		case *TypedFormatPositions_String:
-			raw, err := json.Marshal(_sel.String)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling TypedFormatPositions.Branch: %w", err)
-			}
-			aux.Branch = raw
-		case *TypedFormatPositions_Integer:
-			raw, err := json.Marshal(_sel.Integer)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling TypedFormatPositions.Branch: %w", err)
-			}
-			aux.Branch = raw
+		switch t.Branch.(type) {
+		case *TypedFormatPositions_String, *TypedFormatPositions_Integer:
+			_o.deferred("branch", 10)
 		}
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
 	for _key, _member := range t.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, t.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members t's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (t TypedFormatPositions) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		if !jsonIsEmpty(t.Buckets) {
+			_o.deferred("buckets", 0)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(t.Chain)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("chain", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(t.Inline)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("inline", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(t.Map)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("map", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(t.Ref)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("ref", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(t.Wrapped)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("wrapped", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(t.List)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("list", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(t.MailList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("mailList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(t.StampList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("stampList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(t.Tuple)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("tuple", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of t numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (t TypedFormatPositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 0:
+		return (func(_v *TypedFormatPositionsBuckets, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*TypedFormatPositionsBuckets, TypedFormatPositionsBuckets](_v, _b, func(_v TypedFormatPositionsBuckets, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[TypedFormatPositionsBuckets](_v, _b, TypedFormatPositionsBuckets.appendJSON, true)
+			})
+		})(t.Buckets, _b)
+	case 10:
+		switch _sel := t.Branch.(type) {
+		case *TypedFormatPositions_String:
+			_out, _err := (jsonAppendLeaf[string])(_sel.String, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling TypedFormatPositions.Branch: %w", _err)
+			}
+			return _out, nil
+		case *TypedFormatPositions_Integer:
+			_out, _err := (jsonAppendLeaf[int64])(_sel.Integer, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling TypedFormatPositions.Branch: %w", _err)
+			}
+			return _out, nil
+		}
+	}
+	return _b, nil
 }
 
 // Validate checks TypedFormatPositions against its JSON Schema constraints.

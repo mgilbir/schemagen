@@ -144,24 +144,50 @@ func (f *FalsePropertyExplicitNullListItem) decodeJSONAt(_d *jsonDoc, _sp jsonSp
 	return nil
 }
 func (f FalsePropertyExplicitNullListItem) MarshalJSON() ([]byte, error) {
-	type Alias FalsePropertyExplicitNullListItem
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f FalsePropertyExplicitNullListItem) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f FalsePropertyExplicitNullListItem) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(f.Inner)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("inner", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f FalsePropertyExplicitNullListItem) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks FalsePropertyExplicitNullListItem against its JSON Schema constraints.
@@ -268,24 +294,59 @@ func (f *FalsePropertyExplicitNullNested) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 	return nil
 }
 func (f FalsePropertyExplicitNullNested) MarshalJSON() ([]byte, error) {
-	type Alias FalsePropertyExplicitNullNested
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f FalsePropertyExplicitNullNested) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f FalsePropertyExplicitNullNested) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(f.Inner)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("inner", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(f.Ok)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("ok", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f FalsePropertyExplicitNullNested) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks FalsePropertyExplicitNullNested against its JSON Schema constraints.
@@ -426,24 +487,90 @@ func (f *FalsePropertyExplicitNull) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) erro
 	return nil
 }
 func (f FalsePropertyExplicitNull) MarshalJSON() ([]byte, error) {
-	type Alias FalsePropertyExplicitNull
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f FalsePropertyExplicitNull) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f FalsePropertyExplicitNull) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(f.Inline)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("inline", _v)
+		}
+	}
+	{
+		if !jsonIsEmpty(f.Nested) {
+			_o.deferred("nested", 1)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(f.Ok)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("ok", _v)
+		}
+	}
+	{
+		if !jsonIsZero(f.List) {
+			_o.deferred("list", 3)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.ViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("viaRef", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f FalsePropertyExplicitNull) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 1:
+		return (func(_v *FalsePropertyExplicitNullNested, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*FalsePropertyExplicitNullNested, FalsePropertyExplicitNullNested](_v, _b, func(_v FalsePropertyExplicitNullNested, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[FalsePropertyExplicitNullNested](_v, _b, FalsePropertyExplicitNullNested.appendJSON, true)
+			})
+		})(f.Nested, _b)
+	case 3:
+		return (func(_v []FalsePropertyExplicitNullListItem, _b []byte) ([]byte, error) {
+			return jsonEncSlice[[]FalsePropertyExplicitNullListItem, FalsePropertyExplicitNullListItem](_v, _b, func(_v FalsePropertyExplicitNullListItem, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[FalsePropertyExplicitNullListItem](_v, _b, FalsePropertyExplicitNullListItem.appendJSON, false)
+			})
+		})(f.List, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks FalsePropertyExplicitNull against its JSON Schema constraints.

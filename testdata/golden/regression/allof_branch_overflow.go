@@ -98,24 +98,50 @@ func (s *StrictBase) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (s StrictBase) MarshalJSON() ([]byte, error) {
-	type Alias StrictBase
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(s),
+	_b, _err := s.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends s to _b as JSON. See jsonEnc.
+func (s StrictBase) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := s.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range s.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, s.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members s's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (s StrictBase) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(s.Base)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("base", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of s numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (s StrictBase) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks StrictBase against its JSON Schema constraints.
@@ -147,6 +173,7 @@ type AllOfBranchOverflowAdjacent struct {
 	PatternProperties    map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces a with the value the document holds. See
@@ -169,6 +196,7 @@ func (a *AllOfBranchOverflowAdjacent) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (a *AllOfBranchOverflowAdjacent) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*a = AllOfBranchOverflowAdjacent{}
+	a._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -290,27 +318,62 @@ func (a *AllOfBranchOverflowAdjacent) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) er
 	return nil
 }
 func (a AllOfBranchOverflowAdjacent) MarshalJSON() ([]byte, error) {
-	type Alias AllOfBranchOverflowAdjacent
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfBranchOverflowAdjacent) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.PatternProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfBranchOverflowAdjacent) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.A)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("a", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.B)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("b", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfBranchOverflowAdjacent) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfBranchOverflowAdjacent against its JSON Schema constraints.
@@ -469,6 +532,7 @@ type AllOfBranchOverflowBare struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces a with the value the document holds. See
@@ -491,6 +555,7 @@ func (a *AllOfBranchOverflowBare) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (a *AllOfBranchOverflowBare) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*a = AllOfBranchOverflowBare{}
+	a._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -568,24 +633,50 @@ func (a *AllOfBranchOverflowBare) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 	return nil
 }
 func (a AllOfBranchOverflowBare) MarshalJSON() ([]byte, error) {
-	type Alias AllOfBranchOverflowBare
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfBranchOverflowBare) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfBranchOverflowBare) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.A)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("a", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfBranchOverflowBare) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfBranchOverflowBare against its JSON Schema constraints.
@@ -610,10 +701,10 @@ func (a AllOfBranchOverflowBare) Validate() error {
 							// enforces its shape and the Validate enforces the rest.
 							var _bVal AllOfBranchOverflowBareBranch0Value
 							if _bErr := json.Unmarshal(_bv, &_bVal); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %s: %w", _schemagenQuote(_key), _bErr)
+								return jsonWrapf(_bErr, fmt.Sprintf("additionalProperties: property %s: ", _schemagenQuote(_key)))
 							}
 							if _bErr := _bVal.Validate(); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %s: %w", _schemagenQuote(_key), _bErr)
+								return jsonWrapf(_bErr, fmt.Sprintf("additionalProperties: property %s: ", _schemagenQuote(_key)))
 							}
 						}
 					}
@@ -656,6 +747,7 @@ type AllOfBranchOverflowBranchUnevaluated struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces a with the value the document holds. See
@@ -678,6 +770,7 @@ func (a *AllOfBranchOverflowBranchUnevaluated) UnmarshalJSON(data []byte) error 
 // document's verdict while holding another's fields is what that left behind.
 func (a *AllOfBranchOverflowBranchUnevaluated) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*a = AllOfBranchOverflowBranchUnevaluated{}
+	a._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -769,24 +862,59 @@ func (a *AllOfBranchOverflowBranchUnevaluated) decodeJSONAt(_d *jsonDoc, _sp jso
 	return nil
 }
 func (a AllOfBranchOverflowBranchUnevaluated) MarshalJSON() ([]byte, error) {
-	type Alias AllOfBranchOverflowBranchUnevaluated
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfBranchOverflowBranchUnevaluated) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfBranchOverflowBranchUnevaluated) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.A)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("a", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.B)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("b", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfBranchOverflowBranchUnevaluated) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfBranchOverflowBranchUnevaluated against its JSON Schema constraints.
@@ -817,10 +945,10 @@ func (a AllOfBranchOverflowBranchUnevaluated) Validate() error {
 							// enforces its shape and the Validate enforces the rest.
 							var _bVal AllOfBranchOverflowBranchUnevaluatedBranch0Value
 							if _bErr := json.Unmarshal(_bv, &_bVal); _bErr != nil {
-								return fmt.Errorf("unevaluatedProperties: property %s: %w", _schemagenQuote(_key), _bErr)
+								return jsonWrapf(_bErr, fmt.Sprintf("unevaluatedProperties: property %s: ", _schemagenQuote(_key)))
 							}
 							if _bErr := _bVal.Validate(); _bErr != nil {
-								return fmt.Errorf("unevaluatedProperties: property %s: %w", _schemagenQuote(_key), _bErr)
+								return jsonWrapf(_bErr, fmt.Sprintf("unevaluatedProperties: property %s: ", _schemagenQuote(_key)))
 							}
 						}
 					}
@@ -843,6 +971,7 @@ type AllOfBranchOverflowBranchUnevaluatedFalse struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces a with the value the document holds. See
@@ -865,6 +994,7 @@ func (a *AllOfBranchOverflowBranchUnevaluatedFalse) UnmarshalJSON(data []byte) e
 // document's verdict while holding another's fields is what that left behind.
 func (a *AllOfBranchOverflowBranchUnevaluatedFalse) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*a = AllOfBranchOverflowBranchUnevaluatedFalse{}
+	a._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -956,24 +1086,59 @@ func (a *AllOfBranchOverflowBranchUnevaluatedFalse) decodeJSONAt(_d *jsonDoc, _s
 	return nil
 }
 func (a AllOfBranchOverflowBranchUnevaluatedFalse) MarshalJSON() ([]byte, error) {
-	type Alias AllOfBranchOverflowBranchUnevaluatedFalse
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfBranchOverflowBranchUnevaluatedFalse) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfBranchOverflowBranchUnevaluatedFalse) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.A)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("a", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.B)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("b", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfBranchOverflowBranchUnevaluatedFalse) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfBranchOverflowBranchUnevaluatedFalse against its JSON Schema constraints.
@@ -1019,6 +1184,7 @@ type AllOfBranchOverflowForbid struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces a with the value the document holds. See
@@ -1041,6 +1207,7 @@ func (a *AllOfBranchOverflowForbid) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (a *AllOfBranchOverflowForbid) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*a = AllOfBranchOverflowForbid{}
+	a._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -1118,24 +1285,50 @@ func (a *AllOfBranchOverflowForbid) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) erro
 	return nil
 }
 func (a AllOfBranchOverflowForbid) MarshalJSON() ([]byte, error) {
-	type Alias AllOfBranchOverflowForbid
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfBranchOverflowForbid) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfBranchOverflowForbid) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.A)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("a", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfBranchOverflowForbid) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfBranchOverflowForbid against its JSON Schema constraints.
@@ -1214,6 +1407,7 @@ type AllOfBranchOverflowNestedAllOf struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces a with the value the document holds. See
@@ -1236,6 +1430,7 @@ func (a *AllOfBranchOverflowNestedAllOf) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (a *AllOfBranchOverflowNestedAllOf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*a = AllOfBranchOverflowNestedAllOf{}
+	a._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -1313,24 +1508,50 @@ func (a *AllOfBranchOverflowNestedAllOf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 	return nil
 }
 func (a AllOfBranchOverflowNestedAllOf) MarshalJSON() ([]byte, error) {
-	type Alias AllOfBranchOverflowNestedAllOf
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfBranchOverflowNestedAllOf) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfBranchOverflowNestedAllOf) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.A)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("a", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfBranchOverflowNestedAllOf) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfBranchOverflowNestedAllOf against its JSON Schema constraints.
@@ -1355,10 +1576,10 @@ func (a AllOfBranchOverflowNestedAllOf) Validate() error {
 							// enforces its shape and the Validate enforces the rest.
 							var _bVal AllOfBranchOverflowNestedAllOfBranch0Value
 							if _bErr := json.Unmarshal(_bv, &_bVal); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %s: %w", _schemagenQuote(_key), _bErr)
+								return jsonWrapf(_bErr, fmt.Sprintf("additionalProperties: property %s: ", _schemagenQuote(_key)))
 							}
 							if _bErr := _bVal.Validate(); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %s: %w", _schemagenQuote(_key), _bErr)
+								return jsonWrapf(_bErr, fmt.Sprintf("additionalProperties: property %s: ", _schemagenQuote(_key)))
 							}
 						}
 					}
@@ -1463,24 +1684,50 @@ func (a *AllOfBranchOverflowObjectValueA) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 	return nil
 }
 func (a AllOfBranchOverflowObjectValueA) MarshalJSON() ([]byte, error) {
-	type Alias AllOfBranchOverflowObjectValueA
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfBranchOverflowObjectValueA) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfBranchOverflowObjectValueA) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.N)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("n", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfBranchOverflowObjectValueA) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfBranchOverflowObjectValueA against its JSON Schema constraints.
@@ -1581,24 +1828,48 @@ func (a *AllOfBranchOverflowObjectValueBranch0Value) decodeJSONAt(_d *jsonDoc, _
 	return nil
 }
 func (a AllOfBranchOverflowObjectValueBranch0Value) MarshalJSON() ([]byte, error) {
-	type Alias AllOfBranchOverflowObjectValueBranch0Value
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfBranchOverflowObjectValueBranch0Value) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfBranchOverflowObjectValueBranch0Value) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(a.N, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("n", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfBranchOverflowObjectValueBranch0Value) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfBranchOverflowObjectValueBranch0Value against its JSON Schema constraints.
@@ -1625,6 +1896,7 @@ type AllOfBranchOverflowObjectValue struct {
 	AdditionalProperties map[string]json.RawMessage       `json:"-"`
 	_jsonKeys            map[string]bool                  // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage       // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                         // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces a with the value the document holds. See
@@ -1647,6 +1919,7 @@ func (a *AllOfBranchOverflowObjectValue) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (a *AllOfBranchOverflowObjectValue) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*a = AllOfBranchOverflowObjectValue{}
+	a._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -1720,24 +1993,52 @@ func (a *AllOfBranchOverflowObjectValue) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 	return nil
 }
 func (a AllOfBranchOverflowObjectValue) MarshalJSON() ([]byte, error) {
-	type Alias AllOfBranchOverflowObjectValue
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfBranchOverflowObjectValue) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfBranchOverflowObjectValue) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		if !jsonIsEmpty(a.A) {
+			_o.deferred("a", 0)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfBranchOverflowObjectValue) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 0:
+		return (func(_v *AllOfBranchOverflowObjectValueA, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AllOfBranchOverflowObjectValueA, AllOfBranchOverflowObjectValueA](_v, _b, func(_v AllOfBranchOverflowObjectValueA, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AllOfBranchOverflowObjectValueA](_v, _b, AllOfBranchOverflowObjectValueA.appendJSON, true)
+			})
+		})(a.A, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfBranchOverflowObjectValue against its JSON Schema constraints.
@@ -1766,11 +2067,11 @@ func (a AllOfBranchOverflowObjectValue) Validate() error {
 							// The sub-schema's own type answers for the value: the decode
 							// enforces its shape and the Validate enforces the rest.
 							var _bVal AllOfBranchOverflowObjectValueBranch0Value
-							if _bErr := json.Unmarshal(_bv, &_bVal); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %s: %w", _schemagenQuote(_key), _bErr)
+							if _bErr := jsonDecodeHeld(a._doc, _bv, &_bVal, (*AllOfBranchOverflowObjectValueBranch0Value).decodeJSONAt); _bErr != nil {
+								return jsonWrapf(_bErr, fmt.Sprintf("additionalProperties: property %s: ", _schemagenQuote(_key)))
 							}
 							if _bErr := _bVal.Validate(); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %s: %w", _schemagenQuote(_key), _bErr)
+								return jsonWrapf(_bErr, fmt.Sprintf("additionalProperties: property %s: ", _schemagenQuote(_key)))
 							}
 						}
 					}
@@ -1902,43 +2203,56 @@ func (a *AllOfBranchOverflowOwnAdditional) decodeJSONAt(_d *jsonDoc, _sp jsonSpa
 	return nil
 }
 func (a AllOfBranchOverflowOwnAdditional) MarshalJSON() ([]byte, error) {
-	type Alias AllOfBranchOverflowOwnAdditional
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfBranchOverflowOwnAdditional) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	{
-		var _least string
-		var _failed error
-		for _key, _member := range a.AdditionalProperties { // refused for the least failing key
-			if _failed != nil && _key >= _least {
-				continue
+		// In key order, so that a member that fails is reported for the least
+		// key, whatever order the map is ranged in.
+		for _, _key := range jsonSortedKeys(a.AdditionalProperties) {
+			_v, _err := (jsonAppendLeaf[int64])(a.AdditionalProperties[_key], nil)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), _err)
 			}
-			if _err := func() error {
-				raw, err := json.Marshal(_member)
-				if err != nil {
-					return fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), err)
-				}
-				obj[_key] = raw
-				return nil
-			}(); _err != nil {
-				_least, _failed = _key, _err
-			}
-		}
-		if _failed != nil {
-			return nil, _failed
+			_o.encoded(_key, _v)
 		}
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfBranchOverflowOwnAdditional) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(a.A, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("a", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfBranchOverflowOwnAdditional) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfBranchOverflowOwnAdditional against its JSON Schema constraints.
@@ -2070,24 +2384,48 @@ func (a *AllOfBranchOverflowPlain) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	return nil
 }
 func (a AllOfBranchOverflowPlain) MarshalJSON() ([]byte, error) {
-	type Alias AllOfBranchOverflowPlain
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfBranchOverflowPlain) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfBranchOverflowPlain) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(a.A, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("a", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfBranchOverflowPlain) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfBranchOverflowPlain against its JSON Schema constraints.
@@ -2185,43 +2523,49 @@ func (a *AllOfBranchOverflowSoleBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) 
 	return nil
 }
 func (a AllOfBranchOverflowSoleBranch) MarshalJSON() ([]byte, error) {
-	type Alias AllOfBranchOverflowSoleBranch
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfBranchOverflowSoleBranch) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	{
-		var _least string
-		var _failed error
-		for _key, _member := range a.AdditionalProperties { // refused for the least failing key
-			if _failed != nil && _key >= _least {
-				continue
+		// In key order, so that a member that fails is reported for the least
+		// key, whatever order the map is ranged in.
+		for _, _key := range jsonSortedKeys(a.AdditionalProperties) {
+			_v, _err := (jsonAppendLeaf[string])(a.AdditionalProperties[_key], nil)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), _err)
 			}
-			if _err := func() error {
-				raw, err := json.Marshal(_member)
-				if err != nil {
-					return fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), err)
-				}
-				obj[_key] = raw
-				return nil
-			}(); _err != nil {
-				_least, _failed = _key, _err
-			}
-		}
-		if _failed != nil {
-			return nil, _failed
+			_o.encoded(_key, _v)
 		}
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfBranchOverflowSoleBranch) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfBranchOverflowSoleBranch) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfBranchOverflowSoleBranch against its JSON Schema constraints.
@@ -2332,6 +2676,7 @@ type AllOfBranchOverflowTwoBranches struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces a with the value the document holds. See
@@ -2354,6 +2699,7 @@ func (a *AllOfBranchOverflowTwoBranches) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (a *AllOfBranchOverflowTwoBranches) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*a = AllOfBranchOverflowTwoBranches{}
+	a._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -2431,24 +2777,50 @@ func (a *AllOfBranchOverflowTwoBranches) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 	return nil
 }
 func (a AllOfBranchOverflowTwoBranches) MarshalJSON() ([]byte, error) {
-	type Alias AllOfBranchOverflowTwoBranches
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfBranchOverflowTwoBranches) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfBranchOverflowTwoBranches) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.A)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("a", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfBranchOverflowTwoBranches) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfBranchOverflowTwoBranches against its JSON Schema constraints.
@@ -2473,10 +2845,10 @@ func (a AllOfBranchOverflowTwoBranches) Validate() error {
 							// enforces its shape and the Validate enforces the rest.
 							var _bVal AllOfBranchOverflowTwoBranchesBranch0Value
 							if _bErr := json.Unmarshal(_bv, &_bVal); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %s: %w", _schemagenQuote(_key), _bErr)
+								return jsonWrapf(_bErr, fmt.Sprintf("additionalProperties: property %s: ", _schemagenQuote(_key)))
 							}
 							if _bErr := _bVal.Validate(); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %s: %w", _schemagenQuote(_key), _bErr)
+								return jsonWrapf(_bErr, fmt.Sprintf("additionalProperties: property %s: ", _schemagenQuote(_key)))
 							}
 						}
 					}
@@ -2507,10 +2879,10 @@ func (a AllOfBranchOverflowTwoBranches) Validate() error {
 							// enforces its shape and the Validate enforces the rest.
 							var _bVal AllOfBranchOverflowTwoBranchesBranch1Value
 							if _bErr := json.Unmarshal(_bv, &_bVal); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %s: %w", _schemagenQuote(_key), _bErr)
+								return jsonWrapf(_bErr, fmt.Sprintf("additionalProperties: property %s: ", _schemagenQuote(_key)))
 							}
 							if _bErr := _bVal.Validate(); _bErr != nil {
-								return fmt.Errorf("additionalProperties: property %s: %w", _schemagenQuote(_key), _bErr)
+								return jsonWrapf(_bErr, fmt.Sprintf("additionalProperties: property %s: ", _schemagenQuote(_key)))
 							}
 						}
 					}
@@ -2533,6 +2905,7 @@ type AllOfBranchOverflowViaRef struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces a with the value the document holds. See
@@ -2555,6 +2928,7 @@ func (a *AllOfBranchOverflowViaRef) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (a *AllOfBranchOverflowViaRef) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*a = AllOfBranchOverflowViaRef{}
+	a._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -2646,24 +3020,59 @@ func (a *AllOfBranchOverflowViaRef) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) erro
 	return nil
 }
 func (a AllOfBranchOverflowViaRef) MarshalJSON() ([]byte, error) {
-	type Alias AllOfBranchOverflowViaRef
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfBranchOverflowViaRef) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfBranchOverflowViaRef) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.Base)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("base", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.Other)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("other", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfBranchOverflowViaRef) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfBranchOverflowViaRef against its JSON Schema constraints.
@@ -2909,24 +3318,173 @@ func (a *AllOfBranchOverflow) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (a AllOfBranchOverflow) MarshalJSON() ([]byte, error) {
-	type Alias AllOfBranchOverflow
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfBranchOverflow) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfBranchOverflow) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		if !jsonIsEmpty(a.Adjacent) {
+			_o.deferred("adjacent", 0)
+		}
+	}
+	{
+		if !jsonIsEmpty(a.Bare) {
+			_o.deferred("bare", 1)
+		}
+	}
+	{
+		if !jsonIsEmpty(a.BranchUnevaluated) {
+			_o.deferred("branchUnevaluated", 2)
+		}
+	}
+	{
+		if !jsonIsEmpty(a.BranchUnevaluatedFalse) {
+			_o.deferred("branchUnevaluatedFalse", 3)
+		}
+	}
+	{
+		if !jsonIsEmpty(a.Forbid) {
+			_o.deferred("forbid", 4)
+		}
+	}
+	{
+		if !jsonIsEmpty(a.NestedAllOf) {
+			_o.deferred("nestedAllOf", 5)
+		}
+	}
+	{
+		if !jsonIsEmpty(a.ObjectValue) {
+			_o.deferred("objectValue", 6)
+		}
+	}
+	{
+		if !jsonIsEmpty(a.OwnAdditional) {
+			_o.deferred("ownAdditional", 7)
+		}
+	}
+	{
+		if !jsonIsEmpty(a.Plain) {
+			_o.deferred("plain", 8)
+		}
+	}
+	{
+		if !jsonIsEmpty(a.SoleBranch) {
+			_o.deferred("soleBranch", 9)
+		}
+	}
+	{
+		if !jsonIsEmpty(a.TwoBranches) {
+			_o.deferred("twoBranches", 10)
+		}
+	}
+	{
+		if !jsonIsEmpty(a.ViaRef) {
+			_o.deferred("viaRef", 11)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfBranchOverflow) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 0:
+		return (func(_v *AllOfBranchOverflowAdjacent, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AllOfBranchOverflowAdjacent, AllOfBranchOverflowAdjacent](_v, _b, func(_v AllOfBranchOverflowAdjacent, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AllOfBranchOverflowAdjacent](_v, _b, AllOfBranchOverflowAdjacent.appendJSON, true)
+			})
+		})(a.Adjacent, _b)
+	case 1:
+		return (func(_v *AllOfBranchOverflowBare, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AllOfBranchOverflowBare, AllOfBranchOverflowBare](_v, _b, func(_v AllOfBranchOverflowBare, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AllOfBranchOverflowBare](_v, _b, AllOfBranchOverflowBare.appendJSON, true)
+			})
+		})(a.Bare, _b)
+	case 2:
+		return (func(_v *AllOfBranchOverflowBranchUnevaluated, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AllOfBranchOverflowBranchUnevaluated, AllOfBranchOverflowBranchUnevaluated](_v, _b, func(_v AllOfBranchOverflowBranchUnevaluated, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AllOfBranchOverflowBranchUnevaluated](_v, _b, AllOfBranchOverflowBranchUnevaluated.appendJSON, true)
+			})
+		})(a.BranchUnevaluated, _b)
+	case 3:
+		return (func(_v *AllOfBranchOverflowBranchUnevaluatedFalse, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AllOfBranchOverflowBranchUnevaluatedFalse, AllOfBranchOverflowBranchUnevaluatedFalse](_v, _b, func(_v AllOfBranchOverflowBranchUnevaluatedFalse, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AllOfBranchOverflowBranchUnevaluatedFalse](_v, _b, AllOfBranchOverflowBranchUnevaluatedFalse.appendJSON, true)
+			})
+		})(a.BranchUnevaluatedFalse, _b)
+	case 4:
+		return (func(_v *AllOfBranchOverflowForbid, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AllOfBranchOverflowForbid, AllOfBranchOverflowForbid](_v, _b, func(_v AllOfBranchOverflowForbid, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AllOfBranchOverflowForbid](_v, _b, AllOfBranchOverflowForbid.appendJSON, true)
+			})
+		})(a.Forbid, _b)
+	case 5:
+		return (func(_v *AllOfBranchOverflowNestedAllOf, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AllOfBranchOverflowNestedAllOf, AllOfBranchOverflowNestedAllOf](_v, _b, func(_v AllOfBranchOverflowNestedAllOf, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AllOfBranchOverflowNestedAllOf](_v, _b, AllOfBranchOverflowNestedAllOf.appendJSON, true)
+			})
+		})(a.NestedAllOf, _b)
+	case 6:
+		return (func(_v *AllOfBranchOverflowObjectValue, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AllOfBranchOverflowObjectValue, AllOfBranchOverflowObjectValue](_v, _b, func(_v AllOfBranchOverflowObjectValue, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AllOfBranchOverflowObjectValue](_v, _b, AllOfBranchOverflowObjectValue.appendJSON, true)
+			})
+		})(a.ObjectValue, _b)
+	case 7:
+		return (func(_v *AllOfBranchOverflowOwnAdditional, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AllOfBranchOverflowOwnAdditional, AllOfBranchOverflowOwnAdditional](_v, _b, func(_v AllOfBranchOverflowOwnAdditional, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AllOfBranchOverflowOwnAdditional](_v, _b, AllOfBranchOverflowOwnAdditional.appendJSON, true)
+			})
+		})(a.OwnAdditional, _b)
+	case 8:
+		return (func(_v *AllOfBranchOverflowPlain, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AllOfBranchOverflowPlain, AllOfBranchOverflowPlain](_v, _b, func(_v AllOfBranchOverflowPlain, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AllOfBranchOverflowPlain](_v, _b, AllOfBranchOverflowPlain.appendJSON, true)
+			})
+		})(a.Plain, _b)
+	case 9:
+		return (func(_v *AllOfBranchOverflowSoleBranch, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AllOfBranchOverflowSoleBranch, AllOfBranchOverflowSoleBranch](_v, _b, func(_v AllOfBranchOverflowSoleBranch, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AllOfBranchOverflowSoleBranch](_v, _b, AllOfBranchOverflowSoleBranch.appendJSON, true)
+			})
+		})(a.SoleBranch, _b)
+	case 10:
+		return (func(_v *AllOfBranchOverflowTwoBranches, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AllOfBranchOverflowTwoBranches, AllOfBranchOverflowTwoBranches](_v, _b, func(_v AllOfBranchOverflowTwoBranches, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AllOfBranchOverflowTwoBranches](_v, _b, AllOfBranchOverflowTwoBranches.appendJSON, true)
+			})
+		})(a.TwoBranches, _b)
+	case 11:
+		return (func(_v *AllOfBranchOverflowViaRef, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AllOfBranchOverflowViaRef, AllOfBranchOverflowViaRef](_v, _b, func(_v AllOfBranchOverflowViaRef, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AllOfBranchOverflowViaRef](_v, _b, AllOfBranchOverflowViaRef.appendJSON, true)
+			})
+		})(a.ViaRef, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfBranchOverflow against its JSON Schema constraints.

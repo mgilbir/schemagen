@@ -153,60 +153,95 @@ func (q *QuotedPropertyName) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (q QuotedPropertyName) MarshalJSON() ([]byte, error) {
-	type Alias QuotedPropertyName
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(q),
+	_b, _err := q.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends q to _b as JSON. See jsonEnc.
+func (q QuotedPropertyName) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := q.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	// The property name cannot go in a struct tag, so omitempty never reaches
-	// this field: an absent optional value has to be skipped by hand, or the
-	// null a nil pointer/slice/map marshals to would be written as if the
-	// property were present with a null value. A present-but-empty collection
-	// is non-nil and still written.
+	// this field: an absent optional value is skipped by hand.
 	if q.ArrKey != nil {
-		raw, err := json.Marshal(q.ArrKey)
-		if err != nil {
-			return nil, fmt.Errorf("marshaling QuotedPropertyName.ArrKey: %w", err)
+		_v, _err := (jsonAppendLeaf[[]string])(q.ArrKey, nil)
+		if _err != nil {
+			return _b, fmt.Errorf("marshaling QuotedPropertyName.ArrKey: %w", _err)
 		}
-		obj["arr\"key"] = raw
+		_o.encoded("arr\"key", _v)
 	}
 	// The property name cannot go in a struct tag, so omitempty never reaches
-	// this field: an absent optional value has to be skipped by hand, or the
-	// null a nil pointer/slice/map marshals to would be written as if the
-	// property were present with a null value. A present-but-empty collection
-	// is non-nil and still written.
+	// this field: an absent optional value is skipped by hand.
 	if q.FooBar != nil {
-		raw, err := json.Marshal(q.FooBar)
-		if err != nil {
-			return nil, fmt.Errorf("marshaling QuotedPropertyName.FooBar: %w", err)
+		_v, _err := (jsonAppendLeaf[*Num])(q.FooBar, nil)
+		if _err != nil {
+			return _b, fmt.Errorf("marshaling QuotedPropertyName.FooBar: %w", _err)
 		}
-		obj["foo\"bar"] = raw
+		_o.encoded("foo\"bar", _v)
 	}
 	// The property name cannot go in a struct tag, so omitempty never reaches
-	// this field: an absent optional value has to be skipped by hand, or the
-	// null a nil pointer/slice/map marshals to would be written as if the
-	// property were present with a null value. A present-but-empty collection
-	// is non-nil and still written.
+	// this field: an absent optional value is skipped by hand.
 	if q.MapKey != nil {
-		raw, err := json.Marshal(q.MapKey)
-		if err != nil {
-			return nil, fmt.Errorf("marshaling QuotedPropertyName.MapKey: %w", err)
+		_v, _err := (jsonAppendLeaf[map[string]int64])(q.MapKey, nil)
+		if _err != nil {
+			return _b, fmt.Errorf("marshaling QuotedPropertyName.MapKey: %w", _err)
 		}
-		obj["map\"key"] = raw
+		_o.encoded("map\"key", _v)
 	}
 	for _key, _member := range q.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, q.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members q's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (q QuotedPropertyName) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(q.PctD)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("pct%d", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of q numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (q QuotedPropertyName) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 1:
+		_out, _err := (jsonAppendLeaf[[]string])(q.ArrKey, _b)
+		if _err != nil {
+			return _b, fmt.Errorf("marshaling QuotedPropertyName.ArrKey: %w", _err)
+		}
+		return _out, nil
+	case 2:
+		_out, _err := (jsonAppendLeaf[*Num])(q.FooBar, _b)
+		if _err != nil {
+			return _b, fmt.Errorf("marshaling QuotedPropertyName.FooBar: %w", _err)
+		}
+		return _out, nil
+	case 3:
+		_out, _err := (jsonAppendLeaf[map[string]int64])(q.MapKey, _b)
+		if _err != nil {
+			return _b, fmt.Errorf("marshaling QuotedPropertyName.MapKey: %w", _err)
+		}
+		return _out, nil
+	}
+	return _b, nil
 }
 
 // Validate checks QuotedPropertyName against its JSON Schema constraints.

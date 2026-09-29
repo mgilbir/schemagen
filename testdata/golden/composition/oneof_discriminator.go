@@ -124,24 +124,62 @@ func (c *ClickEvent) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (c ClickEvent) MarshalJSON() ([]byte, error) {
-	type Alias ClickEvent
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(c),
+	_b, _err := c.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends c to _b as JSON. See jsonEnc.
+func (c ClickEvent) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := c.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range c.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, c.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members c's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (c ClickEvent) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(c.Kind, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("kind", _v)
+	}
+	{
+		_v, _err := jsonAppendLeaf(c.X, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("x", _v)
+	}
+	{
+		_v, _err := jsonAppendLeaf(c.Y, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("y", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of c numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (c ClickEvent) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ClickEvent against its JSON Schema constraints.
@@ -265,24 +303,55 @@ func (k *KeypressEvent) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (k KeypressEvent) MarshalJSON() ([]byte, error) {
-	type Alias KeypressEvent
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(k),
+	_b, _err := k.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends k to _b as JSON. See jsonEnc.
+func (k KeypressEvent) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := k.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range k.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, k.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members k's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (k KeypressEvent) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(k.Key, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("key", _v)
+	}
+	{
+		_v, _err := jsonAppendLeaf(k.Kind, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("kind", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of k numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (k KeypressEvent) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks KeypressEvent against its JSON Schema constraints.
@@ -406,24 +475,55 @@ func (s *ScrollEvent) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (s ScrollEvent) MarshalJSON() ([]byte, error) {
-	type Alias ScrollEvent
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(s),
+	_b, _err := s.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends s to _b as JSON. See jsonEnc.
+func (s ScrollEvent) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := s.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range s.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, s.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members s's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (s ScrollEvent) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(s.Kind, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("kind", _v)
+	}
+	{
+		_v, _err := jsonAppendLeaf(s.Delta, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("delta", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of s numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (s ScrollEvent) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ScrollEvent against its JSON Schema constraints.
@@ -658,48 +758,87 @@ func (e *Event) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (e Event) MarshalJSON() ([]byte, error) {
-	type Alias Event
-	aux := struct {
-		Alias
-		Payload json.RawMessage `json:"payload,omitempty"`
-	}{
-		Alias: (Alias)(e),
+	_b, _err := e.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
+	return _b, nil
+}
 
+// appendJSON appends e to _b as JSON. See jsonEnc.
+func (e Event) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := e.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
+	}
 	if e.Payload != nil {
-		switch _sel := e.Payload.(type) {
-		case *Event_ClickEvent:
-			raw, err := json.Marshal(_sel.ClickEvent)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling Event.Payload: %w", err)
-			}
-			aux.Payload = raw
-		case *Event_KeypressEvent:
-			raw, err := json.Marshal(_sel.KeypressEvent)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling Event.Payload: %w", err)
-			}
-			aux.Payload = raw
-		case *Event_ScrollEvent:
-			raw, err := json.Marshal(_sel.ScrollEvent)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling Event.Payload: %w", err)
-			}
-			aux.Payload = raw
+		switch e.Payload.(type) {
+		case *Event_ClickEvent, *Event_KeypressEvent, *Event_ScrollEvent:
+			_o.deferred("payload", 1)
 		}
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
 	for _key, _member := range e.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, e.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members e's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (e Event) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(e.ID, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("id", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of e numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (e Event) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 1:
+		switch _sel := e.Payload.(type) {
+		case *Event_ClickEvent:
+			_out, _err := (func(_v *ClickEvent, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*ClickEvent, ClickEvent](_v, _b, func(_v ClickEvent, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[ClickEvent](_v, _b, ClickEvent.appendJSON, true)
+				})
+			})(_sel.ClickEvent, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling Event.Payload: %w", _err)
+			}
+			return _out, nil
+		case *Event_KeypressEvent:
+			_out, _err := (func(_v *KeypressEvent, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*KeypressEvent, KeypressEvent](_v, _b, func(_v KeypressEvent, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[KeypressEvent](_v, _b, KeypressEvent.appendJSON, true)
+				})
+			})(_sel.KeypressEvent, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling Event.Payload: %w", _err)
+			}
+			return _out, nil
+		case *Event_ScrollEvent:
+			_out, _err := (func(_v *ScrollEvent, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*ScrollEvent, ScrollEvent](_v, _b, func(_v ScrollEvent, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[ScrollEvent](_v, _b, ScrollEvent.appendJSON, true)
+				})
+			})(_sel.ScrollEvent, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling Event.Payload: %w", _err)
+			}
+			return _out, nil
+		}
+	}
+	return _b, nil
 }
 
 // Validate checks Event against its JSON Schema constraints.

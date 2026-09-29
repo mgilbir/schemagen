@@ -237,24 +237,113 @@ func (r *RefSiblingValuesDraft7) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (r RefSiblingValuesDraft7) MarshalJSON() ([]byte, error) {
-	type Alias RefSiblingValuesDraft7
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(r),
+	_b, _err := r.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends r to _b as JSON. See jsonEnc.
+func (r RefSiblingValuesDraft7) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := r.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range r.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, r.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members r's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (r RefSiblingValuesDraft7) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(r.ConstSibling)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constSibling", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(r.EmptyEnumSibling)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("emptyEnumSibling", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(r.EnumSibling)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("enumSibling", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(r.MapSibling)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("mapSibling", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(r.NamedEmptyEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("namedEmptyEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(r.NamedSibling)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("namedSibling", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(r.NoSibling)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("noSibling", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(r.ListSibling)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("listSibling", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of r numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (r RefSiblingValuesDraft7) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks RefSiblingValuesDraft7 against its JSON Schema constraints.

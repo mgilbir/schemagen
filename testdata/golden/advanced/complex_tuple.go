@@ -169,24 +169,57 @@ func (e *EventRecordItem2) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (e EventRecordItem2) MarshalJSON() ([]byte, error) {
-	type Alias EventRecordItem2
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(e),
+	_b, _err := e.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends e to _b as JSON. See jsonEnc.
+func (e EventRecordItem2) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := e.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range e.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, e.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members e's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (e EventRecordItem2) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(e.Code)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("code", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(e.Level, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("level", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of e numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (e EventRecordItem2) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks EventRecordItem2 against its JSON Schema constraints.
@@ -244,7 +277,7 @@ func (e *EventRecord) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias EventRecord
-	return jsonDecodeRefusal(jsonAtJSON[Alias]((*Alias)(e), _d, _sp))
+	return jsonDecodeRefusal(jsonLazyItemsOr[Alias]((*Alias)(e), _d, _sp, jsonAtJSON[Alias]))
 }
 
 // Validate checks EventRecord against its JSON Schema constraints.
@@ -255,43 +288,56 @@ func (e EventRecord) Validate() error {
 	// Tuple items: validate each position against its schema type.
 	for _idx, _elem := range e {
 		_ = _elem
+		// An element read lazily (see jsonLazyItemsOr) has its first level read
+		// here, for the arms that ask its JSON type; a position of this
+		// package's type decodes it from its span instead.
+		_lz, _isLazy := _elem.(jsonLazy)
+		if _isLazy {
+			_elem = _lz.jsonLevel()
+		}
 		if _idx == 0 {
+			var _typed EventRecordItem0
 			_raw, _mErr := json.Marshal(_elem)
 			if _mErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _mErr)
+				return jsonWrapf(_mErr, fmt.Sprintf("items[%d]: ", _idx))
 			}
-			var _typed EventRecordItem0
 			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _uErr)
+				return jsonWrapf(_uErr, fmt.Sprintf("items[%d]: ", _idx))
 			}
 			if _vErr := _typed.Validate(); _vErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _vErr)
+				return jsonWrapf(_vErr, fmt.Sprintf("items[%d]: ", _idx))
 			}
 		}
 		if _idx == 1 {
+			var _typed Timestamp
 			_raw, _mErr := json.Marshal(_elem)
 			if _mErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _mErr)
+				return jsonWrapf(_mErr, fmt.Sprintf("items[%d]: ", _idx))
 			}
-			var _typed Timestamp
 			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _uErr)
+				return jsonWrapf(_uErr, fmt.Sprintf("items[%d]: ", _idx))
 			}
 			if _vErr := _typed.Validate(); _vErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _vErr)
+				return jsonWrapf(_vErr, fmt.Sprintf("items[%d]: ", _idx))
 			}
 		}
 		if _idx == 2 {
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _mErr)
-			}
 			var _typed EventRecordItem2
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _uErr)
+			var _uErr error
+			if _isLazy {
+				_uErr = jsonDecodeLazy(_lz, &_typed, (*EventRecordItem2).decodeJSONAt)
+			} else {
+				_raw, _mErr := json.Marshal(_elem)
+				if _mErr != nil {
+					return jsonWrapf(_mErr, fmt.Sprintf("items[%d]: ", _idx))
+				}
+				_uErr = jsonDecodeHeld(nil, _raw, &_typed, (*EventRecordItem2).decodeJSONAt)
+			}
+			if _uErr != nil {
+				return jsonWrapf(_uErr, fmt.Sprintf("items[%d]: ", _idx))
 			}
 			if _vErr := _typed.Validate(); _vErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _vErr)
+				return jsonWrapf(_vErr, fmt.Sprintf("items[%d]: ", _idx))
 			}
 		}
 	}

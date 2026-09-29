@@ -19,6 +19,9 @@ type {{.Name}} {{goType .Underlying}}
 {{- if and .CanHaveMethods .MarshalAs}}
 {{template "alias_marshal" .}}
 {{- end}}
+{{- if and .CanHaveMethods .EncodeTo}}
+{{template "alias_encode" .}}
+{{- end}}
 {{- if .CanHaveMethods}}
 {{template "alias_validate" .}}
 {{- end}}
@@ -218,7 +221,11 @@ func ({{$recv}} *{{.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	{{- /* Nothing under the value decodes in place, so encoding/json decodes it
 	       whole, into a type that has none of this one's methods. */}}
 	type Alias {{.Name}}
+	{{- if .LazyItems}}
+	return jsonDecodeRefusal(jsonLazyItemsOr[Alias]((*Alias)({{$recv}}), _d, _sp, jsonAtJSON[Alias]))
+	{{- else}}
 	return jsonDecodeRefusal(jsonAtJSON[Alias]((*Alias)({{$recv}}), _d, _sp))
+	{{- end}}
 	{{- end}}
 	{{- else}}
 	{{- /* No arm of its own to answer for, so the refusal is the one
@@ -236,7 +243,11 @@ func ({{$recv}} *{{.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 		return _err
 	}
 	type Alias {{.Name}}
+	{{- if .LazyItems}}
+	return jsonLazyItemsOr[Alias]((*Alias)({{$recv}}), _d, _sp, jsonAtJSON[Alias])
+	{{- else}}
 	return jsonAtJSON[Alias]((*Alias)({{$recv}}), _d, _sp)
+	{{- end}}
 	{{- end}}
 	{{- end}}
 }
@@ -246,7 +257,15 @@ func ({{$recv}} *{{.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 {{- $recv := receiverName .Name -}}
 
 func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
+	{{- if .EncodeTo}}
+	_b, _err := {{$recv}}.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
+	}
+	return _b, nil
+	{{- else}}
 	return json.Marshal({{.MarshalAs}}({{$recv}}))
+	{{- end}}
 }
 {{- end}}
 

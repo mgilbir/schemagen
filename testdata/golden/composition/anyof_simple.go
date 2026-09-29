@@ -16,6 +16,7 @@ type SearchResultResult struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces s with the value the document holds. See
@@ -38,6 +39,7 @@ func (s *SearchResultResult) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (s *SearchResultResult) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*s = SearchResultResult{}
+	s._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -133,24 +135,77 @@ func (s *SearchResultResult) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (s SearchResultResult) MarshalJSON() ([]byte, error) {
-	type Alias SearchResultResult
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(s),
+	_b, _err := s.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends s to _b as JSON. See jsonEnc.
+func (s SearchResultResult) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := s.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range s.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, s.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members s's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (s SearchResultResult) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(s.Description)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("description", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(s.Name)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("name", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(s.Title)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("title", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(s.URL)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("url", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of s numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (s SearchResultResult) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks SearchResultResult against its JSON Schema constraints.
@@ -418,24 +473,59 @@ func (s *SearchResult) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (s SearchResult) MarshalJSON() ([]byte, error) {
-	type Alias SearchResult
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(s),
+	_b, _err := s.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends s to _b as JSON. See jsonEnc.
+func (s SearchResult) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := s.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range s.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, s.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members s's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (s SearchResult) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		if !jsonIsEmpty(s.Result) {
+			_o.deferred("result", 0)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(s.ID, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("id", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of s numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (s SearchResult) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 0:
+		return (func(_v *SearchResultResult, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*SearchResultResult, SearchResultResult](_v, _b, func(_v SearchResultResult, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[SearchResultResult](_v, _b, SearchResultResult.appendJSON, true)
+			})
+		})(s.Result, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks SearchResult against its JSON Schema constraints.

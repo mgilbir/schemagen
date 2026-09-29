@@ -96,24 +96,48 @@ func (r *RowsItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (r RowsItem) MarshalJSON() ([]byte, error) {
-	type Alias RowsItem
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(r),
+	_b, _err := r.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends r to _b as JSON. See jsonEnc.
+func (r RowsItem) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := r.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range r.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, r.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members r's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (r RowsItem) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(r.Label, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("label", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of r numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (r RowsItem) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks RowsItem against its JSON Schema constraints.
@@ -164,6 +188,15 @@ func (r *Rows) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return jsonDecodeRefusal(func(_p *Rows, _d *jsonDoc, _s jsonSpan) error {
 		return jsonDecodeSlice[Rows, RowsItem](_p, _d, _s, (*RowsItem).decodeJSONAt)
 	}(r, _d, _sp))
+}
+
+// appendJSON appends r to _b as JSON. See jsonEnc.
+func (r Rows) appendJSON(_b []byte) ([]byte, error) {
+	return (func(_v Rows, _b []byte) ([]byte, error) {
+		return jsonEncSlice[Rows, RowsItem](_v, _b, func(_v RowsItem, _b []byte) ([]byte, error) {
+			return jsonEncMarshaler[RowsItem](_v, _b, RowsItem.appendJSON, false)
+		})
+	})(r, _b)
 }
 
 // Validate checks Rows against its JSON Schema constraints.
@@ -429,24 +462,118 @@ func (i *ItemConstraints) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (i ItemConstraints) MarshalJSON() ([]byte, error) {
-	type Alias ItemConstraints
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(i),
+	_b, _err := i.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends i to _b as JSON. See jsonEnc.
+func (i ItemConstraints) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := i.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range i.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, i.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members i's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (i ItemConstraints) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.Codes)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("codes", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.Counts)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("counts", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.Grid)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("grid", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.Marks)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("marks", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(i.Names, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("names", _v)
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.Nicknames)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nicknames", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.Ratios)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("ratios", _v)
+		}
+	}
+	{
+		if !jsonIsZero(i.Rows) {
+			_o.deferred("rows", 7)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.Tags)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("tags", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of i numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (i ItemConstraints) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 7:
+		return (Rows.appendJSON)(i.Rows, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks ItemConstraints against its JSON Schema constraints.

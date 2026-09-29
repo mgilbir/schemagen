@@ -167,6 +167,7 @@ func TestOptionalPropertyThroughARefChainRoundTrips(t *testing.T) {
 	if testing.Short() {
 		t.Skip("generates and compiles five packages")
 	}
+	t.Parallel()
 	bin := schemagenBinary(t)
 	schemaDoc, otherDoc, cases := refChainDocuments(t)
 	src := t.TempDir()

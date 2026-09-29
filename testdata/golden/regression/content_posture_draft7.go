@@ -737,67 +737,158 @@ func (c *ContentPostureDraft7) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (c ContentPostureDraft7) MarshalJSON() ([]byte, error) {
-	type Alias ContentPostureDraft7
-	aux := struct {
-		Alias
-		Branch json.RawMessage `json:"branch,omitempty"`
-	}{
-		Alias: (Alias)(c),
+	_b, _err := c.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
+	return _b, nil
+}
 
+// appendJSON appends c to _b as JSON. See jsonEnc.
+func (c ContentPostureDraft7) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := c.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
+	}
 	if c.Branch != nil {
-		switch _sel := c.Branch.(type) {
-		case *ContentPostureDraft7_ContentPostureDraft7BranchOption0:
-			raw, err := json.Marshal(_sel.ContentPostureDraft7BranchOption0)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling ContentPostureDraft7.Branch: %w", err)
-			}
-			aux.Branch = raw
-		case *ContentPostureDraft7_Boolean:
-			raw, err := json.Marshal(_sel.Boolean)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling ContentPostureDraft7.Branch: %w", err)
-			}
-			aux.Branch = raw
+		switch c.Branch.(type) {
+		case *ContentPostureDraft7_ContentPostureDraft7BranchOption0, *ContentPostureDraft7_Boolean:
+			_o.deferred("branch", 8)
 		}
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(c._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range c._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero ContentPostureDraft7
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range c._jsonNulls {
+				_cur, _present, _err := _o.value(_k, c.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range c.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, c.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members c's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (c ContentPostureDraft7) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(c.Blob)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("blob", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(c.BoundedBlob)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("boundedBlob", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(c.Doc)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("doc", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(c.EncodedDoc)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("encodedDoc", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(c.UnknownEncoding)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("unknownEncoding", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(c.ViaAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("viaAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(c.List)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("list", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(c.Tuple)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("tuple", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of c numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (c ContentPostureDraft7) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 8:
+		switch _sel := c.Branch.(type) {
+		case *ContentPostureDraft7_ContentPostureDraft7BranchOption0:
+			_out, _err := (jsonAppendLeaf[ContentPostureDraft7BranchOption0])(_sel.ContentPostureDraft7BranchOption0, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling ContentPostureDraft7.Branch: %w", _err)
+			}
+			return _out, nil
+		case *ContentPostureDraft7_Boolean:
+			_out, _err := (jsonAppendLeaf[bool])(_sel.Boolean, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling ContentPostureDraft7.Branch: %w", _err)
+			}
+			return _out, nil
+		}
+	}
+	return _b, nil
 }
 
 // Validate checks ContentPostureDraft7 against its JSON Schema constraints.
@@ -855,16 +946,16 @@ func (c ContentPostureDraft7) Validate() error {
 	for _idx, _elem := range c.Tuple {
 		_ = _elem
 		if _idx == 0 {
+			var _typed ContentPostureDraft7TupleItem0
 			_raw, _mErr := json.Marshal(_elem)
 			if _mErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _mErr)
+				return jsonWrapf(_mErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
-			var _typed ContentPostureDraft7TupleItem0
 			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _uErr)
+				return jsonWrapf(_uErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 			if _vErr := _typed.Validate(); _vErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _vErr)
+				return jsonWrapf(_vErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 		}
 	}

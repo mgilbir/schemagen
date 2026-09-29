@@ -124,7 +124,36 @@ func (g *Generator) resolveDecodePlans() {
 				}
 				ap.ValueDecoder = g.jsonDecoder(t)
 			}
+			for i := range d.PatternProperties {
+				d.PatternProperties[i].Decoder = g.heldDecoder(d.PatternProperties[i].TypeName)
+			}
+			for i := range d.TupleValidations {
+				ft := &d.TupleValidations[i]
+				g.resolveTupleDecoders(ft.Items, ft.Tail)
+				if !ft.HasHeldPositions() || ft.IsPointer {
+					continue
+				}
+				for j := range d.Fields {
+					if f := &d.Fields[j]; f.Name == ft.FieldName {
+						f.MemberDecoder = lazyItemsDecoder(f.Type, f.MemberDecoder)
+						f.ValueDecoder = lazyItemsDecoder(f.Type, f.ValueDecoder)
+					}
+				}
+			}
+			g.resolveItemTupleDecoders(d.ItemValidations)
+			for i := range d.BranchOverflowChecks {
+				d.BranchOverflowChecks[i].Decoder = g.heldDecoder(d.BranchOverflowChecks[i].TypeName)
+			}
+			if u := d.UnevaluatedProperties; u != nil {
+				u.ValueDecoder = g.heldDecoder(u.ValueType)
+			}
+		case *TypeOnlySchemaDef:
+			for i := range d.TypeBranches {
+				d.TypeBranches[i].Decoder = g.heldDecoder(d.TypeBranches[i].TypeName)
+			}
 		case *AliasDef:
+			g.resolveTupleDecoders(d.TupleItems, d.TupleTail)
+			g.resolveItemTupleDecoders(d.ItemValidations)
 			if !d.DecodeAt {
 				continue
 			}
@@ -134,6 +163,63 @@ func (g *Generator) resolveDecodePlans() {
 			}
 		}
 	}
+}
+
+// resolveTupleDecoders sets each typed tuple position's in-place decode.
+func (g *Generator) resolveTupleDecoders(items []TupleItemDef, tail *TupleItemDef) {
+	for i := range items {
+		items[i].Decoder = g.heldDecoder(items[i].TypeName)
+	}
+	if tail != nil {
+		tail.Decoder = g.heldDecoder(tail.TypeName)
+	}
+}
+
+// resolveItemTupleDecoders is resolveTupleDecoders for the tuples that are
+// elements of an array.
+func (g *Generator) resolveItemTupleDecoders(defs []ItemValidationDef) {
+	for i := range defs {
+		for j := range defs[i].Levels {
+			lv := &defs[i].Levels[j]
+			g.resolveTupleDecoders(lv.TupleItems, lv.TupleTail)
+		}
+	}
+}
+
+// lazyItemsDecoder wraps the decode of a tuple field so that, decoded where
+// Validate decodes a held value, its elements are read lazily (see
+// jsonLazyItemsOr). Anywhere else the decode is dec, unchanged.
+func lazyItemsDecoder(t GoType, dec string) string {
+	if !isAnySlice(t) || dec == "" {
+		return dec
+	}
+	return jsonAtLiteral(t, "jsonLazyItemsOr["+t.GoTypeName()+"](_p, _d, _s, "+dec+")")
+}
+
+// isAnySlice reports whether t is []any, which is what a tuple is held as.
+func isAnySlice(t GoType) bool {
+	a, ok := t.(*ArrayType)
+	if !ok {
+		return false
+	}
+	p, ok := a.ItemType.(*PrimitiveType)
+	return ok && p.Name == "any"
+}
+
+// heldDecoder is the in-place decode of a type Validate decodes a held raw value
+// into, named as generated source names it, wherever decoding it reaches a type
+// of this package that decodes in place; "" otherwise -- a value encoding/json
+// decodes whole holds nothing that decodes again, so the one decode it gets is
+// already the whole cost. See jsonDecodeHeld.
+func (g *Generator) heldDecoder(name string) string {
+	if name == "" || strings.ContainsAny(name, ".*[]") {
+		return ""
+	}
+	t := &NamedType{Name: name}
+	if !g.reachesInPlace(t) {
+		return ""
+	}
+	return g.jsonDecoder(t)
 }
 
 // namedDecoder is the json reading of a type named in generated source, as

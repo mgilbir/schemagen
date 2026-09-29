@@ -169,24 +169,41 @@ func (n *NeverWithK) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (n NeverWithK) MarshalJSON() ([]byte, error) {
-	type Alias NeverWithK
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(n),
+	_b, _err := n.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends n to _b as JSON. See jsonEnc.
+func (n NeverWithK) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := n.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range n.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, n.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members n's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (n NeverWithK) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of n numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (n NeverWithK) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks NeverWithK against its JSON Schema constraints.
@@ -260,24 +277,41 @@ func (n *NoNames) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (n NoNames) MarshalJSON() ([]byte, error) {
-	type Alias NoNames
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(n),
+	_b, _err := n.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends n to _b as JSON. See jsonEnc.
+func (n NoNames) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := n.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range n.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, n.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members n's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (n NoNames) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of n numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (n NoNames) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks NoNames against its JSON Schema constraints.
@@ -537,6 +571,7 @@ func (i InlineForbiddingPositionsEmptyEnumItemsItem) Validate() error {
 type InlineForbiddingPositionsEmptyEnumPattern struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	PatternProperties    map[string]json.RawMessage `json:"-"`
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces i with the value the document holds. See
@@ -559,6 +594,7 @@ func (i *InlineForbiddingPositionsEmptyEnumPattern) UnmarshalJSON(data []byte) e
 // document's verdict while holding another's fields is what that left behind.
 func (i *InlineForbiddingPositionsEmptyEnumPattern) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*i = InlineForbiddingPositionsEmptyEnumPattern{}
+	i._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -622,27 +658,44 @@ func (i *InlineForbiddingPositionsEmptyEnumPattern) decodeJSONAt(_d *jsonDoc, _s
 	return nil
 }
 func (i InlineForbiddingPositionsEmptyEnumPattern) MarshalJSON() ([]byte, error) {
-	type Alias InlineForbiddingPositionsEmptyEnumPattern
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(i),
+	_b, _err := i.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends i to _b as JSON. See jsonEnc.
+func (i InlineForbiddingPositionsEmptyEnumPattern) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := i.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range i.PatternProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
 	for _key, _member := range i.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, i.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members i's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (i InlineForbiddingPositionsEmptyEnumPattern) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of i numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (i InlineForbiddingPositionsEmptyEnumPattern) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks InlineForbiddingPositionsEmptyEnumPattern against its JSON Schema constraints.
@@ -688,6 +741,7 @@ type InlineForbiddingPositionsEmptyEnumUnevalProps struct {
 	K                    any                        `json:"k,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces i with the value the document holds. See
@@ -710,6 +764,7 @@ func (i *InlineForbiddingPositionsEmptyEnumUnevalProps) UnmarshalJSON(data []byt
 // document's verdict while holding another's fields is what that left behind.
 func (i *InlineForbiddingPositionsEmptyEnumUnevalProps) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*i = InlineForbiddingPositionsEmptyEnumUnevalProps{}
+	i._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -770,49 +825,74 @@ func (i *InlineForbiddingPositionsEmptyEnumUnevalProps) decodeJSONAt(_d *jsonDoc
 	return nil
 }
 func (i InlineForbiddingPositionsEmptyEnumUnevalProps) MarshalJSON() ([]byte, error) {
-	type Alias InlineForbiddingPositionsEmptyEnumUnevalProps
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(i),
+	_b, _err := i.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends i to _b as JSON. See jsonEnc.
+func (i InlineForbiddingPositionsEmptyEnumUnevalProps) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := i.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(i._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range i._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero InlineForbiddingPositionsEmptyEnumUnevalProps
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range i._jsonNulls {
+				_cur, _present, _err := _o.value(_k, i.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range i.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, i.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members i's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (i InlineForbiddingPositionsEmptyEnumUnevalProps) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(i.K)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("k", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of i numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (i InlineForbiddingPositionsEmptyEnumUnevalProps) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks InlineForbiddingPositionsEmptyEnumUnevalProps against its JSON Schema constraints.
@@ -2351,49 +2431,352 @@ func (i *InlineForbiddingPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) erro
 	return nil
 }
 func (i InlineForbiddingPositions) MarshalJSON() ([]byte, error) {
-	type Alias InlineForbiddingPositions
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(i),
+	_b, _err := i.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends i to _b as JSON. See jsonEnc.
+func (i InlineForbiddingPositions) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := i.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(i._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range i._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero InlineForbiddingPositions
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range i._jsonNulls {
+				_cur, _present, _err := _o.value(_k, i.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range i.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, i.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members i's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (i InlineForbiddingPositions) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		if !jsonIsEmpty(i.EmptyEnumDependent) {
+			_o.deferred("emptyEnumDependent", 0)
+		}
+	}
+	{
+		if !jsonIsEmpty(i.EmptyEnumNames) {
+			_o.deferred("emptyEnumNames", 1)
+		}
+	}
+	{
+		if !jsonIsEmpty(i.EmptyEnumPattern) {
+			_o.deferred("emptyEnumPattern", 2)
+		}
+	}
+	{
+		if !jsonIsEmpty(i.EmptyEnumUnevalProps) {
+			_o.deferred("emptyEnumUnevalProps", 3)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.EmptyEnumValues)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("emptyEnumValues", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(i.InferredEmptyEnumItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("inferredEmptyEnumItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(i.InferredEmptyEnumSlot)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("inferredEmptyEnumSlot", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(i.InferredEmptyEnumTail)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("inferredEmptyEnumTail", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.NullableEmptyEnumValues)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nullableEmptyEnumValues", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.EmptyEnumAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("emptyEnumAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.EmptyEnumAnyOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("emptyEnumAnyOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.EmptyEnumBranch)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("emptyEnumBranch", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.EmptyEnumContains)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("emptyEnumContains", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.EmptyEnumItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("emptyEnumItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.EmptyEnumSlot)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("emptyEnumSlot", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.EmptyEnumUnevalItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("emptyEnumUnevalItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.FalseItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("falseItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.NestedFalseItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nestedFalseItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.NotAnyOfEmptyEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("notAnyOfEmptyEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.NotEmptyEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("notEmptyEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.NotEmptyEnumBound)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("notEmptyEnumBound", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.NotEmptyItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("notEmptyItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.NotTypedConst)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("notTypedConst", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.NotTypedEmptyEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("notTypedEmptyEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.NullableFalseItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nullableFalseItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.OkEnumItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("okEnumItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.PlainItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("plainItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.RefEmptyEnumAnyOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("refEmptyEnumAnyOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.TypedEmptyEnumItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("typedEmptyEnumItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.ViaRefEmptyEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("viaRefEmptyEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.ViaRefFalse)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("viaRefFalse", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of i numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (i InlineForbiddingPositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 0:
+		return (func(_v *NeverWithK, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*NeverWithK, NeverWithK](_v, _b, func(_v NeverWithK, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[NeverWithK](_v, _b, NeverWithK.appendJSON, true)
+			})
+		})(i.EmptyEnumDependent, _b)
+	case 1:
+		return (func(_v *NoNames, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*NoNames, NoNames](_v, _b, func(_v NoNames, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[NoNames](_v, _b, NoNames.appendJSON, true)
+			})
+		})(i.EmptyEnumNames, _b)
+	case 2:
+		return (func(_v *InlineForbiddingPositionsEmptyEnumPattern, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*InlineForbiddingPositionsEmptyEnumPattern, InlineForbiddingPositionsEmptyEnumPattern](_v, _b, func(_v InlineForbiddingPositionsEmptyEnumPattern, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[InlineForbiddingPositionsEmptyEnumPattern](_v, _b, InlineForbiddingPositionsEmptyEnumPattern.appendJSON, true)
+			})
+		})(i.EmptyEnumPattern, _b)
+	case 3:
+		return (func(_v *InlineForbiddingPositionsEmptyEnumUnevalProps, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*InlineForbiddingPositionsEmptyEnumUnevalProps, InlineForbiddingPositionsEmptyEnumUnevalProps](_v, _b, func(_v InlineForbiddingPositionsEmptyEnumUnevalProps, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[InlineForbiddingPositionsEmptyEnumUnevalProps](_v, _b, InlineForbiddingPositionsEmptyEnumUnevalProps.appendJSON, true)
+			})
+		})(i.EmptyEnumUnevalProps, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks InlineForbiddingPositions against its JSON Schema constraints.

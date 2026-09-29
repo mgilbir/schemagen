@@ -178,24 +178,50 @@ func (p *ProseBesideAllOf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (p ProseBesideAllOf) MarshalJSON() ([]byte, error) {
-	type Alias ProseBesideAllOf
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(p),
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p ProseBesideAllOf) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := p.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range p.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, p.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members p's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (p ProseBesideAllOf) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(p.B)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("b", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of p numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (p ProseBesideAllOf) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ProseBesideAllOf against its JSON Schema constraints.
@@ -402,24 +428,50 @@ func (p *ProseViaAllOfStruct) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (p ProseViaAllOfStruct) MarshalJSON() ([]byte, error) {
-	type Alias ProseViaAllOfStruct
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(p),
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p ProseViaAllOfStruct) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := p.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range p.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, p.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members p's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (p ProseViaAllOfStruct) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(p.S)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("s", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of p numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (p ProseViaAllOfStruct) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ProseViaAllOfStruct against its JSON Schema constraints.
@@ -433,6 +485,7 @@ type ProseViaAnyOf struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces p with the value the document holds. See
@@ -455,6 +508,7 @@ func (p *ProseViaAnyOf) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (p *ProseViaAnyOf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*p = ProseViaAnyOf{}
+	p._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -534,24 +588,59 @@ func (p *ProseViaAnyOf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (p ProseViaAnyOf) MarshalJSON() ([]byte, error) {
-	type Alias ProseViaAnyOf
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(p),
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p ProseViaAnyOf) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := p.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range p.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, p.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members p's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (p ProseViaAnyOf) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(p.X)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("x", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(p.Y)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("y", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of p numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (p ProseViaAnyOf) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ProseViaAnyOf against its JSON Schema constraints.
@@ -801,24 +890,50 @@ func (p *ProseViaThen) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (p ProseViaThen) MarshalJSON() ([]byte, error) {
-	type Alias ProseViaThen
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(p),
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p ProseViaThen) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := p.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range p.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, p.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members p's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (p ProseViaThen) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(p.K)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("k", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of p numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (p ProseViaThen) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ProseViaThen against its JSON Schema constraints.
@@ -990,24 +1105,50 @@ func (t *TitledDeprecatedStruct) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (t TitledDeprecatedStruct) MarshalJSON() ([]byte, error) {
-	type Alias TitledDeprecatedStruct
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(t),
+	_b, _err := t.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends t to _b as JSON. See jsonEnc.
+func (t TitledDeprecatedStruct) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := t.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range t.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, t.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members t's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (t TitledDeprecatedStruct) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(t.D)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("d", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of t numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (t TitledDeprecatedStruct) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks TitledDeprecatedStruct against its JSON Schema constraints.
@@ -1118,24 +1259,50 @@ func (d *DocProsePositionsTitledElementItem) decodeJSONAt(_d *jsonDoc, _sp jsonS
 	return nil
 }
 func (d DocProsePositionsTitledElementItem) MarshalJSON() ([]byte, error) {
-	type Alias DocProsePositionsTitledElementItem
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(d),
+	_b, _err := d.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends d to _b as JSON. See jsonEnc.
+func (d DocProsePositionsTitledElementItem) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := d.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range d.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, d.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members d's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (d DocProsePositionsTitledElementItem) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.E)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("e", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of d numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (d DocProsePositionsTitledElementItem) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks DocProsePositionsTitledElementItem against its JSON Schema constraints.
@@ -1231,24 +1398,48 @@ func (b *ByLabel) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (b ByLabel) MarshalJSON() ([]byte, error) {
-	type Alias ByLabel
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(b),
+	_b, _err := b.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends b to _b as JSON. See jsonEnc.
+func (b ByLabel) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := b.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range b.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, b.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members b's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (b ByLabel) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(b.Label, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("label", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of b numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (b ByLabel) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ByLabel against its JSON Schema constraints.
@@ -1360,24 +1551,48 @@ func (b *ByOrdinal) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (b ByOrdinal) MarshalJSON() ([]byte, error) {
-	type Alias ByOrdinal
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(b),
+	_b, _err := b.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends b to _b as JSON. See jsonEnc.
+func (b ByOrdinal) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := b.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range b.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, b.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members b's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (b ByOrdinal) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(b.Ordinal, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("ordinal", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of b numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (b ByOrdinal) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ByOrdinal against its JSON Schema constraints.
@@ -1479,24 +1694,50 @@ func (d *DocProsePositionsTitledValueValue) decodeJSONAt(_d *jsonDoc, _sp jsonSp
 	return nil
 }
 func (d DocProsePositionsTitledValueValue) MarshalJSON() ([]byte, error) {
-	type Alias DocProsePositionsTitledValueValue
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(d),
+	_b, _err := d.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends d to _b as JSON. See jsonEnc.
+func (d DocProsePositionsTitledValueValue) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := d.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range d.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, d.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members d's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (d DocProsePositionsTitledValueValue) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.V)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("v", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of d numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (d DocProsePositionsTitledValueValue) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks DocProsePositionsTitledValueValue against its JSON Schema constraints.
@@ -1552,6 +1793,7 @@ type DocProsePositions struct {
 	_jsonKeys              map[string]bool                              // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps          map[string]json.RawMessage                   // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
 	_jsonNulls             map[string]bool                              // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	_doc                   *jsonDoc                                     // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 	ProseViaAllOfArray     ProseViaAllOfArray                           `json:"proseViaAllOfArray,omitzero"`
 	TitledElement          []DocProsePositionsTitledElementItem         `json:"titledElement,omitzero"`
 }
@@ -1618,6 +1860,7 @@ func (d *DocProsePositions) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (d *DocProsePositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*d = DocProsePositions{}
+	d._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -2122,67 +2365,387 @@ func (d *DocProsePositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (d DocProsePositions) MarshalJSON() ([]byte, error) {
-	type Alias DocProsePositions
-	aux := struct {
-		Alias
-		TitledUnion json.RawMessage `json:"titledUnion,omitempty"`
-	}{
-		Alias: (Alias)(d),
+	_b, _err := d.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
+	return _b, nil
+}
 
+// appendJSON appends d to _b as JSON. See jsonEnc.
+func (d DocProsePositions) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := d.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
+	}
 	if d.TitledUnion != nil {
-		switch _sel := d.TitledUnion.(type) {
-		case *DocProsePositions_ByLabel:
-			raw, err := json.Marshal(_sel.ByLabel)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling DocProsePositions.TitledUnion: %w", err)
-			}
-			aux.TitledUnion = raw
-		case *DocProsePositions_ByOrdinal:
-			raw, err := json.Marshal(_sel.ByOrdinal)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling DocProsePositions.TitledUnion: %w", err)
-			}
-			aux.TitledUnion = raw
+		switch d.TitledUnion.(type) {
+		case *DocProsePositions_ByLabel, *DocProsePositions_ByOrdinal:
+			_o.deferred("titledUnion", 31)
 		}
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(d._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range d._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero DocProsePositions
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range d._jsonNulls {
+				_cur, _present, _err := _o.value(_k, d.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range d.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, d.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members d's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (d DocProsePositions) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.DescriptionOnly)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("descriptionOnly", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.EchoesTheRootTitle)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("echoesTheRootTitle", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.ExamplesAcrossTheReach)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("examplesAcrossTheReach", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.Mode)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("mode", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.NearestProseWins)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nearestProseWins", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.PlainDef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("plainDef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.PlainProperty)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("plainProperty", _v)
+		}
+	}
+	{
+		if !jsonIsEmpty(d.ProseBesideAllOf) {
+			_o.deferred("proseBesideAllOf", 7)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.ProseSplitAcrossTheReach)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("proseSplitAcrossTheReach", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.ProseViaAllOfAlias)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("proseViaAllOfAlias", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.ProseViaAllOfEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("proseViaAllOfEnum", _v)
+		}
+	}
+	{
+		if !jsonIsEmpty(d.ProseViaAllOfStruct) {
+			_o.deferred("proseViaAllOfStruct", 11)
+		}
+	}
+	{
+		if !jsonIsEmpty(d.ProseViaAnyOf) {
+			_o.deferred("proseViaAnyOf", 12)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.ProseViaNestedAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("proseViaNestedAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.ProseViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("proseViaRef", _v)
+		}
+	}
+	{
+		if !jsonIsEmpty(d.ProseViaThen) {
+			_o.deferred("proseViaThen", 15)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.SelfTitledDef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("selfTitledDef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.TitleAndDescription)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("titleAndDescription", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.TitleCondThen)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("titleCondThen", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.TitleOnly)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("titleOnly", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.TitleThenDeprecated)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("titleThenDeprecated", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.TitleViaAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("titleViaAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.TitleViaMergedAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("titleViaMergedAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.TitleViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("titleViaRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.TitledAndDescribedDef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("titledAndDescribedDef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.TitledDef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("titledDef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.TitledDeprecatedAlias)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("titledDeprecatedAlias", _v)
+		}
+	}
+	{
+		if !jsonIsEmpty(d.TitledDeprecatedStruct) {
+			_o.deferred("titledDeprecatedStruct", 27)
+		}
+	}
+	{
+		if !jsonIsZero(d.TitledValue) {
+			_o.deferred("titledValue", 28)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(d.ProseViaAllOfArray)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("proseViaAllOfArray", _v)
+		}
+	}
+	{
+		if !jsonIsZero(d.TitledElement) {
+			_o.deferred("titledElement", 30)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of d numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (d DocProsePositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 7:
+		return (func(_v *ProseBesideAllOf, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ProseBesideAllOf, ProseBesideAllOf](_v, _b, func(_v ProseBesideAllOf, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ProseBesideAllOf](_v, _b, ProseBesideAllOf.appendJSON, true)
+			})
+		})(d.ProseBesideAllOf, _b)
+	case 11:
+		return (func(_v *ProseViaAllOfStruct, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ProseViaAllOfStruct, ProseViaAllOfStruct](_v, _b, func(_v ProseViaAllOfStruct, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ProseViaAllOfStruct](_v, _b, ProseViaAllOfStruct.appendJSON, true)
+			})
+		})(d.ProseViaAllOfStruct, _b)
+	case 12:
+		return (func(_v *ProseViaAnyOf, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ProseViaAnyOf, ProseViaAnyOf](_v, _b, func(_v ProseViaAnyOf, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ProseViaAnyOf](_v, _b, ProseViaAnyOf.appendJSON, true)
+			})
+		})(d.ProseViaAnyOf, _b)
+	case 15:
+		return (func(_v *ProseViaThen, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ProseViaThen, ProseViaThen](_v, _b, func(_v ProseViaThen, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ProseViaThen](_v, _b, ProseViaThen.appendJSON, true)
+			})
+		})(d.ProseViaThen, _b)
+	case 27:
+		return (func(_v *TitledDeprecatedStruct, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*TitledDeprecatedStruct, TitledDeprecatedStruct](_v, _b, func(_v TitledDeprecatedStruct, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[TitledDeprecatedStruct](_v, _b, TitledDeprecatedStruct.appendJSON, true)
+			})
+		})(d.TitledDeprecatedStruct, _b)
+	case 28:
+		return (func(_v map[string]DocProsePositionsTitledValueValue, _b []byte) ([]byte, error) {
+			return jsonEncMap[map[string]DocProsePositionsTitledValueValue, DocProsePositionsTitledValueValue](_v, _b, func(_v DocProsePositionsTitledValueValue, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[DocProsePositionsTitledValueValue](_v, _b, DocProsePositionsTitledValueValue.appendJSON, false)
+			})
+		})(d.TitledValue, _b)
+	case 30:
+		return (func(_v []DocProsePositionsTitledElementItem, _b []byte) ([]byte, error) {
+			return jsonEncSlice[[]DocProsePositionsTitledElementItem, DocProsePositionsTitledElementItem](_v, _b, func(_v DocProsePositionsTitledElementItem, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[DocProsePositionsTitledElementItem](_v, _b, DocProsePositionsTitledElementItem.appendJSON, false)
+			})
+		})(d.TitledElement, _b)
+	case 31:
+		switch _sel := d.TitledUnion.(type) {
+		case *DocProsePositions_ByLabel:
+			_out, _err := (func(_v *ByLabel, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*ByLabel, ByLabel](_v, _b, func(_v ByLabel, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[ByLabel](_v, _b, ByLabel.appendJSON, true)
+				})
+			})(_sel.ByLabel, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling DocProsePositions.TitledUnion: %w", _err)
+			}
+			return _out, nil
+		case *DocProsePositions_ByOrdinal:
+			_out, _err := (func(_v *ByOrdinal, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*ByOrdinal, ByOrdinal](_v, _b, func(_v ByOrdinal, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[ByOrdinal](_v, _b, ByOrdinal.appendJSON, true)
+				})
+			})(_sel.ByOrdinal, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling DocProsePositions.TitledUnion: %w", _err)
+			}
+			return _out, nil
+		}
+	}
+	return _b, nil
 }
 
 // Validate checks DocProsePositions against its JSON Schema constraints.
@@ -2200,10 +2763,11 @@ func (d DocProsePositions) Validate() error {
 		}
 		if _condHolds {
 			if _raw, _ok := d._jsonRawProps["titleCondThen"]; _ok {
-				var _v any
-				if _err := json.Unmarshal(_raw, &_v); _err != nil {
+				_v, _err := jsonHeld(d._doc, _raw)
+				if _err != nil {
 					return fmt.Errorf("then: property %q: cannot decode value: %w", "titleCondThen", _err)
 				}
+				_v = jsonTop(_v)
 				if !(_dynIsString(_v)) {
 					return fmt.Errorf("then: property %q does not satisfy the then schema", "titleCondThen")
 				}

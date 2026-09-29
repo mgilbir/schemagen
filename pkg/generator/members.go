@@ -142,6 +142,13 @@ func (d *StructDef) builtMembers() []StructMember {
 			Comment: "set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold",
 		})
 	}
+	if d.NeedsDoc() {
+		members = append(members, StructMember{
+			Name:    "_doc",
+			Type:    &PointerType{Inner: &PrimitiveType{Name: "jsonDoc"}},
+			Comment: "set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through",
+		})
+	}
 	return members
 }
 

@@ -101,43 +101,57 @@ func (i Inner) MarshalJSON() ([]byte, error) {
 		}
 		return []byte("null"), nil
 	}
-	type Alias Inner
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(i),
+	_b, _err := i.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	{
-		var _least string
-		var _failed error
-		for _key, _member := range i.AdditionalProperties { // refused for the least failing key
-			if _failed != nil && _key >= _least {
-				continue
-			}
-			if _err := func() error {
-				raw, err := json.Marshal(_member)
-				if err != nil {
-					return fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), err)
-				}
-				obj[_key] = raw
-				return nil
-			}(); _err != nil {
-				_least, _failed = _key, _err
-			}
+	return _b, nil
+}
+
+// appendJSON appends i to _b as JSON. See jsonEnc.
+func (i Inner) appendJSON(_b []byte) ([]byte, error) {
+	if i._nonObject {
+		if len(i._rawNonObject) > 0 {
+			return jsonAppendLeaf(json.RawMessage(i._rawNonObject), _b)
 		}
-		if _failed != nil {
-			return nil, _failed
-		}
+		return append(_b, "null"...), nil
 	}
-	return json.Marshal(obj)
+	var _o jsonObj
+	if _err := i.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
+	}
+	for _key := range i.AdditionalProperties {
+		_o.deferred(_key, 1073741824)
+	}
+	return _o.write(_b, i.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members i's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (i Inner) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of i numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (i Inner) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 1073741824:
+		_out, _err := (func(_v *Inner, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*Inner, Inner](_v, _b, func(_v Inner, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[Inner](_v, _b, Inner.appendJSON, true)
+			})
+		})(i.AdditionalProperties[_key], _b)
+		if _err != nil {
+			return _b, fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), _err)
+		}
+		return _out, nil
+	}
+	return _b, nil
 }
 
 // Validate checks Inner against its JSON Schema constraints.

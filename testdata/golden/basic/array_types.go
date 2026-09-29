@@ -103,24 +103,55 @@ func (a *ArrayTypesMetadataItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (a ArrayTypesMetadataItem) MarshalJSON() ([]byte, error) {
-	type Alias ArrayTypesMetadataItem
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a ArrayTypesMetadataItem) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a ArrayTypesMetadataItem) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(a.Key, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("key", _v)
+	}
+	{
+		_v, _err := jsonAppendLeaf(a.Value, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("value", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a ArrayTypesMetadataItem) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ArrayTypesMetadataItem against its JSON Schema constraints.
@@ -241,24 +272,70 @@ func (a *ArrayTypes) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (a ArrayTypes) MarshalJSON() ([]byte, error) {
-	type Alias ArrayTypes
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a ArrayTypes) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a ArrayTypes) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		if !jsonIsZero(a.Metadata) {
+			_o.deferred("metadata", 0)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(a.Scores)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("scores", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(a.Tags)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("tags", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a ArrayTypes) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 0:
+		return (func(_v []ArrayTypesMetadataItem, _b []byte) ([]byte, error) {
+			return jsonEncSlice[[]ArrayTypesMetadataItem, ArrayTypesMetadataItem](_v, _b, func(_v ArrayTypesMetadataItem, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ArrayTypesMetadataItem](_v, _b, ArrayTypesMetadataItem.appendJSON, false)
+			})
+		})(a.Metadata, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks ArrayTypes against its JSON Schema constraints.

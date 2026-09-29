@@ -171,24 +171,48 @@ func (b *ByID) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (b ByID) MarshalJSON() ([]byte, error) {
-	type Alias ByID
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(b),
+	_b, _err := b.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends b to _b as JSON. See jsonEnc.
+func (b ByID) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := b.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range b.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, b.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members b's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (b ByID) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(b.ID, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("id", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of b numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (b ByID) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ByID against its JSON Schema constraints.
@@ -294,24 +318,48 @@ func (b *ByName) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (b ByName) MarshalJSON() ([]byte, error) {
-	type Alias ByName
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(b),
+	_b, _err := b.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends b to _b as JSON. See jsonEnc.
+func (b ByName) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := b.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range b.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, b.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members b's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (b ByName) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(b.Name, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("name", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of b numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (b ByName) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ByName against its JSON Schema constraints.
@@ -502,24 +550,50 @@ func (d *DefaultedObject) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (d DefaultedObject) MarshalJSON() ([]byte, error) {
-	type Alias DefaultedObject
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(d),
+	_b, _err := d.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends d to _b as JSON. See jsonEnc.
+func (d DefaultedObject) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := d.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range d.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, d.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members d's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (d DefaultedObject) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.N)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("n", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of d numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (d DefaultedObject) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks DefaultedObject against its JSON Schema constraints.
@@ -840,6 +914,7 @@ type AnnotationReachPositions struct {
 	_jsonKeys            map[string]bool                             // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage                  // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
 	_jsonNulls           map[string]bool                             // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	_doc                 *jsonDoc                                    // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 	DfltRequiredViaRef   DefaultedString                             `json:"dfltRequiredViaRef"`
 	DfltMultiTypeViaRef  MultiTypedDefault                           `json:"dfltMultiTypeViaRef,omitzero"`
 }
@@ -948,6 +1023,7 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (a *AnnotationReachPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*a = AnnotationReachPositions{}
+	a._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -1624,85 +1700,425 @@ func (a *AnnotationReachPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	return nil
 }
 func (a AnnotationReachPositions) MarshalJSON() ([]byte, error) {
-	type Alias AnnotationReachPositions
-	aux := struct {
-		Alias
-		AnnCondGroup  json.RawMessage `json:"annCondGroup,omitempty"`
-		AnnGroupPlain json.RawMessage `json:"annGroupPlain,omitempty"`
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
+	return _b, nil
+}
 
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AnnotationReachPositions) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
+	}
 	if a.AnnCondGroup != nil {
-		switch _sel := a.AnnCondGroup.(type) {
-		case *AnnotationReachPositions_ByName:
-			raw, err := json.Marshal(_sel.ByName)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling AnnotationReachPositions.AnnCondGroup: %w", err)
-			}
-			aux.AnnCondGroup = raw
-		case *AnnotationReachPositions_ByID:
-			raw, err := json.Marshal(_sel.ByID)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling AnnotationReachPositions.AnnCondGroup: %w", err)
-			}
-			aux.AnnCondGroup = raw
+		switch a.AnnCondGroup.(type) {
+		case *AnnotationReachPositions_ByName, *AnnotationReachPositions_ByID:
+			_o.deferred("annCondGroup", 34)
 		}
 	}
-
 	if a.AnnGroupPlain != nil {
-		switch _sel := a.AnnGroupPlain.(type) {
-		case *AnnotationReachPositions_ByName2:
-			raw, err := json.Marshal(_sel.ByName2)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling AnnotationReachPositions.AnnGroupPlain: %w", err)
-			}
-			aux.AnnGroupPlain = raw
-		case *AnnotationReachPositions_ByID2:
-			raw, err := json.Marshal(_sel.ByID2)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling AnnotationReachPositions.AnnGroupPlain: %w", err)
-			}
-			aux.AnnGroupPlain = raw
+		switch a.AnnGroupPlain.(type) {
+		case *AnnotationReachPositions_ByName2, *AnnotationReachPositions_ByID2:
+			_o.deferred("annGroupPlain", 35)
 		}
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(a._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range a._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero AnnotationReachPositions
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range a._jsonNulls {
+				_cur, _present, _err := _o.value(_k, a.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AnnotationReachPositions) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltAnyViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltAnyViaRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.AnnCondAnyOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("annCondAnyOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.AnnCondThen)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("annCondThen", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.AnnPlain)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("annPlain", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.AnnViaAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("annViaAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.AnnViaMergedAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("annViaMergedAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.AnnViaNestedAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("annViaNestedAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.AnnViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("annViaRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltBindsBoth)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltBindsBoth", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltBoolViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltBoolViaRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltCondAnyOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltCondAnyOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltCondElse)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltCondElse", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltCondOneOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltCondOneOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltCondThen)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltCondThen", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltEmptyViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltEmptyViaRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltInline)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltInline", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltIntViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltIntViaRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltMismatchViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltMismatchViaRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltNearestWins)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltNearestWins", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltNone)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltNone", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltNumberViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltNumberViaRef", _v)
+		}
+	}
+	{
+		if !jsonIsEmpty(a.DfltObjectViaRef) {
+			_o.deferred("dfltObjectViaRef", 21)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltViaAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltViaAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltViaAllOfRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltViaAllOfRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltViaCycle)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltViaCycle", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltViaMergedAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltViaMergedAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltViaNestedAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltViaNestedAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltViaRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltViaRefChain)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltViaRefChain", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.Mode)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("mode", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.PickA)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("pickA", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.PickB)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("pickB", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(a.DfltRequiredViaRef, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("dfltRequiredViaRef", _v)
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(a.DfltMultiTypeViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltMultiTypeViaRef", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AnnotationReachPositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 21:
+		return (func(_v *DefaultedObject, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*DefaultedObject, DefaultedObject](_v, _b, func(_v DefaultedObject, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[DefaultedObject](_v, _b, DefaultedObject.appendJSON, true)
+			})
+		})(a.DfltObjectViaRef, _b)
+	case 34:
+		switch _sel := a.AnnCondGroup.(type) {
+		case *AnnotationReachPositions_ByName:
+			_out, _err := (func(_v *ByName, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*ByName, ByName](_v, _b, func(_v ByName, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[ByName](_v, _b, ByName.appendJSON, true)
+				})
+			})(_sel.ByName, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling AnnotationReachPositions.AnnCondGroup: %w", _err)
+			}
+			return _out, nil
+		case *AnnotationReachPositions_ByID:
+			_out, _err := (func(_v *ByID, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*ByID, ByID](_v, _b, func(_v ByID, _b []byte) ([]byte, error) { return jsonEncMarshaler[ByID](_v, _b, ByID.appendJSON, true) })
+			})(_sel.ByID, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling AnnotationReachPositions.AnnCondGroup: %w", _err)
+			}
+			return _out, nil
+		}
+	case 35:
+		switch _sel := a.AnnGroupPlain.(type) {
+		case *AnnotationReachPositions_ByName2:
+			_out, _err := (func(_v *ByName, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*ByName, ByName](_v, _b, func(_v ByName, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[ByName](_v, _b, ByName.appendJSON, true)
+				})
+			})(_sel.ByName2, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling AnnotationReachPositions.AnnGroupPlain: %w", _err)
+			}
+			return _out, nil
+		case *AnnotationReachPositions_ByID2:
+			_out, _err := (func(_v *ByID, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*ByID, ByID](_v, _b, func(_v ByID, _b []byte) ([]byte, error) { return jsonEncMarshaler[ByID](_v, _b, ByID.appendJSON, true) })
+			})(_sel.ByID2, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling AnnotationReachPositions.AnnGroupPlain: %w", _err)
+			}
+			return _out, nil
+		}
+	}
+	return _b, nil
 }
 
 // SetDefaults writes each schema default into the properties this value does
@@ -2202,8 +2618,8 @@ func (a AnnotationReachPositions) Validate() error {
 					continue
 				}
 				if _err := func() error {
-					var _rbVal any
-					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+					_rbVal, _rbErr := jsonHeld(a._doc, _rbRaw)
+					if _rbErr != nil {
 						return jsonValueErrorf("cannot decode property %s: %w", _schemagenQuote(_rbKey), _rbErr)
 					}
 					_rbInstance[_rbKey] = _rbVal

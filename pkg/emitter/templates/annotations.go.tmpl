@@ -250,7 +250,7 @@ type _evalResult struct {
 	// it as it stands -- and it reaches the caller as an error wrapping this
 	// one, never as "valid" and never as an ordinary refusal.
 	undecided error
-	reason    string
+	why       *_evalWhy
 	ok        bool
 	// reasonIsAStep says reason opens with a step into the value -- a property
 	// this node descended into, or the branch of a conditional that refused --
@@ -263,6 +263,33 @@ type _evalResult struct {
 	// `p.value matches no anyOf branch`, a member the document does not have.
 	// See issue #284 and jsonPathError.
 	reasonIsAStep bool
+}
+
+// _evalWhy is the reason an evaluation failed: the sentence the node that
+// refused said about its value, and the steps into the value each node above it
+// took to get there. It is written out once, when a Validate answers with it
+// (see String). Joined as each node added its step, the reason was copied once
+// per level -- a refusal at the bottom of a document nested thousands deep cost
+// the depth squared in strings.
+type _evalWhy struct {
+	below *_evalWhy
+	step  string
+	text  string
+}
+
+// String is the reason as text: each step and ": ", outermost first, and then
+// the sentence underneath them.
+func (w *_evalWhy) String() string {
+	var b []byte
+	for ; w != nil; w = w.below {
+		if w.step == "" {
+			b = append(b, w.text...)
+			break
+		}
+		b = append(b, w.step...)
+		b = append(b, ": "...)
+	}
+	return string(b)
 }
 
 func _newEval(ok bool) _evalResult {
@@ -286,7 +313,7 @@ func (r *_evalResult) absorb(other _evalResult) {
 // first failure.
 func (r *_evalResult) fail(reason string) _evalResult {
 	r.ok = false
-	r.reason = reason
+	r.why = &_evalWhy{text: reason}
 	r.reasonIsAStep = false
 	return *r
 }
@@ -296,9 +323,9 @@ func (r *_evalResult) fail(reason string) _evalResult {
 // step and the reason underneath it are joined the way a path is, and the result
 // is marked as opening with a step so that whatever holds this value joins its
 // own path to it with a "." rather than a ": ".
-func (r *_evalResult) failAt(step, reason string) _evalResult {
+func (r *_evalResult) failAt(step string, below *_evalWhy) _evalResult {
 	r.ok = false
-	r.reason = step + ": " + reason
+	r.why = &_evalWhy{step: step, below: below}
 	r.reasonIsAStep = true
 	return *r
 }
@@ -307,7 +334,7 @@ func (r *_evalResult) failAt(step, reason string) _evalResult {
 // undecided error along with its reason: a pattern with no answer three
 // properties down is still no answer at the top.
 func (r *_evalResult) failAtChild(step string, child _evalResult) _evalResult {
-	r.failAt(step, child.reason)
+	r.failAt(step, child.why)
 	r.undecided = child.undecided
 	return *r
 }
@@ -318,7 +345,7 @@ func (r *_evalResult) failAtChild(step string, child _evalResult) _evalResult {
 // has to say, and how it joins is the child's answer too.
 func (r *_evalResult) failAs(child _evalResult) _evalResult {
 	r.ok = false
-	r.reason = child.reason
+	r.why = child.why
 	r.reasonIsAStep = child.reasonIsAStep
 	r.undecided = child.undecided
 	return *r
@@ -329,7 +356,7 @@ func (r *_evalResult) failAs(child _evalResult) _evalResult {
 // answer for. See _evalResult.undecided.
 func (r *_evalResult) undecide(err error) _evalResult {
 	r.ok = false
-	r.reason = err.Error()
+	r.why = &_evalWhy{text: err.Error()}
 	r.reasonIsAStep = false
 	r.undecided = err
 	return *r
@@ -352,7 +379,8 @@ func (e *_evalUndecidedError) Unwrap() error { return e.err }
 // it was raised on. A reason that opens with a step is joined the way a path is;
 // a sentence about the value takes the ": " jsonValueErrorf records.
 func _evalError(r _evalResult) error {
-	if r.reason == "" {
+	reason := r.why.String()
+	if reason == "" {
 		// Structural: nothing sets ok to false without a reason, and this exists
 		// so that a future keyword which did would still say something rather
 		// than answer with an empty message.
@@ -362,16 +390,16 @@ func _evalError(r _evalResult) error {
 		// No verdict: the document is not known to be valid, and not known to
 		// be invalid either. Reported as an error, since Validate has no third
 		// answer, but one that wraps the engine's so a caller can tell.
-		cause := &_evalUndecidedError{err: r.undecided, reason: r.reason}
+		cause := &_evalUndecidedError{err: r.undecided, reason: reason}
 		if r.reasonIsAStep {
 			return jsonStepErrorf("%w", cause)
 		}
 		return jsonValueErrorf("%w", cause)
 	}
 	if r.reasonIsAStep {
-		return jsonStepErrorf("%s", r.reason)
+		return jsonStepErrorf("%s", reason)
 	}
-	return jsonValueErrorf("%s", r.reason)
+	return jsonValueErrorf("%s", reason)
 }
 
 // _evalNode reports whether v satisfies n, together with the item annotations
@@ -389,6 +417,12 @@ func _evalNode(n *_schemaNode, v any) _evalResult { return _evalNodeIn(n, v, nil
 func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFrame{{end}}) _evalResult {
 	if n == nil {
 		return _newEval(true)
+	}
+	// A member of the document read one level at a time (see jsonLazy) is read
+	// here, on the way into the node that judges it, and not before: a node that
+	// never reaches a member never reads it.
+	if l, ok := v.(interface{ jsonLevel() any }); ok {
+		v = l.jsonLevel()
 	}
 {{- if .AnnotationsDynamic}}
 	if n.Ref != nil {
@@ -594,7 +628,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 			for _, key := range _dynSortedKeys(obj) {
 				matched, err := member.Pattern.matches(key)
 				if err != nil {
-					return res.failAtChild("property "+_schemagenClipText(key), _evalResult{undecided: err, reason: err.Error()})
+					return res.failAtChild("property "+_schemagenClipText(key), _evalResult{undecided: err, why: &_evalWhy{text: err.Error()}})
 				}
 				if !matched {
 					continue
@@ -615,7 +649,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 {{- if .AnnotationsPattern}}
 				matched, err := _dynMemberMatches(n.PatternProperties, key)
 				if err != nil {
-					return res.failAtChild("property "+_schemagenClipText(key), _evalResult{undecided: err, reason: err.Error()})
+					return res.failAtChild("property "+_schemagenClipText(key), _evalResult{undecided: err, why: &_evalWhy{text: err.Error()}})
 				}
 				if matched {
 					continue

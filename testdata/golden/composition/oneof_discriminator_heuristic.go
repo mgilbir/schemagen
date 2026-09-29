@@ -103,24 +103,55 @@ func (c *Circle) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (c Circle) MarshalJSON() ([]byte, error) {
-	type Alias Circle
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(c),
+	_b, _err := c.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends c to _b as JSON. See jsonEnc.
+func (c Circle) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := c.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range c.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, c.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members c's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (c Circle) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(c.Type, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("type", _v)
+	}
+	{
+		_v, _err := jsonAppendLeaf(c.Radius, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("radius", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of c numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (c Circle) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks Circle against its JSON Schema constraints.
@@ -244,24 +275,55 @@ func (s *Square) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (s Square) MarshalJSON() ([]byte, error) {
-	type Alias Square
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(s),
+	_b, _err := s.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends s to _b as JSON. See jsonEnc.
+func (s Square) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := s.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range s.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, s.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members s's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (s Square) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(s.Type, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("type", _v)
+	}
+	{
+		_v, _err := jsonAppendLeaf(s.Side, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("side", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of s numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (s Square) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks Square against its JSON Schema constraints.
@@ -394,24 +456,62 @@ func (t *Triangle) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (t Triangle) MarshalJSON() ([]byte, error) {
-	type Alias Triangle
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(t),
+	_b, _err := t.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends t to _b as JSON. See jsonEnc.
+func (t Triangle) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := t.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range t.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, t.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members t's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (t Triangle) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(t.Type, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("type", _v)
+	}
+	{
+		_v, _err := jsonAppendLeaf(t.Base, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("base", _v)
+	}
+	{
+		_v, _err := jsonAppendLeaf(t.Height, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("height", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of t numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (t Triangle) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks Triangle against its JSON Schema constraints.
@@ -646,48 +746,87 @@ func (s *Shape) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (s Shape) MarshalJSON() ([]byte, error) {
-	type Alias Shape
-	aux := struct {
-		Alias
-		Geometry json.RawMessage `json:"geometry,omitempty"`
-	}{
-		Alias: (Alias)(s),
+	_b, _err := s.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
+	return _b, nil
+}
 
+// appendJSON appends s to _b as JSON. See jsonEnc.
+func (s Shape) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := s.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
+	}
 	if s.Geometry != nil {
-		switch _sel := s.Geometry.(type) {
-		case *Shape_Circle:
-			raw, err := json.Marshal(_sel.Circle)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling Shape.Geometry: %w", err)
-			}
-			aux.Geometry = raw
-		case *Shape_Square:
-			raw, err := json.Marshal(_sel.Square)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling Shape.Geometry: %w", err)
-			}
-			aux.Geometry = raw
-		case *Shape_Triangle:
-			raw, err := json.Marshal(_sel.Triangle)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling Shape.Geometry: %w", err)
-			}
-			aux.Geometry = raw
+		switch s.Geometry.(type) {
+		case *Shape_Circle, *Shape_Square, *Shape_Triangle:
+			_o.deferred("geometry", 1)
 		}
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
 	for _key, _member := range s.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, s.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members s's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (s Shape) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(s.Name, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("name", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of s numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (s Shape) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 1:
+		switch _sel := s.Geometry.(type) {
+		case *Shape_Circle:
+			_out, _err := (func(_v *Circle, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*Circle, Circle](_v, _b, func(_v Circle, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[Circle](_v, _b, Circle.appendJSON, true)
+				})
+			})(_sel.Circle, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling Shape.Geometry: %w", _err)
+			}
+			return _out, nil
+		case *Shape_Square:
+			_out, _err := (func(_v *Square, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*Square, Square](_v, _b, func(_v Square, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[Square](_v, _b, Square.appendJSON, true)
+				})
+			})(_sel.Square, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling Shape.Geometry: %w", _err)
+			}
+			return _out, nil
+		case *Shape_Triangle:
+			_out, _err := (func(_v *Triangle, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*Triangle, Triangle](_v, _b, func(_v Triangle, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[Triangle](_v, _b, Triangle.appendJSON, true)
+				})
+			})(_sel.Triangle, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling Shape.Geometry: %w", _err)
+			}
+			return _out, nil
+		}
+	}
+	return _b, nil
 }
 
 // Validate checks Shape against its JSON Schema constraints.

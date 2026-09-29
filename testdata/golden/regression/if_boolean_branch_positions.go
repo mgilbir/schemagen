@@ -582,24 +582,95 @@ func (i *IfBooleanBranchPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	return nil
 }
 func (i IfBooleanBranchPositions) MarshalJSON() ([]byte, error) {
-	type Alias IfBooleanBranchPositions
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(i),
+	_b, _err := i.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends i to _b as JSON. See jsonEnc.
+func (i IfBooleanBranchPositions) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := i.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range i.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, i.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members i's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (i IfBooleanBranchPositions) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.ElseFalse)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("elseFalse", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.IfFalse)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("ifFalse", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.IfTrue)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("ifTrue", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.List)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("list", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.ThenFalse)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("thenFalse", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.ViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("viaRef", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of i numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (i IfBooleanBranchPositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks IfBooleanBranchPositions against its JSON Schema constraints.

@@ -117,6 +117,21 @@ func jsonElemPathf(err error, segFormat string, args ...any) error {
 func jsonValueWrapf(err error, prefix string) error {
 	return jsonPathError{sep: ": ", seg: prefix, err: err}
 }
+
+// jsonWrapf is fmt.Errorf(prefix+"%w", err) built as a step of the chain, for
+// the same reason: the text is prefix and then what err says, it unwraps to err,
+// and a container joins its path to it with the "." it would join an unmarked
+// error with. A patternProperties value that refuses at every level of a
+// recursive document puts each level's key in front of the one below it.
+func jsonWrapf(err error, prefix string) error {
+	return jsonPathError{sep: ".", seg: prefix, err: err}
+}
+
+// jsonElemWrapf is jsonWrapf for a prefix that opens with an accessor, as
+// jsonElemErrorf is for a message that does.
+func jsonElemWrapf(err error, prefix string) error {
+	return jsonPathError{sep: "", seg: prefix, err: err}
+}
 {{- end}}
 
 {{define "decodepath_helpers"}}
@@ -341,6 +356,10 @@ type jsonDoc struct {
 	ends    []int
 	// trial counts the union branch trials in progress. See copyOf.
 	trial int
+	// views is set on a document whose values never reach a caller -- one
+	// Validate decodes a held value from, see jsonDecodeHeld -- so that every
+	// raw part of them is a view of the document rather than a copy. See copyOf.
+	views int
 	// small is where starts and ends begin, so that indexing a document with
 	// few objects and arrays -- most documents -- allocates nothing beyond the
 	// jsonDoc itself. See newJSONDoc.
@@ -370,11 +389,185 @@ func newJSONDoc(data []byte) *jsonDoc {
 // so that nothing stops decoding when one is found: a Validate check that has to
 // ignore it -- readOnly is an annotation, and constrains no document -- still
 // gets the whole value to judge. See _decodeIgnoringReadOnly.
+//
+// It is also where the document lets go of the caller's buffer. A value that
+// judges its held parts later keeps the document (see jsonDecodeHeld), and from
+// here on the document reads its own copy, which is all those parts are views
+// of: data is the caller's, and a decoded value never keeps it.
 func (d *jsonDoc) finish(err error) error {
+	d.data = d.own
 	if d.refusal != nil {
 		return d.refusal
 	}
 	return err
+}
+
+// spanOf reports where raw lies in the document, when raw is one of its values
+// as keep hands them out: a view of the document's own copy, from where a value
+// starts to where it ends. A value's held parts are such views wherever the
+// value was decoded in place, and nothing else is: whatever a caller can reach
+// or set is a copy of its own.
+func (d *jsonDoc) spanOf(raw []byte) (jsonSpan, bool) {
+	if d == nil || len(raw) == 0 || len(raw) > len(d.own) {
+		return jsonSpan{}, false
+	}
+	base := reflect.ValueOf(d.own).Pointer()
+	at := reflect.ValueOf(raw).Pointer()
+	if at < base || at-base > uintptr(len(d.own)-len(raw)) {
+		return jsonSpan{}, false
+	}
+	start := int(at - base)
+	sp := jsonSpan{start, start + len(raw)}
+	switch d.own[start] {
+	case '{', '[':
+		i := sort.SearchInts(d.starts, start)
+		if i == len(d.starts) || d.starts[i] != start || d.ends[i] != sp.end {
+			return jsonSpan{}, false
+		}
+	}
+	return sp, true
+}
+
+// cursor is a document over this one's copy and index for one more decode, which
+// writes only to the cursor: a value may be judged from several goroutines at
+// once, and the document it keeps is shared by all of them.
+func (d *jsonDoc) cursor() *jsonDoc {
+	return &jsonDoc{data: d.own, own: d.own, starts: d.starts, ends: d.ends, views: 1}
+}
+
+// jsonDecodeHeld decodes a value its owner holds as raw JSON -- a
+// patternProperties member, a member no branch accounts for, a type-schema
+// alternative's value -- into *p, the way the value's own UnmarshalJSON would.
+//
+// Validate does this for every such value it judges, and the value's own
+// Validate does it again for the values held inside it. Decoded from its bytes
+// each time, a value nested d levels deep was scanned, checked and copied once
+// per level above it: a patternProperties chain 2,000 levels deep took 363 ms
+// and 194 MB to validate. So the decode happens in place wherever the bytes are
+// a view of the document the owner keeps, and otherwise opens a document once,
+// whose values are then all views of it (see views) -- every level below is
+// decoded in place from the one document, and the whole judgement costs what
+// the document does.
+func jsonDecodeHeld[T any](doc *jsonDoc, raw []byte, p *T, dec jsonAt[T]) error {
+	if sp, ok := doc.spanOf(raw); ok {
+		d := doc.cursor()
+		return d.finish(dec(p, d, sp))
+	}
+	d, sp, err := jsonOpenDoc(raw)
+	if err != nil {
+		return jsonDecodeRefusal(err)
+	}
+	d.views = 1
+	return d.finish(dec(p, d, sp))
+}
+
+// jsonLazy is a value of a document read one level at a time: the checks that
+// judge a held member as decoded JSON -- a conditional's branch, a keyword
+// evaluated at run time -- mostly ask about its type or its first level, and
+// the member may hold the rest of the document. Decoded whole, it was decoded
+// once per level of a recursive document, which made those checks quadratic in
+// its depth.
+type jsonLazy struct {
+	d  *jsonDoc
+	sp jsonSpan
+}
+
+// jsonHeld is a member its owner holds as raw JSON, for a check that reads it
+// as encoding/json decodes it into an any: read lazily where it is a view of
+// the document the owner keeps, and decoded whole where it is not.
+func jsonHeld(doc *jsonDoc, raw []byte) (any, error) {
+	if sp, ok := doc.spanOf(raw); ok {
+		return jsonLazy{doc, sp}, nil
+	}
+	var v any
+	err := json.Unmarshal(raw, &v)
+	return v, err
+}
+
+// jsonTop is v with its first level read, where it is a jsonLazy: what a check
+// that type-switches on a decoded value needs. Anything else is returned as it
+// is.
+func jsonTop(v any) any {
+	if l, ok := v.(jsonLazy); ok {
+		return l.jsonLevel()
+	}
+	return v
+}
+
+// jsonLevel is the value's first level as encoding/json decodes it into an any
+// -- a map[string]any, a []any, a string, a float64, a bool or nil -- with every
+// member and element a jsonLazy in turn. A key written twice means its last
+// value, as it does to encoding/json.
+func (l jsonLazy) jsonLevel() any {
+	d, sp := l.d, l.sp
+	switch d.data[sp.start] {
+	case '{':
+		m := map[string]any{}
+		it := d.iter(sp)
+		for {
+			k, v, ok := it.member()
+			if !ok {
+				return m
+			}
+			m[k] = jsonLazy{d, v}
+		}
+	case '[':
+		a := []any{}
+		it := d.iter(sp)
+		for {
+			v, ok := it.elem()
+			if !ok {
+				return a
+			}
+			a = append(a, jsonLazy{d, v})
+		}
+	}
+	var v any
+	_ = json.Unmarshal(d.raw(sp), &v)
+	return v
+}
+
+// jsonLazyItemsOr decodes a tuple -- an array held as []any, some position of
+// which is a type of this package -- with dec, except where Validate decodes a
+// held value (see views): there each element is a jsonLazy, and a position of
+// this package's type is decoded from its span rather than from the element's
+// re-encoding (see jsonDecodeLazy). Decoded whole, the element held the rest of
+// the document as maps and slices, and the position's Validate re-encoded and
+// re-decoded it, at every level of a tuple that holds itself.
+func jsonLazyItemsOr[S ~[]any](p *S, d *jsonDoc, sp jsonSpan, dec jsonAt[S]) error {
+	if d.views == 0 || d.data[sp.start] != '[' {
+		return dec(p, d, sp)
+	}
+	d.keep(sp)
+	s := S{}
+	it := d.iter(sp)
+	for {
+		e, ok := it.elem()
+		if !ok {
+			break
+		}
+		s = append(s, jsonLazy{d, e})
+	}
+	*p = s
+	return nil
+}
+
+// jsonDecodeLazy decodes a lazily read element into *p in place, as
+// jsonDecodeHeld decodes a held value.
+func jsonDecodeLazy[T any](l jsonLazy, p *T, dec jsonAt[T]) error {
+	d := l.d.cursor()
+	return d.finish(dec(p, d, l.sp))
+}
+
+// MarshalJSON writes the value as encoding/json writes its decoded form, which
+// is what a check comparing values by their encoding reads: the same number
+// spellings and key order the whole decode would have produced.
+func (l jsonLazy) MarshalJSON() ([]byte, error) {
+	var v any
+	if err := json.Unmarshal(l.d.raw(l.sp), &v); err != nil {
+		return nil, err
+	}
+	return json.Marshal(v)
 }
 
 // jsonAttempt runs one trial decode of a union branch under
@@ -748,7 +941,7 @@ func (d *jsonDoc) keep(sp jsonSpan) json.RawMessage {
 // takes a view of the document's own copy instead, which costs nothing; the
 // branch that is kept keeps the view, and with it the document.
 func (d *jsonDoc) copyOf(sp jsonSpan) json.RawMessage {
-	if d.trial > 0 {
+	if d.trial > 0 || d.views > 0 {
 		return d.keep(sp)
 	}
 	return append(json.RawMessage(nil), d.data[sp.start:sp.end]...)
@@ -1196,6 +1389,369 @@ func jsonProbeMap[V any](p *map[string]V, d *jsonDoc, sp jsonSpan, elem jsonAt[V
 		}
 	}
 	return jsonElemPathf(failed[least], "[%s]", _schemagenQuote(least))
+}
+
+// jsonEnc appends the JSON encoding of a value of T to b, as encoding/json
+// would write the value, and returns the extended buffer.
+//
+// It is the encoding half of what jsonAt is to decoding. Every generated type
+// that holds another of this package's types has an appendJSON method of this
+// shape, and the helpers below compose them, so a value is written into one
+// buffer in one pass however deeply its types nest. Each type's MarshalJSON
+// used to hand its members to encoding/json, which checked and compacted every
+// member type's own MarshalJSON output -- the member's whole subtree, at every
+// level -- and a type with members written by hand then parsed its output back
+// into a map and marshalled that again: a document nested 8,000 levels deep
+// took four and a half seconds to write back.
+type jsonEnc[T any] func(T, []byte) ([]byte, error)
+
+// jsonAppendLeaf appends encoding/json's encoding of v, for a value holding
+// nothing this package writes itself: a scalar, a leaf type, a container of
+// them. What encoding/json writes for it on its own is what it writes for it as
+// a member, so the bytes are the ones the whole value always had.
+func jsonAppendLeaf[T any](v T, b []byte) ([]byte, error) {
+	out, err := json.Marshal(v)
+	if err != nil {
+		return b, err
+	}
+	return append(b, out...), nil
+}
+
+// jsonLeafOmitEmpty and jsonLeafOmitZero are jsonAppendLeaf for a member tagged
+// ",omitempty" or ",omitzero": the member's encoding, or omit where
+// encoding/json would leave the member out. Both answers are encoding/json's
+// own, read off a one-member struct carrying the same tag -- which values count
+// as empty or zero is its rule, and it has changed between releases.
+func jsonLeafOmitEmpty[T any](v T) ([]byte, bool, error) {
+	out, err := json.Marshal(struct {
+		V T `json:"v,omitempty"`
+	}{v})
+	if err != nil {
+		return nil, false, err
+	}
+	if len(out) == 2 {
+		return nil, true, nil
+	}
+	return out[len(`{"v":`) : len(out)-1], false, nil
+}
+
+func jsonLeafOmitZero[T any](v T) ([]byte, bool, error) {
+	out, err := json.Marshal(struct {
+		V T `json:"v,omitzero"`
+	}{v})
+	if err != nil {
+		return nil, false, err
+	}
+	if len(out) == 2 {
+		return nil, true, nil
+	}
+	return out[len(`{"v":`) : len(out)-1], false, nil
+}
+
+// jsonIsEmpty and jsonIsZero are encoding/json's omitempty and omitzero rules
+// for a value holding this package's types -- a struct, or a pointer, slice or
+// map of one -- which they answer without encoding it: the leaf probes above
+// would encode the whole subtree to learn whether to write it. For these kinds
+// encoding/json's rules are fixed: a nil pointer, a nil or empty slice or map is
+// empty and a struct never is; a nil one is zero, and a struct is zero when its
+// IsZero says so or, without one, when every member is.
+func jsonIsEmpty[T any](v T) bool {
+	rv := reflect.ValueOf(&v).Elem()
+	switch rv.Kind() {
+	case reflect.Array, reflect.Map, reflect.Slice, reflect.String:
+		return rv.Len() == 0
+	case reflect.Pointer, reflect.Interface:
+		return rv.IsNil()
+	}
+	return false
+}
+
+func jsonIsZero[T any](v T) bool {
+	rv := reflect.ValueOf(&v).Elem()
+	switch rv.Kind() {
+	case reflect.Pointer, reflect.Interface, reflect.Map, reflect.Slice:
+		if rv.IsNil() {
+			return true
+		}
+	}
+	if z, ok := any(v).(interface{ IsZero() bool }); ok {
+		return z.IsZero()
+	}
+	return rv.IsZero()
+}
+
+// jsonAppendKey appends an object key and its colon, spelled as encoding/json
+// spells a key.
+func jsonAppendKey(b []byte, key string) []byte {
+	return append(b, jsonKeyText(key)...)
+}
+
+// jsonKeyText is a key and its colon as jsonAppendKey writes them. A struct's
+// own member names are spelled once, when the package is initialised.
+func jsonKeyText(key string) string {
+	out, _ := json.Marshal(key)
+	return string(out) + ":"
+}
+
+// jsonEncPtr, jsonEncSlice and jsonEncMap write a pointer, a slice and a map
+// the way encoding/json does -- null for a nil one, a map's keys sorted -- with
+// enc for what they hold. Their type arguments are written out at every call,
+// for the reason the decode helpers' are.
+func jsonEncPtr[P ~*E, E any](v P, b []byte, enc jsonEnc[E]) ([]byte, error) {
+	if v == nil {
+		return append(b, "null"...), nil
+	}
+	return enc(*v, b)
+}
+
+func jsonEncSlice[S ~[]E, E any](v S, b []byte, enc jsonEnc[E]) ([]byte, error) {
+	if v == nil {
+		return append(b, "null"...), nil
+	}
+	b = append(b, '[')
+	for i := range v {
+		if i > 0 {
+			b = append(b, ',')
+		}
+		var err error
+		if b, err = enc(v[i], b); err != nil {
+			return b, err
+		}
+	}
+	return append(b, ']'), nil
+}
+
+func jsonEncMap[M ~map[string]V, V any](v M, b []byte, enc jsonEnc[V]) ([]byte, error) {
+	if v == nil {
+		return append(b, "null"...), nil
+	}
+	b = append(b, '{')
+	for i, k := range jsonSortedKeys(v) {
+		if i > 0 {
+			b = append(b, ',')
+		}
+		b = jsonAppendKey(b, k)
+		var err error
+		if b, err = enc(v[k], b); err != nil {
+			return b, err
+		}
+	}
+	return append(b, '}'), nil
+}
+
+// jsonSortedKeys is a map's keys in the order encoding/json writes them.
+func jsonSortedKeys[M ~map[string]V, V any](m M) []string {
+	keys := make([]string, 0, len(m))
+	{{- /* maporder: collects the keys, which are sorted before any is read. */}}
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// jsonEncMarshaler writes a value of one of this package's types that has a
+// MarshalJSON, reporting a failure the way encoding/json reports the failure of
+// a MarshalJSON it called: "json: error calling MarshalJSON for type T: ...".
+// viaPointer says the value was reached through a pointer, which encoding/json
+// names the type by.
+func jsonEncMarshaler[T any](v T, b []byte, enc jsonEnc[T], viaPointer bool) ([]byte, error) {
+	out, err := enc(v, b)
+	if err != nil {
+		return b, jsonMarshalerErr{typ: reflect.TypeFor[T](), ptr: viaPointer || jsonMarshalerNamesPointer, err: err}
+	}
+	return out, nil
+}
+
+// jsonMarshalerNamesPointer says whether the encoding/json this program links
+// names a type whose MarshalJSON failed by its pointer even where the value was
+// not reached through one. The encoding/json Go 1.27 ships does; the one before
+// it named the value's own type. Asked of encoding/json itself, once.
+var jsonMarshalerNamesPointer = func() bool {
+	_, err := json.Marshal(struct{ V jsonMarshalProbe }{})
+	var me *json.MarshalerError
+	return errors.As(err, &me) && me.Type.Kind() == reflect.Pointer
+}()
+
+// jsonMarshalProbe is the value jsonMarshalerNamesPointer asks about.
+type jsonMarshalProbe struct{}
+
+func (jsonMarshalProbe) MarshalJSON() ([]byte, error) { return nil, errors.New("probe") }
+
+// jsonMarshalerErr is a json.MarshalerError whose text is written once, when it
+// is asked for: a failure at the bottom of a document nested d levels deep puts
+// d prefixes in front of it, and each level writing out its own copy of the text
+// below it cost the depth squared. errors.As finds the *json.MarshalerError it
+// stands for.
+type jsonMarshalerErr struct {
+	err error
+	typ reflect.Type
+	ptr bool
+}
+
+func (e jsonMarshalerErr) Error() string {
+	var b []byte
+	var cur error = e
+	for {
+		m, ok := cur.(jsonMarshalerErr)
+		if !ok {
+			return string(append(b, cur.Error()...))
+		}
+		b = append(b, "json: error calling MarshalJSON for type "...)
+		b = append(b, m.typeName()...)
+		b = append(b, ": "...)
+		cur = m.err
+	}
+}
+
+func (e jsonMarshalerErr) typeName() string {
+	if e.ptr {
+		return reflect.PointerTo(e.typ).String()
+	}
+	return e.typ.String()
+}
+
+func (e jsonMarshalerErr) Unwrap() error { return e.err }
+
+func (e jsonMarshalerErr) As(target any) bool {
+	t, ok := target.(**json.MarshalerError)
+	if !ok {
+		return false
+	}
+	typ := e.typ
+	if e.ptr {
+		typ = reflect.PointerTo(typ)
+	}
+	*t = &json.MarshalerError{Type: typ, Err: e.err}
+	return true
+}
+
+// jsonMember is one member of an object whose members are gathered before any
+// is written, because they are written in key order (see jsonObj): its key, and
+// either its encoding, or the raw bytes a caller holds for it, or the index of
+// the member the value's appendMemberJSON writes -- the members that hold this
+// package's types, which are written straight into the output when their turn
+// comes, never into a buffer of their own that would then be copied.
+type jsonMember struct {
+	key  string
+	val  []byte
+	idx  int
+	raw  bool
+	gone bool
+}
+
+// jsonMemberEnc writes a deferred member: the value's appendMemberJSON, told the
+// member's index and key -- the key for an additionalProperties value, which
+// all share one index.
+type jsonMemberEnc func(idx int, key string, b []byte) ([]byte, error)
+
+// jsonObj is an object written the way encoding/json writes a map: its members
+// in key order, a member set twice holding the last value set.
+type jsonObj struct {
+	at map[string]int
+	ms []jsonMember
+}
+
+func (o *jsonObj) find(key string) int {
+	if o.at != nil {
+		if i, ok := o.at[key]; ok {
+			return i
+		}
+		return -1
+	}
+	for i := range o.ms {
+		if o.ms[i].key == key {
+			return i
+		}
+	}
+	return -1
+}
+
+func (o *jsonObj) set(m jsonMember) {
+	if i := o.find(m.key); i >= 0 {
+		o.ms[i] = m
+		return
+	}
+	o.ms = append(o.ms, m)
+	if o.at == nil && len(o.ms) > 16 {
+		o.at = make(map[string]int, 2*len(o.ms))
+		for i := range o.ms {
+			o.at[o.ms[i].key] = i
+		}
+	} else if o.at != nil {
+		o.at[m.key] = len(o.ms) - 1
+	}
+}
+
+// encoded sets a member to its encoding.
+func (o *jsonObj) encoded(key string, val []byte) {
+	o.set(jsonMember{key: key, val: val, idx: -1})
+}
+
+// held sets a member to raw JSON a caller holds.
+func (o *jsonObj) held(key string, raw []byte) {
+	o.set(jsonMember{key: key, val: raw, idx: -1, raw: true})
+}
+
+// deferred sets a member to the one appendMemberJSON writes as idx.
+func (o *jsonObj) deferred(key string, idx int) {
+	o.set(jsonMember{key: key, idx: idx})
+}
+
+func (o *jsonObj) del(key string) {
+	if i := o.find(key); i >= 0 {
+		o.ms[i].gone = true
+	}
+}
+
+// value is the member's bytes as they stand in the object: a deferred member is
+// written out for the asking, and the member now holds them.
+func (o *jsonObj) value(key string, member jsonMemberEnc) ([]byte, bool, error) {
+	i := o.find(key)
+	if i < 0 || o.ms[i].gone {
+		return nil, false, nil
+	}
+	m := &o.ms[i]
+	if m.idx >= 0 {
+		v, err := member(m.idx, m.key, nil)
+		if err != nil {
+			return nil, true, err
+		}
+		m.val, m.idx = v, -1
+	}
+	return m.val, true, nil
+}
+
+// write appends the object: its members in key order, each written the way
+// encoding/json writes a member of a map[string]json.RawMessage.
+func (o *jsonObj) write(b []byte, member jsonMemberEnc) ([]byte, error) {
+	live := make([]*jsonMember, 0, len(o.ms))
+	for i := range o.ms {
+		if !o.ms[i].gone {
+			live = append(live, &o.ms[i])
+		}
+	}
+	sort.Slice(live, func(i, j int) bool { return live[i].key < live[j].key })
+	b = append(b, '{')
+	for i, m := range live {
+		if i > 0 {
+			b = append(b, ',')
+		}
+		b = jsonAppendKey(b, m.key)
+		var err error
+		switch {
+		case m.idx >= 0:
+			b, err = member(m.idx, m.key, b)
+		case m.raw:
+			b, err = jsonAppendLeaf(json.RawMessage(m.val), b)
+		default:
+			b = append(b, m.val...)
+		}
+		if err != nil {
+			return b, err
+		}
+	}
+	return append(b, '}'), nil
 }
 {{- end}}
 

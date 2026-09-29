@@ -49,6 +49,7 @@ func TestDecodedValueIsExactlyTheDocument(t *testing.T) {
 	if testing.Short() {
 		t.Skip("generates, compiles and drives the whole corpus")
 	}
+	t.Parallel()
 	schemas := corpusSchemaPaths(t)
 	sort.Strings(schemas)
 	em, err := emitter.New()

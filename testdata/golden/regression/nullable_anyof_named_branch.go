@@ -263,24 +263,59 @@ func (n *NullableAnyOfNamedBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	return nil
 }
 func (n NullableAnyOfNamedBranch) MarshalJSON() ([]byte, error) {
-	type Alias NullableAnyOfNamedBranch
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(n),
+	_b, _err := n.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends n to _b as JSON. See jsonEnc.
+func (n NullableAnyOfNamedBranch) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := n.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range n.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, n.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members n's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (n NullableAnyOfNamedBranch) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Obj)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("obj", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Word)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("word", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of n numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (n NullableAnyOfNamedBranch) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks NullableAnyOfNamedBranch against its JSON Schema constraints.

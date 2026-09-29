@@ -14,6 +14,7 @@ var (
 	programOutput                = testsupport.ProgramOutput
 	runSchemagen                 = testsupport.RunSchemagen
 	schemagenBinary              = testsupport.SchemagenBinary
+	writeCrossFile               = testsupport.WriteCrossFile
 	writeSharedHelpers           = testsupport.WriteSharedHelpers
 	writeTestGoMod               = testsupport.WriteTestGoMod
 )

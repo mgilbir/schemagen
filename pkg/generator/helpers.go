@@ -293,11 +293,12 @@ func HelpersReferencedBy(src string) HelperSet {
 	// message states what precedes it with, and the two joiners that read what
 	// they recorded -- and a file can carry any one without the others: a leaf
 	// alias only ever builds, and a struct whose members are all named only ever
-	// joins. All six are matched for that reason. jsonValueWrapf is matched
-	// without its parenthesis, since a union at the top of a value assigns it
-	// rather than calling it.
+	// joins. All six are matched for that reason, and jsonWrapf with them.
+	// jsonValueWrapf is matched without its parenthesis, since a union at the top
+	// of a value assigns it rather than calling it.
 	if strings.Contains(src, "jsonValueErrorf(") || strings.Contains(src, "jsonElemErrorf(") ||
 		strings.Contains(src, "jsonStepErrorf(") || strings.Contains(src, "jsonValueWrapf") ||
+		strings.Contains(src, "jsonWrapf(") || strings.Contains(src, "jsonElemWrapf(") ||
 		strings.Contains(src, "jsonPathf(") || strings.Contains(src, "jsonElemPathf(") {
 		set.PathJoin = true
 	}

@@ -53,6 +53,7 @@ func TestCycloneDXExampleBOMsKeepTheirShape(t *testing.T) {
 	if testing.Short() {
 		t.Skip("generates and compiles the CycloneDX 1.6 types")
 	}
+	t.Parallel()
 	dir, err := filepath.Abs(testsupport.RepoPath("testdata", "cyclonedx-1.6"))
 	if err != nil {
 		t.Fatal(err)

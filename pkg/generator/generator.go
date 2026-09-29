@@ -623,6 +623,11 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// that would be ordered without it.
 	typeLayouts := g.orderMembersForLayout()
 
+	// After the layout pass, because encoding/json writes a struct's fields in
+	// the order they are declared in, and the encode is planned to write them
+	// in the same order. See encodeplan.go.
+	g.resolveEncodePlans()
+
 	// Publish what this call's types are shaped like, so packages generated
 	// later in a cross-package run answer their own questions about them from
 	// this record rather than from a type table that has never seen them.

@@ -22,6 +22,9 @@ func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*{{$recv}} = {{$struct.Name}}{}
+	{{- if $struct.NeedsDoc}}
+	{{$recv}}._doc = _d
+	{{- end}}
 	{{- if $struct.StrictReadWrite}}
 	{{- /* --strict-read-write's refusal is decided over the document's own bytes
 	       and applied once the value is whole, rather than returned from the

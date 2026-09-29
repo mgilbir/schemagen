@@ -113,24 +113,64 @@ func (f *FieldBase) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (f FieldBase) MarshalJSON() ([]byte, error) {
-	type Alias FieldBase
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f FieldBase) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f FieldBase) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(f.Label)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("label", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(f.Name, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("name", _v)
+	}
+	{
+		_v, _err := jsonAppendLeaf(f.Type, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("type", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f FieldBase) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks FieldBase against its JSON Schema constraints.
@@ -176,6 +216,7 @@ type DiaryField struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 	Name                 string                     `json:"name"`
 	Type                 string                     `json:"type"`
 	Choices              []string                   `json:"choices,omitzero"`
@@ -201,6 +242,7 @@ func (d *DiaryField) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (d *DiaryField) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*d = DiaryField{}
+	d._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -347,49 +389,133 @@ func (d *DiaryField) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (d DiaryField) MarshalJSON() ([]byte, error) {
-	type Alias DiaryField
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(d),
+	_b, _err := d.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends d to _b as JSON. See jsonEnc.
+func (d DiaryField) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := d.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(d._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range d._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero DiaryField
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range d._jsonNulls {
+				_cur, _present, _err := _o.value(_k, d.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range d.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, d.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members d's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (d DiaryField) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.Default)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("default", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.Label)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("label", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.Max)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("max", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.Min)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("min", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.Widget)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("widget", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(d.Name, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("name", _v)
+	}
+	{
+		_v, _err := jsonAppendLeaf(d.Type, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("type", _v)
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(d.Choices)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("choices", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of d numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (d DiaryField) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks DiaryField against its JSON Schema constraints.

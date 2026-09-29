@@ -95,24 +95,48 @@ func (o *OneOfObjectVariantConstraintsAOption0) decodeJSONAt(_d *jsonDoc, _sp js
 	return nil
 }
 func (o OneOfObjectVariantConstraintsAOption0) MarshalJSON() ([]byte, error) {
-	type Alias OneOfObjectVariantConstraintsAOption0
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OneOfObjectVariantConstraintsAOption0) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range o.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o OneOfObjectVariantConstraintsAOption0) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(o.X, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("x", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o OneOfObjectVariantConstraintsAOption0) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks OneOfObjectVariantConstraintsAOption0 against its JSON Schema constraints.
@@ -227,24 +251,48 @@ func (o *OneOfObjectVariantConstraintsAOption1) decodeJSONAt(_d *jsonDoc, _sp js
 	return nil
 }
 func (o OneOfObjectVariantConstraintsAOption1) MarshalJSON() ([]byte, error) {
-	type Alias OneOfObjectVariantConstraintsAOption1
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OneOfObjectVariantConstraintsAOption1) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range o.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o OneOfObjectVariantConstraintsAOption1) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(o.Y, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("y", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o OneOfObjectVariantConstraintsAOption1) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks OneOfObjectVariantConstraintsAOption1 against its JSON Schema constraints.
@@ -545,42 +593,70 @@ func (o *OneOfObjectVariantConstraints) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) 
 	return nil
 }
 func (o OneOfObjectVariantConstraints) MarshalJSON() ([]byte, error) {
-	type Alias OneOfObjectVariantConstraints
-	aux := struct {
-		Alias
-		A json.RawMessage `json:"a,omitempty"`
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
+	return _b, nil
+}
 
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OneOfObjectVariantConstraints) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
+	}
 	if o.A != nil {
-		switch _sel := o.A.(type) {
-		case *OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption0:
-			raw, err := json.Marshal(_sel.OneOfObjectVariantConstraintsAOption0)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling OneOfObjectVariantConstraints.A: %w", err)
-			}
-			aux.A = raw
-		case *OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption1:
-			raw, err := json.Marshal(_sel.OneOfObjectVariantConstraintsAOption1)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling OneOfObjectVariantConstraints.A: %w", err)
-			}
-			aux.A = raw
+		switch o.A.(type) {
+		case *OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption0, *OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption1:
+			_o.deferred("a", 0)
 		}
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
 	for _key, _member := range o.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o OneOfObjectVariantConstraints) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o OneOfObjectVariantConstraints) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 0:
+		switch _sel := o.A.(type) {
+		case *OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption0:
+			_out, _err := (func(_v *OneOfObjectVariantConstraintsAOption0, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*OneOfObjectVariantConstraintsAOption0, OneOfObjectVariantConstraintsAOption0](_v, _b, func(_v OneOfObjectVariantConstraintsAOption0, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[OneOfObjectVariantConstraintsAOption0](_v, _b, OneOfObjectVariantConstraintsAOption0.appendJSON, true)
+				})
+			})(_sel.OneOfObjectVariantConstraintsAOption0, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling OneOfObjectVariantConstraints.A: %w", _err)
+			}
+			return _out, nil
+		case *OneOfObjectVariantConstraints_OneOfObjectVariantConstraintsAOption1:
+			_out, _err := (func(_v *OneOfObjectVariantConstraintsAOption1, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*OneOfObjectVariantConstraintsAOption1, OneOfObjectVariantConstraintsAOption1](_v, _b, func(_v OneOfObjectVariantConstraintsAOption1, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[OneOfObjectVariantConstraintsAOption1](_v, _b, OneOfObjectVariantConstraintsAOption1.appendJSON, true)
+				})
+			})(_sel.OneOfObjectVariantConstraintsAOption1, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling OneOfObjectVariantConstraints.A: %w", _err)
+			}
+			return _out, nil
+		}
+	}
+	return _b, nil
 }
 
 // Validate checks OneOfObjectVariantConstraints against its JSON Schema constraints.

@@ -128,7 +128,9 @@ var typeNameEmissionSites = map[string]emissionSite{
 	"enum.go.tmpl | .Name":                   {Kind: nameLocalDecl, Why: "the enum this template is declaring"},
 	"inferred_alias.go.tmpl | .Name":         {Kind: nameLocalDecl, Why: "the wrapper this template is declaring"},
 	"raw_holder.go.tmpl | .Name":             {Kind: nameLocalDecl, Why: "the raw-JSON wrapper whose methods this template declares"},
-	"marshal.go.tmpl | .WrapperName":         {Kind: nameLocalDecl, Why: "a oneOf variant wrapper, minted and declared by this package"},
+	"encode.go.tmpl | .WrapperName":          {Kind: nameLocalDecl, Why: "a oneOf variant wrapper, minted and declared by this package"},
+	"encode.go.tmpl | $v.WrapperName":        {Kind: nameLocalDecl, Why: "a oneOf variant wrapper, minted and declared by this package"},
+	"encode.go.tmpl | .Name":                 {Kind: nameLocalDecl, Why: "the struct whose appendJSON this template declares, zeroed for the null record"},
 	"oneof.go.tmpl | .WrapperName":           {Kind: nameLocalDecl, Why: "a oneOf variant wrapper, minted and declared by this package"},
 	"validation.go.tmpl | $v.WrapperName":    {Kind: nameLocalDecl, Why: "a oneOf variant wrapper, minted and declared by this package"},
 	"oneof.go.tmpl | $parent":                {Kind: nameLocalDecl, Why: "the struct the oneOf group hangs off, declared here"},
@@ -145,6 +147,7 @@ var typeNameEmissionSites = map[string]emissionSite{
 	// ---- the sites the qualification question is about ----
 	"alias.go.tmpl | .UnmarshalAs": siteOf(generator.AliasDef{}, "UnmarshalAs", "an alias over another package's type inherits none of its methods and has to convert to the qualified name"),
 	"alias.go.tmpl | .MarshalAs":   siteOf(generator.AliasDef{}, "MarshalAs", "as UnmarshalAs"),
+	"encode.go.tmpl | .MarshalAs":  siteOf(generator.AliasDef{}, "MarshalAs", "as alias.go.tmpl: the value converted to what MarshalJSON writes"),
 	"alias.go.tmpl | .ValidateAs":  siteOf(generator.AliasDef{}, "ValidateAs", "as UnmarshalAs"),
 	"inferred_alias.go.tmpl | .ValidateAs": siteOf(generator.InferredAliasDef{}, "ValidateAs",
 		"emitted as a conversion of the wrapper's value; a local namesake would convert cleanly and dispatch the wrong Validate"),

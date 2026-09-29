@@ -10,6 +10,7 @@ import (
 type OneOfBranchUnevaluatedPropertiesValueOption0 struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	B                    int64                      `json:"b"`
 	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
@@ -35,6 +36,7 @@ func (o *OneOfBranchUnevaluatedPropertiesValueOption0) UnmarshalJSON(data []byte
 // document's verdict while holding another's fields is what that left behind.
 func (o *OneOfBranchUnevaluatedPropertiesValueOption0) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*o = OneOfBranchUnevaluatedPropertiesValueOption0{}
+	o._doc = _d
 	// The schema admits a document that is not an object, so object constraints
 	// are type-conditional. Non-object JSON data is accepted here and judged by
 	// Validate; raw bytes are preserved for roundtrip.
@@ -116,24 +118,54 @@ func (o OneOfBranchUnevaluatedPropertiesValueOption0) MarshalJSON() ([]byte, err
 		}
 		return []byte("null"), nil
 	}
-	type Alias OneOfBranchUnevaluatedPropertiesValueOption0
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OneOfBranchUnevaluatedPropertiesValueOption0) appendJSON(_b []byte) ([]byte, error) {
+	if o._nonObject {
+		if len(o._rawNonObject) > 0 {
+			return jsonAppendLeaf(json.RawMessage(o._rawNonObject), _b)
+		}
+		return append(_b, "null"...), nil
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range o.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o OneOfBranchUnevaluatedPropertiesValueOption0) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(o.B, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("b", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o OneOfBranchUnevaluatedPropertiesValueOption0) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks OneOfBranchUnevaluatedPropertiesValueOption0 against its JSON Schema constraints.
@@ -296,24 +328,54 @@ func (o OneOfBranchUnevaluatedPropertiesValueOption1) MarshalJSON() ([]byte, err
 		}
 		return []byte("null"), nil
 	}
-	type Alias OneOfBranchUnevaluatedPropertiesValueOption1
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OneOfBranchUnevaluatedPropertiesValueOption1) appendJSON(_b []byte) ([]byte, error) {
+	if o._nonObject {
+		if len(o._rawNonObject) > 0 {
+			return jsonAppendLeaf(json.RawMessage(o._rawNonObject), _b)
+		}
+		return append(_b, "null"...), nil
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range o.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o OneOfBranchUnevaluatedPropertiesValueOption1) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(o.A, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("a", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o OneOfBranchUnevaluatedPropertiesValueOption1) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks OneOfBranchUnevaluatedPropertiesValueOption1 against its JSON Schema constraints.
@@ -340,6 +402,7 @@ type OneOfBranchUnevaluatedProperties struct {
 	Value                isOneOfBranchUnevaluatedProperties_Value `json:"-"`
 	AdditionalProperties map[string]json.RawMessage               `json:"-"`
 	_jsonRawProps        map[string]json.RawMessage               // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                                 // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // isOneOfBranchUnevaluatedProperties_Value is a sealed interface for the Value field of OneOfBranchUnevaluatedProperties.
@@ -406,6 +469,7 @@ func (o *OneOfBranchUnevaluatedProperties) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (o *OneOfBranchUnevaluatedProperties) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*o = OneOfBranchUnevaluatedProperties{}
+	o._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -595,16 +659,32 @@ func (o *OneOfBranchUnevaluatedProperties) decodeJSONAt(_d *jsonDoc, _sp jsonSpa
 	return nil
 }
 func (o OneOfBranchUnevaluatedProperties) MarshalJSON() ([]byte, error) {
-	// Top-level oneOf: marshal the selected variant directly as the root object.
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
+	}
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OneOfBranchUnevaluatedProperties) appendJSON(_b []byte) ([]byte, error) {
 	if o.Value != nil {
 		switch _sel := o.Value.(type) {
 		case *OneOfBranchUnevaluatedProperties_OneOfBranchUnevaluatedPropertiesValueOption0:
-			return json.Marshal(_sel.OneOfBranchUnevaluatedPropertiesValueOption0)
+			return (func(_v *OneOfBranchUnevaluatedPropertiesValueOption0, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*OneOfBranchUnevaluatedPropertiesValueOption0, OneOfBranchUnevaluatedPropertiesValueOption0](_v, _b, func(_v OneOfBranchUnevaluatedPropertiesValueOption0, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[OneOfBranchUnevaluatedPropertiesValueOption0](_v, _b, OneOfBranchUnevaluatedPropertiesValueOption0.appendJSON, true)
+				})
+			})(_sel.OneOfBranchUnevaluatedPropertiesValueOption0, _b)
 		case *OneOfBranchUnevaluatedProperties_OneOfBranchUnevaluatedPropertiesValueOption1:
-			return json.Marshal(_sel.OneOfBranchUnevaluatedPropertiesValueOption1)
+			return (func(_v *OneOfBranchUnevaluatedPropertiesValueOption1, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*OneOfBranchUnevaluatedPropertiesValueOption1, OneOfBranchUnevaluatedPropertiesValueOption1](_v, _b, func(_v OneOfBranchUnevaluatedPropertiesValueOption1, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[OneOfBranchUnevaluatedPropertiesValueOption1](_v, _b, OneOfBranchUnevaluatedPropertiesValueOption1.appendJSON, true)
+				})
+			})(_sel.OneOfBranchUnevaluatedPropertiesValueOption1, _b)
 		}
 	}
-	return []byte("null"), nil
+	return append(_b, "null"...), nil
 }
 
 // Validate checks OneOfBranchUnevaluatedProperties against its JSON Schema constraints.
@@ -641,8 +721,8 @@ func (o OneOfBranchUnevaluatedProperties) Validate() error {
 					continue
 				}
 				if _err := func() error {
-					var _rbVal any
-					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+					_rbVal, _rbErr := jsonHeld(o._doc, _rbRaw)
+					if _rbErr != nil {
 						return jsonValueErrorf("cannot decode property %s: %w", _schemagenQuote(_rbKey), _rbErr)
 					}
 					_rbInstance[_rbKey] = _rbVal
@@ -678,10 +758,10 @@ func (o OneOfBranchUnevaluatedProperties) Validate() error {
 				},
 			}
 			if _rbRes := _evalNode(&_rbNode0, _rbInstance); !_rbRes.ok {
-				if _rbRes.reason == "" {
+				if _rbRes.why.String() == "" {
 					return fmt.Errorf("oneOf: value does not satisfy the schema")
 				}
-				return fmt.Errorf("oneOf: %s", _rbRes.reason)
+				return fmt.Errorf("oneOf: %s", _rbRes.why.String())
 			}
 		}
 	}

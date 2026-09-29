@@ -116,24 +116,64 @@ func (m *Metadata) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (m Metadata) MarshalJSON() ([]byte, error) {
-	type Alias Metadata
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(m),
+	_b, _err := m.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends m to _b as JSON. See jsonEnc.
+func (m Metadata) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := m.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range m.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, m.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members m's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (m Metadata) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(m.Created, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("created", _v)
+	}
+	{
+		_v, _err := jsonAppendLeaf(m.Title, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("title", _v)
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(m.Tags)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("tags", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of m numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (m Metadata) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks Metadata against its JSON Schema constraints.
@@ -248,24 +288,57 @@ func (p *Person) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (p Person) MarshalJSON() ([]byte, error) {
-	type Alias Person
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(p),
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p Person) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := p.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range p.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, p.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members p's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (p Person) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(p.Email)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("email", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(p.Name, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("name", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of p numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (p Person) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks Person against its JSON Schema constraints.
@@ -395,24 +468,68 @@ func (s *Section) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (s Section) MarshalJSON() ([]byte, error) {
-	type Alias Section
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(s),
+	_b, _err := s.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends s to _b as JSON. See jsonEnc.
+func (s Section) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := s.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range s.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, s.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members s's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (s Section) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(s.Body)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("body", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(s.Heading, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("heading", _v)
+	}
+	{
+		if !jsonIsZero(s.Subsections) {
+			_o.deferred("subsections", 2)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of s numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (s Section) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 2:
+		return (func(_v []Section, _b []byte) ([]byte, error) {
+			return jsonEncSlice[[]Section, Section](_v, _b, func(_v Section, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[Section](_v, _b, Section.appendJSON, false)
+			})
+		})(s.Subsections, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks Section against its JSON Schema constraints.
@@ -550,24 +667,68 @@ func (d *Document) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (d Document) MarshalJSON() ([]byte, error) {
-	type Alias Document
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(d),
+	_b, _err := d.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends d to _b as JSON. See jsonEnc.
+func (d Document) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := d.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range d.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, d.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members d's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (d Document) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		if !jsonIsEmpty(d.Author) {
+			_o.deferred("author", 0)
+		}
+	}
+	{
+		_o.deferred("metadata", 1)
+	}
+	{
+		_o.deferred("sections", 2)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of d numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (d Document) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 0:
+		return (func(_v *Person, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*Person, Person](_v, _b, func(_v Person, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[Person](_v, _b, Person.appendJSON, true)
+			})
+		})(d.Author, _b)
+	case 1:
+		return (func(_v Metadata, _b []byte) ([]byte, error) {
+			return jsonEncMarshaler[Metadata](_v, _b, Metadata.appendJSON, false)
+		})(d.Metadata, _b)
+	case 2:
+		return (func(_v []Section, _b []byte) ([]byte, error) {
+			return jsonEncSlice[[]Section, Section](_v, _b, func(_v Section, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[Section](_v, _b, Section.appendJSON, false)
+			})
+		})(d.Sections, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks Document against its JSON Schema constraints.

@@ -685,11 +685,12 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{{- range $cond.If.Properties}}
 		if _condHolds {
 			if _raw, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .JSONName}}]; _ok {
-				var _v any
+				_v, _err := jsonHeld({{$recv}}._doc, _raw)
+				_v = jsonTop(_v)
 				{{- if dynChecksMatchPattern .Checks}}
 				var _undecided error
 				{{- end}}
-				if _err := json.Unmarshal(_raw, &_v); _err != nil || !({{template "dyn_branch" .Checks}}) {
+				if _err != nil || !({{template "dyn_branch" .Checks}}) {
 					_condHolds = false
 				}
 				{{- if dynChecksMatchPattern .Checks}}
@@ -741,11 +742,15 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					// decoded into it, so the decode enforces shape and the
 					// Validate enforces everything beyond it.
 					var _pv {{$pp.TypeName}}
+					{{- if $pp.Decoder}}
+					if _uErr := jsonDecodeHeld({{$recv}}._doc, _member, &_pv, {{$pp.Decoder}}); _uErr != nil{{if $pp.StrictReadWrite}} && !_isReadOnlyRefusal(_uErr){{end}} {
+					{{- else}}
 					if _uErr := {{if $pp.StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), _uErr)
+					{{- end}}
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key)))
 					}
 				}
 				{{- end}}
@@ -1310,11 +1315,11 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					// The sub-schema's own type answers for the value: the decode
 					// enforces its shape and the Validate enforces the rest.
 					var _bVal {{$branch.TypeName}}
-					if _bErr := json.Unmarshal(_bv, &_bVal); _bErr != nil {
-						return fmt.Errorf("{{fmtText $branch.Keyword}}: property %s: %w", _schemagenQuote(_key), _bErr)
+					if _bErr := {{if $branch.Decoder}}jsonDecodeHeld({{$recv}}._doc, _bv, &_bVal, {{$branch.Decoder}}){{else}}json.Unmarshal(_bv, &_bVal){{end}}; _bErr != nil {
+						return jsonWrapf(_bErr, fmt.Sprintf("{{fmtText $branch.Keyword}}: property %s: ", _schemagenQuote(_key)))
 					}
 					if _bErr := _bVal.Validate(); _bErr != nil {
-						return fmt.Errorf("{{fmtText $branch.Keyword}}: property %s: %w", _schemagenQuote(_key), _bErr)
+						return jsonWrapf(_bErr, fmt.Sprintf("{{fmtText $branch.Keyword}}: property %s: ", _schemagenQuote(_key)))
 					}
 				}
 				{{- end}}
@@ -1346,8 +1351,8 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		_rbInstance := make(map[string]any, len({{$recv}}._jsonRawProps))
 		{{- $lk := leastKey "_rbKey" "_rbRaw" (printf "%s._jsonRawProps" $recv) "_failed"}}
 		{{- template "least_key_open" $lk}}
-			var _rbVal any
-			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+			_rbVal, _rbErr := jsonHeld({{$recv}}._doc, _rbRaw)
+			if _rbErr != nil {
 				return jsonValueErrorf("cannot decode property %s: %w", _schemagenQuote(_rbKey), _rbErr)
 			}
 			_rbInstance[_rbKey] = _rbVal
@@ -1376,10 +1381,10 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			}
 			{{- else}}
 			if _rbRes := _evalNode(&_rbNode{{$ri}}, _rbInstance); !_rbRes.ok {
-				if _rbRes.reason == "" {
+				if _rbRes.why.String() == "" {
 					return fmt.Errorf("{{fmtText $check.Keyword}}: value does not satisfy the schema")
 				}
-				return fmt.Errorf("{{fmtText $check.Keyword}}: %s", _rbRes.reason)
+				return fmt.Errorf("{{fmtText $check.Keyword}}: %s", _rbRes.why.String())
 			}
 			{{- end}}
 		}
@@ -1604,8 +1609,8 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				}
 				{{- else if $uneval.ValueType}}
 				var _uVal {{$uneval.ValueType}}
-				if _uErr := json.Unmarshal(_member, &_uVal); _uErr != nil {
-					return jsonValueErrorf("unevaluated property %s: %w", _schemagenQuote(_key), _uErr)
+				if _uErr := {{if $uneval.ValueDecoder}}jsonDecodeHeld({{$recv}}._doc, _member, &_uVal, {{$uneval.ValueDecoder}}){{else}}json.Unmarshal(_member, &_uVal){{end}}; _uErr != nil {
+					return jsonValueWrapf(_uErr, fmt.Sprintf("unevaluated property %s: ", _schemagenQuote(_key)))
 				}
 				{{- range $uneval.Validations}}
 				{{- template "validation_rule_inline" .}}
@@ -1654,8 +1659,8 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				}
 				{{- else if $uneval.ValueType}}
 				var _uVal {{$uneval.ValueType}}
-				if _uErr := json.Unmarshal(_member, &_uVal); _uErr != nil {
-					return jsonValueErrorf("unevaluated property %s: %w", _schemagenQuote(_key), _uErr)
+				if _uErr := {{if $uneval.ValueDecoder}}jsonDecodeHeld({{$recv}}._doc, _member, &_uVal, {{$uneval.ValueDecoder}}){{else}}json.Unmarshal(_member, &_uVal){{end}}; _uErr != nil {
+					return jsonValueWrapf(_uErr, fmt.Sprintf("unevaluated property %s: ", _schemagenQuote(_key)))
 				}
 				{{- range $uneval.Validations}}
 				{{- template "validation_rule_inline" .}}
@@ -2025,10 +2030,11 @@ declares a field for it at all.
 {{- end}}
 {{- range .Branch.Properties}}
 			if _raw, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .JSONName}}]; _ok {
-				var _v any
-				if _err := json.Unmarshal(_raw, &_v); _err != nil {
+				_v, _err := jsonHeld({{$recv}}._doc, _raw)
+				if _err != nil {
 					return fmt.Errorf("{{$kw}}: property %q: cannot decode value: %w", {{printf "%q" .JSONName}}, _err)
 				}
+				_v = jsonTop(_v)
 				{{- if dynChecksMatchPattern .Checks}}
 				var _undecided error
 				_branchOK := {{template "dyn_branch" .Checks}}
@@ -2411,6 +2417,15 @@ declares a field for it at all.
 	// Tuple items: validate each position against its schema type.
 	for _idx, _elem := range {{.Expr}} {
 		_ = _elem
+		{{- if tupleHeld .Items .Tail}}
+		// An element read lazily (see jsonLazyItemsOr) has its first level read
+		// here, for the arms that ask its JSON type; a position of this
+		// package's type decodes it from its span instead.
+		_lz, _isLazy := _elem.(jsonLazy)
+		if _isLazy {
+			_elem = _lz.jsonLevel()
+		}
+		{{- end}}
 		{{- $path := .Path}}
 		{{- $args := .Args}}
 		{{- range $i, $ti := .Items}}
@@ -2437,17 +2452,34 @@ declares a field for it at all.
 			return {{$errf}}("{{$path}}[%d]: value is not allowed (schema is false)", {{$args}}_idx)
 		}
 {{- else if .TypeName}}
+		{{- $wrapf := pathWrapf $path}}
 		if {{$.Cond}} {
+			var _typed {{.TypeName}}
+			{{- if .Decoder}}
+			var _uErr error
+			if _isLazy {
+				_uErr = jsonDecodeLazy(_lz, &_typed, {{.Decoder}})
+			} else {
+				_raw, _mErr := json.Marshal(_elem)
+				if _mErr != nil {
+					return {{$wrapf}}(_mErr, fmt.Sprintf("{{$path}}[%d]: ", {{$args}}_idx))
+				}
+				_uErr = jsonDecodeHeld(nil, _raw, &_typed, {{.Decoder}})
+			}
+			if _uErr != nil{{if .StrictReadWrite}} && !_isReadOnlyRefusal(_uErr){{end}} {
+				return {{$wrapf}}(_uErr, fmt.Sprintf("{{$path}}[%d]: ", {{$args}}_idx))
+			}
+			{{- else}}
 			_raw, _mErr := json.Marshal(_elem)
 			if _mErr != nil {
-				return {{$errf}}("{{$path}}[%d]: %w", {{$args}}_idx, _mErr)
+				return {{$wrapf}}(_mErr, fmt.Sprintf("{{$path}}[%d]: ", {{$args}}_idx))
 			}
-			var _typed {{.TypeName}}
 			if _uErr := {{if .StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_raw, &_typed); _uErr != nil {
-				return {{$errf}}("{{$path}}[%d]: %w", {{$args}}_idx, _uErr)
+				return {{$wrapf}}(_uErr, fmt.Sprintf("{{$path}}[%d]: ", {{$args}}_idx))
 			}
+			{{- end}}
 			if _vErr := _typed.Validate(); _vErr != nil {
-				return {{$errf}}("{{$path}}[%d]: %w", {{$args}}_idx, _vErr)
+				return {{$wrapf}}(_vErr, fmt.Sprintf("{{$path}}[%d]: ", {{$args}}_idx))
 			}
 		}
 {{- else if .JSONType}}

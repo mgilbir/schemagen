@@ -85,24 +85,47 @@ func (o OneOfRequiredOnlyObjectValueOption0) MarshalJSON() ([]byte, error) {
 		}
 		return []byte("null"), nil
 	}
-	type Alias OneOfRequiredOnlyObjectValueOption0
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OneOfRequiredOnlyObjectValueOption0) appendJSON(_b []byte) ([]byte, error) {
+	if o._nonObject {
+		if len(o._rawNonObject) > 0 {
+			return jsonAppendLeaf(json.RawMessage(o._rawNonObject), _b)
+		}
+		return append(_b, "null"...), nil
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range o.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o OneOfRequiredOnlyObjectValueOption0) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o OneOfRequiredOnlyObjectValueOption0) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks OneOfRequiredOnlyObjectValueOption0 against its JSON Schema constraints.
@@ -203,24 +226,47 @@ func (o OneOfRequiredOnlyObjectValueOption1) MarshalJSON() ([]byte, error) {
 		}
 		return []byte("null"), nil
 	}
-	type Alias OneOfRequiredOnlyObjectValueOption1
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OneOfRequiredOnlyObjectValueOption1) appendJSON(_b []byte) ([]byte, error) {
+	if o._nonObject {
+		if len(o._rawNonObject) > 0 {
+			return jsonAppendLeaf(json.RawMessage(o._rawNonObject), _b)
+		}
+		return append(_b, "null"...), nil
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range o.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o OneOfRequiredOnlyObjectValueOption1) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o OneOfRequiredOnlyObjectValueOption1) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks OneOfRequiredOnlyObjectValueOption1 against its JSON Schema constraints.
@@ -247,6 +293,7 @@ type OneOfRequiredOnlyObject struct {
 	Value         isOneOfRequiredOnlyObject_Value `json:"-"`
 	_jsonKeys     map[string]bool                 // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps map[string]json.RawMessage      // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc          *jsonDoc                        // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // isOneOfRequiredOnlyObject_Value is a sealed interface for the Value field of OneOfRequiredOnlyObject.
@@ -313,6 +360,7 @@ func (o *OneOfRequiredOnlyObject) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (o *OneOfRequiredOnlyObject) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*o = OneOfRequiredOnlyObject{}
+	o._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -500,16 +548,32 @@ func (o *OneOfRequiredOnlyObject) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 	return nil
 }
 func (o OneOfRequiredOnlyObject) MarshalJSON() ([]byte, error) {
-	// Top-level oneOf: marshal the selected variant directly as the root object.
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
+	}
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OneOfRequiredOnlyObject) appendJSON(_b []byte) ([]byte, error) {
 	if o.Value != nil {
 		switch _sel := o.Value.(type) {
 		case *OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption0:
-			return json.Marshal(_sel.OneOfRequiredOnlyObjectValueOption0)
+			return (func(_v *OneOfRequiredOnlyObjectValueOption0, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*OneOfRequiredOnlyObjectValueOption0, OneOfRequiredOnlyObjectValueOption0](_v, _b, func(_v OneOfRequiredOnlyObjectValueOption0, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[OneOfRequiredOnlyObjectValueOption0](_v, _b, OneOfRequiredOnlyObjectValueOption0.appendJSON, true)
+				})
+			})(_sel.OneOfRequiredOnlyObjectValueOption0, _b)
 		case *OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption1:
-			return json.Marshal(_sel.OneOfRequiredOnlyObjectValueOption1)
+			return (func(_v *OneOfRequiredOnlyObjectValueOption1, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*OneOfRequiredOnlyObjectValueOption1, OneOfRequiredOnlyObjectValueOption1](_v, _b, func(_v OneOfRequiredOnlyObjectValueOption1, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[OneOfRequiredOnlyObjectValueOption1](_v, _b, OneOfRequiredOnlyObjectValueOption1.appendJSON, true)
+				})
+			})(_sel.OneOfRequiredOnlyObjectValueOption1, _b)
 		}
 	}
-	return []byte("null"), nil
+	return append(_b, "null"...), nil
 }
 
 // Validate checks OneOfRequiredOnlyObject against its JSON Schema constraints.

@@ -120,24 +120,55 @@ func (c *Circle) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (c Circle) MarshalJSON() ([]byte, error) {
-	type Alias Circle
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(c),
+	_b, _err := c.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends c to _b as JSON. See jsonEnc.
+func (c Circle) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := c.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range c.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, c.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members c's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (c Circle) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(c.Kind, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("kind", _v)
+	}
+	{
+		_v, _err := jsonAppendLeaf(c.Radius, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("radius", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of c numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (c Circle) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks Circle against its JSON Schema constraints.
@@ -280,24 +311,62 @@ func (r *Rectangle) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (r Rectangle) MarshalJSON() ([]byte, error) {
-	type Alias Rectangle
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(r),
+	_b, _err := r.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends r to _b as JSON. See jsonEnc.
+func (r Rectangle) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := r.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range r.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, r.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members r's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (r Rectangle) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(r.Kind, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("kind", _v)
+	}
+	{
+		_v, _err := jsonAppendLeaf(r.Height, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("height", _v)
+	}
+	{
+		_v, _err := jsonAppendLeaf(r.Width, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("width", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of r numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (r Rectangle) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks Rectangle against its JSON Schema constraints.
@@ -323,6 +392,7 @@ type CanvasShapesItem struct {
 	Value         isCanvasShapesItem_Value   `json:"-"`
 	_jsonKeys     map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc          *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // isCanvasShapesItem_Value is a sealed interface for the Value field of CanvasShapesItem.
@@ -387,6 +457,7 @@ func (c *CanvasShapesItem) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (c *CanvasShapesItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*c = CanvasShapesItem{}
+	c._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -469,16 +540,32 @@ func (c *CanvasShapesItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (c CanvasShapesItem) MarshalJSON() ([]byte, error) {
-	// Top-level oneOf: marshal the selected variant directly as the root object.
+	_b, _err := c.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
+	}
+	return _b, nil
+}
+
+// appendJSON appends c to _b as JSON. See jsonEnc.
+func (c CanvasShapesItem) appendJSON(_b []byte) ([]byte, error) {
 	if c.Value != nil {
 		switch _sel := c.Value.(type) {
 		case *CanvasShapesItem_Circle:
-			return json.Marshal(_sel.Circle)
+			return (func(_v *Circle, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*Circle, Circle](_v, _b, func(_v Circle, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[Circle](_v, _b, Circle.appendJSON, true)
+				})
+			})(_sel.Circle, _b)
 		case *CanvasShapesItem_Rectangle:
-			return json.Marshal(_sel.Rectangle)
+			return (func(_v *Rectangle, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*Rectangle, Rectangle](_v, _b, func(_v Rectangle, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[Rectangle](_v, _b, Rectangle.appendJSON, true)
+				})
+			})(_sel.Rectangle, _b)
 		}
 	}
-	return []byte("null"), nil
+	return append(_b, "null"...), nil
 }
 
 // Validate checks CanvasShapesItem against its JSON Schema constraints.
@@ -778,24 +865,59 @@ func (c *Canvas) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (c Canvas) MarshalJSON() ([]byte, error) {
-	type Alias Canvas
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(c),
+	_b, _err := c.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends c to _b as JSON. See jsonEnc.
+func (c Canvas) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := c.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range c.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, c.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members c's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (c Canvas) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(c.Name)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("name", _v)
+		}
+	}
+	{
+		_o.deferred("shapes", 1)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of c numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (c Canvas) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 1:
+		return (func(_v []CanvasShapesItem, _b []byte) ([]byte, error) {
+			return jsonEncSlice[[]CanvasShapesItem, CanvasShapesItem](_v, _b, func(_v CanvasShapesItem, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[CanvasShapesItem](_v, _b, CanvasShapesItem.appendJSON, false)
+			})
+		})(c.Shapes, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks Canvas against its JSON Schema constraints.

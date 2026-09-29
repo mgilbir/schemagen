@@ -126,24 +126,72 @@ func (t *TreeNode) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (t TreeNode) MarshalJSON() ([]byte, error) {
-	type Alias TreeNode
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(t),
+	_b, _err := t.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends t to _b as JSON. See jsonEnc.
+func (t TreeNode) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := t.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range t.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, t.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members t's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (t TreeNode) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		if !jsonIsEmpty(t.Parent) {
+			_o.deferred("parent", 0)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(t.Value, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("value", _v)
+	}
+	{
+		if !jsonIsZero(t.Children) {
+			_o.deferred("children", 2)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of t numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (t TreeNode) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 0:
+		return (func(_v *TreeNode, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*TreeNode, TreeNode](_v, _b, func(_v TreeNode, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[TreeNode](_v, _b, TreeNode.appendJSON, true)
+			})
+		})(t.Parent, _b)
+	case 2:
+		return (func(_v []*TreeNode, _b []byte) ([]byte, error) {
+			return jsonEncSlice[[]*TreeNode, *TreeNode](_v, _b, func(_v *TreeNode, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*TreeNode, TreeNode](_v, _b, func(_v TreeNode, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[TreeNode](_v, _b, TreeNode.appendJSON, true)
+				})
+			})
+		})(t.Children, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks TreeNode against its JSON Schema constraints.

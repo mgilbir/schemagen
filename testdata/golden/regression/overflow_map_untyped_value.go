@@ -296,24 +296,47 @@ func (o OverflowMapUntypedValueObjReqValue) MarshalJSON() ([]byte, error) {
 		}
 		return []byte("null"), nil
 	}
-	type Alias OverflowMapUntypedValueObjReqValue
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OverflowMapUntypedValueObjReqValue) appendJSON(_b []byte) ([]byte, error) {
+	if o._nonObject {
+		if len(o._rawNonObject) > 0 {
+			return jsonAppendLeaf(json.RawMessage(o._rawNonObject), _b)
+		}
+		return append(_b, "null"...), nil
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range o.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o OverflowMapUntypedValueObjReqValue) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o OverflowMapUntypedValueObjReqValue) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks OverflowMapUntypedValueObjReqValue against its JSON Schema constraints.
@@ -629,43 +652,105 @@ func (o *OverflowMapUntypedValue) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 	return nil
 }
 func (o OverflowMapUntypedValue) MarshalJSON() ([]byte, error) {
-	type Alias OverflowMapUntypedValue
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OverflowMapUntypedValue) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	{
-		var _least string
-		var _failed error
-		for _key, _member := range o.AdditionalProperties { // refused for the least failing key
-			if _failed != nil && _key >= _least {
-				continue
+		// In key order, so that a member that fails is reported for the least
+		// key, whatever order the map is ranged in.
+		for _, _key := range jsonSortedKeys(o.AdditionalProperties) {
+			_v, _err := (jsonAppendLeaf[OverflowMapUntypedValueValue])(o.AdditionalProperties[_key], nil)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), _err)
 			}
-			if _err := func() error {
-				raw, err := json.Marshal(_member)
-				if err != nil {
-					return fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), err)
-				}
-				obj[_key] = raw
-				return nil
-			}(); _err != nil {
-				_least, _failed = _key, _err
-			}
-		}
-		if _failed != nil {
-			return nil, _failed
+			_o.encoded(_key, _v)
 		}
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o OverflowMapUntypedValue) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitZero(o.ArrLen)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("arrLen", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(o.Bare)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("bare", _v)
+		}
+	}
+	{
+		if !jsonIsZero(o.ObjReq) {
+			_o.deferred("objReq", 2)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(o.StrLen)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("strLen", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(o.Typed)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("typed", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(o.ViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("viaRef", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o OverflowMapUntypedValue) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 2:
+		return (func(_v map[string]OverflowMapUntypedValueObjReqValue, _b []byte) ([]byte, error) {
+			return jsonEncMap[map[string]OverflowMapUntypedValueObjReqValue, OverflowMapUntypedValueObjReqValue](_v, _b, func(_v OverflowMapUntypedValueObjReqValue, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[OverflowMapUntypedValueObjReqValue](_v, _b, OverflowMapUntypedValueObjReqValue.appendJSON, false)
+			})
+		})(o.ObjReq, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks OverflowMapUntypedValue against its JSON Schema constraints.

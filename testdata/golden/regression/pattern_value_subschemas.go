@@ -180,24 +180,41 @@ func (p *PatternValueSubschemasPattern2) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 	return nil
 }
 func (p PatternValueSubschemasPattern2) MarshalJSON() ([]byte, error) {
-	type Alias PatternValueSubschemasPattern2
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(p),
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p PatternValueSubschemasPattern2) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := p.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range p.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, p.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members p's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (p PatternValueSubschemasPattern2) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of p numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (p PatternValueSubschemasPattern2) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks PatternValueSubschemasPattern2 against its JSON Schema constraints.
@@ -303,24 +320,50 @@ func (p *PatternValueSubschemasPattern3) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 	return nil
 }
 func (p PatternValueSubschemasPattern3) MarshalJSON() ([]byte, error) {
-	type Alias PatternValueSubschemasPattern3
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(p),
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p PatternValueSubschemasPattern3) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := p.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range p.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, p.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members p's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (p PatternValueSubschemasPattern3) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(p.X)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("x", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of p numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (p PatternValueSubschemasPattern3) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks PatternValueSubschemasPattern3 against its JSON Schema constraints.
@@ -562,24 +605,41 @@ func (p *PatternValueSubschemasPattern9) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 	return nil
 }
 func (p PatternValueSubschemasPattern9) MarshalJSON() ([]byte, error) {
-	type Alias PatternValueSubschemasPattern9
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(p),
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p PatternValueSubschemasPattern9) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := p.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range p.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, p.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members p's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (p PatternValueSubschemasPattern9) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of p numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (p PatternValueSubschemasPattern9) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks PatternValueSubschemasPattern9 against its JSON Schema constraints.
@@ -602,6 +662,7 @@ func (p PatternValueSubschemasPattern9) Validate() error {
 type PatternValueSubschemasPattern10 struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	PatternProperties    map[string]json.RawMessage `json:"-"`
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces p with the value the document holds. See
@@ -624,6 +685,7 @@ func (p *PatternValueSubschemasPattern10) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (p *PatternValueSubschemasPattern10) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*p = PatternValueSubschemasPattern10{}
+	p._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -687,27 +749,44 @@ func (p *PatternValueSubschemasPattern10) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 	return nil
 }
 func (p PatternValueSubschemasPattern10) MarshalJSON() ([]byte, error) {
-	type Alias PatternValueSubschemasPattern10
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(p),
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p PatternValueSubschemasPattern10) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := p.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range p.PatternProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
 	for _key, _member := range p.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, p.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members p's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (p PatternValueSubschemasPattern10) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of p numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (p PatternValueSubschemasPattern10) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks PatternValueSubschemasPattern10 against its JSON Schema constraints.
@@ -872,43 +951,49 @@ func (p *PatternValueSubschemasPattern11) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 	return nil
 }
 func (p PatternValueSubschemasPattern11) MarshalJSON() ([]byte, error) {
-	type Alias PatternValueSubschemasPattern11
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(p),
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p PatternValueSubschemasPattern11) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := p.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	{
-		var _least string
-		var _failed error
-		for _key, _member := range p.AdditionalProperties { // refused for the least failing key
-			if _failed != nil && _key >= _least {
-				continue
+		// In key order, so that a member that fails is reported for the least
+		// key, whatever order the map is ranged in.
+		for _, _key := range jsonSortedKeys(p.AdditionalProperties) {
+			_v, _err := (jsonAppendLeaf[string])(p.AdditionalProperties[_key], nil)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), _err)
 			}
-			if _err := func() error {
-				raw, err := json.Marshal(_member)
-				if err != nil {
-					return fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), err)
-				}
-				obj[_key] = raw
-				return nil
-			}(); _err != nil {
-				_least, _failed = _key, _err
-			}
-		}
-		if _failed != nil {
-			return nil, _failed
+			_o.encoded(_key, _v)
 		}
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, p.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members p's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (p PatternValueSubschemasPattern11) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of p numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (p PatternValueSubschemasPattern11) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks PatternValueSubschemasPattern11 against its JSON Schema constraints.
@@ -1132,24 +1217,41 @@ func (p *PatternValueSubschemasPattern14) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 	return nil
 }
 func (p PatternValueSubschemasPattern14) MarshalJSON() ([]byte, error) {
-	type Alias PatternValueSubschemasPattern14
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(p),
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p PatternValueSubschemasPattern14) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := p.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range p.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, p.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members p's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (p PatternValueSubschemasPattern14) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of p numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (p PatternValueSubschemasPattern14) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks PatternValueSubschemasPattern14 against its JSON Schema constraints.
@@ -1242,24 +1344,41 @@ func (p *PatternValueSubschemasPattern15) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 	return nil
 }
 func (p PatternValueSubschemasPattern15) MarshalJSON() ([]byte, error) {
-	type Alias PatternValueSubschemasPattern15
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(p),
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p PatternValueSubschemasPattern15) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := p.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range p.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, p.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members p's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (p PatternValueSubschemasPattern15) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of p numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (p PatternValueSubschemasPattern15) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks PatternValueSubschemasPattern15 against its JSON Schema constraints.
@@ -1330,24 +1449,41 @@ func (p *PatternValueSubschemasPattern16) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 	return nil
 }
 func (p PatternValueSubschemasPattern16) MarshalJSON() ([]byte, error) {
-	type Alias PatternValueSubschemasPattern16
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(p),
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p PatternValueSubschemasPattern16) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := p.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range p.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, p.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members p's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (p PatternValueSubschemasPattern16) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of p numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (p PatternValueSubschemasPattern16) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks PatternValueSubschemasPattern16 against its JSON Schema constraints.
@@ -1442,6 +1578,7 @@ func (p PatternValueSubschemasPattern20) Validate() error {
 type PatternValueSubschemas struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	PatternProperties    map[string]json.RawMessage `json:"-"`
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces p with the value the document holds. See
@@ -1464,6 +1601,7 @@ func (p *PatternValueSubschemas) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (p *PatternValueSubschemas) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*p = PatternValueSubschemas{}
+	p._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -1667,27 +1805,44 @@ func (p *PatternValueSubschemas) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (p PatternValueSubschemas) MarshalJSON() ([]byte, error) {
-	type Alias PatternValueSubschemas
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(p),
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p PatternValueSubschemas) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := p.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range p.PatternProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
 	for _key, _member := range p.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, p.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members p's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (p PatternValueSubschemas) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of p numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (p PatternValueSubschemas) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks PatternValueSubschemas against its JSON Schema constraints.
@@ -1708,10 +1863,10 @@ func (p PatternValueSubschemas) Validate() error {
 					// Validate enforces everything beyond it.
 					var _pv PatternValueSubschemasPattern0
 					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^a", _schemagenQuote(_key), _uErr)
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^a", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^a", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^a", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -1724,10 +1879,10 @@ func (p PatternValueSubschemas) Validate() error {
 					// Validate enforces everything beyond it.
 					var _pv PatternValueSubschemasPattern1
 					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^b", _schemagenQuote(_key), _uErr)
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^b", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^b", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^b", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -1739,11 +1894,11 @@ func (p PatternValueSubschemas) Validate() error {
 					// decoded into it, so the decode enforces shape and the
 					// Validate enforces everything beyond it.
 					var _pv PatternValueSubschemasPattern2
-					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^c", _schemagenQuote(_key), _uErr)
+					if _uErr := jsonDecodeHeld(p._doc, _member, &_pv, (*PatternValueSubschemasPattern2).decodeJSONAt); _uErr != nil {
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^c", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^c", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^c", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -1755,11 +1910,11 @@ func (p PatternValueSubschemas) Validate() error {
 					// decoded into it, so the decode enforces shape and the
 					// Validate enforces everything beyond it.
 					var _pv PatternValueSubschemasPattern3
-					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^d", _schemagenQuote(_key), _uErr)
+					if _uErr := jsonDecodeHeld(p._doc, _member, &_pv, (*PatternValueSubschemasPattern3).decodeJSONAt); _uErr != nil {
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^d", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^d", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^d", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -1772,10 +1927,10 @@ func (p PatternValueSubschemas) Validate() error {
 					// Validate enforces everything beyond it.
 					var _pv D
 					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^e", _schemagenQuote(_key), _uErr)
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^e", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^e", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^e", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -1787,11 +1942,11 @@ func (p PatternValueSubschemas) Validate() error {
 					// decoded into it, so the decode enforces shape and the
 					// Validate enforces everything beyond it.
 					var _pv PatternValueSubschemasPattern5
-					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^f", _schemagenQuote(_key), _uErr)
+					if _uErr := jsonDecodeHeld(p._doc, _member, &_pv, (*PatternValueSubschemasPattern5).decodeJSONAt); _uErr != nil {
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^f", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^f", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^f", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -1803,11 +1958,11 @@ func (p PatternValueSubschemas) Validate() error {
 					// decoded into it, so the decode enforces shape and the
 					// Validate enforces everything beyond it.
 					var _pv PatternValueSubschemasPattern6
-					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^g", _schemagenQuote(_key), _uErr)
+					if _uErr := jsonDecodeHeld(p._doc, _member, &_pv, (*PatternValueSubschemasPattern6).decodeJSONAt); _uErr != nil {
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^g", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^g", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^g", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -1819,11 +1974,11 @@ func (p PatternValueSubschemas) Validate() error {
 					// decoded into it, so the decode enforces shape and the
 					// Validate enforces everything beyond it.
 					var _pv PatternValueSubschemasPattern7
-					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^h", _schemagenQuote(_key), _uErr)
+					if _uErr := jsonDecodeHeld(p._doc, _member, &_pv, (*PatternValueSubschemasPattern7).decodeJSONAt); _uErr != nil {
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^h", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^h", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^h", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -1836,10 +1991,10 @@ func (p PatternValueSubschemas) Validate() error {
 					// Validate enforces everything beyond it.
 					var _pv PatternValueSubschemasPattern8
 					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^i", _schemagenQuote(_key), _uErr)
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^i", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^i", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^i", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -1851,11 +2006,11 @@ func (p PatternValueSubschemas) Validate() error {
 					// decoded into it, so the decode enforces shape and the
 					// Validate enforces everything beyond it.
 					var _pv PatternValueSubschemasPattern9
-					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^j", _schemagenQuote(_key), _uErr)
+					if _uErr := jsonDecodeHeld(p._doc, _member, &_pv, (*PatternValueSubschemasPattern9).decodeJSONAt); _uErr != nil {
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^j", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^j", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^j", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -1867,11 +2022,11 @@ func (p PatternValueSubschemas) Validate() error {
 					// decoded into it, so the decode enforces shape and the
 					// Validate enforces everything beyond it.
 					var _pv PatternValueSubschemasPattern10
-					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^k", _schemagenQuote(_key), _uErr)
+					if _uErr := jsonDecodeHeld(p._doc, _member, &_pv, (*PatternValueSubschemasPattern10).decodeJSONAt); _uErr != nil {
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^k", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^k", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^k", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -1883,11 +2038,11 @@ func (p PatternValueSubschemas) Validate() error {
 					// decoded into it, so the decode enforces shape and the
 					// Validate enforces everything beyond it.
 					var _pv PatternValueSubschemasPattern11
-					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^l", _schemagenQuote(_key), _uErr)
+					if _uErr := jsonDecodeHeld(p._doc, _member, &_pv, (*PatternValueSubschemasPattern11).decodeJSONAt); _uErr != nil {
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^l", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^l", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^l", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -1899,11 +2054,11 @@ func (p PatternValueSubschemas) Validate() error {
 					// decoded into it, so the decode enforces shape and the
 					// Validate enforces everything beyond it.
 					var _pv PatternValueSubschemasPattern12
-					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^m", _schemagenQuote(_key), _uErr)
+					if _uErr := jsonDecodeHeld(p._doc, _member, &_pv, (*PatternValueSubschemasPattern12).decodeJSONAt); _uErr != nil {
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^m", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^m", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^m", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -1915,11 +2070,11 @@ func (p PatternValueSubschemas) Validate() error {
 					// decoded into it, so the decode enforces shape and the
 					// Validate enforces everything beyond it.
 					var _pv PatternValueSubschemasPattern13
-					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^n", _schemagenQuote(_key), _uErr)
+					if _uErr := jsonDecodeHeld(p._doc, _member, &_pv, (*PatternValueSubschemasPattern13).decodeJSONAt); _uErr != nil {
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^n", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^n", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^n", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -1931,11 +2086,11 @@ func (p PatternValueSubschemas) Validate() error {
 					// decoded into it, so the decode enforces shape and the
 					// Validate enforces everything beyond it.
 					var _pv PatternValueSubschemasPattern14
-					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^o", _schemagenQuote(_key), _uErr)
+					if _uErr := jsonDecodeHeld(p._doc, _member, &_pv, (*PatternValueSubschemasPattern14).decodeJSONAt); _uErr != nil {
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^o", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^o", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^o", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -1947,11 +2102,11 @@ func (p PatternValueSubschemas) Validate() error {
 					// decoded into it, so the decode enforces shape and the
 					// Validate enforces everything beyond it.
 					var _pv PatternValueSubschemasPattern15
-					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^p", _schemagenQuote(_key), _uErr)
+					if _uErr := jsonDecodeHeld(p._doc, _member, &_pv, (*PatternValueSubschemasPattern15).decodeJSONAt); _uErr != nil {
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^p", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^p", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^p", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -1963,11 +2118,11 @@ func (p PatternValueSubschemas) Validate() error {
 					// decoded into it, so the decode enforces shape and the
 					// Validate enforces everything beyond it.
 					var _pv PatternValueSubschemasPattern16
-					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^q", _schemagenQuote(_key), _uErr)
+					if _uErr := jsonDecodeHeld(p._doc, _member, &_pv, (*PatternValueSubschemasPattern16).decodeJSONAt); _uErr != nil {
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^q", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^q", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^q", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -2067,10 +2222,10 @@ func (p PatternValueSubschemas) Validate() error {
 					// Validate enforces everything beyond it.
 					var _pv PatternValueSubschemasPattern20
 					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^u", _schemagenQuote(_key), _uErr)
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^u", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^u", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^u", _schemagenQuote(_key)))
 					}
 				}
 			}

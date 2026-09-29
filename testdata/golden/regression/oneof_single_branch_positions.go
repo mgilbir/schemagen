@@ -423,24 +423,48 @@ func (o *OneOfSingleBranchPositionsObjBranchOption0) decodeJSONAt(_d *jsonDoc, _
 	return nil
 }
 func (o OneOfSingleBranchPositionsObjBranchOption0) MarshalJSON() ([]byte, error) {
-	type Alias OneOfSingleBranchPositionsObjBranchOption0
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OneOfSingleBranchPositionsObjBranchOption0) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range o.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o OneOfSingleBranchPositionsObjBranchOption0) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(o.K, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("k", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o OneOfSingleBranchPositionsObjBranchOption0) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks OneOfSingleBranchPositionsObjBranchOption0 against its JSON Schema constraints.
@@ -1023,60 +1047,144 @@ func (o *OneOfSingleBranchPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) err
 	return nil
 }
 func (o OneOfSingleBranchPositions) MarshalJSON() ([]byte, error) {
-	type Alias OneOfSingleBranchPositions
-	aux := struct {
-		Alias
-		BoundBranch json.RawMessage `json:"boundBranch,omitempty"`
-		ObjBranch   json.RawMessage `json:"objBranch,omitempty"`
-		TypedBranch json.RawMessage `json:"typedBranch,omitempty"`
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
+	return _b, nil
+}
 
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OneOfSingleBranchPositions) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
+	}
 	if o.BoundBranch != nil {
-		switch _sel := o.BoundBranch.(type) {
+		switch o.BoundBranch.(type) {
 		case *OneOfSingleBranchPositions_Integer:
-			raw, err := json.Marshal(_sel.Integer)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling OneOfSingleBranchPositions.BoundBranch: %w", err)
-			}
-			aux.BoundBranch = raw
+			_o.deferred("boundBranch", 6)
 		}
 	}
-
 	if o.ObjBranch != nil {
-		switch _sel := o.ObjBranch.(type) {
+		switch o.ObjBranch.(type) {
 		case *OneOfSingleBranchPositions_OneOfSingleBranchPositionsObjBranchOption0:
-			raw, err := json.Marshal(_sel.OneOfSingleBranchPositionsObjBranchOption0)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling OneOfSingleBranchPositions.ObjBranch: %w", err)
-			}
-			aux.ObjBranch = raw
+			_o.deferred("objBranch", 7)
 		}
 	}
-
 	if o.TypedBranch != nil {
-		switch _sel := o.TypedBranch.(type) {
+		switch o.TypedBranch.(type) {
 		case *OneOfSingleBranchPositions_String:
-			raw, err := json.Marshal(_sel.String)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling OneOfSingleBranchPositions.TypedBranch: %w", err)
-			}
-			aux.TypedBranch = raw
+			_o.deferred("typedBranch", 8)
 		}
-	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
 	}
 	for _key, _member := range o.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o OneOfSingleBranchPositions) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitZero(o.Map)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("map", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(o.ConstBranch)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constBranch", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(o.EmptyEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("emptyEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(o.FalseBranch)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("falseBranch", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(o.List)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("list", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(o.TwoBranch)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("twoBranch", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o OneOfSingleBranchPositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 6:
+		switch _sel := o.BoundBranch.(type) {
+		case *OneOfSingleBranchPositions_Integer:
+			_out, _err := (jsonAppendLeaf[int64])(_sel.Integer, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling OneOfSingleBranchPositions.BoundBranch: %w", _err)
+			}
+			return _out, nil
+		}
+	case 7:
+		switch _sel := o.ObjBranch.(type) {
+		case *OneOfSingleBranchPositions_OneOfSingleBranchPositionsObjBranchOption0:
+			_out, _err := (func(_v *OneOfSingleBranchPositionsObjBranchOption0, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*OneOfSingleBranchPositionsObjBranchOption0, OneOfSingleBranchPositionsObjBranchOption0](_v, _b, func(_v OneOfSingleBranchPositionsObjBranchOption0, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[OneOfSingleBranchPositionsObjBranchOption0](_v, _b, OneOfSingleBranchPositionsObjBranchOption0.appendJSON, true)
+				})
+			})(_sel.OneOfSingleBranchPositionsObjBranchOption0, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling OneOfSingleBranchPositions.ObjBranch: %w", _err)
+			}
+			return _out, nil
+		}
+	case 8:
+		switch _sel := o.TypedBranch.(type) {
+		case *OneOfSingleBranchPositions_String:
+			_out, _err := (jsonAppendLeaf[string])(_sel.String, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling OneOfSingleBranchPositions.TypedBranch: %w", _err)
+			}
+			return _out, nil
+		}
+	}
+	return _b, nil
 }
 
 // Validate checks OneOfSingleBranchPositions against its JSON Schema constraints.

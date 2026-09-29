@@ -625,6 +625,7 @@ func (n NullableFormatPositionsBucketsPattern0) Validate() error {
 type NullableFormatPositionsBuckets struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	PatternProperties    map[string]json.RawMessage `json:"-"`
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces n with the value the document holds. See
@@ -647,6 +648,7 @@ func (n *NullableFormatPositionsBuckets) UnmarshalJSON(data []byte) error {
 // document's verdict while holding another's fields is what that left behind.
 func (n *NullableFormatPositionsBuckets) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*n = NullableFormatPositionsBuckets{}
+	n._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -710,27 +712,44 @@ func (n *NullableFormatPositionsBuckets) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 	return nil
 }
 func (n NullableFormatPositionsBuckets) MarshalJSON() ([]byte, error) {
-	type Alias NullableFormatPositionsBuckets
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(n),
+	_b, _err := n.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends n to _b as JSON. See jsonEnc.
+func (n NullableFormatPositionsBuckets) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := n.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range n.PatternProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
 	for _key, _member := range n.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, n.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members n's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (n NullableFormatPositionsBuckets) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of n numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (n NullableFormatPositionsBuckets) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks NullableFormatPositionsBuckets against its JSON Schema constraints.
@@ -750,11 +769,11 @@ func (n NullableFormatPositionsBuckets) Validate() error {
 					// decoded into it, so the decode enforces shape and the
 					// Validate enforces everything beyond it.
 					var _pv NullableFormatPositionsBucketsPattern0
-					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^p", _schemagenQuote(_key), _uErr)
+					if _uErr := jsonDecodeHeld(n._doc, _member, &_pv, (*NullableFormatPositionsBucketsPattern0).decodeJSONAt); _uErr != nil {
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^p", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^p", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^p", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -1819,7 +1838,9 @@ func (n *NullableFormatPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 	}
 	if _v, _ok := _raw["tuple"]; _ok {
 		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
-			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+			return jsonLazyItemsOr[[]any](_p, _d, _s, func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+			})
 		}(&n.Tuple, _d, _v); _err != nil {
 			return jsonPathf(_err, "%s", "tuple")
 		}
@@ -2014,67 +2035,178 @@ func (n *NullableFormatPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 	return nil
 }
 func (n NullableFormatPositions) MarshalJSON() ([]byte, error) {
-	type Alias NullableFormatPositions
-	aux := struct {
-		Alias
-		Branch json.RawMessage `json:"branch,omitempty"`
-	}{
-		Alias: (Alias)(n),
+	_b, _err := n.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
+	return _b, nil
+}
 
+// appendJSON appends n to _b as JSON. See jsonEnc.
+func (n NullableFormatPositions) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := n.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
+	}
 	if n.Branch != nil {
-		switch _sel := n.Branch.(type) {
-		case *NullableFormatPositions_NullableFormatPositionsBranchOption0:
-			raw, err := json.Marshal(_sel.NullableFormatPositionsBranchOption0)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling NullableFormatPositions.Branch: %w", err)
-			}
-			aux.Branch = raw
-		case *NullableFormatPositions_Integer:
-			raw, err := json.Marshal(_sel.Integer)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling NullableFormatPositions.Branch: %w", err)
-			}
-			aux.Branch = raw
+		switch n.Branch.(type) {
+		case *NullableFormatPositions_NullableFormatPositionsBranchOption0, *NullableFormatPositions_Integer:
+			_o.deferred("branch", 10)
 		}
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(n._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range n._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero NullableFormatPositions
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range n._jsonNulls {
+				_cur, _present, _err := _o.value(_k, n.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range n.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, n.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members n's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (n NullableFormatPositions) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		if !jsonIsEmpty(n.Buckets) {
+			_o.deferred("buckets", 0)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Map)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("map", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Chain)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("chain", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Inline)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("inline", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.List)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("list", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Mail)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("mail", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Ref)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("ref", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Stamp)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("stamp", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Tuple)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("tuple", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Wrapped)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("wrapped", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of n numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (n NullableFormatPositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 0:
+		return (func(_v *NullableFormatPositionsBuckets, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*NullableFormatPositionsBuckets, NullableFormatPositionsBuckets](_v, _b, func(_v NullableFormatPositionsBuckets, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[NullableFormatPositionsBuckets](_v, _b, NullableFormatPositionsBuckets.appendJSON, true)
+			})
+		})(n.Buckets, _b)
+	case 10:
+		switch _sel := n.Branch.(type) {
+		case *NullableFormatPositions_NullableFormatPositionsBranchOption0:
+			_out, _err := (jsonAppendLeaf[NullableFormatPositionsBranchOption0])(_sel.NullableFormatPositionsBranchOption0, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling NullableFormatPositions.Branch: %w", _err)
+			}
+			return _out, nil
+		case *NullableFormatPositions_Integer:
+			_out, _err := (jsonAppendLeaf[int64])(_sel.Integer, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling NullableFormatPositions.Branch: %w", _err)
+			}
+			return _out, nil
+		}
+	}
+	return _b, nil
 }
 
 // Validate checks NullableFormatPositions against its JSON Schema constraints.
@@ -2178,17 +2310,30 @@ func (n NullableFormatPositions) Validate() error {
 	// Tuple items: validate each position against its schema type.
 	for _idx, _elem := range n.Tuple {
 		_ = _elem
+		// An element read lazily (see jsonLazyItemsOr) has its first level read
+		// here, for the arms that ask its JSON type; a position of this
+		// package's type decodes it from its span instead.
+		_lz, _isLazy := _elem.(jsonLazy)
+		if _isLazy {
+			_elem = _lz.jsonLevel()
+		}
 		if _idx == 0 {
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _mErr)
-			}
 			var _typed NullableFormatPositionsTupleItem0
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _uErr)
+			var _uErr error
+			if _isLazy {
+				_uErr = jsonDecodeLazy(_lz, &_typed, (*NullableFormatPositionsTupleItem0).decodeJSONAt)
+			} else {
+				_raw, _mErr := json.Marshal(_elem)
+				if _mErr != nil {
+					return jsonWrapf(_mErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
+				}
+				_uErr = jsonDecodeHeld(nil, _raw, &_typed, (*NullableFormatPositionsTupleItem0).decodeJSONAt)
+			}
+			if _uErr != nil {
+				return jsonWrapf(_uErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 			if _vErr := _typed.Validate(); _vErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _vErr)
+				return jsonWrapf(_vErr, fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 		}
 		if _idx == 1 {

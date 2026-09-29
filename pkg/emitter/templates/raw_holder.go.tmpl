@@ -30,6 +30,9 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 func ({{$recv}} *{{.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*{{$recv}} = {{.Name}}{}
 	{{$recv}}._raw = _d.keep(_sp)
+	{{- if .KeepsDoc}}
+	{{$recv}}._doc = _d
+	{{- end}}
 	return nil
 }
 

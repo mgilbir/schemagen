@@ -170,24 +170,41 @@ func (f *ForbiddenWhenK) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (f ForbiddenWhenK) MarshalJSON() ([]byte, error) {
-	type Alias ForbiddenWhenK
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f ForbiddenWhenK) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f ForbiddenWhenK) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f ForbiddenWhenK) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ForbiddenWhenK against its JSON Schema constraints.
@@ -311,24 +328,41 @@ func (n *NoNameAllowed) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (n NoNameAllowed) MarshalJSON() ([]byte, error) {
-	type Alias NoNameAllowed
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(n),
+	_b, _err := n.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends n to _b as JSON. See jsonEnc.
+func (n NoNameAllowed) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := n.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range n.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, n.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members n's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (n NoNameAllowed) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of n numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (n NoNameAllowed) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks NoNameAllowed against its JSON Schema constraints.
@@ -825,6 +859,7 @@ func (e EnumOutsideDeclaredTypeConstOutsideOneOf) Validate() error {
 type EnumOutsideDeclaredTypeConstOutsidePattern struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	PatternProperties    map[string]json.RawMessage `json:"-"`
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces e with the value the document holds. See
@@ -847,6 +882,7 @@ func (e *EnumOutsideDeclaredTypeConstOutsidePattern) UnmarshalJSON(data []byte) 
 // document's verdict while holding another's fields is what that left behind.
 func (e *EnumOutsideDeclaredTypeConstOutsidePattern) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*e = EnumOutsideDeclaredTypeConstOutsidePattern{}
+	e._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -910,27 +946,44 @@ func (e *EnumOutsideDeclaredTypeConstOutsidePattern) decodeJSONAt(_d *jsonDoc, _
 	return nil
 }
 func (e EnumOutsideDeclaredTypeConstOutsidePattern) MarshalJSON() ([]byte, error) {
-	type Alias EnumOutsideDeclaredTypeConstOutsidePattern
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(e),
+	_b, _err := e.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends e to _b as JSON. See jsonEnc.
+func (e EnumOutsideDeclaredTypeConstOutsidePattern) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := e.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range e.PatternProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
 	for _key, _member := range e.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, e.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members e's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (e EnumOutsideDeclaredTypeConstOutsidePattern) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of e numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (e EnumOutsideDeclaredTypeConstOutsidePattern) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks EnumOutsideDeclaredTypeConstOutsidePattern against its JSON Schema constraints.
@@ -975,6 +1028,7 @@ func (e EnumOutsideDeclaredTypeConstOutsidePattern) Validate() error {
 type EnumOutsideDeclaredTypeConstOutsideUnevalProps struct {
 	A                    *int64                     `json:"a,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces e with the value the document holds. See
@@ -997,6 +1051,7 @@ func (e *EnumOutsideDeclaredTypeConstOutsideUnevalProps) UnmarshalJSON(data []by
 // document's verdict while holding another's fields is what that left behind.
 func (e *EnumOutsideDeclaredTypeConstOutsideUnevalProps) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*e = EnumOutsideDeclaredTypeConstOutsideUnevalProps{}
+	e._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -1060,24 +1115,50 @@ func (e *EnumOutsideDeclaredTypeConstOutsideUnevalProps) decodeJSONAt(_d *jsonDo
 	return nil
 }
 func (e EnumOutsideDeclaredTypeConstOutsideUnevalProps) MarshalJSON() ([]byte, error) {
-	type Alias EnumOutsideDeclaredTypeConstOutsideUnevalProps
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(e),
+	_b, _err := e.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends e to _b as JSON. See jsonEnc.
+func (e EnumOutsideDeclaredTypeConstOutsideUnevalProps) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := e.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range e.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, e.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members e's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (e EnumOutsideDeclaredTypeConstOutsideUnevalProps) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(e.A)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("a", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of e numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (e EnumOutsideDeclaredTypeConstOutsideUnevalProps) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks EnumOutsideDeclaredTypeConstOutsideUnevalProps against its JSON Schema constraints.
@@ -1324,6 +1405,7 @@ func (e EnumOutsideDeclaredTypeEnumPartialPatternPattern0) Validate() error {
 type EnumOutsideDeclaredTypeEnumPartialPattern struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	PatternProperties    map[string]json.RawMessage `json:"-"`
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces e with the value the document holds. See
@@ -1346,6 +1428,7 @@ func (e *EnumOutsideDeclaredTypeEnumPartialPattern) UnmarshalJSON(data []byte) e
 // document's verdict while holding another's fields is what that left behind.
 func (e *EnumOutsideDeclaredTypeEnumPartialPattern) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*e = EnumOutsideDeclaredTypeEnumPartialPattern{}
+	e._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -1409,27 +1492,44 @@ func (e *EnumOutsideDeclaredTypeEnumPartialPattern) decodeJSONAt(_d *jsonDoc, _s
 	return nil
 }
 func (e EnumOutsideDeclaredTypeEnumPartialPattern) MarshalJSON() ([]byte, error) {
-	type Alias EnumOutsideDeclaredTypeEnumPartialPattern
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(e),
+	_b, _err := e.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends e to _b as JSON. See jsonEnc.
+func (e EnumOutsideDeclaredTypeEnumPartialPattern) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := e.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range e.PatternProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
 	for _key, _member := range e.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, e.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members e's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (e EnumOutsideDeclaredTypeEnumPartialPattern) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of e numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (e EnumOutsideDeclaredTypeEnumPartialPattern) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks EnumOutsideDeclaredTypeEnumPartialPattern against its JSON Schema constraints.
@@ -1450,10 +1550,10 @@ func (e EnumOutsideDeclaredTypeEnumPartialPattern) Validate() error {
 					// Validate enforces everything beyond it.
 					var _pv EnumOutsideDeclaredTypeEnumPartialPatternPattern0
 					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^a", _schemagenQuote(_key), _uErr)
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^a", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^a", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^a", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -2413,24 +2513,429 @@ func (e *EnumOutsideDeclaredType) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 	return nil
 }
 func (e EnumOutsideDeclaredType) MarshalJSON() ([]byte, error) {
-	type Alias EnumOutsideDeclaredType
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(e),
+	_b, _err := e.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends e to _b as JSON. See jsonEnc.
+func (e EnumOutsideDeclaredType) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := e.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range e.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, e.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members e's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (e EnumOutsideDeclaredType) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(e.BoolEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("boolEnum", _v)
+		}
+	}
+	{
+		if !jsonIsEmpty(e.ConstOutsideDependent) {
+			_o.deferred("constOutsideDependent", 1)
+		}
+	}
+	{
+		if !jsonIsEmpty(e.ConstOutsideNames) {
+			_o.deferred("constOutsideNames", 2)
+		}
+	}
+	{
+		if !jsonIsEmpty(e.ConstOutsidePattern) {
+			_o.deferred("constOutsidePattern", 3)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(e.ConstOutsideProp)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constOutsideProp", _v)
+		}
+	}
+	{
+		if !jsonIsEmpty(e.ConstOutsideUnevalProps) {
+			_o.deferred("constOutsideUnevalProps", 5)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.ConstOutsideValues)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constOutsideValues", _v)
+		}
+	}
+	{
+		if !jsonIsEmpty(e.EnumPartialPattern) {
+			_o.deferred("enumPartialPattern", 7)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(e.EnumPartialProp)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("enumPartialProp", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(e.EnumPartialRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("enumPartialRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.EnumPartialValues)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("enumPartialValues", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(e.FracInInteger)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("fracInInteger", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(e.FracOutsideInteger)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("fracOutsideInteger", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(e.IntegerEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("integerEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(e.IntegerFloatSpelling)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("integerFloatSpelling", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(e.NumberEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("numberEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(e.TypedConst)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("typedConst", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(e.TypedEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("typedEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.NullableEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nullableEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(e.ArrayEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("arrayEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.ArrayOutsideConst)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("arrayOutsideConst", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.BoolOutsideConst)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("boolOutsideConst", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.ConstOutsideAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constOutsideAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.ConstOutsideAnyOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constOutsideAnyOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.ConstOutsideContains)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constOutsideContains", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.ConstOutsideItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constOutsideItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.ConstOutsideOneOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constOutsideOneOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.ConstOutsideRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constOutsideRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.ConstOutsideSlot)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constOutsideSlot", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.ConstOutsideUnevalItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constOutsideUnevalItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.EnumAllOutsideProp)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("enumAllOutsideProp", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.EnumOutsideProp)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("enumOutsideProp", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.EnumPartialItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("enumPartialItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.EnumPartialSlot)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("enumPartialSlot", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.NotConstOutside)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("notConstOutside", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.NullOutsideConst)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nullOutsideConst", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.NumberOutsideConst)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("numberOutsideConst", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(e.ObjectEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("objectEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.ObjectOutsideConst)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("objectOutsideConst", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(e.OkItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("okItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(e.UnionEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("unionEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(e.UntypedEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("untypedEnum", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of e numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (e EnumOutsideDeclaredType) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 1:
+		return (func(_v *ForbiddenWhenK, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*ForbiddenWhenK, ForbiddenWhenK](_v, _b, func(_v ForbiddenWhenK, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[ForbiddenWhenK](_v, _b, ForbiddenWhenK.appendJSON, true)
+			})
+		})(e.ConstOutsideDependent, _b)
+	case 2:
+		return (func(_v *NoNameAllowed, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*NoNameAllowed, NoNameAllowed](_v, _b, func(_v NoNameAllowed, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[NoNameAllowed](_v, _b, NoNameAllowed.appendJSON, true)
+			})
+		})(e.ConstOutsideNames, _b)
+	case 3:
+		return (func(_v *EnumOutsideDeclaredTypeConstOutsidePattern, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*EnumOutsideDeclaredTypeConstOutsidePattern, EnumOutsideDeclaredTypeConstOutsidePattern](_v, _b, func(_v EnumOutsideDeclaredTypeConstOutsidePattern, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[EnumOutsideDeclaredTypeConstOutsidePattern](_v, _b, EnumOutsideDeclaredTypeConstOutsidePattern.appendJSON, true)
+			})
+		})(e.ConstOutsidePattern, _b)
+	case 5:
+		return (func(_v *EnumOutsideDeclaredTypeConstOutsideUnevalProps, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*EnumOutsideDeclaredTypeConstOutsideUnevalProps, EnumOutsideDeclaredTypeConstOutsideUnevalProps](_v, _b, func(_v EnumOutsideDeclaredTypeConstOutsideUnevalProps, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[EnumOutsideDeclaredTypeConstOutsideUnevalProps](_v, _b, EnumOutsideDeclaredTypeConstOutsideUnevalProps.appendJSON, true)
+			})
+		})(e.ConstOutsideUnevalProps, _b)
+	case 7:
+		return (func(_v *EnumOutsideDeclaredTypeEnumPartialPattern, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*EnumOutsideDeclaredTypeEnumPartialPattern, EnumOutsideDeclaredTypeEnumPartialPattern](_v, _b, func(_v EnumOutsideDeclaredTypeEnumPartialPattern, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[EnumOutsideDeclaredTypeEnumPartialPattern](_v, _b, EnumOutsideDeclaredTypeEnumPartialPattern.appendJSON, true)
+			})
+		})(e.EnumPartialPattern, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks EnumOutsideDeclaredType against its JSON Schema constraints.
@@ -2773,16 +3278,16 @@ func (e EnumOutsideDeclaredType) Validate() error {
 	for _idx, _elem := range e.EnumPartialSlot {
 		_ = _elem
 		if _idx == 0 {
+			var _typed EnumOutsideDeclaredTypeEnumPartialSlotItem0
 			_raw, _mErr := json.Marshal(_elem)
 			if _mErr != nil {
-				return fmt.Errorf("enumPartialSlot: items[%d]: %w", _idx, _mErr)
+				return jsonWrapf(_mErr, fmt.Sprintf("enumPartialSlot: items[%d]: ", _idx))
 			}
-			var _typed EnumOutsideDeclaredTypeEnumPartialSlotItem0
 			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return fmt.Errorf("enumPartialSlot: items[%d]: %w", _idx, _uErr)
+				return jsonWrapf(_uErr, fmt.Sprintf("enumPartialSlot: items[%d]: ", _idx))
 			}
 			if _vErr := _typed.Validate(); _vErr != nil {
-				return fmt.Errorf("enumPartialSlot: items[%d]: %w", _idx, _vErr)
+				return jsonWrapf(_vErr, fmt.Sprintf("enumPartialSlot: items[%d]: ", _idx))
 			}
 		}
 	}

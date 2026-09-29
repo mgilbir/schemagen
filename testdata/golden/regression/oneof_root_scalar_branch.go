@@ -94,24 +94,48 @@ func (o *OneOfRootScalarBranchValueOption0) decodeJSONAt(_d *jsonDoc, _sp jsonSp
 	return nil
 }
 func (o OneOfRootScalarBranchValueOption0) MarshalJSON() ([]byte, error) {
-	type Alias OneOfRootScalarBranchValueOption0
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OneOfRootScalarBranchValueOption0) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range o.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o OneOfRootScalarBranchValueOption0) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(o.K, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("k", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o OneOfRootScalarBranchValueOption0) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks OneOfRootScalarBranchValueOption0 against its JSON Schema constraints.
@@ -331,16 +355,28 @@ func (o *OneOfRootScalarBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (o OneOfRootScalarBranch) MarshalJSON() ([]byte, error) {
-	// Top-level oneOf: marshal the selected variant directly as the root object.
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
+	}
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OneOfRootScalarBranch) appendJSON(_b []byte) ([]byte, error) {
 	if o.Value != nil {
 		switch _sel := o.Value.(type) {
 		case *OneOfRootScalarBranch_OneOfRootScalarBranchValueOption0:
-			return json.Marshal(_sel.OneOfRootScalarBranchValueOption0)
+			return (func(_v *OneOfRootScalarBranchValueOption0, _b []byte) ([]byte, error) {
+				return jsonEncPtr[*OneOfRootScalarBranchValueOption0, OneOfRootScalarBranchValueOption0](_v, _b, func(_v OneOfRootScalarBranchValueOption0, _b []byte) ([]byte, error) {
+					return jsonEncMarshaler[OneOfRootScalarBranchValueOption0](_v, _b, OneOfRootScalarBranchValueOption0.appendJSON, true)
+				})
+			})(_sel.OneOfRootScalarBranchValueOption0, _b)
 		case *OneOfRootScalarBranch_String:
-			return json.Marshal(_sel.String)
+			return (jsonAppendLeaf[string])(_sel.String, _b)
 		}
 	}
-	return []byte("null"), nil
+	return append(_b, "null"...), nil
 }
 
 // Validate checks OneOfRootScalarBranch against its JSON Schema constraints.

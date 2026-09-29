@@ -306,6 +306,17 @@ object a generated type decodes means its last value, and the earlier one is not
 decoded at all; a map or a slice of scalars is decoded whole by `encoding/json`,
 which keeps the last value too but refuses an earlier one that does not decode.
 
+**So do validating and writing back.** `Validate` reads the members a value
+holds as raw JSON — a `patternProperties` value, a member no branch accounts
+for, a keyword judged at run time, a tuple position — through the document the
+value was decoded from, one level at a time, rather than decoding each afresh;
+a value holding such members keeps that document's index as well as its copy.
+`MarshalJSON` writes a value into one buffer, calling what each member's type
+writes directly; `encoding/json` still writes every leaf, so the bytes are the
+ones it always wrote, and a failure is reported in its words. Refusals are
+spelled out once, when their text is asked for, so a refusal at the bottom of a
+deep document costs its own length and not the depth squared.
+
 ### Numbers: exact, or `float64`
 
 A JSON number has no precision limit and a `float64` has two. By default a

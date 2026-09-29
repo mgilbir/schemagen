@@ -125,6 +125,16 @@ type StructDef struct {
 	// which a definition keyed "FooAccessRules" beside a type Foo declared
 	// twice.
 	AccessRulesVar string
+	// StripRules are the writeOnly AccessRules MarshalJSON applies: all of them
+	// but those that step into a member whose own type strips the rest of the
+	// path itself. See stripRulesFor.
+	StripRules []AccessRule
+	// EncodeKeysVar and StripRulesVar are the package variables the encode
+	// declares beside the type -- its member names as encoding/json spells
+	// them, and StripRules -- named by the name registry in
+	// resolveEncodePlans. Empty where the type declares none.
+	EncodeKeysVar string
+	StripRulesVar string
 	// StrictReadWrite says the file was generated under Config.StrictReadWrite.
 	// The decoder needs to know even where this struct carries no key of its own:
 	// a refusal arriving from a nested type has to be held rather than returned,
@@ -166,8 +176,19 @@ type StructDef struct {
 	NullPresenceKeys       []string                  // JSON names whose present null the decoded value cannot hold, recorded in _jsonNulls
 	NeedsMarshal           bool
 	NeedsUnmarshal         bool
-	NeedsNullCheck         bool // true when the schema's type does not include "null" — reject null JSON data
-	AcceptNonObject        bool // true when the schema admits a document that is not an object — accept it, keeping the raw bytes, and judge it with NonObjectValidations
+	// EncodeMembers are the members encoding/json wrote for the struct, in the
+	// order it wrote them: the tagged fields, and under NeedsMarshal the union
+	// members MarshalJSON added beside them. EncodeObject says MarshalJSON
+	// gathers them with everything it writes by hand and writes the lot in key
+	// order. Set by resolveEncodePlans; see encodeplan.go.
+	EncodeMembers []EncodeMember
+	EncodeObject  bool
+	// EncodeManual are the members MarshalJSON writes by hand, whose names a
+	// struct tag cannot carry: the ManualJSON unions and then the ManualJSON
+	// fields, numbered on from EncodeMembers.
+	EncodeManual    []EncodeMember
+	NeedsNullCheck  bool // true when the schema's type does not include "null" — reject null JSON data
+	AcceptNonObject bool // true when the schema admits a document that is not an object — accept it, keeping the raw bytes, and judge it with NonObjectValidations
 	// RejectObject is set when the schema positively excludes a JSON object at
 	// its own position, and is the same sentence NeedsNullCheck is about a null.
 	//
@@ -545,6 +566,14 @@ func (d *StructDef) HasObjectEnum() bool {
 // is a schema (not just true/false) with validation rules for each unevaluated value.
 func (u *UnevaluatedPropertiesDef) HasSchemaValuedUnevalProps() bool {
 	return u.ValueType != "" || u.ValueIsNull || len(u.Validations) > 0
+}
+
+// NeedsDoc reports whether the struct keeps the document it was decoded from
+// (_doc): every struct whose Validate judges a value it holds as raw JSON, which
+// it reads through that document rather than decoding it from its bytes again.
+// See jsonDecodeHeld and jsonHeld.
+func (d *StructDef) NeedsDoc() bool {
+	return d.NeedsRawProps() || d.HasPatternProperties() || d.UnevaluatedProperties != nil
 }
 
 // NeedsRawProps returns true if the struct needs _jsonRawProps for runtime
@@ -969,6 +998,10 @@ type PatternPropertyDef struct {
 	// case Validations below is what is left. resolvePatternPropertyTypes
 	// settles which of the two a pattern gets, once every type def exists.
 	TypeName string
+	// Decoder is TypeName's in-place decode, where TypeName decodes in place;
+	// Validate decodes a matched value through jsonDecodeHeld with it. Empty
+	// otherwise, and the value is decoded by encoding/json. See heldDecoder.
+	Decoder string
 	// Validations are the scalar constraints checked against the raw value
 	// in place. They are the fallback for a sub-schema with no type of its own;
 	// where TypeName is set this is nil, since that type answers for the whole
@@ -1029,6 +1062,10 @@ type AdditionalPropertiesDef struct {
 	// ValueDecoder is the decode of one value, as a jsonAt[T] expression over
 	// ValueType or its shadow. See decodeplan.go.
 	ValueDecoder string
+	// ValueEncoder writes one value, as a jsonEnc[T] expression over
+	// ValueType; ValueEncodeLeaf says it is jsonAppendLeaf. See encodeplan.go.
+	ValueEncoder    string
+	ValueEncodeLeaf bool
 }
 
 // UnevaluatedPropertiesDef describes an unevaluatedProperties constraint on a struct.
@@ -1042,6 +1079,7 @@ type UnevaluatedPropertiesDef struct {
 	AllEvaluated      bool              // true when additionalProperties or nested unevaluatedProperties marks all as evaluated
 	Validations       []ValidationRule  // validation rules for schema-valued unevaluatedProperties (e.g., type/minLength constraints on each unevaluated value)
 	ValueType         string            // Go type each unevaluated value is decoded into (e.g., "string", "float64"); empty if no type constraint
+	ValueDecoder      string            // ValueType's in-place decode, as PatternPropertyDef.Decoder is
 	ValueIsNull       bool              // true when the sub-schema is {"type":"null"}, which no Go type expresses -- see buildUnevaluatedPropertiesDef
 	ConditionalEvals  []ConditionalEval // runtime-conditional evaluation branches (if/then/else, dependentSchemas, anyOf, oneOf)
 }
@@ -1139,6 +1177,8 @@ type BranchOverflowCheck struct {
 	// (resolvePatternPropertyTypes): a sub-schema whose type turns out not to
 	// carry a Validate leaves this empty and the value goes unchecked.
 	TypeName string
+	// Decoder is TypeName's in-place decode, as PatternPropertyDef.Decoder is.
+	Decoder string
 }
 
 // RuntimeBranchCheck is one keyword of an object schema compiled to the runtime
@@ -1619,6 +1659,12 @@ type FieldDef struct {
 	// which the hand-decoded member of a ManualJSON field takes.
 	MemberDecoder string
 	ValueDecoder  string
+	// Encoder writes the field's value, as a jsonEnc[T] expression over its
+	// type; EncodeLeaf says it is jsonAppendLeaf -- the value holds nothing of
+	// this package's -- which is what decides how the field's omitempty or
+	// omitzero is judged. See encodeplan.go.
+	Encoder    string
+	EncodeLeaf bool
 	// ConditionalOnly marks a field whose every describing schema arrived
 	// through an if/then/else consequence that is applied in full elsewhere. The
 	// branch still supplies the Go type -- that is what the merge is for -- but
@@ -1791,6 +1837,9 @@ type OneOfVariant struct {
 	// Decoder is the decode of a candidate, as a jsonAt[T] expression over Type
 	// or its shadow. See decodeplan.go.
 	Decoder string
+	// Encoder writes the selected variant, as a jsonEnc[T] expression over
+	// Type. See encodeplan.go.
+	Encoder string
 }
 
 // EnumDef represents an enum type.
@@ -1868,7 +1917,33 @@ type TupleItemDef struct {
 	// validation verdict -- issue #219's middle group, where a tuple slot
 	// answered `read-only property may not be set` from Validate().
 	StrictReadWrite bool
+	// Decoder is TypeName's in-place decode, as PatternPropertyDef.Decoder is.
+	// A tuple holding such a position is decoded element by element, lazily,
+	// wherever Validate decodes it (see jsonLazyItemsOr), and the position is
+	// decoded from its span of the document rather than from its re-encoding.
+	Decoder string
 }
+
+// tupleHasHeld reports whether any position of a tuple is decoded in place.
+func tupleHasHeld(items []TupleItemDef, tail *TupleItemDef) bool {
+	for i := range items {
+		if items[i].Decoder != "" {
+			return true
+		}
+	}
+	return tail != nil && tail.Decoder != ""
+}
+
+// HasHeldPositions reports whether any position of the tuple is decoded in
+// place. See TupleItemDef.Decoder.
+func (d FieldTupleDef) HasHeldPositions() bool { return tupleHasHeld(d.Items, d.Tail) }
+
+// HasHeldPositions is FieldTupleDef.HasHeldPositions for an array alias.
+func (d *AliasDef) HasHeldPositions() bool { return tupleHasHeld(d.TupleItems, d.TupleTail) }
+
+// LazyItems reports whether the alias is a tuple held as []any that is read
+// lazily where Validate decodes it. See jsonLazyItemsOr.
+func (d *AliasDef) LazyItems() bool { return d.HasHeldPositions() && isAnySlice(d.Underlying) }
 
 // AliasDef represents a defined type (type Name Underlying).
 // A Validate() method is always emitted. For types whose underlying
@@ -1918,6 +1993,15 @@ type AliasDef struct {
 	// type UnmarshalAs names. Set where DecodeAt is.
 	UnderlyingDecoder  string
 	UnmarshalAsDecoder string
+
+	// EncodeTo says the alias writes itself with an appendJSON of its own, which
+	// its containers call rather than handing it to encoding/json: an alias
+	// that can carry methods, over a value holding this package's types. Set by
+	// resolveEncodePlans. ValueEncoder writes the value, over the alias itself
+	// or, where MarshalAs is set, over the type MarshalAs names -- the value
+	// converted to it is what MarshalJSON has always written.
+	EncodeTo     bool
+	ValueEncoder string
 
 	// Unenforced names the schema keywords this alias silently drops, phrased
 	// for the comment that goes above the declaration. It is set only on the
@@ -2645,7 +2729,28 @@ type TypeSchemaBranch struct {
 	// branch is judged through validateVisiting, which fails a branch that
 	// re-enters a wrapper already judging this value. See resolveTypeBranchesInPlace.
 	InPlaceType string
+
+	// Decoder is TypeName's in-place decode, as PatternPropertyDef.Decoder is.
+	Decoder string
 }
+
+// KeepsDoc reports whether the wrapper keeps the document it was decoded from:
+// one whose branches decode the value into a type that decodes in place. See
+// jsonDecodeHeld.
+func (d *TypeOnlySchemaDef) KeepsDoc() bool {
+	for _, b := range d.TypeBranches {
+		if b.Decoder != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// KeepsDoc is false for the other raw-value wrappers, which judge the value
+// they hold whole, with the evaluator, once.
+func (d *NotSchemaDef) KeepsDoc() bool        { return false }
+func (d *DynamicSchemaDef) KeepsDoc() bool    { return false }
+func (d *AnnotationSchemaDef) KeepsDoc() bool { return false }
 
 type TypeSchemaProperty struct {
 	Name     string

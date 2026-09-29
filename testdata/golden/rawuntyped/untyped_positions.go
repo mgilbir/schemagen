@@ -595,49 +595,252 @@ func (u *UntypedPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	return nil
 }
 func (u UntypedPositions) MarshalJSON() ([]byte, error) {
-	type Alias UntypedPositions
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(u),
+	_b, _err := u.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends u to _b as JSON. See jsonEnc.
+func (u UntypedPositions) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := u.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(u._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range u._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero UntypedPositions
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range u._jsonNulls {
+				_cur, _present, _err := _o.value(_k, u.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.value(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range u.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, u.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members u's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (u UntypedPositions) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Bounded)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("bounded", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.FreeObject)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("freeObject", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.IntegerBeside)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("integerBeside", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.NullableFreeObject)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nullableFreeObject", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.Values)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("values", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Aliased)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("aliased", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.AliasedList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("aliasedList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Anything)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anything", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.BareArray)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("bareArray", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Choices)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("choices", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Constant)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constant", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.ContainsConst)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("containsConst", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.ContainsEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("containsEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Cycle)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("cycle", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.Elements)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("elements", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Empty)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("empty", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.NestedUnique)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nestedUnique", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.Pair)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("pair", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(u.Required, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("required", _v)
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Scalar)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("scalar", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.Unique)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("unique", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of u numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (u UntypedPositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks UntypedPositions against its JSON Schema constraints.

@@ -178,6 +178,7 @@ type AnyOfBooleanAndScalarBranchesFalseBranch struct {
 	K                    *string                    `json:"k,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces a with the value the document holds. See
@@ -200,6 +201,7 @@ func (a *AnyOfBooleanAndScalarBranchesFalseBranch) UnmarshalJSON(data []byte) er
 // document's verdict while holding another's fields is what that left behind.
 func (a *AnyOfBooleanAndScalarBranchesFalseBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*a = AnyOfBooleanAndScalarBranchesFalseBranch{}
+	a._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -267,24 +269,50 @@ func (a *AnyOfBooleanAndScalarBranchesFalseBranch) decodeJSONAt(_d *jsonDoc, _sp
 	return nil
 }
 func (a AnyOfBooleanAndScalarBranchesFalseBranch) MarshalJSON() ([]byte, error) {
-	type Alias AnyOfBooleanAndScalarBranchesFalseBranch
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AnyOfBooleanAndScalarBranchesFalseBranch) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AnyOfBooleanAndScalarBranchesFalseBranch) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.K)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("k", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AnyOfBooleanAndScalarBranchesFalseBranch) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AnyOfBooleanAndScalarBranchesFalseBranch against its JSON Schema constraints.
@@ -301,8 +329,8 @@ func (a AnyOfBooleanAndScalarBranchesFalseBranch) Validate() error {
 					continue
 				}
 				if _err := func() error {
-					var _rbVal any
-					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+					_rbVal, _rbErr := jsonHeld(a._doc, _rbRaw)
+					if _rbErr != nil {
 						return jsonValueErrorf("cannot decode property %s: %w", _schemagenQuote(_rbKey), _rbErr)
 					}
 					_rbInstance[_rbKey] = _rbVal
@@ -331,10 +359,10 @@ func (a AnyOfBooleanAndScalarBranchesFalseBranch) Validate() error {
 				},
 			}
 			if _rbRes := _evalNode(&_rbNode0, _rbInstance); !_rbRes.ok {
-				if _rbRes.reason == "" {
+				if _rbRes.why.String() == "" {
 					return fmt.Errorf("anyOf: value does not satisfy the schema")
 				}
-				return fmt.Errorf("anyOf: %s", _rbRes.reason)
+				return fmt.Errorf("anyOf: %s", _rbRes.why.String())
 			}
 		}
 	}
@@ -515,6 +543,7 @@ type AnyOfBooleanAndScalarBranchesObjectsOnly struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // UnmarshalJSON replaces a with the value the document holds. See
@@ -537,6 +566,7 @@ func (a *AnyOfBooleanAndScalarBranchesObjectsOnly) UnmarshalJSON(data []byte) er
 // document's verdict while holding another's fields is what that left behind.
 func (a *AnyOfBooleanAndScalarBranchesObjectsOnly) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	*a = AnyOfBooleanAndScalarBranchesObjectsOnly{}
+	a._doc = _d
 	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -616,24 +646,59 @@ func (a *AnyOfBooleanAndScalarBranchesObjectsOnly) decodeJSONAt(_d *jsonDoc, _sp
 	return nil
 }
 func (a AnyOfBooleanAndScalarBranchesObjectsOnly) MarshalJSON() ([]byte, error) {
-	type Alias AnyOfBooleanAndScalarBranchesObjectsOnly
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AnyOfBooleanAndScalarBranchesObjectsOnly) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AnyOfBooleanAndScalarBranchesObjectsOnly) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.J)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("j", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.K)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("k", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AnyOfBooleanAndScalarBranchesObjectsOnly) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AnyOfBooleanAndScalarBranchesObjectsOnly against its JSON Schema constraints.
@@ -964,24 +1029,108 @@ func (a *AnyOfBooleanAndScalarBranches) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) 
 	return nil
 }
 func (a AnyOfBooleanAndScalarBranches) MarshalJSON() ([]byte, error) {
-	type Alias AnyOfBooleanAndScalarBranches
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AnyOfBooleanAndScalarBranches) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AnyOfBooleanAndScalarBranches) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		if !jsonIsEmpty(a.FalseBranch) {
+			_o.deferred("falseBranch", 0)
+		}
+	}
+	{
+		if !jsonIsEmpty(a.ObjectsOnly) {
+			_o.deferred("objectsOnly", 1)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(a.BareObjectBranch)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("bareObjectBranch", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(a.ConstBranch)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constBranch", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(a.Mixed)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("mixed", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(a.NotBranch)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("notBranch", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(a.TrueBranch)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("trueBranch", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AnyOfBooleanAndScalarBranches) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 0:
+		return (func(_v *AnyOfBooleanAndScalarBranchesFalseBranch, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AnyOfBooleanAndScalarBranchesFalseBranch, AnyOfBooleanAndScalarBranchesFalseBranch](_v, _b, func(_v AnyOfBooleanAndScalarBranchesFalseBranch, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AnyOfBooleanAndScalarBranchesFalseBranch](_v, _b, AnyOfBooleanAndScalarBranchesFalseBranch.appendJSON, true)
+			})
+		})(a.FalseBranch, _b)
+	case 1:
+		return (func(_v *AnyOfBooleanAndScalarBranchesObjectsOnly, _b []byte) ([]byte, error) {
+			return jsonEncPtr[*AnyOfBooleanAndScalarBranchesObjectsOnly, AnyOfBooleanAndScalarBranchesObjectsOnly](_v, _b, func(_v AnyOfBooleanAndScalarBranchesObjectsOnly, _b []byte) ([]byte, error) {
+				return jsonEncMarshaler[AnyOfBooleanAndScalarBranchesObjectsOnly](_v, _b, AnyOfBooleanAndScalarBranchesObjectsOnly.appendJSON, true)
+			})
+		})(a.ObjectsOnly, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks AnyOfBooleanAndScalarBranches against its JSON Schema constraints.

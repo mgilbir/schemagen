@@ -66,6 +66,7 @@ func FuncMap() template.FuncMap {
 		"jsonErrorName":          jsonErrorNameFunc,
 		"mkCondCtx":              mkCondCtxFunc,
 		"mkClosedKeysCtx":        mkClosedKeysCtxFunc,
+		"mkEncodeCtx":            mkEncodeCtxFunc,
 		"mkItemCtx":              mkItemCtxFunc,
 		"mkContainsCtx":          mkContainsCtxFunc,
 		"mkContainsCtxIn":        mkContainsCtxInFunc,
@@ -94,6 +95,8 @@ func FuncMap() template.FuncMap {
 		"itemElem":               itemElemFunc,
 		"itemPath":               itemPathFunc,
 		"pathErrf":               pathErrfFunc,
+		"pathWrapf":              pathWrapFunc,
+		"tupleHeld":              tupleHeldFunc,
 		"pathJoin":               pathJoinFunc,
 		"itemArgs":               itemArgsFunc,
 		"argPrefix":              argPrefixFunc,
@@ -496,6 +499,27 @@ func pathErrfFunc(path formatText) string {
 	return "fmt.Errorf"
 }
 
+// tupleHeldFunc reports whether any position of a tuple is decoded in place
+// (TupleItemDef.Decoder), which is when the tuple's elements may be read lazily.
+func tupleHeldFunc(items []generator.TupleItemDef, tail *generator.TupleItemDef) bool {
+	for _, it := range items {
+		if it.Decoder != "" {
+			return true
+		}
+	}
+	return tail != nil && tail.Decoder != ""
+}
+
+// pathWrapFunc is pathErrfFunc for a message that ends with another error's:
+// the helper that puts a prefix in front of it without writing the text out,
+// for the reason jsonPathError gives.
+func pathWrapFunc(path formatText) string {
+	if pathIsAccessorLed(path) {
+		return "jsonElemWrapf"
+	}
+	return "jsonWrapf"
+}
+
 // pathJoinFunc is pathErrfFunc for the joiner rather than the constructor: what
 // an element's own Validate error is put behind this path with.
 func pathJoinFunc(path formatText) string {
@@ -650,6 +674,18 @@ func goStringSlice(values []string) string {
 		parts[i] = fmt.Sprintf("%q", v)
 	}
 	return "[]string{" + strings.Join(parts, ", ") + "}"
+}
+
+// EncodeContext is what the encode templates render one member of a struct
+// with: the receiver, the struct, and the member.
+type EncodeContext struct {
+	Recv   string
+	Struct *generator.StructDef
+	Member generator.EncodeMember
+}
+
+func mkEncodeCtxFunc(recv string, s *generator.StructDef, m generator.EncodeMember) EncodeContext {
+	return EncodeContext{Recv: recv, Struct: s, Member: m}
 }
 
 // ClosedKeysContext is what object_branch_closed_keys renders: the receiver
