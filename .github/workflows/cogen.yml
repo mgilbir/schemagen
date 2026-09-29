@@ -117,4 +117,4 @@ jobs:
           SCHEMAGEN_COGEN_ITERS: '200'
           SCHEMAGEN_COGEN_BOWTIE: '1'
           SCHEMAGEN_COGEN_BOWTIE_MAX: '150'
-        run: go test ./tests/... -run TestCoGenerated -v -count=1 -timeout 60m
+        run: go test ./tests/cogen -run TestCoGenerated -v -count=1 -timeout 60m

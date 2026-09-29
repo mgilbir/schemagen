@@ -42,7 +42,7 @@ import (
 // source, so a function that starts or stops reading one has to be reclassified
 // rather than drifting.
 //
-// The behavioural half is tests/reference_kind_agreement_test.go, which writes
+// The behavioural half is tests/refs/reference_kind_agreement_test.go, which writes
 // the same position three ways -- $ref, $recursiveRef and $dynamicRef, chosen so
 // that the three documents mean the same thing -- and requires the same verdicts
 // through generate-compile-run. A table saying a site is total is a claim; that

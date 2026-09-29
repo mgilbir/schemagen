@@ -1,0 +1,304 @@
+package fuzz
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/mgilbir/schemagen/pkg/emitter"
+	"github.com/mgilbir/schemagen/pkg/generator"
+	"github.com/mgilbir/schemagen/pkg/schema"
+	"github.com/mgilbir/schemagen/tests/internal/testsupport"
+)
+
+// fuzzSeedCfgBits are the cfgBits values every seed schema is registered under.
+// One seed per schema would only ever exercise a single point of the flag
+// matrix, leaving the rest of it to be discovered by mutation; these five cover
+// every boolean flag in both positions, all three validation modes plus the
+// zero value, and four of the draft overrides:
+//
+//	0x00 — all flags off, static validation, draft auto-detected
+//	0x1F — all flags on, hybrid validation, draft auto-detected
+//	0x6A — strict + lenient refs, runtime validation, draft-04 override
+//	0xB5 — omitempty + bigint, zero-value validation mode, draft-07 override
+//	0xC1 — omitempty only, static validation, draft 2020-12 override
+var fuzzSeedCfgBits = []uint8{0x00, 0x1F, 0x6A, 0xB5, 0xC1}
+
+// fuzzConfig derives a generator.Config from the fuzzer's config byte, so the
+// fuzzer explores the flag matrix and not just the schema space.
+//
+// Resolver and CrossPackage stay nil: the fuzz body must never reach the
+// network or the filesystem.
+func fuzzConfig(cfgBits uint8) generator.Config {
+	cfg := generator.Config{
+		PackageName:      "fuzzpkg",
+		OutputDir:        ".",
+		OmitEmpty:        cfgBits&0x01 != 0,
+		StrictProperties: cfgBits&0x02 != 0,
+		BigIntSupport:    cfgBits&0x04 != 0,
+		LenientRefs:      cfgBits&0x08 != 0,
+	}
+
+	switch (cfgBits >> 4) & 0x03 {
+	case 0:
+		cfg.Validation = generator.ValidationModeStatic
+	case 1:
+		cfg.Validation = generator.ValidationModeHybrid
+	case 2:
+		cfg.Validation = generator.ValidationModeRuntime
+	default:
+		// The zero value, as a Config literal that omits the field has. It is
+		// meant to normalize to static; leaving it in the matrix keeps that
+		// path exercised.
+		cfg.Validation = ""
+	}
+
+	switch (cfgBits >> 6) & 0x03 {
+	case 0:
+		cfg.Draft = schema.DraftUnknown // detect from $schema
+	case 1:
+		cfg.Draft = schema.Draft04
+	case 2:
+		cfg.Draft = schema.Draft07
+	default:
+		cfg.Draft = schema.Draft202012
+	}
+
+	return cfg
+}
+
+// fuzzOnce is the body of FuzzGenerate, called from the fuzz target and from the
+// tests that hold the seed corpus to the worker's time and memory limits. Shared
+// so that none of them can drift into exercising something the others do not.
+//
+// The pipeline itself is fuzzPipeline; fuzzOnce is it under the memory gate in
+// fuzz_memory_test.go, which panics -- deliberately, and before the runtime can
+// reach the `fatal error: out of memory` that no harness can attribute -- if an
+// input grows the heap past fuzzMemoryBudget.
+func fuzzOnce(em *emitter.Emitter, cfgBits uint8, data []byte) {
+	fuzzMemoryGate(cfgBits, data, func() {
+		fuzzPipeline(em, cfgBits, data)
+	})
+}
+
+// fuzzPipeline is parse -> generate -> emit, with nothing watching it. Call
+// fuzzOnce instead unless the point is to measure what the watching costs.
+func fuzzPipeline(em *emitter.Emitter, cfgBits uint8, data []byte) {
+	var s schema.Schema
+	if err := json.Unmarshal(data, &s); err != nil {
+		return // not a schema document; nothing to exercise
+	}
+	s.Normalize()
+
+	cfg := fuzzConfig(cfgBits)
+	ir, err := generator.New(cfg).Generate(&s)
+	if err != nil || ir == nil {
+		return // generation errors are an acceptable outcome
+	}
+
+	// Both emit paths run regardless of each other's outcome: an emission
+	// error is acceptable, and skipping the helper path on it would leave
+	// that code unexercised for every input the file template rejects. The
+	// helper set is read from whatever the file emitted, which is nothing
+	// when it failed -- an empty set is a legitimate input to EmitHelpers.
+	src, _ := em.Emit(ir)
+	_, _, _ = em.EmitHelpers(cfg.PackageName, generator.HelpersReferencedBy(string(src)))
+}
+
+// addFuzzSeeds registers the seed corpus with the fuzz target.
+func addFuzzSeeds(f *testing.F) {
+	f.Helper()
+
+	unique := 0
+	local, external, err := fuzzSeedCorpus(func(_ string, schema []byte) {
+		unique++
+		for _, bits := range fuzzSeedCfgBits {
+			f.Add(bits, schema)
+		}
+	})
+	if err != nil {
+		f.Fatal(err)
+	}
+
+	f.Logf("fuzz seed corpus: %d unique schemas x %d config bytes (%d local files, %d external test groups)",
+		unique, len(fuzzSeedCfgBits), local, external)
+	for _, line := range fuzzSeedProvenance(external) {
+		f.Log(line)
+	}
+}
+
+// fuzzSeedProvenance says where this run's seeds came from, and every way that
+// differs from the seeds CI replays.
+//
+// The corpus is not fixed by the repository alone, and a difference used to be
+// invisible. With the JSON Schema Test Suite checked out, `go test ./...`
+// replays 11,580 seeds; without it, a fifth of that -- and CI's test job did
+// not check the suite out, so a developer's run and CI's were measuring
+// different corpora under the same test name. CI's test job now downloads the
+// pinned suite, as the fuzz job always has, so the three agree when the suite
+// is present at the pinned commit. What is left is said here: a missing suite,
+// a suite at another commit, and inputs in Go's own corpus directory
+// (tests/fuzz/testdata/fuzz/FuzzGenerate), which `go test` replays from the working
+// tree whether or not they are committed -- the 2026-09-26 audit found one
+// there that had replayed locally, and never in CI, for weeks.
+func fuzzSeedProvenance(external int) []string {
+	var out []string
+	pinned := makefileJSTSCommit()
+	switch {
+	case external == 0:
+		out = append(out, fmt.Sprintf("fuzz seed corpus differs from CI's: the JSON Schema Test Suite is not checked out at %s, "+
+			"so its test groups are not replayed here and CI replays them; run 'make download-test-suite' to match", jstsBaseDir))
+	default:
+		head := gitHead(filepath.Dir(jstsBaseDir))
+		switch {
+		case head == "" || pinned == "":
+			out = append(out, fmt.Sprintf("fuzz seed corpus: the suite checkout's commit (%q) or the Makefile's JSTS_COMMIT (%q) "+
+				"could not be read, so whether these are CI's seeds is unknown", head, pinned))
+		case head != pinned:
+			out = append(out, fmt.Sprintf("fuzz seed corpus differs from CI's: the suite checkout is at %s and CI replays JSTS_COMMIT %s; "+
+				"run 'make download-test-suite' to move it", head, pinned))
+		default:
+			out = append(out, fmt.Sprintf("fuzz seed corpus: the suite is at the pinned JSTS_COMMIT %s, as in CI", pinned))
+		}
+	}
+	corpusDir := filepath.Join("testdata", "fuzz", "FuzzGenerate")
+	if entries, err := os.ReadDir(corpusDir); err == nil && len(entries) > 0 {
+		var names []string
+		for _, e := range entries {
+			names = append(names, e.Name())
+		}
+		out = append(out, fmt.Sprintf("fuzz seed corpus differs from CI's unless committed: %d input(s) in %s replay here "+
+			"from the working tree (%s); CI replays only what the repository holds. Minimise a real finding into "+
+			"testdata/schemas/adversarial, or delete it", len(names), corpusDir, strings.Join(names, ", ")))
+	}
+	return out
+}
+
+// makefileJSTSCommit reads the suite commit the Makefile pins.
+func makefileJSTSCommit() string {
+	data, err := os.ReadFile(testsupport.RepoPath("Makefile"))
+	if err != nil {
+		return ""
+	}
+	m := regexp.MustCompile(`(?m)^JSTS_COMMIT := ([0-9a-f]{40})$`).FindSubmatch(data)
+	if m == nil {
+		return ""
+	}
+	return string(m[1])
+}
+
+// gitHead is the commit a checkout is at, or "" when it cannot be read.
+func gitHead(dir string) string {
+	out, err := exec.Command("git", "-C", dir, "rev-parse", "HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// fuzzSeedBudget is the wall-clock ceiling one seed may take through the fuzz
+// body.
+//
+// It exists because Go's fuzzing engine has a per-input deadline of its own that
+// nothing in this repository can change: internal/fuzz gives the worker process
+// ten seconds per call to the fuzz function and panics it as deadlocked past
+// that. The coordinator sees a worker that died, reports "fuzzing process hung or
+// terminated unexpectedly: exit status 2" against whichever seed it was holding,
+// and stops -- while still gathering baseline coverage, so no fuzzing happens at
+// all. The worker's stderr is discarded, so there is no stack and no crasher
+// file, and `go test ./...` does not reproduce it because the ordinary seed
+// replay runs in-process with no deadline. That is issue #233, and it left the
+// fuzz gate inert for as long as it took someone to look.
+//
+// Two seconds is Go's ten mapped onto this binary. The worker runs a
+// coverage-instrumented build, measured at roughly four to five times slower than
+// an ordinary one on the same seeds, so a seed at two seconds here is at the
+// deadline there. The budget is therefore the point of failure rather than a
+// margin below it -- which is the only threshold that does not go stale, since a
+// slower machine moves both sides of it together.
+//
+// The corpus runs about five times under it as this is written: the slowest seed
+// is the 2000-deep `not` at a third of a second. That same seed took five seconds
+// before #233, and the 1000-deep anyOf that first killed the gate took two.
+const fuzzSeedBudget = 2 * time.Second
+
+// TestFuzzSeedCorpusFitsTheWorkerDeadline runs every fuzz seed through the fuzz
+// body and fails on any that takes longer than fuzzSeedBudget.
+//
+// `go test ./...` already replays the seed corpus -- that is what a fuzz target
+// does when it is run without -fuzz -- but it replays it without a clock, so a
+// seed that has become slow enough to kill a fuzz worker passes there and takes
+// the whole fuzz gate down separately, on a nightly schedule, with a message that
+// names no cause. This is the check that fails on the pull request instead.
+func TestFuzzSeedCorpusFitsTheWorkerDeadline(t *testing.T) {
+	em, err := emitter.New()
+	if err != nil {
+		t.Fatalf("emitter.New: %v", err)
+	}
+
+	type slow struct {
+		origin string
+		bits   uint8
+		took   time.Duration
+	}
+	var worst slow
+	var over []slow
+	seeds := 0
+
+	local, external, err := fuzzSeedCorpus(func(origin string, schema []byte) {
+		for _, bits := range fuzzSeedCfgBits {
+			seeds++
+			start := time.Now()
+			fuzzOnce(em, bits, schema)
+			took := time.Since(start)
+			if took > worst.took {
+				worst = slow{origin, bits, took}
+			}
+			if took > fuzzSeedBudget {
+				over = append(over, slow{origin, bits, took})
+			}
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Logf("timed %d seeds (%d local files, %d external test groups); slowest %v, %s with cfgBits 0x%02X",
+		seeds, local, external, worst.took.Round(time.Millisecond), worst.origin, worst.bits)
+
+	for _, s := range over {
+		t.Errorf("seed %s with cfgBits 0x%02X took %v, over the %v budget. Go's fuzzing worker panics after "+
+			"ten seconds on one input and the worker binary is coverage-instrumented and several times "+
+			"slower than this one, so a seed here is on its way to taking the fuzz gate down entirely -- "+
+			"see issue #233. Make the pipeline handle this schema faster; do not drop the seed, and do not "+
+			"raise the budget",
+			s.origin, s.bits, s.took.Round(time.Millisecond), fuzzSeedBudget)
+	}
+}
+
+// FuzzGenerate exercises parse -> generate -> emit with no compilation of the
+// generated code. The single property under test is that the pipeline never
+// panics: a generation or emission *error* is a perfectly acceptable outcome
+// for arbitrary input and is not a failure. Only a panic (or a hang) is a
+// finding.
+func FuzzGenerate(f *testing.F) {
+	addFuzzSeeds(f)
+
+	// Built once, outside the fuzz body: the templates are embedded, so a
+	// failure here is a build problem rather than something an input caused,
+	// and it must not be reported as a crasher.
+	em, err := emitter.New()
+	if err != nil {
+		f.Fatalf("emitter.New: %v", err)
+	}
+
+	f.Fuzz(func(t *testing.T, cfgBits uint8, data []byte) {
+		fuzzOnce(em, cfgBits, data)
+	})
+}

@@ -41,7 +41,7 @@ ANALYZER=golang.org/x/tools/go/analysis/passes/fieldalignment/cmd/fieldalignment
 # package that did not build for any schema forbidding a property.
 #
 # Every flag of `schemagen generate` that can change a Go type is here, and
-# TestLintAlignmentCoversEveryShapeFlag (tests/) holds this list to the CLI's
+# TestLintAlignmentCoversEveryShapeFlag (tests/corpus) holds this list to the CLI's
 # flags, so a new one is a test failure until it is added or its absence is
 # explained there. --raw-untyped was missing for a release: it turns every
 # untyped position into json.RawMessage, a different type in a different

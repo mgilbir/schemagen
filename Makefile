@@ -55,7 +55,7 @@ test-short:
 #	make golden GOLDEN_ACCEPT=1
 #
 # The files are written either way, so `git diff` shows what to review. See
-# tests/golden_check_test.go.
+# tests/golden/golden_check_test.go.
 GOLDEN_ACCEPT ?=
 
 # Recomputes pkg/emitter/guards_gen.go, the Go context of every template action
@@ -73,7 +73,7 @@ unicode-tables:
 	go generate ./pkg/generator
 
 golden:
-	UPDATE_GOLDEN=1 GOLDEN_ACCEPT=$(GOLDEN_ACCEPT) go test ./tests/... -run '^(TestGolden|TestEveryGoldenFileHasAGenerator)' -count=1
+	UPDATE_GOLDEN=1 GOLDEN_ACCEPT=$(GOLDEN_ACCEPT) go test ./tests/golden -run '^(TestGolden|TestEveryGoldenFileHasAGenerator)' -count=1
 
 fmt:
 	go fmt ./...
@@ -126,7 +126,7 @@ lint-alignment:
 # To bump it: `make test-suite-drift` prints how far behind upstream this is and
 # the exact line to paste back here. Then re-run `make test-external` and triage
 # the delta before committing, because bumping the corpus is what makes every
-# figure in tests/external_known_failures.go and minValidatedGroups stale.
+# figure in tests/external/external_known_failures.go and minValidatedGroups stale.
 JSTS_COMMIT := cc73f5fa64c3b0d11f6c277db4edc22938994b54
 
 download-test-suite:
@@ -250,7 +250,7 @@ download-metaschemas:
 # gets most of those 25 minutes back when the generator has not changed, and
 # costs another cache's worth of disk when it has.
 test-external: download-test-suite download-metaschemas
-	SCHEMAGEN_RUN_EXTERNAL=1 go test ./tests/... -run TestExternal -v -count=1 -timeout 90m
+	SCHEMAGEN_RUN_EXTERNAL=1 go test ./tests/external -run TestExternal -v -count=1 -timeout 90m
 
 # The full determinism sweep: the same input must give the same output on every
 # run. `go test ./...` already holds the corpus to that in one process under
@@ -262,7 +262,7 @@ test-external: download-test-suite download-metaschemas
 # catch a site that only a two- or three-member map in some schema reaches.
 # CI runs it; see the determinism job in .github/workflows/ci.yml.
 test-determinism: download-test-suite
-	SCHEMAGEN_DETERMINISM_FULL=1 go test . ./tests -run 'TestCLIOutputIsDeterministicAcrossProcesses|TestGenerationIsDeterministic|TestGeneratedCodeReadsNoMapOrder' -v -count=1 -timeout 60m
+	SCHEMAGEN_DETERMINISM_FULL=1 go test . ./tests/determinism -run 'TestCLIOutputIsDeterministicAcrossProcesses|TestGenerationIsDeterministic|TestGeneratedCodeReadsNoMapOrder' -v -count=1 -timeout 60m
 
 # Fuzzing has no natural end: `go test -fuzz` keeps mutating inputs until it
 # finds a crash or something kills it, so a run without -fuzztime never returns
@@ -287,7 +287,7 @@ test-determinism: download-test-suite
 # the search.
 #
 # Minimise crashers by hand rather than committing what go test leaves in
-# tests/testdata/fuzz/: when a crash kills the minimizer, the file saved is the
+# tests/fuzz/testdata/fuzz/: when a crash kills the minimizer, the file saved is the
 # last input *sent*, which is usually truncated and reproduces nothing. A
 # readable .json under testdata/schemas/adversarial is the better artifact, and
 # `make validate-seeds` can then confirm it is a legal document.
@@ -295,6 +295,9 @@ test-determinism: download-test-suite
 # -run '^$$' skips the package's ordinary tests; the fuzzing phase is selected
 # by -fuzz alone and is unaffected. -fuzztime is also not clipped by -timeout:
 # the test binary stops its timeout alarm before entering the fuzzing loop.
+#
+# The package is named rather than matched: `go test -fuzz` refuses a pattern
+# that matches more than one package, and ./tests/... matches a dozen.
 FUZZTIME ?= 60s
 
 # Depends on the suite for its seeds. FuzzGenerate takes the schema of every
@@ -315,7 +318,7 @@ FUZZTIME ?= 60s
 # it, in about fifteen seconds, before FUZZTIME is committed to a search that
 # cannot start.
 fuzz: download-test-suite fuzz-seeds
-	go test ./tests/... -run '^$$' -fuzz '^FuzzGenerate$$' -fuzztime $(FUZZTIME)
+	go test ./tests/fuzz -run '^$$' -fuzz '^FuzzGenerate$$' -fuzztime $(FUZZTIME)
 
 # The seed corpus, replayed under both of the limits a fuzz worker imposes and
 # cannot report on: the ten-second per-input deadline (...WorkerDeadline, timed)
@@ -326,7 +329,7 @@ fuzz: download-test-suite fuzz-seeds
 # `fatal error: out of memory` or `fatal error: stack overflow`, either of which
 # takes the worker with it and leaves the coordinator with nothing to say.
 fuzz-seeds:
-	go test ./tests/... -run '^(FuzzGenerate|TestFuzzSeedCorpusFitsTheWorkerDeadline|TestFuzzSeedCorpusFitsTheMemoryCeiling)$$' -count=1
+	go test ./tests/fuzz -run '^(FuzzGenerate|TestFuzzSeedCorpusFitsTheWorkerDeadline|TestFuzzSeedCorpusFitsTheMemoryCeiling)$$' -count=1
 
 # Layer 2 of the fuzzing effort. FuzzGenerate only proves the pipeline does not
 # panic, which says nothing about whether the code it emits is correct. This
@@ -395,7 +398,7 @@ COGEN_ITERS ?= 400
 
 cogen:
 	SCHEMAGEN_RUN_COGEN=1 SCHEMAGEN_COGEN_SEED=$(COGEN_SEED) SCHEMAGEN_COGEN_ITERS=$(COGEN_ITERS) \
-		go test ./tests/... -run TestCoGenerated -v -count=1 -timeout 60m
+		go test ./tests/cogen -run TestCoGenerated -v -count=1 -timeout 60m
 
 # Checks that every fuzz seed under testdata/schemas/adversarial is a legal
 # JSON Schema document, by validating it as an *instance* against the

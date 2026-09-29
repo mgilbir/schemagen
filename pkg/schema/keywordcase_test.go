@@ -18,7 +18,7 @@ import (
 // a key matching no field exactly is matched a second time case-insensitively --
 // so every keyword on Schema was accepted in every casing and enforced as the
 // keyword it resembles. See parse.go for the four ways that came out
-// wrong; tests/keyword_case_test.go is the same defect seen through the verdict a
+// wrong; tests/validation/keyword_case_test.go is the same defect seen through the verdict a
 // generated type gives.
 
 // caseVariantValue is what every keyword in the drift guard below is given.

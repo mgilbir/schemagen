@@ -357,7 +357,7 @@ var keywordDialects = map[string]keywordDialect{
 	// schema form share one keyword there, and this row is about the document
 	// that reached for the modern name instead.
 	//
-	// TestKeywordAvailabilityFollowsTheDialect in tests/dialect_keywords_test.go
+	// TestKeywordAvailabilityFollowsTheDialect in tests/validation/dialect_keywords_test.go
 	// holds both halves, compiled and run under draft 7 and 2019-09 off one body.
 	// The suite cannot: it has no file that states this keyword under a dialect
 	// that predates it, which is the same reason the readOnly/writeOnly spans

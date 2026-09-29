@@ -1,0 +1,822 @@
+package refs
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/mgilbir/schemagen/internal/testgo"
+	"github.com/mgilbir/schemagen/tests/internal/testsupport"
+)
+
+// The multi-package / shared-types differential.
+//
+// --schema-package and --shared-types are two spellings of the same schema set:
+// one puts each document's types in a Go package of its own and crosses the
+// boundary with an import, the other puts them all in one package. Nothing about
+// the JSON differs, so nothing about the verdict may differ either -- the same
+// document must decode, validate, marshal and re-decode the same way through
+// both.
+//
+// That comparison is what found issues #295, #296 and #299, and it is a much
+// better guard than a golden of today's multi-package output would be. A golden
+// pins whatever the generator does; this pins the multi-package answer to an
+// answer that is separately generated, separately compiled and separately
+// exercised, and which a single-package corpus of several hundred fixtures is
+// already holding to the schema. A defect has to be made twice, identically, to
+// get past it.
+//
+// The three issues it is written over:
+//
+//   - #295: a map value typed by another package's type was validated by
+//     nothing. `Root.Validate()` was `return nil` while the shared-types
+//     spelling iterated the map and called each value's Validate.
+//   - #296: an optional property of a foreign type was tagged ",omitempty",
+//     which never omits a struct, so an absent property was written back as
+//     null or {} and the generated type refused to read its own output.
+//   - #299: a $ref occupying the whole of a document copied its target into the
+//     referring package instead of importing it, so two packages declared two Go
+//     types for one JSON shape.
+//
+// Only verdicts are compared, not messages. A path or a type name in an error
+// legitimately differs between the two spellings; whether the document was
+// accepted, and what it marshalled to, may not.
+
+// crossDoc is one input document of a differential case.
+type crossDoc struct {
+	// File is the file name written into the source directory, and the key
+	// --root-name is given.
+	File string
+	// ID is the document's $id, and the key --schema-package is given.
+	ID string
+	// Pkg is the last segment of the Go import path this document is generated
+	// into under --schema-package.
+	Pkg string
+	// RootType is the Go type name the document's root is generated as, under
+	// both spellings.
+	RootType string
+	// Body is the schema.
+	Body string
+}
+
+type crossPackageCase struct {
+	Name string
+	Docs []crossDoc
+	// Driven names the document whose root type the driver exercises.
+	Driven string
+	// Instances are the JSON documents put through both spellings.
+	Instances []string
+	// MustImport, when set, is an import path the driven package's generated
+	// source has to name: the point of --schema-package is that a cross-package
+	// $ref emits an import rather than a copy.
+	MustImport string
+	// MustNotDeclare lists Go type names the driven package must not declare of
+	// its own, because another package of the run owns them.
+	MustNotDeclare []string
+}
+
+func crossPackageCases() []crossPackageCase {
+	return []crossPackageCase{
+		{
+			// Issue #295. Every additionalProperties-shaped position disagreed,
+			// in the direction that accepts what the schema forbids.
+			Name: "map_value_of_a_foreign_type",
+			Docs: []crossDoc{
+				{
+					File: "t.json", ID: "https://ex.test/t.json", Pkg: "tpkg", RootType: "T",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/t.json","title":"T","type":"string","minLength":3}`,
+				},
+				{
+					File: "root.json", ID: "https://ex.test/root.json", Pkg: "rootpkg", RootType: "Root",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/root.json","title":"Root","type":"object",
+						"properties":{
+							"m":{"type":"object","additionalProperties":{"$ref":"https://ex.test/t.json"}},
+							"s":{"type":"array","items":{"$ref":"https://ex.test/t.json"}},
+							"n":{"type":"object","additionalProperties":{"type":"array","items":{"$ref":"https://ex.test/t.json"}}}
+						}}`,
+				},
+			},
+			Driven: "root.json",
+			Instances: []string{
+				`{}`,
+				`{"m":{}}`,
+				`{"m":{"k":"ab"}}`,
+				`{"m":{"k":"abc"}}`,
+				`{"s":["ab"]}`,
+				`{"s":["abc"]}`,
+				`{"n":{"k":["ab"]}}`,
+				`{"m":{"k":"abc"},"s":["abc"],"n":{"k":["abc"]}}`,
+			},
+			MustImport: "ex.test/m/tpkg",
+		},
+		{
+			// Issue #296. Six definitions of another package's document, each
+			// referenced as an optional property: an absent one was invented
+			// into the output, and a present-but-empty collection erased.
+			Name: "optional_properties_of_foreign_types",
+			Docs: []crossDoc{
+				{
+					File: "t.json", ID: "https://ex.test/t.json", Pkg: "tpkg", RootType: "T",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/t.json","title":"T","type":"object",
+						"$defs":{
+							"OneOf":{"oneOf":[{"type":"string"},{"type":"integer"}]},
+							"Not":{"not":{"type":"string"}},
+							"Arr":{"type":"array","items":{"type":"string"}},
+							"Map":{"type":"object","additionalProperties":{"type":"string"}},
+							"Obj":{"type":"object","properties":{"x":{"type":"string"}}},
+							"Str":{"type":"string"}
+						}}`,
+				},
+				{
+					File: "root.json", ID: "https://ex.test/root.json", Pkg: "rootpkg", RootType: "Root",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/root.json","title":"Root","type":"object",
+						"properties":{
+							"a":{"$ref":"https://ex.test/t.json#/$defs/OneOf"},
+							"b":{"$ref":"https://ex.test/t.json#/$defs/Not"},
+							"c":{"$ref":"https://ex.test/t.json#/$defs/Arr"},
+							"d":{"$ref":"https://ex.test/t.json#/$defs/Map"},
+							"e":{"$ref":"https://ex.test/t.json#/$defs/Obj"},
+							"f":{"$ref":"https://ex.test/t.json#/$defs/Str"}
+						}}`,
+				},
+			},
+			Driven: "root.json",
+			Instances: []string{
+				`{}`,
+				`{"c":[]}`,
+				`{"d":{}}`,
+				`{"a":"x"}`,
+				`{"a":7}`,
+				`{"b":7}`,
+				`{"c":["x"]}`,
+				`{"e":{}}`,
+				`{"f":""}`,
+				`{"a":"x","c":[],"d":{},"e":{"x":"y"},"f":"z"}`,
+			},
+			MustImport: "ex.test/m/tpkg",
+		},
+		{
+			// Issue #299. A $ref written at the document root, to another
+			// package's root type and to a named definition inside it.
+			Name: "ref_at_the_document_root",
+			Docs: []crossDoc{
+				{
+					File: "common.json", ID: "https://ex.test/common.json", Pkg: "one", RootType: "OneC",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/common.json","title":"OneC","type":"object",
+						"properties":{"postal_code":{"type":"string"}},
+						"$defs":{"Code":{"type":"string","minLength":2}}}`,
+				},
+				{
+					File: "v1.json", ID: "https://ex.test/v1.json", Pkg: "al", RootType: "V1",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/v1.json","title":"V1","$ref":"https://ex.test/common.json"}`,
+				},
+			},
+			Driven: "v1.json",
+			Instances: []string{
+				`{}`,
+				`{"postal_code":"x"}`,
+				`{"postal_code":null}`,
+				`{"other":1}`,
+			},
+			MustImport:     "ex.test/m/one",
+			MustNotDeclare: []string{"OneC"},
+		},
+		{
+			// The exception the root-level arm makes: a target whose methods a
+			// defined type over it would not carry. --shared-types generates
+			// such a reference from the schema again rather than aliasing it,
+			// and the multi-package spelling has to reach the same verdict
+			// whichever of the two routes it takes.
+			Name: "ref_at_the_document_root_to_a_raw_value_wrapper",
+			Docs: []crossDoc{
+				{
+					File: "w.json", ID: "https://ex.test/w.json", Pkg: "wp", RootType: "W",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/w.json","title":"W",
+						"oneOf":[{"type":"string"},{"type":"integer"}]}`,
+				},
+				{
+					File: "v3.json", ID: "https://ex.test/v3.json", Pkg: "al", RootType: "V3",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/v3.json","title":"V3","$ref":"https://ex.test/w.json"}`,
+				},
+			},
+			Driven: "v3.json",
+			Instances: []string{
+				`"x"`,
+				`7`,
+				`7.5`,
+				`true`,
+				`null`,
+				`{}`,
+			},
+		},
+		{
+			Name: "ref_at_the_document_root_to_a_named_definition",
+			Docs: []crossDoc{
+				{
+					File: "common.json", ID: "https://ex.test/common.json", Pkg: "one", RootType: "OneC",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/common.json","title":"OneC","type":"object",
+						"properties":{"postal_code":{"type":"string"}},
+						"$defs":{"Code":{"type":"string","minLength":2}}}`,
+				},
+				{
+					File: "v2.json", ID: "https://ex.test/v2.json", Pkg: "al", RootType: "V2",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/v2.json","title":"V2",
+						"$ref":"https://ex.test/common.json#/$defs/Code"}`,
+				},
+			},
+			Driven: "v2.json",
+			Instances: []string{
+				`"x"`,
+				`"xy"`,
+				`""`,
+				`1`,
+			},
+			MustImport:     "ex.test/m/one",
+			MustNotDeclare: []string{"Code"},
+		},
+		{
+			// Issue #306. An anyOf whose branches span more than one Go type,
+			// in a property, becomes a raw-value wrapper that tests each branch
+			// by decoding into the branch's type -- and the $ref branch was
+			// written with the foreign type's bare name and no import for it.
+			// This is the plain half: the package did not compile, behind a
+			// zero exit code from generation.
+			Name: "anyof_branch_in_a_property",
+			Docs: []crossDoc{
+				{
+					File: "t.json", ID: "https://ex.test/t.json", Pkg: "tpkg", RootType: "T",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/t.json","title":"T","type":"string","minLength":3}`,
+				},
+				{
+					File: "root.json", ID: "https://ex.test/root.json", Pkg: "rootpkg", RootType: "Root",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/root.json","title":"Root","type":"object",
+						"properties":{
+							"a":{"anyOf":[{"$ref":"https://ex.test/t.json"},{"type":"integer"}]},
+							"z":{"type":"object","properties":{
+								"a":{"anyOf":[{"$ref":"https://ex.test/t.json"},{"type":"integer"}]}}}
+						}}`,
+				},
+			},
+			Driven: "root.json",
+			Instances: []string{
+				`{}`,
+				`{"a":"abc"}`,
+				`{"a":"z"}`,
+				`{"a":"ab"}`,
+				`{"a":1}`,
+				`{"a":true}`,
+				`{"z":{"a":"abc"}}`,
+				`{"z":{"a":"z"}}`,
+			},
+			MustImport: "ex.test/m/tpkg",
+		},
+		{
+			// Issue #306's second failure mode, and the reason it is urgent: the
+			// referring document declares a definition that mints the same Go
+			// name, so the unqualified `var _bv T` *compiles* and binds to the
+			// local type. The branch is then judged against a schema that is not
+			// the one referenced -- a valid document refused and an invalid one
+			// accepted, in silence.
+			//
+			// Every position that delegates to a generated type by name is here,
+			// not only the anyOf: a namesake is what turns each of them from a
+			// duplicate declaration into a wrong verdict, and `contains`,
+			// `prefixItems` and the tail past a prefix were all binding it too.
+			//
+			// The --shared-types spelling of this set is the control. One package
+			// cannot hold two types called T either, so it renames the referring
+			// document's definition and says so; both names then mean what their
+			// own schema says, which is the answer the multi-package spelling
+			// has to reach as well.
+			Name: "a_local_namesake_of_the_foreign_type",
+			Docs: []crossDoc{
+				{
+					File: "t.json", ID: "https://ex.test/t.json", Pkg: "tpkg", RootType: "T",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/t.json","title":"T","type":"string","minLength":3}`,
+				},
+				{
+					File: "root.json", ID: "https://ex.test/root.json", Pkg: "rootpkg", RootType: "Root",
+					// $defs/T is the namesake: the opposite constraint, so
+					// binding it rather than tpkg.T shows in the verdict rather
+					// than only in the source.
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/root.json","title":"Root","type":"object",
+						"properties":{
+							"a":{"anyOf":[{"$ref":"https://ex.test/t.json"},{"type":"integer"}]},
+							"c":{"type":"array","contains":{"$ref":"https://ex.test/t.json"}},
+							"p":{"type":"array","prefixItems":[{"$ref":"https://ex.test/t.json"}]},
+							"r":{"type":"array","prefixItems":[{"type":"integer"}],
+							     "items":{"$ref":"https://ex.test/t.json"}},
+							"k":{"type":"object","patternProperties":{"^k":{"$ref":"https://ex.test/t.json"}}},
+							"b":{"$ref":"#/$defs/T"}
+						},
+						"$defs":{"T":{"type":"string","maxLength":1}}}`,
+				},
+			},
+			Driven: "root.json",
+			Instances: []string{
+				`{}`,
+				`{"a":"abc"}`,
+				`{"a":"z"}`,
+				`{"a":"ab"}`,
+				`{"a":1}`,
+				`{"b":"z"}`,
+				`{"b":"abc"}`,
+				`{"c":["abc"]}`,
+				`{"c":["z"]}`,
+				`{"c":[]}`,
+				`{"p":["abc"]}`,
+				`{"p":["z"]}`,
+				`{"r":[1,"abc"]}`,
+				`{"r":[1,"z"]}`,
+				`{"k":{"k1":"abc"}}`,
+				`{"k":{"k1":"z"}}`,
+			},
+			MustImport: "ex.test/m/tpkg",
+		},
+		{
+			// Issue #325. The same document as ref_at_the_document_root, with the
+			// reference spelled $dynamicRef and bookended by a $dynamicAnchor the
+			// target declares. Until this was fixed the referring package
+			// declared its own `type T string` and imported nothing, where $ref
+			// at the identical position gave `type Root tpkg.T` with the import
+			// -- #299's shape surviving in the one arm #302 deliberately left.
+			//
+			// It was left because aliasing a $dynamicRef to a fixed foreign type
+			// says the reference has one answer, and #293 was the question of
+			// which. #293 is decided -- the generator's dynamic scope is seeded
+			// at the type being generated -- so the target here is either the
+			// bookend the reference statically lands on or a declaration inside
+			// the referring resource, both fixed by this document. The alias is
+			// then a statement about the type rather than a frozen guess.
+			Name: "dynamic_ref_at_the_document_root",
+			Docs: []crossDoc{
+				{
+					File: "t.json", ID: "https://ex.test/t.json", Pkg: "tpkg", RootType: "T",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/t.json","title":"T","$dynamicAnchor":"node",
+						"type":"string","minLength":3}`,
+				},
+				{
+					File: "v4.json", ID: "https://ex.test/v4.json", Pkg: "al", RootType: "V4",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/v4.json","title":"V4",
+						"$dynamicRef":"https://ex.test/t.json#node"}`,
+				},
+			},
+			Driven: "v4.json",
+			Instances: []string{
+				`"x"`,
+				`"abc"`,
+				`""`,
+				`"xy"`,
+				`1`,
+				`null`,
+			},
+			MustImport:     "ex.test/m/tpkg",
+			MustNotDeclare: []string{"T"},
+		},
+		{
+			// The half a compile gate cannot see, which is what #313 learned the
+			// hard way: the referring document declares a namesake of the foreign
+			// type, so the copy the defect minted never happens -- the reference
+			// binds to the *local* T instead, the package compiles, and the
+			// branch is judged against a schema that is not the one referenced.
+			// Here the namesake asserts the opposite constraint, so it shows up
+			// as a verdict rather than only in the source, in both directions:
+			// "abc" refused by the multi-package spelling and accepted by shared
+			// types, "z" the reverse.
+			//
+			// No MustNotDeclare, deliberately. The referring document really does
+			// declare a T of its own and must keep it -- property "b" is what
+			// reaches it -- so the source assertion has nothing to say and the
+			// differential is the whole of the check.
+			Name: "a_local_namesake_of_the_foreign_dynamic_target",
+			Docs: []crossDoc{
+				{
+					File: "t.json", ID: "https://ex.test/t.json", Pkg: "tpkg", RootType: "T",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/t.json","title":"T","$dynamicAnchor":"node",
+						"type":"string","minLength":3}`,
+				},
+				{
+					File: "root.json", ID: "https://ex.test/root.json", Pkg: "rootpkg", RootType: "Root",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/root.json","title":"Root","type":"object",
+						"properties":{
+							"p":{"$dynamicRef":"https://ex.test/t.json#node"},
+							"s":{"type":"array","items":{"$dynamicRef":"https://ex.test/t.json#node"}},
+							"m":{"type":"object","additionalProperties":{"$dynamicRef":"https://ex.test/t.json#node"}},
+							"b":{"$ref":"#/$defs/T"}
+						},
+						"$defs":{"T":{"type":"string","maxLength":1}}}`,
+				},
+			},
+			Driven: "root.json",
+			Instances: []string{
+				`{}`,
+				`{"p":"abc"}`,
+				`{"p":"z"}`,
+				`{"p":"ab"}`,
+				`{"b":"z"}`,
+				`{"b":"abc"}`,
+				`{"s":["abc"]}`,
+				`{"s":["z"]}`,
+				`{"m":{"k":"abc"}}`,
+				`{"m":{"k":"z"}}`,
+				`{"p":"abc","b":"z","s":["abc"],"m":{"k":"abc"}}`,
+			},
+			MustImport: "ex.test/m/tpkg",
+		},
+		{
+			// The same namesake trap at the document root. The referring document
+			// is nothing but the reference and a $defs entry that mints the same
+			// Go name; root-level definitions are generated before the root, so
+			// under the defect `type V5 T` bound the namesake and V5 enforced
+			// maxLength 1 where the schema says minLength 3.
+			Name: "a_local_namesake_at_the_dynamic_document_root",
+			Docs: []crossDoc{
+				{
+					File: "t.json", ID: "https://ex.test/t.json", Pkg: "tpkg", RootType: "T",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/t.json","title":"T","$dynamicAnchor":"node",
+						"type":"string","minLength":3}`,
+				},
+				{
+					File: "v5.json", ID: "https://ex.test/v5.json", Pkg: "al", RootType: "V5",
+					Body: `{"$schema":"https://json-schema.org/draft/2020-12/schema",
+						"$id":"https://ex.test/v5.json","title":"V5",
+						"$dynamicRef":"https://ex.test/t.json#node",
+						"$defs":{"T":{"type":"string","maxLength":1}}}`,
+				},
+			},
+			Driven: "v5.json",
+			Instances: []string{
+				`"x"`,
+				`"abc"`,
+				`""`,
+				`"xy"`,
+				`1`,
+			},
+			MustImport: "ex.test/m/tpkg",
+		},
+		{
+			// $recursiveRef at the same position, which #211's table says is
+			// honoured on 2019-09, 2020-12 and v1 -- so the question was whether
+			// it shared the defect. It does not, and this is what says so rather
+			// than a sentence in a commit message.
+			//
+			// The reason is worth knowing before someone "fixes" it too. "#" is
+			// the only value 2019-09 gives $recursiveRef and it names the
+			// resource the keyword is written in, so a bookended one can never
+			// leave the referring document; anything else is read as the plain
+			// reference it is spelled as, which takes the $ref arm and has asked
+			// foreignTypeFor since #299. Both readings are exercised here: the
+			// cross-document one at the root, and the bookended local one under
+			// it.
+			Name: "recursive_ref_at_the_document_root",
+			Docs: []crossDoc{
+				{
+					File: "t.json", ID: "https://ex.test/t.json", Pkg: "tpkg", RootType: "T",
+					Body: `{"$schema":"https://json-schema.org/draft/2019-09/schema",
+						"$id":"https://ex.test/t.json","title":"T","$recursiveAnchor":true,
+						"type":"object","properties":{"n":{"type":"string","minLength":3}},
+						"additionalProperties":{"$recursiveRef":"#"}}`,
+				},
+				{
+					File: "v6.json", ID: "https://ex.test/v6.json", Pkg: "al", RootType: "V6",
+					Body: `{"$schema":"https://json-schema.org/draft/2019-09/schema",
+						"$id":"https://ex.test/v6.json","title":"V6",
+						"$recursiveRef":"https://ex.test/t.json#"}`,
+				},
+			},
+			Driven: "v6.json",
+			Instances: []string{
+				`{}`,
+				`{"n":"abc"}`,
+				`{"n":"z"}`,
+				`{"other":{}}`,
+				`1`,
+			},
+			MustImport:     "ex.test/m/tpkg",
+			MustNotDeclare: []string{"T"},
+		},
+	}
+}
+
+// TestMultiPackageAgreesWithSharedTypes generates each case both ways, compiles
+// both, drives the same instances through both, and requires the verdicts to
+// match.
+func TestMultiPackageAgreesWithSharedTypes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("compiles and runs two generated Go programs per case")
+	}
+	bin := schemagenBinary(t)
+	for _, tc := range crossPackageCases() {
+		t.Run(tc.Name, func(t *testing.T) {
+			t.Parallel()
+			src := t.TempDir()
+			var files []string
+			for _, d := range tc.Docs {
+				path := filepath.Join(src, d.File)
+				writeCrossFile(t, path, d.Body)
+				files = append(files, path)
+			}
+
+			multiOut := filepath.Join(t.TempDir(), "multi")
+			runSchemagen(t, bin, append(append([]string{"generate"}, files...),
+				append(multiPackageFlags(tc), "-o", multiOut)...)...)
+
+			sharedOut := filepath.Join(t.TempDir(), "shared")
+			runSchemagen(t, bin, append(append([]string{"generate"}, files...),
+				append(sharedTypesFlags(tc), "-o", sharedOut, "-p", "models")...)...)
+
+			driven := drivenDoc(t, tc)
+
+			// What --schema-package is documented to do, checked on the source
+			// itself: "A $ref that crosses into a document owned by another
+			// package emits a qualified reference and an import, instead of
+			// materializing a second copy of the type."
+			drivenSrc := readPackageSource(t, filepath.Join(multiOut, driven.Pkg))
+			if tc.MustImport != "" && !strings.Contains(drivenSrc, strconvQuote(tc.MustImport)) {
+				t.Errorf("the generated %s package does not import %q, so the cross-package $ref materialized a "+
+					"copy rather than a reference -- the one thing --schema-package is documented to prevent:\n%s",
+					driven.Pkg, tc.MustImport, drivenSrc)
+			}
+			for _, name := range tc.MustNotDeclare {
+				if strings.Contains(drivenSrc, "\ntype "+name+" ") {
+					t.Errorf("the generated %s package declares its own %s, which another package of the run owns. "+
+						"Two Go types for one JSON shape is issue #299:\n%s", driven.Pkg, name, drivenSrc)
+				}
+			}
+
+			multi := runDifferentialDriver(t, driverSpec{
+				Root:       multiOut,
+				Module:     "ex.test/m",
+				ImportPath: "ex.test/m/" + driven.Pkg,
+				TypeName:   driven.RootType,
+				Instances:  tc.Instances,
+			})
+			shared := runDifferentialDriver(t, driverSpec{
+				Root:       sharedOut,
+				Module:     "ex.test/s",
+				ImportPath: "ex.test/s",
+				TypeName:   driven.RootType,
+				Instances:  tc.Instances,
+			})
+
+			if len(multi) != len(shared) || len(multi) != len(tc.Instances) {
+				t.Fatalf("driver line counts disagree: multi=%d shared=%d instances=%d", len(multi), len(shared), len(tc.Instances))
+			}
+			for i := range multi {
+				if multi[i] == shared[i] {
+					continue
+				}
+				t.Errorf("instance %s\n  multi-package: %s\n  shared-types:  %s\n"+
+					"The same JSON, the same schema, two spellings of where the Go types live. A verdict that "+
+					"depends on which spelling was used is a defect in whichever one disagrees with the corpus, "+
+					"and the corpus holds the single-package one.",
+					tc.Instances[i], multi[i], shared[i])
+			}
+		})
+	}
+}
+
+func drivenDoc(t *testing.T, tc crossPackageCase) crossDoc {
+	t.Helper()
+	for _, d := range tc.Docs {
+		if d.File == tc.Driven {
+			return d
+		}
+	}
+	t.Fatalf("case %s drives %q, which is not one of its documents", tc.Name, tc.Driven)
+	return crossDoc{}
+}
+
+func multiPackageFlags(tc crossPackageCase) []string {
+	var out []string
+	for _, d := range tc.Docs {
+		out = append(out, "--schema-package", d.ID+"=ex.test/m/"+d.Pkg)
+		out = append(out, "--root-name", d.File+"="+d.RootType)
+	}
+	return out
+}
+
+func sharedTypesFlags(tc crossPackageCase) []string {
+	out := []string{"--shared-types"}
+	for _, d := range tc.Docs {
+		out = append(out, "--root-name", d.File+"="+d.RootType)
+	}
+	return out
+}
+
+func writeCrossFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("writing %s: %v", path, err)
+	}
+}
+
+func readPackageSource(t *testing.T, dir string) string {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("reading generated package %s: %v", dir, err)
+	}
+	var b strings.Builder
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".go" || e.Name() == "schemagen_helpers.go" {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			t.Fatalf("reading %s: %v", e.Name(), err)
+		}
+		b.Write(data)
+	}
+	return b.String()
+}
+
+// strconvQuote is strconv.Quote without the import, for the one needle above.
+func strconvQuote(s string) string { return `"` + s + `"` }
+
+var (
+	schemagenBinOnce sync.Once
+	schemagenBinPath string
+	schemagenBinErr  error
+)
+
+// schemagenBinary builds the CLI once for the whole test binary. The
+// differential is driven through the command line rather than through the
+// library because that is where multi-package generation is wired -- the
+// package assignment, the generation order derived from the $refs, and the one
+// registry shared by every document of the run.
+func schemagenBinary(t *testing.T) string {
+	t.Helper()
+	schemagenBinOnce.Do(func() {
+		// Removed by testgo.Main when this binary's tests finish, and swept by
+		// name if it is killed first; see testgo.MkdirProcessTemp.
+		dir, err := testgo.MkdirProcessTemp()
+		if err != nil {
+			schemagenBinErr = err
+			return
+		}
+		bin := filepath.Join(dir, "schemagen")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		cmd := testgo.Command(ctx, testsupport.Root, "build", "-o", bin, ".")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			schemagenBinErr = fmt.Errorf("building schemagen: %w\n%s", err, out)
+			return
+		}
+		schemagenBinPath = bin
+	})
+	if schemagenBinErr != nil {
+		t.Fatal(schemagenBinErr)
+	}
+	return schemagenBinPath
+}
+
+func runSchemagen(t *testing.T, bin string, args ...string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, args...)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("schemagen %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+}
+
+type driverSpec struct {
+	// Root is the directory the generated tree was written into; it becomes the
+	// module root.
+	Root string
+	// Module is the module path written into go.mod.
+	Module string
+	// ImportPath is what the driver imports the generated types from.
+	ImportPath string
+	// TypeName is the generated type the instances are driven through.
+	TypeName  string
+	Instances []string
+}
+
+// runDifferentialDriver compiles the generated tree together with a driver and
+// returns one verdict line per instance.
+func runDifferentialDriver(t *testing.T, spec driverSpec) []string {
+	t.Helper()
+	if err := writeTestGoMod(spec.Root, spec.Module); err != nil {
+		t.Fatalf("writing go.mod: %v", err)
+	}
+	drv := filepath.Join(spec.Root, "differentialdriver")
+	if err := os.MkdirAll(drv, 0o755); err != nil {
+		t.Fatalf("mkdir driver: %v", err)
+	}
+	instances, err := json.Marshal(spec.Instances)
+	if err != nil {
+		t.Fatal(err)
+	}
+	main := strings.NewReplacer(
+		"@IMPORT@", spec.ImportPath,
+		"@TYPE@", spec.TypeName,
+		"@INSTANCES@", string(instances),
+	).Replace(differentialDriverMain)
+	if err := os.WriteFile(filepath.Join(drv, "main.go"), []byte(main), 0o644); err != nil {
+		t.Fatalf("writing driver: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	cmd := testgo.Command(ctx, spec.Root, "run", "-mod=mod", "./differentialdriver")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("driving the generated %s tree: %v\n%s", spec.Module, err, out)
+	}
+	var lines []string
+	for _, line := range strings.Split(strings.TrimRight(string(out), "\n"), "\n") {
+		if strings.HasPrefix(line, "V ") {
+			lines = append(lines, strings.TrimPrefix(line, "V "))
+		}
+	}
+	return lines
+}
+
+// differentialDriverMain reports, for each instance, only what both spellings
+// have to agree on: whether the document decoded, whether it validated, what it
+// marshalled back to, and whether that output decodes again.
+//
+// Error *text* is deliberately not compared. The two spellings name types
+// differently and reach a nested value by different routes, so a message may
+// legitimately differ; whether the document was accepted may not. The
+// marshalled form is canonicalised through a map so that member order is not
+// mistaken for a disagreement.
+const differentialDriverMain = `package main
+
+import (
+	"encoding/json"
+	"fmt"
+
+	gen "@IMPORT@"
+)
+
+func canonical(b []byte) string {
+	var v any
+	if err := json.Unmarshal(b, &v); err != nil {
+		return "unparseable(" + string(b) + ")"
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		return "unmarshalable"
+	}
+	return string(out)
+}
+
+func verdict(in string) string {
+	var v gen.@TYPE@
+	if err := json.Unmarshal([]byte(in), &v); err != nil {
+		return "decode=refused"
+	}
+	if err := v.Validate(); err != nil {
+		return "decode=ok validate=refused"
+	}
+	out, err := json.Marshal(v)
+	if err != nil {
+		return "decode=ok validate=ok marshal=refused"
+	}
+	re := "ok"
+	var again gen.@TYPE@
+	if err := json.Unmarshal(out, &again); err != nil {
+		re = "refused"
+	}
+	return "decode=ok validate=ok marshal=" + canonical(out) + " redecode=" + re
+}
+
+func main() {
+	var instances []string
+	if err := json.Unmarshal([]byte(` + "`" + `@INSTANCES@` + "`" + `), &instances); err != nil {
+		panic(err)
+	}
+	for _, in := range instances {
+		fmt.Println("V " + verdict(in))
+	}
+}
+`
