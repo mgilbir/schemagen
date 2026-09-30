@@ -34,9 +34,9 @@ var {{.EncodeKeysVar}} = [...]string{
 
 {{- if .StripRulesVar}}
 
-// {{.StripRulesVar}} are the writeOnly locations below {{.Name}}'s members
-// that MarshalJSON strips itself: {{.AccessRulesVar}}' writeOnly rules, but
-// those a member's own type already strips. See stripRulesFor.
+// {{.StripRulesVar}} is where MarshalJSON starts stripping the writeOnly
+// locations below {{.Name}}'s members: {{.AccessRulesVar}}' writeOnly half, less
+// what a member's own type already strips. See stripRulesFor.
 var {{.StripRulesVar}} = {{accessRules .StripRules}}
 {{- end}}
 

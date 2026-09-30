@@ -117,18 +117,23 @@ type StructDef struct {
 	// what a Go field can answer for; these are the positions where the value
 	// stays raw JSON and no nested type is ever decoded -- a prefixItems slot, a
 	// contains element, a patternProperties value -- which is where the flag was
-	// a silent no-op until issue #219. See accessRulesFor.
-	AccessRules []AccessRule
+	// a silent no-op until issue #219. See accessRulesFor. Nil where there is
+	// nothing to say.
+	AccessRules *AccessRules
+	// accessRoot is the access graph node this struct's rules were built from,
+	// set under the flag whether or not they came to anything: what a parent's
+	// rules are compared against in stripRulesFor.
+	accessRoot *accessStateID
 	// AccessRulesVar is the package variable AccessRules is declared as, named
 	// by the generator's name registry when the def is added to the file. It
 	// used to be spelled in the template as the type name plus "AccessRules",
 	// which a definition keyed "FooAccessRules" beside a type Foo declared
 	// twice.
 	AccessRulesVar string
-	// StripRules are the writeOnly AccessRules MarshalJSON applies: all of them
-	// but those that step into a member whose own type strips the rest of the
-	// path itself. See stripRulesFor.
-	StripRules []AccessRule
+	// StripRules are the writeOnly half of AccessRules MarshalJSON applies:
+	// the same machine, from a start that does not walk into a member whose own
+	// type strips what lies below it itself. See stripRulesFor.
+	StripRules *AccessRules
 	// EncodeKeysVar and StripRulesVar are the package variables the encode
 	// declares beside the type -- its member names as encoding/json spells
 	// them, and StripRules -- named by the name registry in
@@ -484,6 +489,11 @@ func (d *StructDef) NeedsJSONNulls() bool {
 func (d *StructDef) HasDefaults() bool {
 	for _, f := range d.Fields {
 		if f.DefaultLiteral != "" {
+			return true
+		}
+	}
+	for _, o := range d.OneOfs {
+		if o.DefaultLiteral != "" {
 			return true
 		}
 	}
@@ -1693,13 +1703,21 @@ type FieldDef struct {
 	// is a conversion or composite written into a generated type, which the
 	// scalar arms would wrap in a second conversion of the wrong type;
 	// "collection" for a slice or map literal, whose field is nil exactly when
-	// the property was absent. Set by resolveNamedTypeDefaults.
+	// the property was absent; "iszero" for a raw-value wrapper, which is not
+	// comparable and says it is empty by IsZero. Set by resolveDefaults.
 	DefaultShape string
-	// pendingDefault is the "default" of a field defaultToGoLiteral could not
-	// write, held for resolveNamedTypeDefaults. Unexported: nothing outside this
-	// package, and no template, has any use for a value that has not been
-	// decided yet.
-	pendingDefault *any
+	// DefaultJudge and DefaultJudgeValue are set on a default whose validity
+	// the generator could not decide (see judgeValue): DefaultJudge is the
+	// package variable the property's schema is compiled into for the runtime
+	// evaluator, and DefaultJudgeValue the default as the tree the evaluator
+	// reads. SetDefaults plants the default only where the evaluator accepts it.
+	DefaultJudge      string
+	DefaultJudgeValue string
+	// pendingDefault is a "default" on its way to SetDefaults: found and judged
+	// at field construction, and spelled by resolveDefaults once every
+	// declaration it may name exists. Unexported: nothing outside this package,
+	// and no template, has any use for a value that has not been decided yet.
+	pendingDefault *defaultCandidate
 	// LeafDecode is set when the field's type holds an int64 the document's
 	// draft lets be written in float notation, a json.Number a JSON string
 	// could fill, or a time.Time whose decoder refuses spellings RFC 3339
@@ -1812,6 +1830,15 @@ type OneOfDef struct {
 	// strings the schema admits, which is the defect that method exists to
 	// prevent.
 	RejectNull bool
+	// DefaultLiteral, DefaultJudge and DefaultJudgeValue are a FieldDef's, for
+	// the default of the group's property. A group is always planted by
+	// decoding (see defaultShapeDecoded): DefaultLiteral is the Go string
+	// literal of the one-member document that carries the default, and which
+	// variant it selects is the decode's decision, as it is for a document.
+	DefaultLiteral    string
+	DefaultJudge      string
+	DefaultJudgeValue string
+	pendingDefault    *defaultCandidate
 }
 
 // IsProperty reports whether the union sits at a property of its parent,
@@ -2814,7 +2841,7 @@ type AnnotationSchemaDef struct {
 	// so the flat key lists a struct carries have nowhere to live here and the
 	// flag did nothing: issue #219's unevaluatedProperties and unevaluatedItems
 	// positions are both this type. See accessRulesFor.
-	AccessRules []AccessRule
+	AccessRules *AccessRules
 
 	// SchemaVar and AccessRulesVar are the package variables the compiled
 	// schema and the access rules are declared as. Both are named by the
@@ -2990,6 +3017,13 @@ type File struct {
 	// somewhere `any` fits. See UndeclaredRefType and issue #240.
 	UndeclaredRefTypes []UndeclaredRefType
 
+	// AccessMachine is the file's --strict-read-write machine, whose states
+	// every type's AccessRules start in, and AccessMachineVar the package
+	// variable it is declared as. Empty where no type of the file has rules.
+	// See accessRulesFor.
+	AccessMachine    []AccessState
+	AccessMachineVar string
+
 	// ElementNodes are the schemas of the types an element held as decoded JSON
 	// is judged against -- a tuple position, a contains, an inferred array's
 	// items -- compiled for the runtime evaluator, which judges the element as
@@ -3003,8 +3037,12 @@ type File struct {
 // decoded into the type to be judged by the type's Validate. Var is the
 // package variable the root node is declared as, and Nodes the nodes hoisted
 // out of it, as AnnotationSchemaDef's are.
+//
+// A default's runtime judge is declared the same way (see defaultJudgeNode),
+// and Purpose is what its doc comment says it is; empty for an element's node.
 type ElementNode struct {
 	TypeName string
+	Purpose  string
 	Var      string
 	Literal  string
 	Nodes    []RuntimeNodeVar

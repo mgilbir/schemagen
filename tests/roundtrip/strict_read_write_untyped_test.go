@@ -54,7 +54,6 @@ func main() {
 	for _, doc := range []string{
 		` + "`" + `{"tuple":[{"ro":1}]}` + "`" + `,
 		` + "`" + `{"patterned":{"k1":{"ro":1}}}` + "`" + `,
-		` + "`" + `{"holds":[{"ro":1}]}` + "`" + `,
 		` + "`" + `{"leftoverProps":{"k":{"ro":1}}}` + "`" + `,
 		` + "`" + `{"leftoverItems":[{"ro":1}]}` + "`" + `,
 		` + "`" + `{"mapped":{"other":{"ro":1}}}` + "`" + `,
@@ -106,6 +105,14 @@ func main() {
 		// that whole matrix is asserted, position by position.
 		` + "`" + `{"viaThen":{"ro":1}}` + "`" + `,
 		` + "`" + `{"viaAnyOf":{"ro":1}}` + "`" + `,
+		// contains is on the same side of the line. It describes the elements
+		// that match it, and which those are is the document's business: a
+		// refusal keyed on it refused [{"kind":1},{"secret":2}] under a
+		// contains requiring "kind", whose second element contains never
+		// described. So readOnly does not bind through contains at all, and
+		// this element -- which does match -- is not refused either; writeOnly
+		// still strips through it, below.
+		` + "`" + `{"holds":[{"ro":1}]}` + "`" + `,
 	} {
 		var v ReadWriteUntypedPositions
 		if err := json.Unmarshal([]byte(doc), &v); err != nil {
@@ -209,19 +216,20 @@ func main() {
 // the matrix above, and it is what says the flag is the only thing that makes
 // any of it happen.
 //
-// The paths are a table in the generated source, so this reads the source: under
-// the default configuration there must be no table, no walker call, and no
-// refusal type, and the file must be what it would have been if the two keywords
-// had never been parsed.
+// The rules are a machine in the generated source, so this reads the source:
+// under the default configuration there must be no machine, no walker call, and
+// no refusal type, and the file must be what it would have been if the two
+// keywords had never been parsed.
 func TestReadWriteUntypedPositionsAreDocumentationByDefault(t *testing.T) {
 	src := string(generateFromSchema(t, "testdata/schemas/regression/read_write_untyped_positions.json"))
 	for _, unwanted := range []string{
+		// The walker lives in the runtime module; what a file under the flag
+		// carries is its machine, its rules and the calls into the walker.
+		"rt.AccessState",
 		"AccessRules",
-		"_accessRefuseReadOnly",
-		"_accessStripWriteOnly",
-		"_decodeIgnoringReadOnly",
-		"_readOnlyRefusal",
-		"read-only property may not be set",
+		"rt.AccessRefuseReadOnly",
+		"rt.AccessStripWriteOnly",
+		"ReadOnlyRefusal",
 	} {
 		if strings.Contains(src, unwanted) {
 			t.Errorf("the default configuration emitted %q; readOnly/writeOnly behaviour is --strict-read-write only", unwanted)

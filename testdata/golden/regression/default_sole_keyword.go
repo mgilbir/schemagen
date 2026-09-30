@@ -180,6 +180,11 @@ func (d DefaultSoleKeyword) appendMemberJSON(_idx int, _key string, _b []byte) (
 // Nothing here touches _jsonKeys. A default is not a property the document sent,
 // so a required property still has to have been sent, and SetDefaults cannot
 // make one satisfiable that was not.
+//
+// Only a default that is valid where it lands is written at all: one the
+// generator could prove valid is written as it stands, one it could not decide
+// is written only if the runtime evaluator accepts it against the property's
+// schema, and one that is invalid is not here.
 func (d *DefaultSoleKeyword) SetDefaults() {
 	if d.B == nil {
 		_default := true

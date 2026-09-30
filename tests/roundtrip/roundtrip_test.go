@@ -2078,12 +2078,13 @@ func main() {
 // The other half of the matrix is the boundary, and it is asserted rather than
 // left implicit. Two things are on the far side of it.
 //
-// A readOnly array element and a readOnly map value generate no check,
-// deliberately: the check keys on a property name and an element has none, and
-// writeOnly has no coherent action there at all -- a property can be left out of
-// an object, but an element cannot be left out of an array without changing its
-// length, which is a thing minItems can see. Those positions are documentation,
-// and the doc comment on the element's own type is where they are documented.
+// A readOnly array element generates no check, deliberately: neither keyword
+// has a coherent action there -- a member can be left out of an object, but an
+// element cannot be left out of an array without changing its length, which is a
+// thing minItems can see. That position is documentation, and the doc comment
+// on the element's own type is where it is documented. A readOnly map value is
+// on the near side: it is an object member with a key, chosen by
+// additionalProperties, and is refused like a property is.
 //
 // And a keyword inside an anyOf branch generates none either. $ref and allOf
 // bind whatever the document says, so what they state is stated of every
@@ -2131,6 +2132,11 @@ func main() {
 		// nothing at all here and said nothing about doing nothing.
 		` + "`" + `{"roGroup":{"name":"n"}}` + "`" + `,
 		` + "`" + `{"roGroup":{"id":3}}` + "`" + `,
+		// A readOnly map value is a member like any other: it has a key, and
+		// the key is what additionalProperties chose it by. It used to be
+		// documentation on the ground that a map value "has no property name
+		// to key on", which is true of an array element and not of this.
+		` + "`" + `{"roMap":{"k":"a"}}` + "`" + `,
 	} {
 		var v ReadWritePositions
 		if err := json.Unmarshal([]byte(doc), &v); err == nil {
@@ -2140,18 +2146,19 @@ func main() {
 		}
 	}
 
-	// The boundary. A readOnly array element and a readOnly map value are
-	// documentation: there is no property name for the check to key on, so
-	// nothing is refused, and that is stated here so a change to it is a test
-	// failure rather than a surprise.
+	// The boundary. A readOnly array element is documentation: an element
+	// cannot be left out of an array without changing its length, so nothing
+	// is refused, and that is stated here so a change to it is a test failure
+	// rather than a surprise.
 	//
 	// The controls sit in the same list. A property writing readOnly:false, one
 	// carrying no annotation at all, and a writeOnly property all decode, which
-	// is what says the flag refuses a named set of keys and not a shape.
+	// is what says the flag refuses a named set of keys and not a shape. An
+	// empty map is the control for the map: there is no member to refuse.
 	for _, doc := range []string{
 		` + "`" + `{}` + "`" + `,
 		` + "`" + `{"roList":["a","b"]}` + "`" + `,
-		` + "`" + `{"roMap":{"k":"a"}}` + "`" + `,
+		` + "`" + `{"roMap":{}}` + "`" + `,
 		` + "`" + `{"woList":["s"]}` + "`" + `,
 		// An anyOf branch is the control for how far the applicator reach goes.
 		// Which branch applies is the document's business, so a readOnly written
@@ -2205,7 +2212,7 @@ func main() {
 	// does not consult them.
 	for _, doc := range []string{
 		` + "`" + `{}` + "`" + `,
-		` + "`" + `{"roList":["a"],"roMap":{"k":"b"},"woList":["s"],"roViaAnyOf":"a"}` + "`" + `,
+		` + "`" + `{"roList":["a"],"roMap":{},"woList":["s"],"roViaAnyOf":"a"}` + "`" + `,
 		` + "`" + `{"plain":"p","untouched":"u","woInline":"s"}` + "`" + `,
 		` + "`" + `{"nested":{"keep":"k"}}` + "`" + `,
 		` + "`" + `{"woGroup":{"id":1},"plainGroup":{"name":"n"}}` + "`" + `,
@@ -2966,11 +2973,29 @@ func main() {
 		fail("dfltEmptyViaRef: SetDefaults wrote %q, want the empty string", string(*v.DfltEmptyViaRef))
 	}
 
-	// Nothing states one about these unconditionally, so nothing may be
-	// written. The four conditional ones are the carve-out; dfltObjectViaRef is
-	// a default whose target is a struct, which no conversion of a JSON value
-	// reaches; dfltMismatchViaRef states a string default for an integer type,
-	// which has no literal either; and dfltNone is the plain control.
+	// The two untyped holders take the default as it is, since each holds any
+	// JSON value exactly as a document carrying it would leave it. A $defs
+	// entry with no "type" compiles to an alias over the empty interface, which
+	// holds what encoding/json decodes the JSON into; a multi-type one compiles
+	// to a raw-value wrapper, which holds its JSON -- written as the wrapper's
+	// bytes, not as a conversion of a string literal into a struct, which is
+	// the shape that does not compile.
+	if s, ok := v.DfltAnyViaRef.(string); !ok || s != "untyped" {
+		fail("dfltAnyViaRef: SetDefaults wrote %#v, want %q", v.DfltAnyViaRef, "untyped")
+	}
+	if got := v.DfltMultiTypeViaRef.String(); got != ` + "`" + `"multi"` + "`" + ` {
+		fail("dfltMultiTypeViaRef: SetDefaults wrote %s, want %q", got, "multi")
+	}
+	// A struct takes its default by decoding it, as a document carrying it
+	// would fill it; no literal is written for one.
+	if v.DfltObjectViaRef == nil || v.DfltObjectViaRef.N == nil || *v.DfltObjectViaRef.N != "x" {
+		fail("dfltObjectViaRef: SetDefaults wrote %+v, want {n: x}", v.DfltObjectViaRef)
+	}
+
+	// Nothing states one about these unconditionally, or what is stated is
+	// not usable, so nothing may be written. The four conditional ones are the
+	// carve-out; dfltMismatchViaRef states a string default for an integer
+	// type, which is not valid there; and dfltNone is the plain control.
 	for _, c := range []struct {
 		name string
 		set  bool
@@ -2979,18 +3004,7 @@ func main() {
 		{"dfltCondElse", v.DfltCondElse != nil},
 		{"dfltCondAnyOf", v.DfltCondAnyOf != nil},
 		{"dfltCondOneOf", v.DfltCondOneOf != nil},
-		{"dfltObjectViaRef", v.DfltObjectViaRef != nil},
 		{"dfltMismatchViaRef", v.DfltMismatchViaRef != nil},
-		// A $defs entry with no "type" compiles to an alias over the empty
-		// interface. The conversion into it does compile, so nothing but the
-		// scalar test stops SetDefaults from writing a boxed value into a field
-		// whose zero test cannot tell it from any other.
-		{"dfltAnyViaRef", v.DfltAnyViaRef != nil},
-		// A multi-type $defs entry compiles to a wrapper struct, and its
-		// default is a JSON string -- so a pass that answered "string" for a
-		// declaration it could not read would produce a conversion of a string
-		// literal into a struct, which is the shape that does not compile.
-		{"dfltMultiTypeViaRef", !v.DfltMultiTypeViaRef.IsZero()},
 		{"dfltNone", v.DfltNone != nil},
 	} {
 		if c.set {

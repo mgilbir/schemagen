@@ -165,9 +165,15 @@ AnnotationSchemaDef's are.
 */}}
 {{define "element_node"}}
 {{- if .Nodes}}
+{{- if .Purpose}}
+// {{.Var}} is {{.Purpose}},
+// compiled for the runtime evaluator, and the nodes below it are the parts of
+// that schema something inside it refers back to.
+{{- else}}
 // {{.Var}} is the schema of {{.TypeName}}, compiled for judging an element held as
 // decoded JSON against it, and the nodes below it are the parts of that schema
 // something inside it refers back to.
+{{- end}}
 var (
 	{{.Var}} rt.Node
 {{- range .Nodes}}
@@ -182,8 +188,13 @@ func init() {
 	{{$.Var}} = {{$.Literal}}
 }
 {{- else}}
+{{- if .Purpose}}
+// {{.Var}} is {{.Purpose}},
+// compiled for the runtime evaluator.
+{{- else}}
 // {{.Var}} is the schema of {{.TypeName}}, compiled for judging an element held as
 // decoded JSON against it.
+{{- end}}
 var {{.Var}} = {{.Literal}}
 {{- end}}
 {{- end}}

@@ -19,8 +19,9 @@ type (
 	jsonNullRule         = NullRule
 	jsonPathError        = PathError
 	_schemagenRegexp     = Pattern
-	_accessStep          = AccessStep
-	_accessRule          = AccessRule
+	_accessMove          = AccessMove
+	_accessState         = AccessState
+	_accessRules         = AccessRules
 	_readOnlyRefusal     = ReadOnlyRefusal
 	_schemaNode          = Node
 	_schemaAnchor        = Anchor

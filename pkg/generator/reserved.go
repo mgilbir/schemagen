@@ -56,6 +56,9 @@ var generatedImports = []generatedImport{
 	{Path: "net/mail", Name: "mail"},
 	{Path: "net/netip", Name: "netip"},
 	{Path: "net/url", Name: "url"},
+	// SetDefaults asks whether a field a default is decoded into is still its
+	// zero value (see defaultShapeDecoded).
+	{Path: "reflect", Name: "reflect"},
 	{Path: "strings", Name: "strings"},
 	{Path: "time", Name: "time"},
 	{Path: "unicode/utf8", Name: "utf8"},

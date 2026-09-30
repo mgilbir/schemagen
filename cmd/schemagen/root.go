@@ -585,6 +585,7 @@ func newGenerateCmd() *cobra.Command {
 				warnUnclaimedKeywords(cmd.ErrOrStderr(), schemaPath, gen.Unclaimed())
 				warnUnresolvedRefs(cmd.ErrOrStderr(), schemaPath, gen.UnresolvedRefs(), gen.UnresolvedRefKeywords(), gen.UndeclaredRefTypes())
 				warnUnsatisfiableRequired(cmd.ErrOrStderr(), schemaPath, gen.UnsatisfiableRequiredProperties())
+				warnSkippedDefaults(cmd.ErrOrStderr(), schemaPath, gen.SkippedDefaults())
 				// Both read from the generator's name registry, after the types
 				// are declared: what a name report says a definition became is
 				// what the package declares.
@@ -885,6 +886,27 @@ func warnUnsatisfiableRequired(w io.Writer, schemaPath string, props []generator
 	for _, p := range props {
 		fmt.Fprintf(w, "warning: %s: %s.%s is both required and readOnly, so under --strict-read-write no document satisfies it: one that sets %q fails to decode (read-only property may not be set), one that omits it fails Validate (required property is missing). SetDefaults does not help -- the required check reads the keys of the document as it arrived, not the field. Drop %q from \"required\", drop \"readOnly\", or generate this type without --strict-read-write\n",
 			schemaPath, p.TypeName, p.Property, p.Property, p.Property)
+	}
+}
+
+// warnSkippedDefaults reports the defaults SetDefaults does not plant: one the
+// field's Go type cannot hold, and one that is not valid where it is written.
+//
+// A warning and not an error: "default" is an annotation, a schema whose
+// default is unusable is still a legal schema, and generation used to refuse
+// some of these (4.5 on an integer) while planting others that make a valid
+// document invalid (a value outside the property's enum).
+func warnSkippedDefaults(w io.Writer, schemaPath string, skipped []generator.SkippedDefault) {
+	if w == nil {
+		return
+	}
+	for _, s := range skipped {
+		where := ""
+		if s.Location != "" {
+			where = " (" + s.Location + ")"
+		}
+		fmt.Fprintf(w, "warning: %s: the default of %s.%s%s is not planted by SetDefaults: %s\n",
+			schemaPath, s.TypeName, s.Property, where, s.Reason)
 	}
 }
 
@@ -1457,6 +1479,7 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 			warnUnclaimedKeywords(p.warnings, in.path, gen.Unclaimed())
 			warnUnresolvedRefs(p.warnings, in.path, gen.UnresolvedRefs(), gen.UnresolvedRefKeywords(), gen.UndeclaredRefTypes())
 			warnUnsatisfiableRequired(p.warnings, in.path, gen.UnsatisfiableRequiredProperties())
+			warnSkippedDefaults(p.warnings, in.path, gen.SkippedDefaults())
 			nameReport.moves(in.path, gen)
 
 			// Recorded twice over: by file base name, which is all a --field-map

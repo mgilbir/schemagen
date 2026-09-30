@@ -75,6 +75,63 @@
   - The `pkg/generator.HelperSet` is reduced to the patterns a package
     compiles, and the pruning that decided which helper blocks a package needed
     is gone with the blocks.
+- `--strict-read-write` generates in time proportionate to the schema. Its
+  rules for values held as raw JSON were a table of paths, found by walking
+  every path through the schema to 24 steps, and a schema whose references
+  loop back through several keywords has exponentially many: a metaschema did
+  not finish generating in 45 seconds (ten groups of the JSON Schema Test Suite
+  that `$ref` a metaschema, drafts 4 to 2020-12), and one that marked something
+  would have produced an exponential table. The rules are now a small state
+  machine per file, built once per schema node, which the generated decoder and
+  encoder run over the document, reading each value once; those groups generate
+  in about a tenth of a second. A schema that refers to itself is a cycle in the
+  machine, so a rule binds at every depth of a recursive value -- the path walk
+  stopped at the first repeat of a schema node on a path, and so bound a
+  writeOnly member of a recursive value held as raw JSON at its first level and
+  not below; now it is stripped, and a readOnly one refused, 1,000 levels down
+  -- and a struct's walk stops at a member decoded into a type of its own only
+  where that type's rules are proven, on the machine, to do everything the walk
+  would at every depth. In the runtime, `rt.AccessRule` and `rt.AccessStep`
+  give way to `rt.AccessRules`, `rt.AccessState` and `rt.AccessMove`, which
+  `rt.AccessRefuseReadOnly`, `rt.AccessStripWriteOnly`, `rt.AccessStripTree`
+  and the two `StripWriteOnly` methods now take.
+- `default` has one policy. `SetDefaults` plants a default only when the
+  field's Go type holds it exactly and it is valid against every schema that
+  describes the property on every document — its own, its `$ref`/`allOf`
+  reach, a matching `patternProperties`, an `additionalProperties` that
+  claims it, the `propertyNames` its name must satisfy. The generator judges
+  validity itself, and defers what it cannot decide (an asserted `format`,
+  say) to the runtime evaluator when `SetDefaults` runs. Any other default is
+  skipped with a warning naming where it is written and why, and none fails
+  generation. Before, `4.5` or `1e30` on an integer and `1e400` on a number
+  refused to generate a legal schema, `"x"` or `[]` on an integer vanished
+  without a word, and `"zzz"` on `enum: ["a","b"]` was planted, so that
+  `SetDefaults` made `{}` invalid. Now `1e30` is planted under `--big-int`,
+  `1e400` and `1.2345678901234567890` under `--exact-numbers`, and an untyped
+  position takes its default (as its bytes under `--raw-untyped`); a
+  `float64` takes only a number it writes back out as itself. An object on a
+  struct-typed property, a slice of structs, a `oneOf` group, and an asserted
+  `date-time` or ip held as `time.Time`/`netip.Addr` — all silently dropped
+  before — are planted by decoding the default, which leaves exactly the state
+  a document carrying it would; one the decode would respell or round is
+  skipped and reported. The library reports the skips as
+  `Generator.SkippedDefaults`.
+- `--strict-read-write` binds `readOnly` and `writeOnly` by one rule, JSON
+  Schema's own: a keyword applies where the route to a location is fixed by
+  keys, indexes, `allOf` and `$ref`, and is conditional where the route goes
+  through a branch, `contains`, or the part of `unevaluatedProperties` /
+  `unevaluatedItems` a branch might evaluate. `readOnly` refuses only at the
+  first kind; `writeOnly` strips at both. Two positions broke it. `readOnly`
+  inside `contains` refused every element that set the member, including ones
+  `contains` does not describe: under `{"contains":{"required":["kind"],
+  "properties":{"secret":{"readOnly":true}}}}`, `[{"kind":1},{"secret":2}]`
+  was refused. It now binds nothing there, as inside an `anyOf`. And a keyword
+  written directly on a `patternProperties` or `additionalProperties` value was
+  read by nothing, so a `writeOnly` one was written straight back out: those
+  members have keys, and are now refused and stripped by key like a property.
+  An `additionalProperties` rule also reaches a member only an `allOf` branch
+  names, which is one of its leftovers, and a required property such a
+  `readOnly` value governs is reported as unsatisfiable.
 - A pattern is judged by the ECMA-262 grammar for the `u` flag, the dialect
   JSON Schema names, and nothing looser. ES2025 modifier groups are accepted
   and matched as specified, in every position a pattern occupies:

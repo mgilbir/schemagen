@@ -55,7 +55,7 @@ func (o *IDObj) Del(key string)
 func (o *IDObj) Held(key string, raw []byte)
 func (o *IDObj) Nulled(key string)
 func (o *IDObj) Of(member IDMemberFunc, m *Validation) (ID, error)
-func (o *IDObj) StripWriteOnly(rules []AccessRule, member IDMemberFunc, m *Validation) error
+func (o *IDObj) StripWriteOnly(rules AccessRules, member IDMemberFunc, m *Validation) error
 func (o *IDObj) Value(key string, member IDMemberFunc, m *Validation) (any, bool, bool, error)
 func (o *IDObject) Add(key string, val ID)
 func (o *IDObject) ID() ID
@@ -64,16 +64,16 @@ func (o *Obj) Del(key string)
 func (o *Obj) Encoded(key string, val []byte)
 func (o *Obj) Held(key string, raw []byte)
 func (o *Obj) MemberBytes(key string, member MemberEnc) ([]byte, bool, error)
-func (o *Obj) StripWriteOnly(rules []AccessRule, member MemberEnc) error
+func (o *Obj) StripWriteOnly(rules AccessRules, member MemberEnc) error
 func (o *Obj) Write(b []byte, member MemberEnc) ([]byte, error)
 func (p *Pattern) Matches(s string) (bool, error)
 func (p *Pattern) MatchesValue(v any, undecided *error) bool
 func (r EvalResult) OK() bool
 func (r EvalResult) Reason() string
 func (r EvalResult) Undecided() error
-func AccessRefuseReadOnly(d *Doc, sp Span, rules []AccessRule) error
-func AccessStripTree(t any, rules []AccessRule) (any, error)
-func AccessStripWriteOnly(data []byte, rules []AccessRule) ([]byte, error)
+func AccessRefuseReadOnly(d *Doc, sp Span, rules AccessRules) error
+func AccessStripTree(t any, rules AccessRules) (any, error)
+func AccessStripWriteOnly(data []byte, rules AccessRules) ([]byte, error)
 func AppendLeaf[T any](v T, b []byte) ([]byte, error)
 func AtJSON[T any](p *T, d *Doc, sp Span) error
 func Attempt(d *Doc, f func() error) error
@@ -211,8 +211,9 @@ func ValueErrorf(format string, args ...any) error
 func ValueWrapf(err error, prefix string) error
 func Wrapf(err error, prefix string) error
 type API1 struct{}
-type AccessRule struct { Path []AccessStep ReadOnly bool WriteOnly bool }
-type AccessStep struct { // Pattern is an _accessPattern step's key test, one of the package's // compiled patterns. Pattern *Pattern Name string // Except and ExceptPatterns are what an _accessOther step steps past: the // members the same schema object declares by name and by pattern, which are // exactly the ones additionalProperties and unevaluatedProperties do not // reach. Except []string ExceptPatterns []*Pattern Kind int Index int }
+type AccessMove struct { // Pattern is an AccessPattern move's key test, one of the package's // compiled patterns. Pattern *Pattern Name string // Except and ExceptPatterns are what an AccessOther move steps past: the // members the same schema object declares by name and by pattern, which are // exactly the ones additionalProperties and unevaluatedProperties do not // reach. Except []string ExceptPatterns []*Pattern Kind int Index int // Next is the state what the move reaches is walked in, plus one; zero // where it is walked in none. Next int // ReadOnly and WriteOnly say the schema marks what the move reaches. ReadOnly bool WriteOnly bool // SeekReadOnly and SeekWriteOnly say a walk in Next can find a readOnly or // a writeOnly member, so each half of the walker follows only the moves that // matter to it. SeekReadOnly bool SeekWriteOnly bool }
+type AccessRules struct { States []AccessState Start int }
+type AccessState struct { Moves []AccessMove }
 type Anchor struct { Node *Node Name string }
 type At[T any] func(*T, *Doc, Span) error
 type Capability struct { Mode string RuntimeFeatures []Feature Unsupported []Feature ResourceCount int RequiresRuntime bool }

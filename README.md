@@ -641,15 +641,33 @@ which they have a direction ([2020-12 §9.4][ro]):
 - `MarshalJSON` **omits** every `writeOnly` property — the spec says the value
   "is never present when the instance is retrieved from the owning authority".
 
-Both bind on a **property**, whichever way the schema says so: written on the
-property, reached through its `$ref` (however long the chain), or stated in one
-of its `allOf` branches all name the same instance location and all bind. That
-holds wherever the property is, including the places the generated code keeps
-the value as raw JSON and never decodes it into the type built for the
-sub-schema — a `prefixItems` slot, a `contains` element, a `patternProperties`
-value, and a schema whose whole shape is `unevaluatedProperties` or
-`unevaluatedItems`. Those positions carry a path table rather than a key list,
-because there is no Go field at them to key on.
+Both bind on an **object member**, whichever way the schema says so: written on
+the member's schema, reached through its `$ref` (however long the chain), or
+stated in one of its `allOf` branches all name the same instance location and all
+bind. The member can be a property, or a member chosen by its key — a
+`patternProperties` value binds every member whose key matches, and an
+`additionalProperties` value every member its own object's `properties` and
+`patternProperties` leave over — and it can be anywhere, including the places the
+generated code keeps the value as raw JSON and never decodes it into the type
+built for the sub-schema: a member inside a `prefixItems` slot, an `items`
+element, a `patternProperties` value, and a schema whose whole shape is
+`unevaluatedProperties` or `unevaluatedItems`. Those positions carry a small
+state machine rather than a key list, because there is no Go field at them to
+key on: each state is what the schema says about the members and elements of a
+value, and the generated decoder and encoder run it over the document, reading
+each value once. It is built in time proportionate to the schema, however its
+references loop back -- a metaschema, whose every keyword leads back to the
+root, generates as fast with the flag as without. A schema that refers to
+itself is a cycle in the machine, so a rule binds at every depth of a recursive
+value, however deep the document nests it: the machine has no depth bound, and
+runs in time linear in the document at any depth. A struct stops walking into a
+member it decodes into a type of its own only where that type's rules are
+proven, on the machine, to do everything the walk would at every depth.
+
+An array element marked `readOnly` or `writeOnly` is documentation and nothing
+more: an element cannot be left out of an array without changing its length,
+which `minItems` and every index after it can see, so neither keyword has an
+action there. The members inside the element are still bound.
 
 A property that is both `required` and `readOnly` is refused twice under this
 flag and satisfied by nothing: a document that sets it fails to decode
@@ -668,17 +686,28 @@ decoder's refusal came back out of `Validate()` as `read-only property may not
 be set`. `readOnly` constrains no document, so that was a verdict about a
 question the schema did not ask.
 
-At a **conditional** branch — `anyOf`, `oneOf`, `if`/`then`/`else`,
-`dependentSchemas`, `not` — the two keywords part company, and the asymmetry is
-deliberate.
+One rule decides where each keyword binds, and it is §7.7.1's: a subschema
+annotates exactly the locations it successfully evaluates. A location reached
+only through keys and indexes — `properties`, `patternProperties`,
+`additionalProperties`, `prefixItems`, `items`, `additionalItems` — and through
+`allOf` and `$ref` is one the keyword describes on every valid document. Every
+other route is **conditional**, because whether it reaches the location depends
+on what the document holds: an `anyOf`, `oneOf`, `if`/`then`/`else`,
+`dependentSchemas` or `not` branch applies only when it is selected; `contains`
+describes only the elements that match it; `unevaluatedProperties` and
+`unevaluatedItems` describe only what the other keywords — conditional ones
+included — left unevaluated. At a conditional location the two keywords part
+company, and the asymmetry is deliberate.
 
 `readOnly` does not follow one. Which branch applies is the document's business,
-and a refusal keyed on one would reject documents the schema accepts; a `not`
-that *succeeds* is a subschema that *failed*, so nothing inside it marks anything
-either. That holds however the branch is reached — including an object-level
-conditional inside an `allOf` branch, whose properties are merged into the same
-struct: the branch is where such a property gets its Go type, and what it
-*asserts* is held back.
+and a refusal keyed on one would reject documents the schema accepts: under
+`{"contains":{"required":["kind"],"properties":{"secret":{"readOnly":true}}}}`,
+the array `[{"kind":1},{"secret":2}]` is valid and its second element is not one
+`contains` describes. A `not` that *succeeds* is a subschema that *failed*, so
+nothing inside it marks anything either. That holds however the branch is
+reached — including an object-level conditional inside an `allOf` branch, whose
+properties are merged into the same struct: the branch is where such a property
+gets its Go type, and what it *asserts* is held back.
 
 `writeOnly` does follow one, at every position and at any depth — including the
 plainest spelling of all, where the conditional is written on the object whose own
@@ -700,8 +729,11 @@ and nothing anywhere reports that it happened. `--strict-read-write` is a policy
 the caller chose rather than spec validation, so it is allowed to be stricter
 than §7.7.1's annotation rules in the direction that fails safe. The cost is
 named rather than hidden: a `writeOnly` inside a branch the document does not
-match is stripped anyway, because the rules are a static table of locations and
-cannot evaluate a condition. `Validate` is untouched by any of it — no verdict
+match is stripped anyway, because the rules are fixed when the type is
+generated and do not evaluate a condition. So one inside `contains` is stripped from every
+element, and one inside `unevaluatedProperties` from every member the object's
+unconditional keywords — its own and its `allOf` and `$ref` reach — do not
+evaluate. `Validate` is untouched by any of it — no verdict
 has ever depended on either keyword and none does now.
 
 That last part is not only about annotations. A property an `if`/`then`/`else`
@@ -735,6 +767,20 @@ declares a documented `type D`, where before it declared a bare one and lost the
 prose outright — a property at least has a field above it to carry what its
 `allOf` says, and a definition has nothing.
 
+Under `--strict-read-write`, how a property is typed makes no difference. A
+property whose `oneOf` becomes a sealed-interface group is checked exactly as a
+plain field is.
+
+The flag is opt-in for two reasons. A type built this way no longer round-trips,
+by design. And it picks a side: one Go type cannot be both the request shape and
+the response shape, and `MarshalJSON` is not told which it is being asked for, so
+a *client* building a request with the same type would have its `writeOnly`
+password dropped. The default declines to guess.
+
+Under neither setting do these keywords change a validation verdict.
+
+[ro]: https://json-schema.org/draft/2020-12/json-schema-validation#section-9.4
+
 ### `default`
 
 `default` answers the same reach question, and it answers it in the parent
@@ -748,27 +794,55 @@ branches left to right.
 
 A default reached through a `$ref` lands on a field whose Go type is the
 referenced type, so the value is written as a conversion into it —
-`_default := ResourceID("unset")`. Types a JSON scalar does not convert to (a
-struct, a slice, a `time.Time` alias, a big-int wrapper) get no default, as
-before.
+`_default := ResourceID("unset")`.
 
-How the property is typed makes no difference. A property whose `oneOf` becomes
-a sealed-interface group is checked exactly as a plain field is.
+`default` is an annotation, and one policy decides what `SetDefaults` does
+with it. A default is planted only when both hold:
 
-Outside a property the two keywords stay documentation. A `readOnly` array
-element or map value has no property name for the check to key on, and there is
-no way to omit an element from an array without changing its length — so the
-keyword is said in the doc comment on the element's own type and nowhere else.
+1. **The field's Go type holds it** — `SetDefaults` leaves the field as a
+   document carrying the default would, and the value writes back out as the
+   same JSON. The built-in scalars, the named types over them (enums
+   included), slices and maps of anything below, `--big-int`'s wrapper
+   (integers past `int64` too), `--exact-numbers`' `json.Number`, an untyped
+   position (as `encoding/json` decodes it, or under `--raw-untyped` as its
+   bytes) and the wrappers that hold a value's JSON all do. `4.5` and `1e30`
+   in an `int64`, `1e400` or `1.2345678901234567890` in a `float64`, and
+   `12345678901234567890` in an untyped `any` (a `float64` underneath) do not.
+   A value no literal spells — an object in a struct, a slice of structs, a
+   `oneOf` group, an asserted `date-time` or `ipv4`/`ipv6` held as a
+   `time.Time` or `netip.Addr` — is planted by *decoding* it: `SetDefaults`
+   decodes `{"<property>": <default>}` into a fresh value of the type and
+   copies the field across, so the field is exactly what a document carrying
+   the default leaves it, the nested value's own key set and overflow members
+   included. The same rule holds at every level of it: a nested number the
+   field would round, or a `time.Time` or `netip.Addr` that would write the
+   value back respelled (`"2020-01-01T00:00:00.000Z"` comes back without its
+   fraction, `"::0001"` as `"::1"`), is not held. A type of another generated
+   package is one whose decode this generator cannot follow, so it gets no
+   default.
+2. **It is valid where it lands** — against every schema that describes the
+   property on every document: its own, its `$ref` chain and `allOf`
+   branches, each `patternProperties` value whose pattern matches its name,
+   the `additionalProperties` of an object in that reach that does not claim
+   it, and the `propertyNames` its name must satisfy. The generator judges
+   this itself; the judgement agrees with the JSON Schema Test Suite on every
+   instance it decides (`make test-external`). What it cannot decide — an
+   asserted `format`, the content vocabulary, a dynamic reference, the
+   `unevaluated*` keywords — it compiles for the runtime evaluator, and
+   `SetDefaults` plants the default only if the evaluator accepts it.
 
-It is opt-in for two reasons. A type built this way no longer round-trips, by
-design. And it picks a side: one Go type cannot be both the request shape and the
-response shape, and `MarshalJSON` is not told which it is being asked for, so a
-*client* building a request with the same type would have its `writeOnly`
-password dropped. The default declines to guess.
+A default that fails either is not planted, and `schemagen generate` warns,
+naming where the default is written and why:
 
-Under neither setting do these keywords change a validation verdict.
+```
+warning: s.json: the default of Root.e (#/properties/e/default) is not planted by SetDefaults: the default "zzz" is not valid where it is written: it is not a member of "enum" at #/properties/e/enum
+```
 
-[ro]: https://json-schema.org/draft/2020-12/json-schema-validation#section-9.4
+It never fails generation: a schema with an unusable default is still a legal
+schema. What the judgement does not see is the rest of the object: a
+`dependentRequired`, a `maxProperties` or a branch that turns on which members
+are present sees the default as one more member, and whether that makes the
+object invalid depends on the document it is planted into.
 
 ### Unresolvable References
 

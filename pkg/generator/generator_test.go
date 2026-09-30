@@ -1516,27 +1516,21 @@ func TestExplicitDraftDoesNotOverrideEmbeddedResourceDialect(t *testing.T) {
 }
 
 // A default that violates its own declared type must be reported, not silently
-// truncated into a different value.
-func TestFractionalDefaultOnIntegerPropertyIsRejected(t *testing.T) {
+// truncated into a different value -- and not planted at all. It is not an
+// error: "default" is an annotation, and the schema is legal.
+func TestFractionalDefaultOnIntegerPropertyIsReportedAndNotPlanted(t *testing.T) {
 	input := `{
 		"type": "object",
 		"properties": {
 			"retries": {"type": "integer", "default": 4.5}
 		}
 	}`
-
-	var s schema.Schema
-	if err := json.Unmarshal([]byte(input), &s); err != nil {
-		t.Fatalf("unmarshal: %v", err)
+	ir, skipped := generateForDefaults(t, input, Config{})
+	if f := fieldNamed(t, ir, "retries"); f.DefaultLiteral != "" {
+		t.Fatalf("the fractional default was planted as %q", f.DefaultLiteral)
 	}
-	s.Normalize()
-
-	_, err := New(Config{PackageName: "testpkg"}).Generate(&s)
-	if err == nil {
-		t.Fatalf("expected error for fractional default on an integer property")
-	}
-	if !strings.Contains(err.Error(), "retries") {
-		t.Fatalf("error %q does not name the offending property", err)
+	if len(skipped) != 1 || skipped[0].Property != "retries" {
+		t.Fatalf("the report %+v does not name the offending property", skipped)
 	}
 }
 

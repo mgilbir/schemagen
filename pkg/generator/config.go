@@ -189,20 +189,25 @@ type Config struct {
 	// allOf branches, all of which apply at the same instance location. See
 	// readWriteAtLocation for that reach.
 	//
-	// A conditional branch -- anyOf, oneOf, if/then/else, dependentSchemas, not
-	// -- is where the two keywords part company. readOnly does not follow one: a
-	// refusal keyed on a branch the document did not select rejects a document the
-	// schema accepts. writeOnly does: over-stripping omits a field visibly and
-	// recoverably, under-stripping emits a secret silently, and this flag is a
-	// policy its caller chose rather than spec validation. conditionalReachAt
-	// argues it in full.
+	// A conditional location -- one reached through anyOf, oneOf, if/then/else,
+	// dependentSchemas or not, through contains, or through unevaluatedProperties
+	// or unevaluatedItems, each of which reaches it on some documents and not on
+	// others -- is where the two keywords part company. readOnly does not follow
+	// one: a refusal keyed on a branch the document did not select rejects a
+	// document the schema accepts. writeOnly does: over-stripping omits a field
+	// visibly and recoverably, under-stripping emits a secret silently, and this
+	// flag is a policy its caller chose rather than spec validation.
+	// accessRulesFor states the rule and conditionalReachAt argues it in full.
 	//
-	// Outside a property it stays documentation, and that is the boundary rather
-	// than a gap. A readOnly array element or map value has no property name for
-	// the check to key on, and writeOnly has no action available there either: a
-	// property can be left out of an object, but an element cannot be left out of
-	// an array without changing its length, which minItems can see. The doc
-	// comment on the element's own type is where those are said (issue #172).
+	// It binds on every object member, not only on a named property: a
+	// patternProperties value binds each member whose key matches, and an
+	// additionalProperties value each member its object leaves over, because a
+	// member has a key whichever keyword chose it and can be refused or left out
+	// by it. An array element is the boundary rather than a gap: it cannot be
+	// left out of an array without changing the array's length, which minItems
+	// can see, so a keyword on the element itself is said in the doc comment on
+	// the element's own type and nowhere else (issue #172). The members inside
+	// the element are bound like any other.
 	//
 	// Two consequences are deliberate and are why it is opt-in rather than the
 	// default:

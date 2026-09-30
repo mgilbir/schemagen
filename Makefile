@@ -258,8 +258,12 @@ download-metaschemas:
 # SCHEMAGEN_KEEP_GOCACHE=1 to leave the cache behind for the next run, which
 # gets most of those 25 minutes back when the generator has not changed, and
 # costs another cache's worth of disk when it has.
+#
+# pkg/generator runs one more suite reading, in-process and in under a second:
+# the judge that decides at generation time whether a "default" is valid
+# (TestExternalValueJudgeAgreesWithTheSuite), held to every instance it decides.
 test-external: download-test-suite download-metaschemas
-	SCHEMAGEN_RUN_EXTERNAL=1 go test ./tests/external -run TestExternal -v -count=1 -timeout 90m
+	SCHEMAGEN_RUN_EXTERNAL=1 go test ./tests/external ./pkg/generator -run TestExternal -v -count=1 -timeout 90m
 
 # The full determinism sweep: the same input must give the same output on every
 # run. `go test ./...` already holds the corpus to that in one process under

@@ -1,6 +1,9 @@
 package generator
 
-import "strings"
+import (
+	"slices"
+	"strings"
+)
 
 // This file plans how every generated value is written back out: the encoding
 // half of decodeplan.go.
@@ -70,6 +73,7 @@ func (g *Generator) resolveEncodePlans() {
 			}
 			d.EncodeMembers = encodeMembers(d)
 			d.StripRules = g.stripRulesFor(d)
+			g.pruneDecodeRules(d)
 			d.EncodeManual = nil
 			next := len(d.EncodeMembers)
 			for i := range d.OneOfs {
@@ -85,7 +89,7 @@ func (g *Generator) resolveEncodePlans() {
 				}
 			}
 			d.EncodeObject = d.NeedsMarshal && (d.HasManualJSONOneOf() || d.AdditionalProperties != nil ||
-				d.HasPatternProperties() || d.NeedsJSONNulls() || len(d.WriteOnlyKeys) > 0 || len(d.AccessRules) > 0 ||
+				d.HasPatternProperties() || d.NeedsJSONNulls() || len(d.WriteOnlyKeys) > 0 || d.AccessRules != nil ||
 				hasManualField(d.Fields))
 			// The package variables the encode declares beside the type,
 			// named by the registry as every package-level name is.
@@ -93,7 +97,7 @@ func (g *Generator) resolveEncodePlans() {
 				d.EncodeKeysVar = g.names.claim("_encKeys"+d.Name,
 					memberHolder(d.Name, "encode-keys", "the member names "+d.Name+" is written with"))
 			}
-			if d.EncodeObject && len(d.StripRules) > 0 {
+			if d.EncodeObject && d.StripRules != nil {
 				d.StripRulesVar = g.names.claim("_stripRules"+d.Name,
 					memberHolder(d.Name, "strip-rules", "the writeOnly rules "+d.Name+" strips as it is written"))
 			}
@@ -110,32 +114,221 @@ func (g *Generator) resolveEncodePlans() {
 	}
 }
 
-// stripRulesFor is the writeOnly rules a struct's MarshalJSON strips from what
-// it writes.
-//
-// A rule is a path from the struct down to a member the schema marks writeOnly.
-// Where the path's first step is a member the struct holds as a type of its
-// own, and that type strips the rest of the path itself -- the rest is one of
-// its own rules, or the member its own writeOnly list names -- the member has
-// already been written without it, and applying the rule again reads the
-// member's whole subtree for nothing: a type that holds itself, stripping one
-// level down at every level, read its whole document at every level. Every
-// other rule is kept, readOnly ones included in AccessRules, which the decoder
-// applies unchanged.
-func (g *Generator) stripRulesFor(d *StructDef) []AccessRule {
-	var out []AccessRule
-	for _, r := range d.AccessRules {
-		if !r.WriteOnly {
+// stripRulesFor is where a struct's MarshalJSON starts stripping writeOnly
+// members from what it writes: its AccessRules' start, less the moves that
+// strip nothing, and less the walk into a member the struct holds as a type of
+// its own that strips everything the walk would -- that member has already been
+// written without it, and walking it again reads the member's whole subtree for
+// nothing: a type that holds itself, stripping one level down at every level,
+// read its whole document at every level. The decoder keeps AccessRules
+// unchanged.
+func (g *Generator) stripRulesFor(d *StructDef) *AccessRules {
+	if d.AccessRules == nil {
+		return nil
+	}
+	var moves []AccessMove
+	changed := false
+	for _, m := range g.output.AccessMachine[d.AccessRules.Start].Moves {
+		if m.Next >= 0 && (!m.SeekWriteOnly || (m.Step.Kind == AccessProperty && g.memberStripsItself(d, m))) {
+			m.Next, m.SeekReadOnly, m.SeekWriteOnly = -1, false, false
+			changed = true
+		}
+		if !m.WriteOnly && m.Next < 0 {
+			changed = true
 			continue
 		}
-		if len(r.Path) > 1 && r.Path[0].Kind == AccessProperty {
-			if child := g.memberStruct(d, r.Path[0].Name); child != nil && stripsItself(child, r.Path[1:]) {
+		moves = append(moves, m)
+	}
+	if len(moves) == 0 {
+		return nil
+	}
+	if !changed {
+		return d.AccessRules
+	}
+	return &AccessRules{Machine: d.AccessRules.Machine, Start: g.addAccessState(moves)}
+}
+
+// pruneDecodeRules is stripRulesFor's counterpart for the decoder: a struct's
+// start state stops walking into a member it holds as a type of its own whose
+// decoder refuses everything the walk would -- decoding the member refuses it
+// already, and walking it again from here read the member's subtree once more
+// at every level of a value that holds itself. It runs once every type is
+// declared, after stripRulesFor has read the start as it was built. The start
+// state is the struct's own (accessRulesFor builds a fresh one for a struct),
+// so nothing else is changed by it.
+func (g *Generator) pruneDecodeRules(d *StructDef) {
+	if d.AccessRules == nil {
+		return
+	}
+	moves := g.output.AccessMachine[d.AccessRules.Start].Moves
+	for i := range moves {
+		m := &moves[i]
+		if m.Next >= 0 && m.SeekReadOnly && m.Step.Kind == AccessProperty && g.memberCovers(d, *m, true) {
+			m.SeekReadOnly = false
+		}
+	}
+}
+
+// memberStripsItself reports whether the member a property move of d walks
+// into is written by a struct whose own MarshalJSON strips everything the walk
+// in the move's state would. See memberCovers.
+func (g *Generator) memberStripsItself(d *StructDef, m AccessMove) bool {
+	return g.memberCovers(d, m, false)
+}
+
+// memberCovers reports whether the member a property move of d walks into is
+// held by a struct whose own decoder (readOnly) or encoder (!readOnly) does
+// everything the walk in the move's state would.
+//
+// The machine has cycles -- a schema that refers to itself -- so "everything the
+// walk would" is not a finite list to compare. It is decided as a simulation:
+// the greatest relation between the parent's states and the member struct's in
+// which every readOnly (or writeOnly) move of a parent state is matched by a
+// move of the related member state on the same step -- marking the same, or
+// leading to states that are related in turn -- and, at the member's own start,
+// a marked property may instead be one the member's own key list names, since
+// its decoder and encoder carry those there. A simulation is a property of the
+// states, so it holds of every run, at every depth: whatever the parent's walk
+// would refuse or strip below the member, the member's own walk does, in a
+// document of any depth, by induction on the document.
+//
+// The relation is found by starting from every pair the steps can reach and
+// removing a pair that fails until none does, rechecking only the pairs that
+// lean on one removed. A pair of the member's start is decided for this member
+// alone, since its key lists answer there; every other pair is a property of
+// the graph, and its answer is kept for the whole Generate: the pairs explored
+// are closed under the steps, save pairs already decided, which stand at their
+// answer, so what is left is the greatest relation on them. Each pair of the
+// graph is so decided once however many members ask, and a pair of a node with
+// itself -- the member's type built from the very schema the parent's walk
+// stands in, the usual case -- is related without looking: the identity is a
+// simulation.
+func (g *Generator) memberCovers(d *StructDef, m AccessMove, readOnly bool) bool {
+	child := g.memberStruct(d, m.Step.Name)
+	if child == nil || child.accessRoot == nil {
+		return false
+	}
+	parent, ok := g.accessStateKeys[m.Next]
+	if !ok || parent.graph != child.accessRoot.graph {
+		return false
+	}
+	if parent.key == child.accessRoot.key {
+		return true
+	}
+	a := parent.graph
+	a.settle()
+	which, live, keys := 0, a.liveWO, child.WriteOnlyKeys
+	marks := func(e accessEdge) bool { return e.wo }
+	if readOnly {
+		which, live, keys = 1, a.liveRO, child.ReadOnlyKeys
+		marks = func(e accessEdge) bool { return e.ro }
+	}
+	if a.covers[which] == nil {
+		a.covers[which] = map[accessPair]bool{}
+	}
+	decided := a.covers[which]
+	relevant := func(e accessEdge) bool {
+		return e.mark && marks(e) || !e.mark && live[e.to]
+	}
+	// bySteps is a node's step moves by step, so that matching a move looks at
+	// the moves on its step alone.
+	bySteps := map[accessKey]map[string][]accessEdge{}
+	byStep := func(k accessKey) map[string][]accessEdge {
+		idx, ok := bySteps[k]
+		if !ok {
+			idx = map[string][]accessEdge{}
+			for _, f := range a.settledClosure(k) {
+				key := a.stepKey(f.step)
+				idx[key] = append(idx[key], f)
+			}
+			bySteps[k] = idx
+		}
+		return idx
+	}
+	type pair struct {
+		accessPair
+		top bool // the member struct's own start, where its key lists answer for its properties
+	}
+	// known is the answer for a pair that needs no deciding here.
+	known := func(pr pair) (answer, ok bool) {
+		if pr.top {
+			return false, false
+		}
+		if pr.p == pr.c {
+			return true, true
+		}
+		answer, ok = decided[pr.accessPair]
+		return answer, ok
+	}
+	start := pair{accessPair: accessPair{p: parent.key, c: child.accessRoot.key}, top: true}
+	related := map[pair]bool{start: true}
+	leanOn := map[pair][]pair{}
+	explored := []pair{start}
+	for i := 0; i < len(explored); i++ {
+		pr := explored[i]
+		for _, e := range a.settledClosure(pr.p) {
+			if e.mark || !relevant(e) {
 				continue
 			}
+			for _, f := range byStep(pr.c)[a.stepKey(e.step)] {
+				if f.mark {
+					continue
+				}
+				next := pair{accessPair: accessPair{p: e.to, c: f.to}}
+				if _, ok := known(next); ok {
+					continue
+				}
+				leanOn[next] = append(leanOn[next], pr)
+				if !related[next] {
+					related[next] = true
+					explored = append(explored, next)
+				}
+			}
 		}
-		out = append(out, r)
 	}
-	return out
+	holds := func(pr pair) bool {
+		for _, e := range a.settledClosure(pr.p) {
+			if !relevant(e) {
+				continue
+			}
+			if e.mark && pr.top && e.step.Kind == AccessProperty && slices.Contains(keys, e.step.Name) {
+				continue
+			}
+			matched := false
+			for _, f := range byStep(pr.c)[a.stepKey(e.step)] {
+				if f.mark != e.mark {
+					continue
+				}
+				if e.mark {
+					matched = marks(f)
+				} else {
+					next := pair{accessPair: accessPair{p: e.to, c: f.to}}
+					answer, ok := known(next)
+					matched = ok && answer || !ok && related[next]
+				}
+				if matched {
+					break
+				}
+			}
+			if !matched {
+				return false
+			}
+		}
+		return true
+	}
+	work := slices.Clone(explored)
+	for len(work) > 0 {
+		pr := work[len(work)-1]
+		work = work[:len(work)-1]
+		if related[pr] && !holds(pr) {
+			delete(related, pr)
+			work = append(work, leanOn[pr]...)
+		}
+	}
+	for _, pr := range explored[1:] {
+		decided[pr.accessPair] = related[pr]
+	}
+	return related[start]
 }
 
 // memberStruct is the struct a declared member of d is written by, through a
@@ -159,39 +352,6 @@ func (g *Generator) memberStruct(d *StructDef, jsonName string) *StructDef {
 		return nil
 	}
 	return nil
-}
-
-// stripsItself reports whether a struct's own MarshalJSON strips the member at
-// path from what it writes.
-func stripsItself(sd *StructDef, path []AccessStep) bool {
-	if len(path) == 1 && path[0].Kind == AccessProperty {
-		for _, k := range sd.WriteOnlyKeys {
-			if k == path[0].Name {
-				return true
-			}
-		}
-	}
-	for _, r := range sd.AccessRules {
-		if r.WriteOnly && accessPathsEqual(r.Path, path) {
-			return true
-		}
-	}
-	return false
-}
-
-func accessPathsEqual(a, b []AccessStep) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		x, y := a[i], b[i]
-		if x.Kind != y.Kind || x.Name != y.Name || x.Index != y.Index ||
-			strings.Join(x.Except, "\x00") != strings.Join(y.Except, "\x00") ||
-			strings.Join(x.ExceptPatterns, "\x00") != strings.Join(y.ExceptPatterns, "\x00") {
-			return false
-		}
-	}
-	return true
 }
 
 // HasTopLevelOneOf reports whether the struct stands for a whole-value union,

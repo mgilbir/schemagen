@@ -12,6 +12,7 @@ const (
 )
 
 var (
-	programOutput   = testsupport.ProgramOutput
-	writeCogenGoMod = testsupport.WriteCogenGoMod
+	programOutput    = testsupport.ProgramOutput
+	runEngineProgram = testsupport.RunEngineProgram
+	writeCogenGoMod  = testsupport.WriteCogenGoMod
 )

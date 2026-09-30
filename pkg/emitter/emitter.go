@@ -239,6 +239,8 @@ func (e *Emitter) Emit(f *generator.File) ([]byte, error) {
 		UnresolvedRefs:       f.UnresolvedRefs,
 		UndeclaredRefTypes:   f.UndeclaredRefTypes,
 		ElementNodes:         f.ElementNodes,
+		AccessMachine:        f.AccessMachine,
+		AccessMachineVar:     f.AccessMachineVar,
 	}
 
 	var buf bytes.Buffer
@@ -388,6 +390,10 @@ type fileData struct {
 	UndeclaredRefTypes []generator.UndeclaredRefType
 	// ElementNodes are declared after the types. See generator.ElementNode.
 	ElementNodes []*generator.ElementNode
+	// AccessMachine is declared as AccessMachineVar after the types. See
+	// generator.File.AccessMachine.
+	AccessMachine    []generator.AccessState
+	AccessMachineVar string
 }
 
 func (d fileData) HasValidationCapability() bool {
