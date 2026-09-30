@@ -364,7 +364,7 @@ func TestEveryReferenceKindResolvesInEveryModeOfGeneration(t *testing.T) {
 	}
 
 	mod := t.TempDir()
-	if err := writeCogenGoMod(mod, true); err != nil {
+	if err := writeCogenGoMod(mod); err != nil {
 		t.Fatal(err)
 	}
 	fixtures := map[bool]*refFixture{}

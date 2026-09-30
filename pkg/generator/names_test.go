@@ -78,7 +78,7 @@ func TestCrossPackageImportAliasStepsAroundGeneratedNames(t *testing.T) {
 	for _, imp := range generatedImports {
 		taken = append(taken, imp.Name)
 	}
-	taken = append(taken, "jsonInteger", "len", "string", "any")
+	taken = append(taken, RuntimeAlias, "len", "string", "any")
 	for _, name := range taken {
 		g := New(Config{PackageName: "p"})
 		g.crossImports = map[string]string{}

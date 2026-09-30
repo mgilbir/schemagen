@@ -853,7 +853,7 @@ func TestNestedRemoteItemsValidation(t *testing.T) {
 	// where the evaluator declines it, by decoding the element into the type.
 	check := "var _typed " + root.ItemsTypeName
 	if root.ItemsNode != nil {
-		check = "_evalNode(&" + root.ItemsNode.Var + ","
+		check = "rt.EvalNode(&" + root.ItemsNode.Var + ","
 	}
 	if !strings.Contains(string(generated), check) {
 		t.Fatalf("generated code missing nested item validation (%s):\n%s", check, string(generated))

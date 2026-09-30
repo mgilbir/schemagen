@@ -18,8 +18,7 @@ import (
 // string matching alone.
 func buildGenerated(t *testing.T, dir, modulePath string) (string, error) {
 	t.Helper()
-	gomod := "module " + modulePath + "\n\ngo 1.23\n"
-	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(gomod), 0o644); err != nil {
+	if err := testgo.WriteModule(dir, modulePath); err != nil {
 		t.Fatal(err)
 	}
 	cmd := testgo.Command(context.Background(), dir, "build", "-mod=mod", "./...")
@@ -126,13 +125,14 @@ func TestMultiPackageHappyPathCompiles(t *testing.T) {
 	}
 }
 
-// Shared helpers are package-level functions, so every generated package that
-// needs one must get its own copy. Emitting them once for the whole run would
-// leave every package but the first referencing undefined functions.
+// What a generated package still declares for itself is its compiled patterns,
+// which are package-level variables, so every generated package that names a
+// pattern must get its own file of them. Emitting them once for the whole run
+// would leave every package but the first referencing undefined variables.
 func TestMultiPackageEmitsHelpersPerPackage(t *testing.T) {
 	src := t.TempDir()
-	// Two independent documents, each with a discriminated oneOf, so both
-	// packages need the oneOf and discriminator helpers.
+	// Two independent documents, each with a discriminated oneOf and a pattern,
+	// so both packages need a helper file.
 	for _, doc := range []struct{ name, id, title, prop, k1, k2 string }{
 		{"one.json", "https://ex.test/one.json", "One", "v", "a", "b"},
 		{"two.json", "https://ex.test/two.json", "Two", "w", "c", "d"},
@@ -142,7 +142,7 @@ func TestMultiPackageEmitsHelpersPerPackage(t *testing.T) {
 			"$id": %q,
 			"title": %q,
 			"type": "object",
-			"properties": {%q: {"oneOf": [
+			"properties": {"pat": {"type": "string", "pattern": "^x+$"}, %q: {"oneOf": [
 				{"$ref": "#/definitions/%s"},
 				{"$ref": "#/definitions/%s"}
 			]}},

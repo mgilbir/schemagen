@@ -10,7 +10,7 @@ import (
 // It is an int64 with an UnmarshalJSON of its own, which is the only way to
 // reach encoding/json's decision about a number token: that decision is made
 // from the destination Go type, and a bare int64 refuses 1.0 outright.
-const integerShadowName = "jsonInteger"
+const integerShadowName = "rt.Integer"
 
 // numberShadowName is the helper type a schema number is decoded through under
 // Config.ExactNumbers, and it is here for the mirror image of the reason above.
@@ -18,7 +18,7 @@ const integerShadowName = "jsonInteger"
 // *string* as readily as from a number -- {"n":"1.5"} would satisfy
 // {"type":"number"} -- and a type of our own is the only place that decision
 // can be intercepted.
-const numberShadowName = "jsonNumber"
+const numberShadowName = "rt.Number"
 
 // dateTimeShadowName is the helper type a `format: date-time` is decoded
 // through, and it is here because time.Time's decoder is stricter than the
@@ -29,7 +29,7 @@ const numberShadowName = "jsonNumber"
 // "t03:04:05z" as "T"`: a document the format permits, refused at decode. That
 // verdict is made from the destination Go type and can be intercepted nowhere
 // else. See issue #264.
-const dateTimeShadowName = "jsonDateTime"
+const dateTimeShadowName = "rt.DateTime"
 
 // dateTimeGoTypeName is the Go type a `format: date-time` maps to, and so the
 // leaf the walk below looks for. Written once here rather than quoted at each
@@ -55,8 +55,8 @@ const dateTimeGoTypeName = "time.Time"
 // -- ParseAddr accepts "::1" for both -- because that verdict is Validate's, and
 // moving it here would change what the decode refuses.
 const (
-	ipv4ShadowName = "jsonIPv4Addr"
-	ipv6ShadowName = "jsonIPv6Addr"
+	ipv4ShadowName = "rt.IPv4Addr"
+	ipv6ShadowName = "rt.IPv6Addr"
 )
 
 // ipAddrGoTypeName is the Go type an asserted ipv4 or ipv6 format maps to. See
@@ -226,11 +226,11 @@ func leafConvert(t GoType, expr string, depth int, want shadowLeaves) string {
 		}
 		return "int64(" + expr + ")"
 	case *PointerType:
-		return leafConvertCall("jsonIntegerPtr", v.Inner, expr, depth, want)
+		return leafConvertCall("rt.IntegerPtr", v.Inner, expr, depth, want)
 	case *ArrayType:
-		return leafConvertCall("jsonIntegerSlice", v.ItemType, expr, depth, want)
+		return leafConvertCall("rt.IntegerSlice", v.ItemType, expr, depth, want)
 	case *MapType:
-		return leafConvertCall("jsonIntegerMap", v.ValueType, expr, depth, want)
+		return leafConvertCall("rt.IntegerMap", v.ValueType, expr, depth, want)
 	}
 	return expr
 }

@@ -5,9 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"go/ast"
-	"go/importer"
 	"go/token"
-	"go/types"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -464,7 +462,6 @@ func TestGeneratedCodeReadsNoMapOrder(t *testing.T) {
 		ranges  []string // every range line, map or not, for template coverage
 		failure string
 	}
-	useTestgoEnvForImports(t)
 	results := make([]found, len(pkgs))
 	work := make(chan int)
 	var wg sync.WaitGroup
@@ -473,7 +470,7 @@ func TestGeneratedCodeReadsNoMapOrder(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			fset := token.NewFileSet()
-			imp := importer.ForCompiler(fset, "source", nil).(types.ImporterFrom)
+			imp := newListImporter(fset, dir)
 			for i := range work {
 				files, info, src, err := typeCheckDir(fset, imp, pkgs[i])
 				if err != nil {

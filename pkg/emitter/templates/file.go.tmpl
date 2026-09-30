@@ -38,14 +38,17 @@ import (
 {{- end}}
 )
 {{- end}}
+
+// This file needs the runtime module github.com/mgilbir/schemagen/runtime at API
+// level 1 or newer. If the compiler reports rt.API1 undefined, the release the
+// build resolved is older than the schemagen that generated this file: update it
+// with go get github.com/mgilbir/schemagen/runtime@latest.
+var _ rt.API1
 {{range .TypeDefs}}
 {{template "typedef" .}}
 {{end}}
 {{- range .ElementNodes}}
 {{template "element_node" .}}
-{{end}}
-{{- range .TreeTypes}}
-{{template "tree_method" .}}
 {{end}}
 {{- if .HasValidationCapability}}
 {{template "validation_capability" .}}

@@ -5,8 +5,9 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"os"
 	"path"
-	"reflect"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"testing"
@@ -24,27 +25,21 @@ import (
 // still take; an entry nothing declares any more is a name the registry keeps
 // out of reach for nothing.
 
-// renderEveryFixedDeclaration renders the helper file with every helper on, and
+// renderEveryFixedDeclaration renders the helper file with a pattern in it, and
 // a schema file carrying the validation-capability block, and returns the two
 // sources.
 func renderEveryFixedDeclaration(t *testing.T) [][]byte {
 	t.Helper()
 	e := mustNew(t)
-	var h generator.HelperSet
-	v := reflect.ValueOf(&h).Elem()
-	for i := 0; i < v.NumField(); i++ {
-		if v.Field(i).Kind() == reflect.Bool {
-			v.Field(i).SetBool(true)
-		}
+	if _, err := generator.PatternVarName("^a$"); err != nil {
+		t.Fatal(err)
 	}
-	h.AnnotationsFormats = []string{"date-time", "email", "hostname", "regex", "uri"}
-	helpers, ok, err := e.EmitHelpers("model", h)
+	helpers, ok, err := e.EmitHelpers("model", generator.HelperSet{Patterns: []string{"^a$"}})
 	if err != nil || !ok {
 		t.Fatalf("EmitHelpers: ok=%v err=%v", ok, err)
 	}
 	file, err := e.Emit(&generator.File{
 		PackageName: "model",
-		Imports:     []generator.Import{generator.GeneratedImport("github.com/mgilbir/schemagen/pkg/validationruntime")},
 		ValidationCapability: generator.ValidationCapability{
 			Mode:            generator.ValidationModeHybrid,
 			RequiresRuntime: true,
@@ -113,6 +108,18 @@ func TestReservedHelperIdentifiersMatchTheTemplates(t *testing.T) {
 	for _, name := range generator.HelperIdentifiers() {
 		listed[name] = true
 	}
+	// The pattern variables are named by PatternVarName: an underscore, a fixed
+	// prefix and sixteen hex digits. No name the generator derives from a
+	// schema begins with an underscore, so none can land on one, and a table
+	// entry per pattern is not something the registry could hold.
+	patternVar, err := generator.PatternVarName("^a$")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !decls[patternVar] {
+		t.Errorf("the helper file declares no variable for its pattern (%s): %v", patternVar, sortedSet(decls))
+	}
+	delete(decls, patternVar)
 	for _, name := range sortedSet(decls) {
 		if !listed[name] {
 			t.Errorf("the templates declare %s at package level and generator/reserved.go does not reserve it: "+
@@ -127,9 +134,26 @@ func TestReservedHelperIdentifiersMatchTheTemplates(t *testing.T) {
 	}
 }
 
-func TestReservedImportNamesMatchTheTemplates(t *testing.T) {
-	_, imports := fixedDeclarations(t, renderEveryFixedDeclaration(t))
+// TestReservedImportNamesMatchTheGenerator holds the table of reserved import
+// names to the imports the generator claims for a file (its GeneratedImport
+// calls, read from source) and to the import the helper file carries, in both
+// directions. Since the helpers moved into the runtime module, the helper file
+// imports the runtime package and nothing else, so the packages a schema file can
+// name are the ones the generator's model of a file's imports asks for.
+func TestReservedImportNamesMatchTheGenerator(t *testing.T) {
+	claimed := generatorClaimedImports(t)
 	table := generator.GeneratedImportNames()
+	for _, p := range sortedSet(claimed) {
+		if _, ok := table[p]; !ok {
+			t.Errorf("the generator claims the import %q and generator/reserved.go does not list it", p)
+		}
+	}
+	for _, p := range sortedKeysOf(table) {
+		if !claimed[p] {
+			t.Errorf("generator/reserved.go lists the import %q, which the generator never claims; drop the stale entry", p)
+		}
+	}
+	_, imports := fixedDeclarations(t, renderEveryFixedDeclaration(t))
 	for _, p := range sortedKeysOf(imports) {
 		want, ok := table[p]
 		if !ok {
@@ -140,11 +164,48 @@ func TestReservedImportNamesMatchTheTemplates(t *testing.T) {
 			t.Errorf("a generated file spells %q as %s, and the registry reserves %s", p, imports[p], want)
 		}
 	}
-	for _, p := range sortedKeysOf(table) {
-		if _, ok := imports[p]; !ok {
-			t.Errorf("generator/reserved.go lists the import %q, which no generated file carries; drop the stale entry", p)
-		}
+	if imports[generator.RuntimeImportPath] != generator.RuntimeAlias {
+		t.Errorf("the helper file does not import the runtime module as %s: %v", generator.RuntimeAlias, imports)
 	}
+}
+
+// generatorClaimedImports is every path the generator passes to GeneratedImport,
+// read from its source: a string literal, or the runtime module's constant.
+func generatorClaimedImports(t *testing.T) map[string]bool {
+	t.Helper()
+	src, err := os.ReadFile(filepath.Join("..", "generator", "generator.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := parser.ParseFile(token.NewFileSet(), "generator.go", src, parser.SkipObjectResolution)
+	if err != nil {
+		t.Fatal(err)
+	}
+	claimed := map[string]bool{}
+	ast.Inspect(f, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok || len(call.Args) != 1 {
+			return true
+		}
+		if id, ok := call.Fun.(*ast.Ident); !ok || id.Name != "GeneratedImport" {
+			return true
+		}
+		switch a := call.Args[0].(type) {
+		case *ast.BasicLit:
+			if p, err := strconv.Unquote(a.Value); err == nil {
+				claimed[p] = true
+			}
+		case *ast.Ident:
+			if a.Name == "RuntimeImportPath" {
+				claimed[generator.RuntimeImportPath] = true
+			}
+		}
+		return true
+	})
+	if len(claimed) < 8 {
+		t.Fatalf("read only %d claimed imports from generator.go; the scan is not reading it", len(claimed))
+	}
+	return claimed
 }
 
 // TestReservedPredeclaredIdentifiersCoverTheUniverse holds the predeclared list

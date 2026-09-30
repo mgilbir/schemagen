@@ -390,9 +390,9 @@ func formatHelperNameFunc(v any, stringBacked bool) string {
 		// that no longer exists.
 		switch format {
 		case "ipv4":
-			return "schemagenFormatIPv4Addr"
+			return "rt.FormatIPv4Addr"
 		case "ipv6":
-			return "schemagenFormatIPv6Addr"
+			return "rt.FormatIPv6Addr"
 		default:
 			return ""
 		}
@@ -486,13 +486,13 @@ func pathIsAccessorLed(path formatText) bool {
 }
 
 // pathErrfFunc names the constructor a check under this error path builds its
-// error with: the plain one where the path opens with a name, and jsonElemErrorf
+// error with: the plain one where the path opens with a name, and rt.ElemErrorf
 // where it opens with an accessor. The second has to be marked, because a
 // message opening with "[1]" is glued to its container's path with nothing
 // between it, where a message opening with a member name takes a ".".
 func pathErrfFunc(path formatText) string {
 	if pathIsAccessorLed(path) {
-		return "jsonElemErrorf"
+		return "rt.ElemErrorf"
 	}
 	return "fmt.Errorf"
 }
@@ -510,21 +510,21 @@ func tupleHeldFunc(items []generator.TupleItemDef, tail *generator.TupleItemDef)
 
 // pathWrapFunc is pathErrfFunc for a message that ends with another error's:
 // the helper that puts a prefix in front of it without writing the text out,
-// for the reason jsonPathError gives.
+// for the reason rt.PathError gives.
 func pathWrapFunc(path formatText) string {
 	if pathIsAccessorLed(path) {
-		return "jsonElemWrapf"
+		return "rt.ElemWrapf"
 	}
-	return "jsonWrapf"
+	return "rt.Wrapf"
 }
 
 // pathJoinFunc is pathErrfFunc for the joiner rather than the constructor: what
 // an element's own Validate error is put behind this path with.
 func pathJoinFunc(path formatText) string {
 	if pathIsAccessorLed(path) {
-		return "jsonElemPathf"
+		return "rt.ElemPathf"
 	}
-	return "jsonPathf"
+	return "rt.Pathf"
 }
 
 // argPrefixFunc turns an enclosing loop's fmt arguments into the text that goes
@@ -575,9 +575,9 @@ func validationFeaturesFunc(features []generator.ValidationFeature) string {
 	}
 	parts := make([]string, len(features))
 	for i, feature := range features {
-		parts[i] = fmt.Sprintf("validationruntime.Feature(%q)", string(feature))
+		parts[i] = fmt.Sprintf("rt.Feature(%q)", string(feature))
 	}
-	return "[]validationruntime.Feature{" + strings.Join(parts, ", ") + "}"
+	return "[]rt.Feature{" + strings.Join(parts, ", ") + "}"
 }
 
 func stringListFunc(features []generator.ValidationFeature) string {
@@ -601,9 +601,9 @@ func accessRulesFunc(rules []generator.AccessRule) (string, error) {
 		return "nil", nil
 	}
 	var b strings.Builder
-	b.WriteString("[]_accessRule{\n")
+	b.WriteString("[]rt.AccessRule{\n")
 	for _, rule := range rules {
-		b.WriteString("\t{Path: []_accessStep{")
+		b.WriteString("\t{Path: []rt.AccessStep{")
 		for i, step := range rule.Path {
 			if i > 0 {
 				b.WriteString(", ")
@@ -635,7 +635,7 @@ func accessRulesFunc(rules []generator.AccessRule) (string, error) {
 					}
 					names[j] = name
 				}
-				b.WriteString(", ExceptPatterns: []*_schemagenRegexp{" + strings.Join(names, ", ") + "}")
+				b.WriteString(", ExceptPatterns: []*rt.Pattern{" + strings.Join(names, ", ") + "}")
 			}
 			b.WriteString("}")
 		}
@@ -655,15 +655,15 @@ func accessRulesFunc(rules []generator.AccessRule) (string, error) {
 func accessStepKindName(k generator.AccessStepKind) string {
 	switch k {
 	case generator.AccessPattern:
-		return "_accessPattern"
+		return "rt.AccessPattern"
 	case generator.AccessOther:
-		return "_accessOther"
+		return "rt.AccessOther"
 	case generator.AccessItems:
-		return "_accessItems"
+		return "rt.AccessItems"
 	case generator.AccessTuple:
-		return "_accessTuple"
+		return "rt.AccessTuple"
 	}
-	return "_accessProperty"
+	return "rt.AccessProperty"
 }
 
 func goStringSlice(values []string) string {
@@ -1036,8 +1036,8 @@ func requiredFieldsListFunc(fields []string) string {
 // NumOperand names.
 //
 // Every form it writes decides the keyword on the number as a mathematical
-// value, through the one exact core the generated package carries (see
-// number_compare_helpers), so which form a rule meets decides how fast it is
+// value, through the one exact core the runtime module carries (see
+// runtime/numcore.go), so which form a rule meets decides how fast it is
 // and nothing else. There used to be four readings -- a float64 quotient
 // against a 1e-9 tolerance, math.Mod, a float64 bound against an int64 element,
 // the literal -- and a keyword's verdict depended on where it sat.
@@ -1050,11 +1050,11 @@ func requiredFieldsListFunc(fields []string) string {
 //     literal is the shortest spelling of its own float64 -- 0.1, 100, 1e308 --
 //     a float64 comparison gives exactly that answer (see
 //     generator.NumberRoundTripsFloat64); against any other the core decides.
-//     multipleOf goes through jsonFloatIsMultipleOf, whose fast path takes the
+//     multipleOf goes through rt.FloatIsMultipleOf, whose fast path takes the
 //     divisor as digits and places.
 //   - A json.Number is compared on its literal.
 //   - Anything else -- an `any`, a named type, a raw message -- is read through
-//     jsonNumberOf, and a value that is not a number breaks no numeric keyword.
+//     rt.NumberOf, and a value that is not a number breaks no numeric keyword.
 //
 // Every literal in the output is either strconv-quoted or a Go number literal
 // the generator rendered from a number it read, so nothing the schema spelled
@@ -1098,43 +1098,43 @@ func numCondition(kind, lit string, operand generator.NumOperandKind, expr strin
 	var op, anyHelper string
 	switch kind {
 	case "minimum":
-		op, anyHelper = "<", "jsonNumberBelow"
+		op, anyHelper = "<", "rt.NumberBelow"
 	case "maximum":
-		op, anyHelper = ">", "jsonNumberAbove"
+		op, anyHelper = ">", "rt.NumberAbove"
 	case "exclusiveMinimum":
-		op, anyHelper = "<=", "jsonNumberAtMost"
+		op, anyHelper = "<=", "rt.NumberAtMost"
 	case "exclusiveMaximum":
-		op, anyHelper = ">=", "jsonNumberAtLeast"
+		op, anyHelper = ">=", "rt.NumberAtLeast"
 	case "multipleOf":
 		switch operand {
 		case generator.NumOperandInt64:
 			if n, ok := generator.NumberInt64(num); ok && n > 0 {
 				return fmt.Sprintf("%s%%%d != 0", expr, n), nil
 			}
-			return fmt.Sprintf("jsonNumberNotMultipleOf(int64(%s), %s)", expr, quoted), nil
+			return fmt.Sprintf("rt.NumberNotMultipleOf(int64(%s), %s)", expr, quoted), nil
 		case generator.NumOperandFloat64:
 			digits, frac, _ := generator.NumberDecimalDivisor(num)
-			return fmt.Sprintf("!jsonFloatIsMultipleOf(float64(%s), %s, %d, %d)", expr, quoted, digits, frac), nil
+			return fmt.Sprintf("!rt.FloatIsMultipleOf(float64(%s), %s, %d, %d)", expr, quoted, digits, frac), nil
 		case generator.NumOperandJSONNumber:
-			return fmt.Sprintf("!jsonNumberIsMultipleOf(json.Number(%s), %s)", expr, quoted), nil
+			return fmt.Sprintf("!rt.NumberIsMultipleOf(json.Number(%s), %s)", expr, quoted), nil
 		}
-		return fmt.Sprintf("jsonNumberNotMultipleOf(%s, %s)", expr, quoted), nil
+		return fmt.Sprintf("rt.NumberNotMultipleOf(%s, %s)", expr, quoted), nil
 	case "const":
 		switch operand {
 		case generator.NumOperandInt64:
 			if n, ok := generator.NumberInt64(num); ok {
 				return fmt.Sprintf("%s != %d", expr, n), nil
 			}
-			return fmt.Sprintf("!jsonNumberEqual(int64(%s), %s)", expr, quoted), nil
+			return fmt.Sprintf("!rt.NumberEqual(int64(%s), %s)", expr, quoted), nil
 		case generator.NumOperandFloat64:
 			if generator.NumberRoundTripsFloat64(num) {
 				return fmt.Sprintf("float64(%s) != %s", expr, generator.GoNumberLiteral(num)), nil
 			}
-			return fmt.Sprintf("!jsonNumberEqual(float64(%s), %s)", expr, quoted), nil
+			return fmt.Sprintf("!rt.NumberEqual(float64(%s), %s)", expr, quoted), nil
 		case generator.NumOperandJSONNumber:
-			return fmt.Sprintf("jsonNumberCmp(json.Number(%s), %s) != 0", expr, quoted), nil
+			return fmt.Sprintf("rt.NumberCmp(json.Number(%s), %s) != 0", expr, quoted), nil
 		}
-		return fmt.Sprintf("!jsonNumberEqual(%s, %s)", expr, quoted), nil
+		return fmt.Sprintf("!rt.NumberEqual(%s, %s)", expr, quoted), nil
 	default:
 		return "", fmt.Errorf("%w: %q is not a numeric keyword", errEscape, kind)
 	}
@@ -1150,7 +1150,7 @@ func numCondition(kind, lit string, operand generator.NumOperandKind, expr strin
 		}
 		return fmt.Sprintf("%s(float64(%s), %s)", anyHelper, expr, quoted), nil
 	case generator.NumOperandJSONNumber:
-		return fmt.Sprintf("jsonNumberCmp(json.Number(%s), %s) %s 0", expr, quoted, op), nil
+		return fmt.Sprintf("rt.NumberCmp(json.Number(%s), %s) %s 0", expr, quoted, op), nil
 	}
 	return fmt.Sprintf("%s(%s, %s)", anyHelper, expr, quoted), nil
 }

@@ -39,7 +39,7 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	*{{$recv}} = {{.Name}}{}
 	{{- if .NeedsNullCheck}}
 	if string(data) == "null" {
-		return jsonValueErrorf("null is not allowed")
+		return rt.ValueErrorf("null is not allowed")
 	}
 	{{- end}}
 	{{- if .AllowsNull}}
@@ -58,11 +58,11 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	{{- end}}
 	// Reject JSON strings (e.g., "1").
 	if len(data) > 0 && data[0] == '"' {
-		return jsonValueErrorf("expected integer, got string")
+		return rt.ValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return jsonDecodeRefusal(_err)
+		return rt.DecodeRefusal(_err)
 	}
 	// Try int64 first.
 	if _i, _iErr := _n.Int64(); _iErr == nil {
@@ -87,25 +87,26 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	// where one holds it (1.0, 1e2), a big.Int where none does. The big.Float of
 	// 64 bits this replaces was not arbitrary precision -- it read
 	// 12345678901234567891.5 as the integer 12345678901234567892, and 1e100 as
-	// a different integer from 10^100. See jsonBigIntFromLiteral.
-	if _i64, _iOK := jsonIntegerFromLiteral(_s); _iOK {
+	// a different integer from 10^100. See rt.BigIntFromLiteral.
+	if _i64, _iOK := rt.IntegerFromLiteral(_s); _iOK {
 		{{$recv}}._int64 = _i64
 		{{$recv}}._isBigInt = false
 		{{$recv}}._bigInt = nil
 		return nil
 	}
-	_bi, _isInt, _tooLarge := jsonBigIntFromLiteral(_s)
+	_bi, _isInt, _tooLarge := rt.BigIntFromLiteral(_s)
 	if _tooLarge {
-		return fmt.Errorf("value %s is an integer with more digits than this type builds from an exponent", _schemagenClipText(_s))
+		return fmt.Errorf("value %s is an integer with more digits than this type builds from an exponent", rt.ClipText(_s))
 	}
 	if !_isInt {
-		return fmt.Errorf("value %s is not an integer", _schemagenClipText(_s))
+		return fmt.Errorf("value %s is not an integer", rt.ClipText(_s))
 	}
 	{{$recv}}._bigInt = _bi
 	{{$recv}}._isBigInt = true
 	{{$recv}}._int64 = 0
 	return nil
 }
+{{template "generated_marker" .}}
 {{- end}}
 
 {{define "bigint_alias_marshal"}}
@@ -124,18 +125,18 @@ func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 }
 {{- if .HasIdentity}}
 
-// jsonIdentity is {{$recv}}'s identity as JSON: the number, or the null,
-// MarshalJSON writes. See jsonID.
-func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+// SchemagenJSONIdentity is {{$recv}}'s identity as JSON: the number, or the
+// null, MarshalJSON writes. See rt.ID.
+func ({{$recv}} *{{.Name}}) SchemagenJSONIdentity(_m *rt.Validation) (rt.ID, error) {
 	{{- if .AllowsNull}}
 	if {{$recv}}._isNull {
-		return jsonIDNull(_m)
+		return rt.IDNull(_m)
 	}
 	{{- end}}
 	if {{$recv}}._isBigInt && {{$recv}}._bigInt != nil {
-		return jsonIDNumberIn(json.Number({{$recv}}._bigInt.String()), _m)
+		return rt.IDNumberIn(json.Number({{$recv}}._bigInt.String()), _m)
 	}
-	return jsonIdentifyAt(&{{$recv}}._int64, _m)
+	return rt.IdentifyAt(&{{$recv}}._int64, _m)
 }
 {{- end}}
 {{- end}}
@@ -188,27 +189,27 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- range .Validations}}
 	{{- if eq .RuleType "minimum"}}
 	if {{numViolated . "_num"}} {
-		return jsonValueErrorf("%s is less than minimum {{fmtText .Value}}", _num)
+		return rt.ValueErrorf("%s is less than minimum {{fmtText .Value}}", _num)
 	}
 	{{- end}}
 	{{- if eq .RuleType "maximum"}}
 	if {{numViolated . "_num"}} {
-		return jsonValueErrorf("%s exceeds maximum {{fmtText .Value}}", _num)
+		return rt.ValueErrorf("%s exceeds maximum {{fmtText .Value}}", _num)
 	}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMinimum"}}
 	if {{numViolated . "_num"}} {
-		return jsonValueErrorf("%s must be greater than {{fmtText .Value}}", _num)
+		return rt.ValueErrorf("%s must be greater than {{fmtText .Value}}", _num)
 	}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMaximum"}}
 	if {{numViolated . "_num"}} {
-		return jsonValueErrorf("%s must be less than {{fmtText .Value}}", _num)
+		return rt.ValueErrorf("%s must be less than {{fmtText .Value}}", _num)
 	}
 	{{- end}}
 	{{- if eq .RuleType "multipleOf"}}
 	if {{numViolated . "_num"}} {
-		return jsonValueErrorf("%s is not a multiple of {{fmtText .Value}}", _num)
+		return rt.ValueErrorf("%s is not a multiple of {{fmtText .Value}}", _num)
 	}
 	{{- end}}
 	{{- end}}
@@ -224,7 +225,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		}
 		{{- end}}
 		if !anyOfValid {
-			return jsonValueErrorf("value does not match any anyOf variant")
+			return rt.ValueErrorf("value does not match any anyOf variant")
 		}
 	}
 	{{- end}}
@@ -240,7 +241,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		}
 		{{- end}}
 		if oneOfCount != 1 {
-			return jsonValueErrorf("value matches %d oneOf variants, expected exactly 1", oneOfCount)
+			return rt.ValueErrorf("value matches %d oneOf variants, expected exactly 1", oneOfCount)
 		}
 	}
 	{{- end}}

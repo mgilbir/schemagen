@@ -29,7 +29,11 @@ func TestCycloneDXValidateBenchmark(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
-	cmd := testgo.Command(ctx, root, "test", "-mod=mod", "-run", "^$", "-bench", ".", "-benchmem", "-count", count, "./cdx")
+	args := []string{"test", "-mod=mod", "-run", "^$", "-bench", ".", "-benchmem", "-count", count}
+	// SCHEMAGEN_BENCH_FLAGS adds go test flags, split on spaces: -bench to pick
+	// a benchmark, -memprofile with -o to find where the bytes go.
+	args = append(args, strings.Fields(os.Getenv("SCHEMAGEN_BENCH_FLAGS"))...)
+	cmd := testgo.Command(ctx, root, append(args, "./cdx")...)
 	cmd.Env = append(cmd.Environ(), "CDX_BOMS="+strings.Join(boms, string(os.PathListSeparator)))
 	out, err := cmd.CombinedOutput()
 	if err != nil {

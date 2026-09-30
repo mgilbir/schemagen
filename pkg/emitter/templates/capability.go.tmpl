@@ -1,0 +1,28 @@
+{{define "validation_capability"}}
+// SchemagenValidationMode reports the validation strategy used for this file.
+const SchemagenValidationMode = {{printf "%q" .ValidationCapability.Mode}}
+
+// SchemagenValidationRuntimeFeatures lists JSON Schema features that may need
+// runtime annotation tracking for full spec-compliant validation.
+func SchemagenValidationRuntimeFeatures() []string {
+	return {{stringList .ValidationCapability.RuntimeFeatures}}
+}
+
+// SchemagenValidationCapability reports generated validation completeness.
+func SchemagenValidationCapability() rt.Capability {
+	return rt.Capability{
+		Mode:            {{printf "%q" .ValidationCapability.Mode}},
+		RequiresRuntime: {{if .ValidationCapability.RequiresRuntime}}true{{else}}false{{end}},
+		RuntimeFeatures: {{validationFeatures .ValidationCapability.RuntimeFeatures}},
+		Unsupported:     {{validationFeatures .ValidationCapability.Unsupported}},
+		ResourceCount:   {{.ValidationCapability.ResourceCount}},
+	}
+}
+{{- end}}
+
+{{/*
+nullrule renders a NullCheckDef as the rt.NullRule literal rt.CheckNullsAt
+takes. It recurses through Elem, which is what lets a single call cover a nest
+of arrays and maps.
+*/}}
+{{define "nullrule"}}&rt.NullRule{{"{"}}{{if .Reject}}Reject: true{{if .Elem}}, {{end}}{{end}}{{if .Elem}}{{if .IsMap}}IsMap: true, {{end}}Elem: {{template "nullrule" .Elem}}{{end}}}{{end}}

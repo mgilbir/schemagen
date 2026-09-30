@@ -5,7 +5,7 @@ schema-valued "type" wrapper, the bare "not", the applicator-only schema, and
 the schema held as data. The annotation wrapper writes its own where
 --strict-read-write gives it rules to apply on the way in and out.
 
-What it holds is the document's own copy (see jsonDoc.keep), which every value
+What it holds is the document's own copy (see rt.Doc.Keep), which every value
 that document decoded into shares, so no method hands out the slice itself:
 MarshalJSON and Raw hand out copies. Before, the bytes were appended over
 whatever the wrapper already held -- a copy of the value made earlier still
@@ -19,17 +19,18 @@ value.
 // UnmarshalJSON replaces {{$recv}} with the value the document holds. See
 // decodeJSONAt.
 func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
-	_d, _sp, _err := jsonOpenDoc(data)
+	_d, _sp, _err := rt.OpenDoc(data)
 	if _err != nil {
-		return jsonDecodeRefusal(_err)
+		return rt.DecodeRefusal(_err)
 	}
-	return _d.finish({{$recv}}.decodeJSONAt(_d, _sp))
+	return _d.Finish({{$recv}}.decodeJSONAt(_d, _sp))
 }
+{{template "generated_marker" .}}
 
 // decodeJSONAt keeps the value at _sp, replacing whatever {{$recv}} held.
-func ({{$recv}} *{{.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+func ({{$recv}} *{{.Name}}) decodeJSONAt(_d *rt.Doc, _sp rt.Span) error {
 	*{{$recv}} = {{.Name}}{}
-	{{$recv}}._raw = _d.keep(_sp)
+	{{$recv}}._raw = _d.Keep(_sp)
 	{{- if .KeepsDoc}}
 	{{$recv}}._doc = _d
 	{{- end}}
@@ -48,13 +49,13 @@ func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 func ({{$recv}} {{.Name}}) Raw() json.RawMessage { return append(json.RawMessage(nil), {{$recv}}._raw...) }
 {{- if .HasIdentity}}
 
-// jsonIdentity is {{$recv}}'s identity as JSON: that of the bytes MarshalJSON
-// writes back. See jsonID.
-func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+// SchemagenJSONIdentity is {{$recv}}'s identity as JSON: that of the bytes
+// MarshalJSON writes back. See rt.ID.
+func ({{$recv}} *{{.Name}}) SchemagenJSONIdentity(_m *rt.Validation) (rt.ID, error) {
 	if len({{$recv}}._raw) == 0 {
-		return jsonIDNull(_m)
+		return rt.IDNull(_m)
 	}
-	return jsonIDRawIn({{$recv}}._raw, _m)
+	return rt.IDRawIn({{$recv}}._raw, _m)
 }
 {{- end}}
 {{- end}}

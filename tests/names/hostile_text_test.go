@@ -56,9 +56,9 @@ func TestHostileSchemaTextNeverBecomesCode(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	// The hybrid configuration's output imports the validation runtime, which
-	// the cogen harness already knows how to provide.
-	if err := writeCogenGoMod(dir, true); err != nil {
+	// The hybrid configuration's output imports the runtime module, which the
+	// cogen harness already knows how to provide.
+	if err := writeCogenGoMod(dir); err != nil {
 		t.Fatal(err)
 	}
 
@@ -668,18 +668,17 @@ func requireCleanRefusal(t *testing.T, cfg, pos string, h hostileText, err error
 	}
 }
 
-// allowedImports is every package generated code may import. math/bits is
-// the exact-number core's: multipleOf is decided by 128-bit remainders.
+// allowedImports is every package generated code may import: the standard
+// library packages its own code uses, and the runtime module. The decoder, the
+// encoder, the number core, the format checkers and the pattern engine are the
+// runtime's, so generated code no longer imports goecma262, x/net or any
+// schemagen package of the main module -- and the list is deliberately not
+// derived from the generator's own table, which is what it checks.
 var allowedImports = map[string]bool{
-	"bytes": true, "encoding/base64": true, "encoding/json": true, "errors": true, "fmt": true,
-	"math": true, "math/big": true, "math/bits": true, "net/mail": true, "net/netip": true, "net/url": true,
-	"reflect": true, "regexp": true, "sort": true, "strconv": true, "strings": true, "time": true,
-	"unicode": true, "unicode/utf8": true,
-	// The identity block: seeded hashes, and the lock and pointer a document
-	// keeps its values' identities under.
-	"hash/maphash": true, "sync": true, "sync/atomic": true,
-	"github.com/mgilbir/goecma262": true, "github.com/mgilbir/goecma262/flags": true,
-	"golang.org/x/net/idna": true, "github.com/mgilbir/schemagen/pkg/validationruntime": true,
+	"bytes": true, "encoding/json": true, "fmt": true,
+	"math": true, "math/big": true, "net/mail": true, "net/netip": true, "net/url": true,
+	"strings": true, "time": true, "unicode/utf8": true,
+	"github.com/mgilbir/schemagen/runtime": true,
 }
 
 // checkHostileAST parses generated source and fails on anything a hostile
@@ -850,7 +849,7 @@ func TestReceiverNamesAreNeverShadowed(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	if err := writeCogenGoMod(dir, true); err != nil {
+	if err := writeCogenGoMod(dir); err != nil {
 		t.Fatal(err)
 	}
 	// An untaggable name is what sends a property down the hand-written paths,

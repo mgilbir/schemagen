@@ -392,7 +392,7 @@ func (g *Generator) jsonEncoder(t GoType) string {
 // which a failure is named by (see the emitted jsonEncMarshaler).
 func (g *Generator) jsonEncoderVia(t GoType, viaPointer bool) string {
 	if !g.reachesEncoder(t) {
-		return "jsonAppendLeaf[" + t.GoTypeName() + "]"
+		return "rt.AppendLeaf[" + t.GoTypeName() + "]"
 	}
 	switch v := t.(type) {
 	case *NamedType:
@@ -416,7 +416,7 @@ func (g *Generator) jsonEncoderVia(t GoType, viaPointer bool) string {
 	case *MapType:
 		return g.mapEncoder(t, v.ValueType)
 	}
-	return "jsonAppendLeaf[" + t.GoTypeName() + "]"
+	return "rt.AppendLeaf[" + t.GoTypeName() + "]"
 }
 
 // ownEncoder is a type's own appendJSON, reporting a failure the way
@@ -440,7 +440,7 @@ func ownEncodeBody(v, name string, viaPointer bool) string {
 		via = "true"
 	}
 	return "_out, _err := " + v + ".appendJSON(_b)\n" +
-		"if _err != nil {\nreturn _b, jsonMarshalerErrFor(_err, (*" + name + ")(nil), " + via + ")\n}\n" +
+		"if _err != nil {\nreturn _b, rt.MarshalerErrFor(_err, (*" + name + ")(nil), " + via + ")\n}\n" +
 		"return _out, nil\n"
 }
 
@@ -463,15 +463,15 @@ func (g *Generator) pointerEncoder(self, inner GoType) string {
 				"if _v == nil {\nreturn append(_b, \"null\"...), nil\n}\n" + body + "}"
 		}
 	}
-	return jsonEncLiteral(self, "jsonEncPtr["+self.GoTypeName()+", "+inner.GoTypeName()+"](_v, _b, "+g.jsonEncoderVia(inner, true)+")")
+	return jsonEncLiteral(self, "rt.EncPtr["+self.GoTypeName()+", "+inner.GoTypeName()+"](_v, _b, "+g.jsonEncoderVia(inner, true)+")")
 }
 
 func (g *Generator) sliceEncoder(self, elem GoType) string {
-	return jsonEncLiteral(self, "jsonEncSlice["+self.GoTypeName()+", "+elem.GoTypeName()+"](_v, _b, "+g.jsonEncoder(elem)+")")
+	return jsonEncLiteral(self, "rt.EncSlice["+self.GoTypeName()+", "+elem.GoTypeName()+"](_v, _b, "+g.jsonEncoder(elem)+")")
 }
 
 func (g *Generator) mapEncoder(self, value GoType) string {
-	return jsonEncLiteral(self, "jsonEncMap["+self.GoTypeName()+", "+value.GoTypeName()+"](_v, _b, "+g.jsonEncoder(value)+")")
+	return jsonEncLiteral(self, "rt.EncMap["+self.GoTypeName()+", "+value.GoTypeName()+"](_v, _b, "+g.jsonEncoder(value)+")")
 }
 
 // structuralEncoder is the writing of a value of the named type self whose

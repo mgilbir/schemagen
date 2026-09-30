@@ -402,13 +402,18 @@ var refReadingSites = map[string]refReadingSite{
 // here" is a finding and a directory that quietly stopped being scanned would
 // look the same.
 var refScanDirs = map[string]string{
-	"generator":         ".",
-	"schema":            "../schema",
-	"emitter":           "../emitter",
-	"validationruntime": "../validationruntime",
-	"cmd/schemagen":     "../../cmd/schemagen",
-	"main":              "../..",
+	"generator":     ".",
+	"schema":        "../schema",
+	"emitter":       "../emitter",
+	"cmd/schemagen": "../../cmd/schemagen",
+	"main":          "../..",
 }
+
+// The runtime module is not among them, and pkg/validationruntime, which was, is
+// gone. What the runtime reads a reference off is a compiled Node, whose Ref and
+// DynamicRef the generator has already resolved; it has no schema object in it to
+// read a keyword from, and a site there would be classified against a question it
+// does not ask.
 
 // refKeywordSelectors are the field and method names that read a reference.
 var refKeywordSelectors = map[string]string{

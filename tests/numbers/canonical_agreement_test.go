@@ -11,8 +11,6 @@ import (
 	"time"
 
 	"github.com/mgilbir/schemagen/internal/testgo"
-	"github.com/mgilbir/schemagen/pkg/emitter"
-	"github.com/mgilbir/schemagen/pkg/generator"
 	"github.com/mgilbir/schemagen/pkg/schema"
 )
 
@@ -45,20 +43,21 @@ var canonicalAgreementDocuments = []string{
 	`1e99999999999999999999`, `10e99999999999999999998`, `0.1E+100000000000000000000`,
 	`-12.5e-99999999999999999999`,
 	// Not JSON at all. Nothing a schema states arrives here looking like this,
-	// but the baked list is data written by another program, and the arm
-	// _jsonCanonicalTexts takes for a literal it cannot read is the one that
-	// keeps such an entry matching itself instead of matching everything.
+	// but a member list is data written by another program, and the arm that
+	// keeps a literal it cannot read as it was is the one that keeps such an
+	// entry matching itself instead of matching everything.
 	`not json`,
 }
 
-// TestEmittedCanonicaliserAgreesWithTheGenerator compiles the _jsonCanonical
-// helper block and checks it answers what schema.CanonicalJSON answers.
+// TestEmittedCanonicaliserAgreesWithTheGenerator compiles a program that calls
+// the runtime's Canonical and checks it answers what schema.CanonicalJSON
+// answers.
 //
 // There are two implementations of one reduction and there have to be: the
-// generated code is standalone Go that does not import this repository, and the
-// generator needs the same reduction to deduplicate an enum's members before it
-// names them. They are separated by a template, so nothing but a test can hold
-// them together -- and the two failure directions are both silent. If the
+// runtime module cannot import the generator (it imports nothing of
+// schemagen's), and the generator needs the same reduction to deduplicate an
+// enum's members before it names them. They are in two modules, so nothing but a
+// test can hold them together -- and the two failure directions are both silent. If the
 // emitted one reduces more than this one, a dropped enum member becomes a
 // document the schema admits and the generated code refuses. If it reduces
 // less, two members that are one value stay two and the generated code accepts
@@ -67,22 +66,7 @@ var canonicalAgreementDocuments = []string{
 // The helper block is compiled rather than read, because what is under test is
 // what the emitted code does and not what its source looks like.
 func TestEmittedCanonicaliserAgreesWithTheGenerator(t *testing.T) {
-	em, err := emitter.New()
-	if err != nil {
-		t.Fatalf("emitter.New: %v", err)
-	}
-	helpers, ok, err := em.EmitHelpers("main", generator.HelperSet{Canonical: true})
-	if err != nil {
-		t.Fatalf("emitting the canonical helper block: %v", err)
-	}
-	if !ok {
-		t.Fatal("the canonical helper set emitted no file, so this test would compile nothing")
-	}
-
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "helpers.go"), helpers, 0o644); err != nil {
-		t.Fatal(err)
-	}
 	docs, err := json.Marshal(canonicalAgreementDocuments)
 	if err != nil {
 		t.Fatal(err)
@@ -155,15 +139,19 @@ func TestEmittedCanonicaliserAgreesWithTheGenerator(t *testing.T) {
 	t.Logf("%d documents reduced and compared, %d fell back to the literal", agreed, fellBack)
 }
 
-// canonicalAgreementMain reads the documents and prints what _jsonCanonical
-// makes of each, as a JSON array so that the answers cannot be confused with
-// each other by a newline inside one.
+// canonicalAgreementMain reads the documents and prints what the runtime's
+// Canonical makes of each, as a JSON array so that the answers cannot be
+// confused with each other by a newline inside one. A literal it cannot read is
+// kept as it was written, which is what the callers that hold a schema's member
+// list do: it can only ever match a document that reads back the same way.
 const canonicalAgreementMain = `package main
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
+
+	rt "github.com/mgilbir/schemagen/runtime"
 )
 
 func main() {
@@ -177,11 +165,14 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	// Through _jsonCanonicalTexts rather than through _jsonCanonical directly:
-	// that is the entry point the baked member list of every enum and const
-	// goes through, so it is the one whose answers have to be checked -- both
-	// the reduction and the arm it takes for a literal it cannot read at all.
-	out := _jsonCanonicalTexts(docs)
+	out := make([]string, len(docs))
+	for i, doc := range docs {
+		if c, err := rt.Canonical([]byte(doc)); err == nil {
+			out[i] = c
+		} else {
+			out[i] = doc
+		}
+	}
 	enc, err := json.Marshal(out)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

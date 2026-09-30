@@ -5,7 +5,7 @@
 {{- template "annotation_comment" mkAnnotationCtx .Annotations "" true}}
 type {{.Name}} struct {
 	{{- if .KeepsDoc}}
-	_doc *jsonDoc // the document _raw is a view of, which Validate decodes the alternatives through
+	_doc *rt.Doc // the document _raw is a view of, which Validate decodes the alternatives through
 	{{- end}}
 	_raw json.RawMessage
 }
@@ -43,21 +43,21 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	}
 	{{- /* Every number is kept as the literal the document wrote, on either
 	       path: "integer" is read off it the way the draft reads it, and 1e400
-	       is a number rather than a decode error. See jsonHeld and
-	       jsonDecodeNumbers. */}}
+	       is a number rather than a decode error. See rt.Held and
+	       rt.DecodeNumbers. */}}
 	{{- if .KeepsDoc}}
 	{{- /* Only the value's first level is read here: the checks below ask its JSON
 	       type and the types of its members, and an alternative that is a type
 	       of its own decodes the value itself. Decoded whole, a value nested d
 	       levels deep in wrappers like this one was decoded once per level. */}}
-	_v, _err := jsonHeld({{$recv}}._doc, {{$recv}}._raw)
+	_v, _err := rt.Held({{$recv}}._doc, {{$recv}}._raw)
 	if _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
-	_v = jsonTop(_v)
+	_v = rt.Top(_v)
 	{{- else}}
 	var _v any
-	if _err := jsonDecodeNumbers({{$recv}}._raw, &_v); _err != nil {
+	if _err := rt.DecodeNumbers({{$recv}}._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	{{- end}}
@@ -79,13 +79,13 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			var _bv {{$branch.TypeName}}
 			if _reentered {
 				_branchMatches = false
-			} else if _err := {{if $branch.Decoder}}jsonDecodeHeld({{$recv}}._doc, {{$recv}}._raw, &_bv, {{$branch.Decoder}}){{else}}json.Unmarshal({{$recv}}._raw, &_bv){{end}}; _err != nil {
-				if _schemagenUndecided(_err) {
+			} else if _err := {{if $branch.Decoder}}rt.DecodeHeld({{$recv}}._doc, {{$recv}}._raw, &_bv, {{$branch.Decoder}}){{else}}json.Unmarshal({{$recv}}._raw, &_bv){{end}}; _err != nil {
+				if rt.Undecided(_err) {
 					return fmt.Errorf("type: %w", _err)
 				}
 				_branchMatches = false
 			} else if _err := {{$branch.InPlaceType}}(_bv).validateVisiting(_visiting); _err != nil {
-				if _schemagenUndecided(_err) {
+				if rt.Undecided(_err) {
 					return fmt.Errorf("type: %w", _err)
 				}
 				_branchMatches = false
@@ -98,14 +98,14 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			// A pattern match with no answer on the way is no verdict on the
 			// branch, so it is returned rather than read as "no match".
 			var _bv {{$branch.TypeName}}
-			if _err := {{if $branch.Decoder}}jsonDecodeHeld({{$recv}}._doc, {{$recv}}._raw, &_bv, {{$branch.Decoder}}){{else}}json.Unmarshal({{$recv}}._raw, &_bv){{end}}; _err != nil {
-				if _schemagenUndecided(_err) {
+			if _err := {{if $branch.Decoder}}rt.DecodeHeld({{$recv}}._doc, {{$recv}}._raw, &_bv, {{$branch.Decoder}}){{else}}json.Unmarshal({{$recv}}._raw, &_bv){{end}}; _err != nil {
+				if rt.Undecided(_err) {
 					return fmt.Errorf("type: %w", _err)
 				}
 				_branchMatches = false
 			} else if _bvv, _ok := any(&_bv).(interface{ Validate() error }); _ok {
 				if _err := _bvv.Validate(); _err != nil {
-					if _schemagenUndecided(_err) {
+					if rt.Undecided(_err) {
 						return fmt.Errorf("type: %w", _err)
 					}
 					_branchMatches = false
@@ -122,9 +122,9 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			{{- if eq . "object"}}
 			if _, _ok := _v.(map[string]any); _ok { _typeOk = true }
 			{{- else if eq . "integer"}}
-			if jsonIsInteger(_v, {{if $.StrictInteger}}true{{else}}false{{end}}) { _typeOk = true }
+			if rt.IsInteger(_v, {{if $.StrictInteger}}true{{else}}false{{end}}) { _typeOk = true }
 			{{- else if eq . "number"}}
-			if jsonIsNumber(_v) { _typeOk = true }
+			if rt.IsNumber(_v) { _typeOk = true }
 			{{- else if eq . "string"}}
 			if _, _ok := _v.(string); _ok { _typeOk = true }
 			{{- else if eq . "boolean"}}
@@ -147,7 +147,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		if _branchMatches {
 			_propVal, _propOk := _obj[{{printf "%q" .Name}}]
 			{{- if $.KeepsDoc}}
-			_propVal = jsonTop(_propVal)
+			_propVal = rt.Top(_propVal)
 			{{- end}}
 			if !_propOk {
 				{{- if .Required}}
@@ -155,9 +155,9 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				{{- end}}
 			} else {
 				{{- if eq .JSONType "integer"}}
-				if !jsonIsInteger(_propVal, {{if $.StrictInteger}}true{{else}}false{{end}}) { _branchMatches = false }
+				if !rt.IsInteger(_propVal, {{if $.StrictInteger}}true{{else}}false{{end}}) { _branchMatches = false }
 				{{- else if eq .JSONType "number"}}
-				if !jsonIsNumber(_propVal) { _branchMatches = false }
+				if !rt.IsNumber(_propVal) { _branchMatches = false }
 				{{- else if eq .JSONType "string"}}
 				if _, _sOk := _propVal.(string); !_sOk { _branchMatches = false }
 				{{- else if eq .JSONType "boolean"}}
@@ -205,7 +205,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		_ = _tv
 		return nil
 		{{- else if $intOk}}
-		if !jsonIsInteger(_tv, {{if .StrictInteger}}true{{else}}false{{end}}) {
+		if !rt.IsInteger(_tv, {{if .StrictInteger}}true{{else}}false{{end}}) {
 			return fmt.Errorf("type: expected integer, got number")
 		}
 		return nil

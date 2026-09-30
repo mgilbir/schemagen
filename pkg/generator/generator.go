@@ -1569,11 +1569,6 @@ func (g *Generator) addRequiredImports() {
 	needsNetMail := false
 	needsNetURL := false
 	needsStdRegexp := false
-	needsValidationRuntime := false
-
-	if g.output.ValidationCapability.RequiresRuntime && g.output.ValidationCapability.Mode != ValidationModeStatic {
-		needsValidationRuntime = true
-	}
 
 	// A "number" held exactly names encoding/json in the *type*, not only in the
 	// code: a field, an array element, a map value, an alias's underlying and an
@@ -2309,9 +2304,13 @@ func (g *Generator) addRequiredImports() {
 	if needsNetURL {
 		g.output.Imports = append(g.output.Imports, GeneratedImport("net/url"))
 	}
-	if needsValidationRuntime {
-		g.output.Imports = append(g.output.Imports, GeneratedImport("github.com/mgilbir/schemagen/pkg/validationruntime"))
-	}
+	// The runtime module is claimed for every file, whatever the file's types
+	// happen to reach: almost every generated declaration calls into it, and
+	// over-claiming is the safe direction (keepReferencedImports drops the
+	// import from a file that never names it) where a model of which of some
+	// three hundred templates' actions reach it would be one more copy of what
+	// the templates already say.
+	g.output.Imports = append(g.output.Imports, GeneratedImport(RuntimeImportPath))
 }
 
 // isInferredAlias returns true if a type name was generated as an InferredAliasDef.
@@ -22030,7 +22029,7 @@ func (g *Generator) collectRuntimeBranchChecks(s *schema.Schema) []RuntimeBranch
 			}
 			checks = append(checks, RuntimeBranchCheck{
 				Keyword:     group.keyword,
-				NodeLiteral: fmt.Sprintf("_schemaNode{\n\t%s: %s,\n}", group.field, list),
+				NodeLiteral: fmt.Sprintf("rt.Node{\n\t%s: %s,\n}", group.field, list),
 				owner:       owner,
 			})
 		}
@@ -22114,7 +22113,7 @@ func (g *Generator) collectSubschemaRuntimeChecks(s *schema.Schema) ([]RuntimeBr
 		if lit, ok := b.sub(pn, 2); ok {
 			checks = append(checks, RuntimeBranchCheck{
 				Keyword:     "propertyNames",
-				NodeLiteral: fmt.Sprintf("_schemaNode{\n\tPropertyNames: _node(%s),\n}", lit),
+				NodeLiteral: fmt.Sprintf("rt.Node{\n\tPropertyNames: rt.NodePtr(%s),\n}", lit),
 				owner:       s,
 			})
 			taken.propertyNames = true
@@ -22135,7 +22134,7 @@ func (g *Generator) collectSubschemaRuntimeChecks(s *schema.Schema) ([]RuntimeBr
 			if list, ok := b.memberList(routed, 2); ok {
 				checks = append(checks, RuntimeBranchCheck{
 					Keyword:     "dependentSchemas",
-					NodeLiteral: fmt.Sprintf("_schemaNode{\n\tDependentSchemas: %s,\n}", list),
+					NodeLiteral: fmt.Sprintf("rt.Node{\n\tDependentSchemas: %s,\n}", list),
 					owner:       s,
 				})
 				taken.dependentTriggers = map[string]bool{}
@@ -22406,11 +22405,11 @@ func (g *Generator) collectConditionalRuntimeChecks(s *schema.Schema, staticRead
 			if !ok {
 				return
 			}
-			fields = append(fields, fmt.Sprintf("\t%s: _node(%s),", branch.field, lit))
+			fields = append(fields, fmt.Sprintf("\t%s: rt.NodePtr(%s),", branch.field, lit))
 		}
 		checks = append(checks, RuntimeBranchCheck{
 			Keyword:     conditionalRuntimeKeyword,
-			NodeLiteral: "_schemaNode{\n" + strings.Join(fields, "\n") + "\n}",
+			NodeLiteral: "rt.Node{\n" + strings.Join(fields, "\n") + "\n}",
 			owner:       owner,
 		})
 	}

@@ -80,8 +80,12 @@ func TestExactNumberNamedTypesCarryBothDirections(t *testing.T) {
 	t.Logf("checked %d named types over json.Number across %d schemas", declared, len(paths))
 }
 
+// numberShadow finds the runtime's shadow of json.Number, whole: rt.Number and
+// not the other rt.Number* names.
+var numberShadow = regexp.MustCompile(`\brt\.Number\b`)
+
 // TestExactNumberFieldsDecodeThroughTheShadow holds every declared json.Number
-// to being decoded through jsonNumber rather than filled directly.
+// to being decoded through rt.Number rather than filled directly.
 //
 // json.Number is a string underneath and encoding/json will fill one from a
 // JSON string, so {"n":"1.5"} would satisfy {"type":"number"} -- a document the
@@ -103,8 +107,8 @@ func TestExactNumberFieldsDecodeThroughTheShadow(t *testing.T) {
 			continue
 		}
 		checked++
-		if !strings.Contains(src, "jsonNumber") {
-			t.Errorf("%s: declares a json.Number and never names the jsonNumber shadow, so "+
+		if !numberShadow.MatchString(src) {
+			t.Errorf("%s: declares a json.Number and never names the rt.Number shadow, so "+
 				"encoding/json fills it directly and a JSON string is taken for a number", path)
 		}
 	}

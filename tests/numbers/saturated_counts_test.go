@@ -168,7 +168,7 @@ func generateSaturatedPackage(t *testing.T, fixture string, cfg generator.Config
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(mainGo), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeCogenGoMod(dir, strings.Contains(code, "pkg/validationruntime")); err != nil {
+	if err := writeCogenGoMod(dir); err != nil {
 		t.Fatal(err)
 	}
 	return dir

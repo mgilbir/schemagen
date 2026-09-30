@@ -12,13 +12,14 @@ import (
 // with the overflow field), so overrides to these names are rejected up front.
 // Keyed by name → human-readable description of what it collides with.
 var reservedFieldNames = map[string]string{
-	"Validate":             "the generated Validate method",
-	"MarshalJSON":          "the generated MarshalJSON method",
-	"UnmarshalJSON":        "the generated UnmarshalJSON method",
-	"SetDefaults":          "the generated SetDefaults method",
-	"SchemagenJSONTree":    "the generated SchemagenJSONTree method",
-	"AdditionalProperties": "the generated additional-properties overflow field",
-	"PatternProperties":    "the generated pattern-properties overflow field",
+	"Validate":              "the generated Validate method",
+	"MarshalJSON":           "the generated MarshalJSON method",
+	"UnmarshalJSON":         "the generated UnmarshalJSON method",
+	"SetDefaults":           "the generated SetDefaults method",
+	"SchemagenJSONIdentity": "the generated SchemagenJSONIdentity method",
+	"SchemagenGenerated":    "the generated SchemagenGenerated marker method",
+	"AdditionalProperties":  "the generated additional-properties overflow field",
+	"PatternProperties":     "the generated pattern-properties overflow field",
 }
 
 // generatedMemberNames lists the exported members (methods and synthesized
@@ -33,7 +34,8 @@ var generatedMemberNames = []string{
 	"MarshalJSON",
 	"UnmarshalJSON",
 	"SetDefaults",
-	"SchemagenJSONTree",
+	"SchemagenJSONIdentity",
+	"SchemagenGenerated",
 	"AdditionalProperties",
 	"PatternProperties",
 }

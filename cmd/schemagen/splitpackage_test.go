@@ -173,9 +173,17 @@ func TestSplitPackageWithACrossReferenceIsRefused(t *testing.T) {
 
 // The refusal must not cost the case --schema-output exists for: two documents
 // of one package routed by hand into one directory. It generates, the helper
-// file lands in that directory, and the tree compiles.
+// file (the package's compiled patterns, which is all that is left of it now the
+// runtime is a module) lands in that directory, and the tree compiles. The
+// documents carry a pattern each so there is something for the file to hold.
 func TestTwoDocumentsOfOnePackageInOneDirectoryStillCompile(t *testing.T) {
-	dir, paths := writeSchemas(t, "a.json", splitPkgDocA, "b.json", splitPkgDocBRefsA)
+	docA := `{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"$id": "https://ex.test/a.json",
+	"title": "A", "type": "object",
+	"properties": {"s": {"type": "string", "pattern": "^a+$"}},
+	"required": ["s"]}`
+	dir, paths := writeSchemas(t, "a.json", docA, "b.json", splitPkgDocBRefsA)
 	out := filepath.Join(dir, "out")
 	pkgDir := filepath.Join(out, "shared")
 

@@ -30,7 +30,7 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	*{{$recv}} = {{.Name}}{}
 	{{- if .NeedsNullCheck}}
 	if string(data) == "null" {
-		return jsonValueErrorf("null is not allowed")
+		return rt.ValueErrorf("null is not allowed")
 	}
 	{{- else}}
 	// Null is a non-matching type for inferred schemas — store as raw.
@@ -46,7 +46,7 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	       taken for the number this wrapper's constraints judge: json.Number
 	       accepts "1.5" as readily as 1.5, and a string is a non-matching type
 	       whose keywords do not apply. */}}
-	if _err := json.Unmarshal(data, (*jsonNumber)(&{{$recv}}._value)); _err == nil {
+	if _err := json.Unmarshal(data, (*rt.Number)(&{{$recv}}._value)); _err == nil {
 	{{- else}}
 	if _err := json.Unmarshal(data, &{{$recv}}._value); _err == nil {
 	{{- end}}
@@ -68,12 +68,13 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	// only a direct caller reaches that.
 	if !json.Valid(data) {
 		var _v json.RawMessage
-		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+		return rt.DecodeRefusal(json.Unmarshal(data, &_v))
 	}
 	{{$recv}}._raw = append(json.RawMessage(nil), data...)
 	{{$recv}}._isRaw = true
 	return nil
 }
+{{template "generated_marker" .}}
 {{- end}}
 
 {{define "inferred_alias_marshal"}}
@@ -92,16 +93,16 @@ func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 }
 {{- if .HasIdentity}}
 
-// jsonIdentity is {{$recv}}'s identity as JSON: that of what MarshalJSON writes.
-// See jsonID.
-func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+// SchemagenJSONIdentity is {{$recv}}'s identity as JSON: that of what
+// MarshalJSON writes. See rt.ID.
+func ({{$recv}} *{{.Name}}) SchemagenJSONIdentity(_m *rt.Validation) (rt.ID, error) {
 	if {{$recv}}._isRaw {
 		if len({{$recv}}._raw) == 0 {
-			return jsonIDNull(_m)
+			return rt.IDNull(_m)
 		}
-		return jsonIDRawIn({{$recv}}._raw, _m)
+		return rt.IDRawIn({{$recv}}._raw, _m)
 	}
-	return jsonIdentifyAt(&{{$recv}}._value, _m)
+	return rt.IdentifyAt(&{{$recv}}._value, _m)
 }
 {{- end}}
 {{- end}}
@@ -138,7 +139,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		// it and it was kept here as bytes; every numeric keyword still applies
 		// to it, and is read from those bytes below. It used to be passed over
 		// as though it were a string.
-		if _, _isNum := jsonRawNumber({{$recv}}._raw); !_isNum {
+		if _, _isNum := rt.RawNumber({{$recv}}._raw); !_isNum {
 			return nil
 		}
 	}
@@ -165,7 +166,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	_items := {{$recv}}._value
 	if len({{$recv}}._raw) > 0 {
 		var _decoded any
-		if jsonDecodeNumbers({{$recv}}._raw, &_decoded) == nil {
+		if rt.DecodeNumbers({{$recv}}._raw, &_decoded) == nil {
 			if _arr, _ok := _decoded.([]any); _ok {
 				_items = _arr
 			}
@@ -194,12 +195,12 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- range .Validations}}
 	{{- if eq .RuleType "minLength"}}
 	if utf8.RuneCountInString(string({{$recv}}._value)) < {{countExpr .Value}} {
-		return jsonValueErrorf("length %d is less than minimum {{fmtText .Value}}", utf8.RuneCountInString(string({{$recv}}._value)))
+		return rt.ValueErrorf("length %d is less than minimum {{fmtText .Value}}", utf8.RuneCountInString(string({{$recv}}._value)))
 	}
 	{{- end}}
 	{{- if eq .RuleType "maxLength"}}
 	if utf8.RuneCountInString(string({{$recv}}._value)) > {{countExpr .Value}} {
-		return jsonValueErrorf("length %d exceeds maximum {{fmtText .Value}}", utf8.RuneCountInString(string({{$recv}}._value)))
+		return rt.ValueErrorf("length %d exceeds maximum {{fmtText .Value}}", utf8.RuneCountInString(string({{$recv}}._value)))
 	}
 	{{- end}}
 	{{- /* The numeric keywords judge _num, the literal the document wrote.
@@ -207,34 +208,34 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	       see clearNumberOperands. */}}
 	{{- if eq .RuleType "minimum"}}
 	if {{numViolated . "_num"}} {
-		return jsonValueErrorf("%s is less than minimum {{fmtText .Value}}", _numText)
+		return rt.ValueErrorf("%s is less than minimum {{fmtText .Value}}", _numText)
 	}
 	{{- end}}
 	{{- if eq .RuleType "maximum"}}
 	if {{numViolated . "_num"}} {
-		return jsonValueErrorf("%s exceeds maximum {{fmtText .Value}}", _numText)
+		return rt.ValueErrorf("%s exceeds maximum {{fmtText .Value}}", _numText)
 	}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMinimum"}}
 	if {{numViolated . "_num"}} {
-		return jsonValueErrorf("%s must be greater than {{fmtText .Value}}", _numText)
+		return rt.ValueErrorf("%s must be greater than {{fmtText .Value}}", _numText)
 	}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMaximum"}}
 	if {{numViolated . "_num"}} {
-		return jsonValueErrorf("%s must be less than {{fmtText .Value}}", _numText)
+		return rt.ValueErrorf("%s must be less than {{fmtText .Value}}", _numText)
 	}
 	{{- end}}
 	{{- if eq .RuleType "multipleOf"}}
 	if {{numViolated . "_num"}} {
-		return jsonValueErrorf("%s is not a multiple of {{fmtText .Value}}", _numText)
+		return rt.ValueErrorf("%s is not a multiple of {{fmtText .Value}}", _numText)
 	}
 	{{- end}}
 	{{- if eq .RuleType "pattern"}}
-	if _matched, _mErr := {{patternVar .Value}}.matches(string({{$recv}}._value)); _mErr != nil {
-		return jsonValueErrorf("%w", _mErr)
+	if _matched, _mErr := {{patternVar .Value}}.Matches(string({{$recv}}._value)); _mErr != nil {
+		return rt.ValueErrorf("%w", _mErr)
 	} else if !_matched {
-		return jsonValueErrorf("%s does not match pattern %s", _schemagenQuote(string({{$recv}}._value)), {{printf "%q" .Value}})
+		return rt.ValueErrorf("%s does not match pattern %s", rt.Quote(string({{$recv}}._value)), {{printf "%q" .Value}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "format"}}
@@ -262,12 +263,12 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- end}}
 	{{- if eq .RuleType "minItems"}}
 	if len({{$recv}}._value) < {{countExpr .Value}} {
-		return jsonValueErrorf("has %d items, minimum is {{fmtText .Value}}", len({{$recv}}._value))
+		return rt.ValueErrorf("has %d items, minimum is {{fmtText .Value}}", len({{$recv}}._value))
 	}
 	{{- end}}
 	{{- if eq .RuleType "maxItems"}}
 	if len({{$recv}}._value) > {{countExpr .Value}} {
-		return jsonValueErrorf("has %d items, maximum is {{fmtText .Value}}", len({{$recv}}._value))
+		return rt.ValueErrorf("has %d items, maximum is {{fmtText .Value}}", len({{$recv}}._value))
 	}
 	{{- end}}
 	{{- if eq .RuleType "uniqueItems"}}
@@ -279,12 +280,12 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		       one float64 for both. The wrapper's own value is reached by no
 		       check above it, so there is nothing kept to read back. */}}
 		_uqArr := {{if $.ItemsAreAny}}_items{{else}}{{$recv}}._value{{end}}
-		_ids, _i, _err := jsonIDsOf(_uqArr, nil, jsonIdentifyAt[any])
+		_ids, _i, _err := rt.IDsOf(_uqArr, nil, rt.IdentifyAt[any])
 		if _err != nil {
-			return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", _i, jsonMarshalError(&_uqArr[_i], _err))
+			return rt.ValueErrorf("uniqueItems check: marshal error at index %d: %w", _i, rt.MarshalError(&_uqArr[_i], _err))
 		}
-		if _i := jsonFirstDuplicate(_uqArr, _ids, jsonIdentifyAt[any]); _i >= 0 {
-			return jsonValueErrorf("items are not unique (duplicate at index %d)", _i)
+		if _i := rt.FirstDuplicate(_uqArr, _ids, rt.IdentifyAt[any]); _i >= 0 {
+			return rt.ValueErrorf("items are not unique (duplicate at index %d)", _i)
 		}
 	}
 	{{- end}}
@@ -312,10 +313,10 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			if {{numViolated . "_num"}} { _variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "pattern"}}
-			if _matched, _mErr := {{patternVar .Value}}.matches(string({{$recv}}._value)); _mErr != nil {
+			if _matched, _mErr := {{patternVar .Value}}.Matches(string({{$recv}}._value)); _mErr != nil {
 				// A variant with no verdict leaves the count of matching
 				// variants unknown.
-				return jsonValueErrorf("%w", _mErr)
+				return rt.ValueErrorf("%w", _mErr)
 			} else if !_matched {
 				_variantValid = false
 			}
@@ -331,7 +332,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		}
 		{{- end}}
 		if !_anyOfValid {
-			return jsonValueErrorf("value does not match any anyOf variant")
+			return rt.ValueErrorf("value does not match any anyOf variant")
 		}
 	}
 	{{- end}}
@@ -358,10 +359,10 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			if {{numViolated . "_num"}} { _variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "pattern"}}
-			if _matched, _mErr := {{patternVar .Value}}.matches(string({{$recv}}._value)); _mErr != nil {
+			if _matched, _mErr := {{patternVar .Value}}.Matches(string({{$recv}}._value)); _mErr != nil {
 				// A variant with no verdict leaves the count of matching
 				// variants unknown.
-				return jsonValueErrorf("%w", _mErr)
+				return rt.ValueErrorf("%w", _mErr)
 			} else if !_matched {
 				_variantValid = false
 			}
@@ -377,7 +378,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		}
 		{{- end}}
 		if _oneOfCount != 1 {
-			return jsonValueErrorf("value matches %d oneOf variants, expected exactly 1", _oneOfCount)
+			return rt.ValueErrorf("value matches %d oneOf variants, expected exactly 1", _oneOfCount)
 		}
 	}
 	{{- end}}
@@ -395,11 +396,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- if .ItemsType}}
 	for _i, _elem := range _items {
 		{{- if eq .ItemsType "integer"}}
-		if !jsonIsInteger(_elem, {{if $.StrictInteger}}true{{else}}false{{end}}) {
+		if !rt.IsInteger(_elem, {{if $.StrictInteger}}true{{else}}false{{end}}) {
 			return fmt.Errorf("items[%d]: expected integer, got %T", _i, _elem)
 		}
 		{{- else if eq .ItemsType "number"}}
-		if !jsonIsNumber(_elem) {
+		if !rt.IsNumber(_elem) {
 			return fmt.Errorf("items[%d]: expected number, got %T", _i, _elem)
 		}
 		{{- else if eq .ItemsType "string"}}
@@ -431,12 +432,12 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	       into the items type -- as the document wrote it, where it did
 	       (see _items). */}}
 	for _i, _elem := range _items {
-		_tv, _tvErr := jsonTreeView(_elem)
+		_tv, _tvErr := rt.TreeView(_elem)
 		if _tvErr != nil {
-			return fmt.Errorf("items[%d]: %w", _i, jsonMarshalError(&_elem, _tvErr))
+			return fmt.Errorf("items[%d]: %w", _i, rt.MarshalError(&_elem, _tvErr))
 		}
-		if _tr := _evalNode(&{{.ItemsNode.Var}}, _tv); !_tr.ok {
-			return fmt.Errorf("items[%d]: %w", _i, _evalError(_tr))
+		if _tr := rt.EvalNode(&{{.ItemsNode.Var}}, _tv); !_tr.OK() {
+			return fmt.Errorf("items[%d]: %w", _i, rt.EvalError(_tr))
 		}
 	}
 	{{- else if .ItemsTypeName}}
@@ -446,7 +447,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			return fmt.Errorf("items[%d]: %w", _i, _mErr)
 		}
 		var _typed {{.ItemsTypeName}}
-		if _uErr := {{if .StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_raw, &_typed); _uErr != nil {
+		if _uErr := {{if .StrictReadWrite}}rt.DecodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_raw, &_typed); _uErr != nil {
 			return fmt.Errorf("items[%d]: %w", _i, _uErr)
 		}
 		if _vErr := _typed.Validate(); _vErr != nil {
@@ -459,11 +460,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		{{- range .ItemsChecks}}
 		{{- if eq .CheckType "type"}}
 		{{- if eq .Value "integer"}}
-		if !jsonIsInteger(_elem, {{if $.StrictInteger}}true{{else}}false{{end}}) {
+		if !rt.IsInteger(_elem, {{if $.StrictInteger}}true{{else}}false{{end}}) {
 			return fmt.Errorf("items[%d]: expected integer, got %T", _i, _elem)
 		}
 		{{- else if eq .Value "number"}}
-		if !jsonIsNumber(_elem) {
+		if !rt.IsNumber(_elem) {
 			return fmt.Errorf("items[%d]: expected number, got %T", _i, _elem)
 		}
 		{{- else if eq .Value "string"}}
@@ -520,11 +521,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		{{- /* maporder: not a map: ranges a slice, _nested is asserted to []any above. */}}
 		for _j, _nestedElem := range _nested {
 			{{- if eq .ItemsNested.ItemsType "integer"}}
-			if !jsonIsInteger(_nestedElem, {{if $.StrictInteger}}true{{else}}false{{end}}) {
+			if !rt.IsInteger(_nestedElem, {{if $.StrictInteger}}true{{else}}false{{end}}) {
 				return fmt.Errorf("items[%d][%d]: expected integer, got %T", _i, _j, _nestedElem)
 			}
 			{{- else if eq .ItemsNested.ItemsType "number"}}
-			if !jsonIsNumber(_nestedElem) {
+			if !rt.IsNumber(_nestedElem) {
 				return fmt.Errorf("items[%d][%d]: expected number, got %T", _i, _j, _nestedElem)
 			}
 			{{- else if eq .ItemsNested.ItemsType "string"}}
@@ -562,11 +563,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		if len(_items) > {{$idx}} {
 			_tElem := _items[{{$idx}}]
 			{{- if eq $item.JSONType "integer"}}
-			if !jsonIsInteger(_tElem, {{if $.StrictInteger}}true{{else}}false{{end}}) {
+			if !rt.IsInteger(_tElem, {{if $.StrictInteger}}true{{else}}false{{end}}) {
 				return fmt.Errorf("items[{{$idx}}]: expected integer, got %T", _tElem)
 			}
 			{{- else if eq $item.JSONType "number"}}
-			if !jsonIsNumber(_tElem) {
+			if !rt.IsNumber(_tElem) {
 				return fmt.Errorf("items[{{$idx}}]: expected number, got %T", _tElem)
 			}
 			{{- else if eq $item.JSONType "string"}}
@@ -594,12 +595,12 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		{{- else if $item.Node}}
 		if len({{$recv}}._value) > {{$idx}} {
 			{{- /* Judged as it is held; see ElementNode. */}}
-			_tv, _tvErr := jsonTreeView({{$recv}}._value[{{$idx}}])
+			_tv, _tvErr := rt.TreeView({{$recv}}._value[{{$idx}}])
 			if _tvErr != nil {
-				return fmt.Errorf("items[{{$idx}}]: %w", jsonMarshalError(&{{$recv}}._value[{{$idx}}], _tvErr))
+				return fmt.Errorf("items[{{$idx}}]: %w", rt.MarshalError(&{{$recv}}._value[{{$idx}}], _tvErr))
 			}
-			if _tr := _evalNode(&{{$item.Node.Var}}, _tv); !_tr.ok {
-				return fmt.Errorf("items[{{$idx}}]: %w", _evalError(_tr))
+			if _tr := rt.EvalNode(&{{$item.Node.Var}}, _tv); !_tr.OK() {
+				return fmt.Errorf("items[{{$idx}}]: %w", rt.EvalError(_tr))
 			}
 		}
 		{{- else if $item.TypeName}}
@@ -609,7 +610,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				return fmt.Errorf("items[{{$idx}}]: %w", _mErr)
 			}
 			var _typed {{$item.TypeName}}
-			if _uErr := {{if $.StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_raw, &_typed); _uErr != nil {
+			if _uErr := {{if $.StrictReadWrite}}rt.DecodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_raw, &_typed); _uErr != nil {
 				return fmt.Errorf("items[{{$idx}}]: %w", _uErr)
 			}
 			if _vErr := _typed.Validate(); _vErr != nil {
@@ -628,12 +629,12 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- if .AdditionalItemsNode}}
 	{{- /* The tail judged as it is held; see ElementNode, and the typed arm below. */}}
 	for _i := {{len .TupleItems}}; _i < len({{$recv}}._value); _i++ {
-		_tv, _tvErr := jsonTreeView({{$recv}}._value[_i])
+		_tv, _tvErr := rt.TreeView({{$recv}}._value[_i])
 		if _tvErr != nil {
-			return fmt.Errorf("additionalItems[%d]: %w", _i, jsonMarshalError(&{{$recv}}._value[_i], _tvErr))
+			return fmt.Errorf("additionalItems[%d]: %w", _i, rt.MarshalError(&{{$recv}}._value[_i], _tvErr))
 		}
-		if _tr := _evalNode(&{{.AdditionalItemsNode.Var}}, _tv); !_tr.ok {
-			return fmt.Errorf("additionalItems[%d]: %w", _i, _evalError(_tr))
+		if _tr := rt.EvalNode(&{{.AdditionalItemsNode.Var}}, _tv); !_tr.OK() {
+			return fmt.Errorf("additionalItems[%d]: %w", _i, rt.EvalError(_tr))
 		}
 	}
 	{{- else if .AdditionalItemsTypeName}}
@@ -649,7 +650,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			return fmt.Errorf("additionalItems[%d]: %w", _i, _mErr)
 		}
 		var _typed {{.AdditionalItemsTypeName}}
-		if _uErr := {{if .StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_raw, &_typed); _uErr != nil {
+		if _uErr := {{if .StrictReadWrite}}rt.DecodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_raw, &_typed); _uErr != nil {
 			return fmt.Errorf("additionalItems[%d]: %w", _i, _uErr)
 		}
 		if _vErr := _typed.Validate(); _vErr != nil {
@@ -661,11 +662,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	for _i := {{len .TupleItems}}; _i < len(_items); _i++ {
 		_elem := _items[_i]
 		{{- if eq .AdditionalItemsType "integer"}}
-		if !jsonIsInteger(_elem, {{if .StrictInteger}}true{{else}}false{{end}}) {
+		if !rt.IsInteger(_elem, {{if .StrictInteger}}true{{else}}false{{end}}) {
 			return fmt.Errorf("additionalItems[%d]: expected integer, got %T", _i, _elem)
 		}
 		{{- else if eq .AdditionalItemsType "number"}}
-		if !jsonIsNumber(_elem) {
+		if !rt.IsNumber(_elem) {
 			return fmt.Errorf("additionalItems[%d]: expected number, got %T", _i, _elem)
 		}
 		{{- else if eq .AdditionalItemsType "string"}}
@@ -778,10 +779,10 @@ func ({{$recv}} {{.Name}}) Validate() error {
 					if len(arr) <= {{.Index}} {
 						_ifMatch = false
 					} else {
-						{{- /* Compared by identity (see jsonID): the item was
+						{{- /* Compared by identity (see rt.ID): the item was
 						       marshalled and its text compared with the const's
 						       spelling. */}}
-						_ib, _ie := jsonMatchesConstAt(&arr[{{.Index}}], jsonConstOf(false, {{printf "%q" .JSONValue}}))
+						_ib, _ie := rt.MatchesConstAt(&arr[{{.Index}}], rt.ConstOf(false, {{printf "%q" .JSONValue}}))
 						if _ie != nil || !_ib {
 							_ifMatch = false
 						}
@@ -822,7 +823,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				{{- else if .Contains.ConstJSON}}
 				{
 					{{- /* Compared by identity, as the cardinality check compares it. */}}
-					_cOK, _cErr := jsonMatchesConstAt(&_uiElem, jsonConstOf(false, {{printf "%q" .Contains.ConstJSON}}))
+					_cOK, _cErr := rt.MatchesConstAt(&_uiElem, rt.ConstOf(false, {{printf "%q" .Contains.ConstJSON}}))
 					if _cErr == nil && _cOK {
 						_evaluatedByContains = true
 					}
@@ -833,7 +834,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				       compares it. This arm was missing, so no item counted as
 				       evaluated by it and unevaluatedItems refused them. */}}
 				{
-					_cOK, _cErr := jsonMatchesConstAt(&_uiElem, jsonConstOf(false,
+					_cOK, _cErr := rt.MatchesConstAt(&_uiElem, rt.ConstOf(false,
 						{{- range .Contains.EnumJSON}}
 						{{printf "%q" .}},
 						{{- end}}
@@ -845,13 +846,13 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				{{- else if .Contains.Node}}
 				{{- /* The same test the cardinality check makes, asked of one item,
 				       as it is held; see ElementNode. */}}
-				if _cTv, _cTvErr := jsonTreeView(_uiElem); _cTvErr == nil {
-					_cr := _evalNode(&{{.Contains.Node.Var}}, _cTv)
-					if _cr.undecided != nil {
+				if _cTv, _cTvErr := rt.TreeView(_uiElem); _cTvErr == nil {
+					_cr := rt.EvalNode(&{{.Contains.Node.Var}}, _cTv)
+					if _cr.Undecided() != nil {
 						// Whether contains evaluated this item has no answer.
-						return fmt.Errorf("contains[%d]: %w", _ui, _evalError(_cr))
+						return fmt.Errorf("contains[%d]: %w", _ui, rt.EvalError(_cr))
 					}
-					_evaluatedByContains = _cr.ok
+					_evaluatedByContains = _cr.OK()
 				}
 				{{- else if .Contains.TypeName}}
 				{{- /*
@@ -865,13 +866,13 @@ func ({{$recv}} {{.Name}}) Validate() error {
 					_cBytes, _cErr := json.Marshal(_uiElem)
 					if _cErr == nil {
 						var _cTyped {{.Contains.TypeName}}
-						_cDErr := {{if .Contains.StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_cBytes, &_cTyped)
+						_cDErr := {{if .Contains.StrictReadWrite}}rt.DecodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_cBytes, &_cTyped)
 						if _cDErr == nil {
 							_cDErr = _cTyped.Validate()
 						}
 						if _cDErr == nil {
 							_evaluatedByContains = true
-						} else if _schemagenUndecided(_cDErr) {
+						} else if rt.Undecided(_cDErr) {
 							// Whether contains evaluated this item has no answer.
 							return fmt.Errorf("contains[%d]: %w", _ui, _cDErr)
 						}
@@ -883,11 +884,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 					{{- range .Contains.Checks}}
 					{{- if eq .CheckType "type"}}
 					{{- if eq .Value "integer"}}
-					if _cMatch && !jsonIsInteger(_uiElem, false) {
+					if _cMatch && !rt.IsInteger(_uiElem, false) {
 						_cMatch = false
 					}
 					{{- else if eq .Value "number"}}
-					if _cMatch && !jsonIsNumber(_uiElem) {
+					if _cMatch && !rt.IsNumber(_uiElem) {
 						_cMatch = false
 					}
 					{{- else if eq .Value "string"}}
@@ -937,7 +938,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 					       still counted as evaluated by contains. */}}
 					if _cMatch {
 						if _cs, _csOk := _uiElem.(string); _csOk {
-							_cm, _cmErr := {{patternVar .Value}}.matches(_cs)
+							_cm, _cmErr := {{patternVar .Value}}.Matches(_cs)
 							if _cmErr != nil {
 								return fmt.Errorf("contains[%d]: %w", _ui, _cmErr)
 							}
@@ -963,11 +964,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 						return fmt.Errorf("unevaluatedItems[%d]: must be a string", _ui)
 					}
 					{{- else if eq .UnevaluatedItems.ValueType "integer"}}
-					if !jsonIsInteger(_uiElem, false) {
+					if !rt.IsInteger(_uiElem, false) {
 						return fmt.Errorf("unevaluatedItems[%d]: must be an integer", _ui)
 					}
 					{{- else if eq .UnevaluatedItems.ValueType "number"}}
-					if !jsonIsNumber(_uiElem) {
+					if !rt.IsNumber(_uiElem) {
 						return fmt.Errorf("unevaluatedItems[%d]: must be a number", _ui)
 					}
 					{{- else if eq .UnevaluatedItems.ValueType "boolean"}}
@@ -994,11 +995,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 					{{- else if eq .UnevaluatedItems.ValueType "integer"}}
 					{{- /* float64(int64(x)) is not an integer test past 2^63, where
 					       the conversion is undefined. */}}
-					if !jsonIsInteger(_uiElem, false) {
+					if !rt.IsInteger(_uiElem, false) {
 						return fmt.Errorf("unevaluatedItems[%d]: must be an integer", _ui)
 					}
 					{{- else if eq .UnevaluatedItems.ValueType "number"}}
-					if !jsonIsNumber(_uiElem) {
+					if !rt.IsNumber(_uiElem) {
 						return fmt.Errorf("unevaluatedItems[%d]: must be a number", _ui)
 					}
 					{{- else if eq .UnevaluatedItems.ValueType "boolean"}}

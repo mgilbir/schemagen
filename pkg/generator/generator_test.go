@@ -5106,7 +5106,7 @@ func TestObjectLevelConditionalFailsClosed(t *testing.T) {
 				"if": {"minProperties": 2},
 				"then": {"required": ["a"]}
 			}`,
-			wantInLiteral: []string{"MinProperties: _intPtr(2)"},
+			wantInLiteral: []string{"MinProperties: rt.IntPtr(2)"},
 		},
 		// The dangerous shape: an `if` that is partly expressible. Keeping the
 		// part we model and ignoring the rest widens the condition, so `then`
@@ -5120,7 +5120,7 @@ func TestObjectLevelConditionalFailsClosed(t *testing.T) {
 				"if": {"required": ["kind"], "minProperties": 2},
 				"then": {"required": ["a"]}
 			}`,
-			wantInLiteral: []string{"MinProperties: _intPtr(2)", `Required: []string{"kind"}`},
+			wantInLiteral: []string{"MinProperties: rt.IntPtr(2)", `Required: []string{"kind"}`},
 		},
 		// `enum` is the property's only keyword, so the lenient reading carried no
 		// check for it, the branch carried no property, and the group was dropped
@@ -5161,7 +5161,7 @@ func TestObjectLevelConditionalFailsClosed(t *testing.T) {
 				"if": {"required": ["kind"]},
 				"then": {"$ref": "#/definitions/other", "required": ["a"]}
 			}`,
-			wantInLiteral:    []string{"MaxProperties: _intPtr(2)"},
+			wantInLiteral:    []string{"MaxProperties: rt.IntPtr(2)"},
 			wantNotInLiteral: []string{`Required: []string{"a"}`},
 		},
 		// The mirror of the row above on a draft where the reference applies
@@ -5176,7 +5176,7 @@ func TestObjectLevelConditionalFailsClosed(t *testing.T) {
 				"if": {"required": ["kind"]},
 				"then": {"$ref": "#/$defs/other", "required": ["a"]}
 			}`,
-			wantInLiteral: []string{"MaxProperties: _intPtr(2)", `Required: []string{"a"}`},
+			wantInLiteral: []string{"MaxProperties: rt.IntPtr(2)", `Required: []string{"a"}`},
 		},
 		// A condition every object matches. `else` is unreachable and `then` is
 		// unconditional -- and nothing applied it, so the `required` was dropped.
@@ -5289,7 +5289,7 @@ func TestObjectLevelConditionalItCannotReadWholeGoesToTheEvaluator(t *testing.T)
 				"if": {"required": ["kind"]},
 				"then": {"required": ["a"], "minProperties": 3}
 			}`,
-			wantInLiteral: []string{"MinProperties: _intPtr(3)", `Required: []string{"a"}`},
+			wantInLiteral: []string{"MinProperties: rt.IntPtr(3)", `Required: []string{"a"}`},
 		},
 		// Per-property mixing: one property the checks can spell, one they
 		// cannot. Both are carried now, where before only the first was.
@@ -5303,7 +5303,7 @@ func TestObjectLevelConditionalItCannotReadWholeGoesToTheEvaluator(t *testing.T)
 				}},
 				"if": {"required": ["kind"]}
 			}`,
-			wantInLiteral: []string{"MinLength: _intPtr(2)", `Enum: []string{"\"p\"", "\"q\""}`},
+			wantInLiteral: []string{"MinLength: rt.IntPtr(2)", `Enum: []string{"\"p\"", "\"q\""}`},
 		},
 		// `else` is the same rule, and it is the mirror this codebase leaves
 		// half-done: the `not` inside it was dropped exactly as the `then`'s
@@ -5316,7 +5316,7 @@ func TestObjectLevelConditionalItCannotReadWholeGoesToTheEvaluator(t *testing.T)
 				"then": {"properties": {"a": {"enum": ["p","q"]}}},
 				"else": {"required": ["b"], "not": {"required": ["c"]}}
 			}`,
-			wantInLiteral: []string{"Not: _node(", `Required: []string{"c"}`, `Required: []string{"b"}`},
+			wantInLiteral: []string{"Not: rt.NodePtr(", `Required: []string{"c"}`, `Required: []string{"b"}`},
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -7573,15 +7573,15 @@ func TestIntegerPositionsDecodeFloatNotation(t *testing.T) {
 		}
 	}
 
-	// The shadow has the field's shape with jsonInteger at every leaf, which is
+	// The shadow has the field's shape with rt.Integer at every leaf, which is
 	// what leaves nesting, nils and nulls to encoding/json.
 	for jsonName, wantShadow := range map[string]string{
-		"req":     "jsonInteger",
-		"opt":     "*jsonInteger",
-		"arr":     "[]jsonInteger",
-		"grid":    "[][]jsonInteger",
-		"mp":      "map[string]jsonInteger",
-		"nullint": "*jsonInteger",
+		"req":     "rt.Integer",
+		"opt":     "*rt.Integer",
+		"arr":     "[]rt.Integer",
+		"grid":    "[][]rt.Integer",
+		"mp":      "map[string]rt.Integer",
+		"nullint": "*rt.Integer",
 	} {
 		def := fieldNamedJSON(t, doc, jsonName).LeafDecode
 		if got := def.ShadowType.GoTypeName(); got != wantShadow {
@@ -7698,8 +7698,8 @@ func TestTypedAdditionalPropertiesIntegerValuesDecodeFloatNotation(t *testing.T)
 	if doc.AdditionalProperties.LeafDecode == nil {
 		t.Fatalf("the overflow map decodes its values as bare int64, so 1.0 is refused for a key the schema types integer")
 	}
-	if got := doc.AdditionalProperties.LeafDecode.ShadowType.GoTypeName(); got != "jsonInteger" {
-		t.Fatalf("overflow shadow = %q, want jsonInteger", got)
+	if got := doc.AdditionalProperties.LeafDecode.ShadowType.GoTypeName(); got != "rt.Integer" {
+		t.Fatalf("overflow shadow = %q, want rt.Integer", got)
 	}
 }
 

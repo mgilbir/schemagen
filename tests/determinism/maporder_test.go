@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"go/ast"
 	"go/build"
-	"go/importer"
 	"go/parser"
 	"go/token"
 	"go/types"
@@ -15,7 +14,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/mgilbir/schemagen/internal/testgo"
 	"github.com/mgilbir/schemagen/tests/internal/testsupport"
 )
 
@@ -75,7 +73,13 @@ var mapOrderGuardedPackages = []string{
 	"pkg/emitter",
 	"pkg/emitter/internal/gocontext",
 	"pkg/emitter/internal/gocontext/guardgen",
-	"pkg/validationruntime",
+	// The runtime module every generated package imports. Its code used to be
+	// generated into each package and was judged there; it is judged here now,
+	// as source, and its loops carry the same maporder: comments the templates'
+	// did.
+	"runtime",
+	"runtime/internal/format",
+	"runtime/internal/quote",
 	"tests/external",
 	"tests/internal/testsupport",
 }
@@ -306,23 +310,6 @@ func mentions(n ast.Node, name string) bool {
 	return found
 }
 
-// useTestgoEnvForImports gives this test the go environment testgo.Env gives
-// every go command a test runs. The source importer these guards type-check
-// with resolves an import path by running `go list` itself, in this process's
-// environment, so the three variables testgo.Env replaces -- GOCACHE, GOFLAGS,
-// GOWORK -- are set to the same values for the length of the test; a
-// developer's -mod=vendor or go.work then cannot change what the guard sees.
-func useTestgoEnvForImports(t *testing.T) {
-	t.Helper()
-	for _, e := range testgo.Env() {
-		k, v, _ := strings.Cut(e, "=")
-		switch k {
-		case "GOCACHE", "GOFLAGS", "GOWORK":
-			t.Setenv(k, v)
-		}
-	}
-}
-
 // typeCheckDir parses the non-test Go files of dir and type-checks them.
 func typeCheckDir(fset *token.FileSet, imp types.ImporterFrom, dir string) ([]*ast.File, *types.Info, map[string][]string, error) {
 	matches, err := filepath.Glob(filepath.Join(dir, "*.go"))
@@ -364,13 +351,21 @@ func typeCheckDir(fset *token.FileSet, imp types.ImporterFrom, dir string) ([]*a
 }
 
 func TestNoMapOrderReachesTheGenerator(t *testing.T) {
-	useTestgoEnvForImports(t)
 	fset := token.NewFileSet()
-	imp := importer.ForCompiler(fset, "source", nil).(types.ImporterFrom)
+	// The runtime is a module of its own: its packages import each other by a
+	// path only its go.mod can resolve, so it is read by an importer that
+	// resolves in its directory, and the rest by one that resolves in this
+	// module's.
+	rootImp := newListImporter(fset, testsupport.Root)
+	runtimeImp := newListImporter(fset, testsupport.RepoPath("runtime"))
 
 	total, idioms, annotated := 0, 0, 0
 	var bad []string
 	for _, dir := range mapOrderGuardedPackages {
+		imp := rootImp
+		if dir == "runtime" || strings.HasPrefix(dir, "runtime/") {
+			imp = runtimeImp
+		}
 		files, info, src, err := typeCheckDir(fset, imp, testsupport.RepoPath(dir))
 		if err != nil {
 			t.Fatalf("type-checking %s: %v", dir, err)

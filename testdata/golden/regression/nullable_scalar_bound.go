@@ -2,4 +2,14 @@
 
 package testpkg
 
+import (
+	rt "github.com/mgilbir/schemagen/runtime"
+)
+
+// This file needs the runtime module github.com/mgilbir/schemagen/runtime at API
+// level 1 or newer. If the compiler reports rt.API1 undefined, the release the
+// build resolved is older than the schemagen that generated this file: update it
+// with go get github.com/mgilbir/schemagen/runtime@latest.
+var _ rt.API1
+
 type NullableScalarBound *string

@@ -221,18 +221,24 @@ func isPackageIdentifier(s string) bool {
 
 // Emit takes a generator.File and returns gofmt-formatted Go source code.
 func (e *Emitter) Emit(f *generator.File) ([]byte, error) {
-	if err := checkPackageIdentifiers(f.PackageName, f.Imports); err != nil {
+	// Every file names the runtime module (its API-level marker at the least),
+	// whether or not the model of imports that built f claimed it: a File built
+	// by hand is as good as one the generator built.
+	imports := f.Imports
+	if !slices.ContainsFunc(imports, func(imp generator.Import) bool { return imp.Path == generator.RuntimeImportPath }) {
+		imports = append(slices.Clone(imports), generator.GeneratedImport(generator.RuntimeImportPath))
+	}
+	if err := checkPackageIdentifiers(f.PackageName, imports); err != nil {
 		return nil, err
 	}
 	data := fileData{
 		PackageName:          f.PackageName,
-		Imports:              f.Imports,
+		Imports:              imports,
 		TypeDefs:             wrapTypeDefs(f.TypeDefs),
 		ValidationCapability: f.ValidationCapability,
 		UnresolvedRefs:       f.UnresolvedRefs,
 		UndeclaredRefTypes:   f.UndeclaredRefTypes,
 		ElementNodes:         f.ElementNodes,
-		TreeTypes:            f.TreeTypes,
 	}
 
 	var buf bytes.Buffer
@@ -322,200 +328,25 @@ func packageQualifiers(src []byte) (map[string]bool, bool) {
 
 // EmitHelpers renders the shared helper file for a destination package.
 //
-// Helper functions are package-level, so a package containing two schemas that
-// both need one would declare it twice and fail to compile. They live in a
-// single file per package instead. Returns ok=false when the set is empty and
-// no file should be written.
+// The helpers proper -- the decoder, the encoder, the identity of a value, the
+// number core, the format checkers, the schema evaluator -- are not in it: they
+// are the runtime module's, imported by every generated file. What is left to
+// declare per package is what the package's own schemas supply, which is the
+// regular expressions they name, held as package-level variables compiled once
+// when the package is initialised.
+//
+// Those are package-level, so a package containing two schemas that both name
+// one would declare it twice and fail to compile. They live in a single file per
+// package instead. Returns ok=false when the set is empty and no file should be
+// written.
 func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) ([]byte, bool, error) {
 	if helpers.Empty() {
 		return nil, false, nil
 	}
-	// A block one block calls is a block this file has to carry, and nothing
-	// upstream can see that: the set is read from what the *generated types*
-	// call, and a call from one helper to another appears in neither.
-	helpers.CloseOverCalls()
-
-	// Imports are fixed by which helpers are included, not by the schemas.
-	var imports []generator.Import
-	// Each path is added at most once: the list goes straight into the file's
-	// import block, and naming the same package twice does not compile.
-	//
 	// The spec -- and so the name the file spells the package under -- is the
 	// generator's (generator.GeneratedImport), which is the table its name
-	// registry reserves those names from. A path that table does not list is a
-	// panic there rather than an import here, so the helper file cannot gain a
-	// package whose name a cross-package alias or a schema-derived identifier
-	// could still take.
-	add := func(cond bool, path string) {
-		if !cond {
-			return
-		}
-		for _, existing := range imports {
-			if existing.Path == path {
-				return
-			}
-		}
-		imports = append(imports, generator.GeneratedImport(path))
-	}
-	addAliased := func(cond bool, path, alias string) {
-		if spec := generator.GeneratedImport(path); spec.Alias != alias {
-			panic(fmt.Sprintf("emitter: %q is imported as %q, and the generator reserves it as %q", path, alias, spec.Alias))
-		}
-		add(cond, path)
-	}
-	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.NumberCompare || helpers.DateTime || helpers.Canonical || helpers.NullCheck || helpers.Decode || helpers.DecodePath, "encoding/json")
-	add(helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.Canonical || helpers.NullCheck || helpers.Format || helpers.PathJoin || helpers.DecodePath, "fmt")
-	// The JSON-equality reduction: a decoder over the document's own bytes, a
-	// builder for the text it reduces to, sorted member names, and strconv for
-	// the exponent it writes a number's scale as.
-	add(helpers.Canonical, "bytes")
-	add(helpers.Canonical, "strconv")
-	add(helpers.Canonical, "strings")
-	// The identity of a value, block by block. The core: two seeded hashes, the
-	// spelling of numbers, strings read as UTF-8, and a raw JSON reader that
-	// sorts an object's members to find a key written twice.
-	add(helpers.IdentityCore, "encoding/json")
-	add(helpers.IdentityCore, "errors")
-	add(helpers.IdentityCore, "hash/maphash")
-	add(helpers.IdentityCore, "math")
-	add(helpers.IdentityCore, "sort")
-	add(helpers.IdentityCore, "strconv")
-	add(helpers.IdentityCore, "unicode/utf8")
-	// A const read once per process, and decoded to confirm a match.
-	add(helpers.IdentityConst, "bytes")
-	add(helpers.IdentityConst, "encoding/json")
-	add(helpers.IdentityConst, "strconv")
-	add(helpers.IdentityConst, "sync")
-	// A decoded value, and the refusal of one that is not.
-	add(helpers.IdentityAny, "encoding/json")
-	add(helpers.IdentityAny, "fmt")
-	// A document keeps the identities of the values read lazily from it, which
-	// a value judged from several goroutines at once shares.
-	add(helpers.IdentityLazy, "errors")
-	add(helpers.IdentityLazy, "sync")
-	add(helpers.IdentityLazy, "sync/atomic")
-	// Any Go value: the Go kind a value this package does not write itself is
-	// read by, the base64 encoding/json writes a []byte as, and the time.Time
-	// whose MarshalJSON it reads as a string.
-	add(helpers.IdentityValue, "encoding/base64")
-	add(helpers.IdentityValue, "encoding/json")
-	add(helpers.IdentityValue, "errors")
-	add(helpers.IdentityValue, "math")
-	add(helpers.IdentityValue, "reflect")
-	add(helpers.IdentityValue, "strconv")
-	add(helpers.IdentityValue, "time")
-	add(helpers.IdentityKind, "encoding/json")
-	add(helpers.IdentityKind, "math")
-	add(helpers.IdentityKind, "strconv")
-	// The canonical text of a number whose exponent took a big.Int to hold is
-	// written from that big.Int.
-	add(helpers.Canonical, "math/big")
-	// The exact-number core reads a literal as decimal digits: strconv for the
-	// exponent and for the literal of a Go number, math/big for an exponent
-	// past int64 and a divisor past uint64, math/bits for the 128-bit
-	// remainders multipleOf is decided by, math for the float64 fast path and
-	// the two values JSON cannot write, reflect for a named type over a number
-	// kind, and bytes for the decoder that keeps every number as its literal.
-	// What the pruning leaves unused is dropped with the declarations. None of
-	// it is needed by the shadow type, which only decides whether a token is a
-	// number at all.
-	add(helpers.NumberCompare, "bytes")
-	add(helpers.NumberCompare, "encoding/json")
-	add(helpers.NumberCompare, "math")
-	add(helpers.NumberCompare, "math/big")
-	add(helpers.NumberCompare, "math/bits")
-	add(helpers.NumberCompare, "reflect")
-	add(helpers.NumberCompare, "strconv")
-	// The in-place decode: the document's index is searched by offset, an
-	// object key that is not plain ASCII is handed to encoding/json after a
-	// UTF-8 scan, the commonest scalars are read with strconv, and a value of
-	// the wrong kind is refused with the reflect.Type encoding/json would have
-	// named.
-	add(helpers.Decode, "reflect")
-	add(helpers.Decode, "sort")
-	add(helpers.Decode, "strconv")
-	add(helpers.Decode, "unicode/utf8")
-	// A path error writes out the chain of steps it holds with a builder, once.
-	add(helpers.PathJoin, "strings")
-	add(helpers.Dynamic, "math")
-	// jsonIntegerFromLiteral reads the number as decimal digits, which is what
-	// makes it exact where a parse into float64 could not be.
-	add(helpers.Integer, "strconv")
-	add(helpers.Integer, "strings")
-	// jsonDateTime is a defined type over time.Time and hands every value it is
-	// given to that type's own decoder; the respelling it retries through needs
-	// nothing else.
-	add(helpers.DateTime, "time")
-	// The two ip shadows are defined types over netip.Addr and hand what they
-	// are given to that package's own parser.
-	add(helpers.IPAddr, "net/netip")
-	add(helpers.IPAddr, "encoding/json")
-	add(helpers.Annotations, "reflect")
-	add(helpers.Annotations, "strconv")
-	// The regexp engine only comes in when a compiled schema actually names a
-	// pattern: it is a third-party dependency, and a package that never asks for
-	// one should not acquire it. Every pattern a package matches with is
-	// compiled in the pattern block, once, so that block is the one importer
-	// for patterns -- the evaluator's arms, the --strict-read-write walker and
-	// every generated check match through the variables it declares. The
-	// format block needs the same engine for `format: regex`, whose argument is
-	// the document's own text and so cannot be compiled ahead. Both routes go
-	// through addAliased rather than appending, because the list goes straight
-	// into the import block and must name each package once.
-	addAliased(len(helpers.Patterns) > 0, "github.com/mgilbir/goecma262", "ecma262")
-	addAliased(len(helpers.Patterns) > 0, "github.com/mgilbir/goecma262/flags", "ecmaflags")
-	// The quoting rule counts and cuts bytes at a character boundary.
-	add(helpers.Quote, "strconv")
-	add(helpers.Quote, "unicode/utf8")
-	add(helpers.Undecided, "errors")
-	// The walker reports the first offending key in name order, so that a
-	// document with several of them fails the same way every time. The runtime
-	// evaluator visits an object's properties in the same fixed order, for the
-	// same reason.
-	add(helpers.NullCheck || helpers.Annotations || helpers.Canonical || helpers.DecodePath, "sort")
-	// The decode-path block reads what a refusal was about: errors.As for the
-	// one encoding/json raises from the Go type it was filling, and strings to
-	// take the package qualifier off a shadow's name before reading it.
-	add(helpers.DecodePath, "errors")
-	add(helpers.DecodePath, "strings")
-	// The format helpers are emitted as one block, so they name every package
-	// any of them needs whether or not the schema uses that particular format.
-	// Splitting the block per format is what would let a package end up with a
-	// helper it cannot compile; see HelperSet.Format.
-	add(helpers.Format, "net/netip")
-	add(helpers.Format, "net/url")
-	add(helpers.Format, "strings")
-	add(helpers.Format, "time")
-	addAliased(helpers.Format, "github.com/mgilbir/goecma262", "ecma262")
-	addAliased(helpers.Format, "github.com/mgilbir/goecma262/flags", "ecmaflags")
-	// The hostname block is separate for one reason: x/net/idna. A package whose
-	// schemas name no hostname, email or idn-* format neither emits these
-	// functions nor imports the module, which is the whole point of the split --
-	// generated code putting a dependency on its caller is a real imposition, so
-	// it is confined to callers whose schemas ask for it. See
-	// HelperSet.FormatHostname.
-	add(helpers.FormatHostname, "net/mail")
-	add(helpers.FormatHostname, "net/netip")
-	add(helpers.FormatHostname, "strings")
-	add(helpers.FormatHostname, "unicode")
-	add(helpers.FormatHostname, "unicode/utf8")
-	add(helpers.FormatHostname, "fmt")
-	add(helpers.FormatHostname, "golang.org/x/net/idna")
-	// The content check is its own block for the same kind of reason, one
-	// import smaller: encoding/base64 is standard library, but nothing else
-	// here needs it and a package whose schemas name no contentEncoding should
-	// not carry the function that uses it. See HelperSet.Content.
-	add(helpers.Content, "encoding/base64")
-	add(helpers.Content, "encoding/json")
-	add(helpers.Content, "fmt")
-	// --strict-read-write's walker. `errors` is the one import here nothing else
-	// in a helper file needs, and it is what lets a Validate check tell the
-	// flag's refusal from a real decode failure by type rather than by message.
-	add(helpers.Access, "encoding/json")
-	add(helpers.Access, "errors")
-	add(helpers.Access, "fmt")
-	add(helpers.Access, "sort")
-
+	// registry reserves those names from.
+	imports := []generator.Import{generator.GeneratedImport(generator.RuntimeImportPath)}
 	if err := checkPackageIdentifiers(packageName, imports); err != nil {
 		return nil, false, err
 	}
@@ -529,54 +360,11 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	if err := e.tmpl.ExecuteTemplate(&buf, "helpers_file.go.tmpl", data); err != nil {
 		return nil, false, fmt.Errorf("emitter: executing helper template: %w", err)
 	}
-	// A set read from source is pruned to what its roots reach, which takes
-	// the imports nothing kept names with it; see pruneHelpers.
-	if helpers.Roots != nil {
-		pruned, err := pruneHelpers(buf.Bytes(), helpers.Roots)
-		if err != nil {
-			return nil, false, err
-		}
-		return formatHelpers(pruned)
-	}
-	if kept, dropped := keepReferencedImports(buf.Bytes(), data.Imports); dropped {
-		data.Imports = kept
-		buf.Reset()
-		if err := e.tmpl.ExecuteTemplate(&buf, "helpers_file.go.tmpl", data); err != nil {
-			return nil, false, fmt.Errorf("emitter: executing helper template: %w", err)
-		}
-	}
-	return formatHelpers(buf.Bytes())
-}
-
-// formattedHelpers keeps the formatted text of the last helper files: the same
-// file is written for package after package. Bounded as preparedCache is.
-var formattedHelpers struct {
-	sync.Mutex
-	m map[string][]byte
-}
-
-const formattedHelpersSize = 256
-
-// formatHelpers is the rendered helper file, gofmt'ed.
-func formatHelpers(rendered []byte) ([]byte, bool, error) {
-	key := string(rendered)
-	formattedHelpers.Lock()
-	src, ok := formattedHelpers.m[key]
-	formattedHelpers.Unlock()
-	if ok {
-		return append([]byte(nil), src...), true, nil
-	}
-	src, err := format.Source(rendered)
+	src, err := format.Source(buf.Bytes())
 	if err != nil {
-		return nil, false, fmt.Errorf("emitter: formatting helper output: %w\nraw output:\n%s", err, rendered)
+		return nil, false, fmt.Errorf("emitter: formatting helper output: %w\nraw output:\n%s", err, buf.String())
 	}
-	formattedHelpers.Lock()
-	if formattedHelpers.m == nil || len(formattedHelpers.m) >= formattedHelpersSize {
-		formattedHelpers.m = make(map[string][]byte)
-	}
-	formattedHelpers.m[key] = src
-	formattedHelpers.Unlock()
-	return append([]byte(nil), src...), true, nil
+	return src, true, nil
 }
 
 // helperFileData is the data passed to the shared helper file template.
@@ -600,8 +388,6 @@ type fileData struct {
 	UndeclaredRefTypes []generator.UndeclaredRefType
 	// ElementNodes are declared after the types. See generator.ElementNode.
 	ElementNodes []*generator.ElementNode
-	// TreeTypes declare SchemagenJSONTree. See generator.File.TreeTypes.
-	TreeTypes []generator.TreeType
 }
 
 func (d fileData) HasValidationCapability() bool {

@@ -170,7 +170,7 @@ func main() {
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(mainSrc), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeCogenGoMod(dir, true); err != nil {
+	if err := writeCogenGoMod(dir); err != nil {
 		t.Fatal(err)
 	}
 	// The module is named after the import path the program uses.
@@ -767,7 +767,7 @@ func runEngineProgram(t *testing.T, schemaJSON string, cfg generator.Config, mai
 			t.Fatal(err)
 		}
 	}
-	if err := writeCogenGoMod(dir, true); err != nil {
+	if err := writeCogenGoMod(dir); err != nil {
 		t.Fatal(err)
 	}
 	mod, err := os.ReadFile(filepath.Join(dir, "go.mod"))
@@ -991,30 +991,57 @@ func main() {
 // engine's error-returning match API, so a harness left on an older engine
 // would not compile, and one left on a different engine would test code
 // against an engine generation never compiled a pattern with.
+//
+// It holds the runtime module to the same pins. Generated code runs the engine
+// through the runtime, so that module's go.mod is what a user of a generated
+// package builds against; the throwaway modules replace the runtime onto this
+// checkout and need the same versions and checksums it names, or they would
+// not build offline -- and the pins that reach a user would be ones no test
+// ever compiled with.
 func TestThrowawayModulesPinTheEngineThisModuleRequires(t *testing.T) {
-	mod, err := os.ReadFile(testsupport.RepoPath("go.mod"))
-	if err != nil {
-		t.Fatal(err)
+	requirements := func(gomod string) map[string]string {
+		mod, err := os.ReadFile(testsupport.RepoPath(gomod))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]string{}
+		for _, line := range strings.Split(string(mod), "\n") {
+			f := strings.Fields(line)
+			// A single-line requirement spells "require path version".
+			if len(f) > 0 && f[0] == "require" {
+				f = f[1:]
+			}
+			if len(f) >= 2 {
+				out[f[0]] = f[1]
+			}
+		}
+		return out
 	}
-	required := ""
-	for _, line := range strings.Split(string(mod), "\n") {
-		if f := strings.Fields(line); len(f) >= 2 && f[0] == "github.com/mgilbir/goecma262" {
-			required = f[1]
+	for _, gomod := range []string{"go.mod", "runtime/go.mod"} {
+		req := requirements(gomod)
+		if req["github.com/mgilbir/goecma262"] != goecma262Version {
+			t.Errorf("%s requires goecma262 %s; the harnesses pin %s", gomod, req["github.com/mgilbir/goecma262"], goecma262Version)
 		}
 	}
-	if required != goecma262Version {
-		t.Fatalf("go.mod requires goecma262 %s; the harnesses pin %s", required, goecma262Version)
+	// The other two modules the runtime imports, at the versions the harnesses
+	// write into their go.mod.
+	rt := requirements("runtime/go.mod")
+	if rt["golang.org/x/net"] != testsupport.XnetVersion || rt["golang.org/x/text"] != testsupport.XtextVersion {
+		t.Errorf("runtime/go.mod requires x/net %s and x/text %s; the harnesses pin %s and %s",
+			rt["golang.org/x/net"], rt["golang.org/x/text"], testsupport.XnetVersion, testsupport.XtextVersion)
 	}
-	sum, err := os.ReadFile(testsupport.RepoPath("go.sum"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{
-		"github.com/mgilbir/goecma262 " + goecma262Version + " " + goecma262H1,
-		"github.com/mgilbir/goecma262 " + goecma262Version + "/go.mod " + goecma262GoMod,
-	} {
-		if !strings.Contains(string(sum), want+"\n") {
-			t.Errorf("go.sum has no line %q", want)
+	for _, gosum := range []string{"go.sum", "runtime/go.sum"} {
+		sum, err := os.ReadFile(testsupport.RepoPath(gosum))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, want := range []string{
+			"github.com/mgilbir/goecma262 " + goecma262Version + " " + goecma262H1,
+			"github.com/mgilbir/goecma262 " + goecma262Version + "/go.mod " + goecma262GoMod,
+		} {
+			if !strings.Contains(string(sum), want+"\n") {
+				t.Errorf("%s has no line %q", gosum, want)
+			}
 		}
 	}
 }

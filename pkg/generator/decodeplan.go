@@ -5,23 +5,24 @@ import "strings"
 // How a generated type decodes the value at one position.
 //
 // Every struct, every raw-JSON wrapper, and every alias over a slice, a map or a
-// struct decodes in place: it has a decodeJSONAt(*jsonDoc, jsonSpan) method that
+// struct decodes in place: it has a decodeJSONAt(*rt.Doc, rt.Span) method that
 // reads the value at a span of one indexed document, and hands each member's
-// span to the member's own type in turn (see the jsonDoc helpers). A container
+// span to the member's own type in turn (see rt.Doc, in the runtime module
+// generated code imports). A container
 // of such a type holds nothing encoding/json can decode for it without calling
 // back into the type -- and calling back through encoding/json scans the member
 // again, at every level, which is what made decoding a recursive document
 // quadratic in its depth. So the decode of each position is composed here, out
 // of the generic helpers and the in-place methods, as a Go expression of type
-// jsonAt[T] over the position's own type:
+// rt.At[T] over the position's own type:
 //
-//	*Item            func(_p **Item, _d *jsonDoc, _s jsonSpan) error { return jsonDecodePtr(_p, _d, _s, (*Item).decodeJSONAt) }
-//	[]Item           func(_p *[]Item, _d *jsonDoc, _s jsonSpan) error { return jsonDecodeSlice(_p, _d, _s, (*Item).decodeJSONAt) }
-//	map[string]int64 jsonAtJSON[map[string]int64]
+//	*Item            func(_p **Item, _d *rt.Doc, _s rt.Span) error { return rt.DecodePtr(_p, _d, _s, (*Item).decodeJSONAt) }
+//	[]Item           func(_p *[]Item, _d *rt.Doc, _s rt.Span) error { return rt.DecodeSlice(_p, _d, _s, (*Item).decodeJSONAt) }
+//	map[string]int64 rt.AtJSON[map[string]int64]
 //
 // A position holding nothing that decodes in place -- a scalar, a container of
 // scalars, an enum, another package's type -- is left to encoding/json whole,
-// through jsonAtJSON: nothing under it calls back, so the one decode is linear.
+// through rt.AtJSON: nothing under it calls back, so the one decode is linear.
 //
 // Two readings are composed, because the generated code reports a refusal in two
 // ways and both are pinned. The json reading is encoding/json's own: a refusal
@@ -193,7 +194,7 @@ func lazyItemsDecoder(t GoType, dec string) string {
 	if !isAnySlice(t) || dec == "" {
 		return dec
 	}
-	return jsonAtLiteral(t, "jsonLazyItemsOr["+t.GoTypeName()+"](_p, _d, _s, "+dec+")")
+	return jsonAtLiteral(t, "rt.LazyItemsOr["+t.GoTypeName()+"](_p, _d, _s, "+dec+")")
 }
 
 // isAnySlice reports whether t is []any, which is what a tuple is held as.
@@ -231,7 +232,7 @@ func (g *Generator) namedDecoder(name string) string {
 			return "(*" + name + ").decodeJSONAt"
 		}
 	}
-	return "jsonAtJSON[" + name + "]"
+	return "rt.AtJSON[" + name + "]"
 }
 
 // reachesInPlace reports whether decoding a value of t reaches a type of this
@@ -279,7 +280,7 @@ func (g *Generator) reachesInPlaceSeen(t GoType, seen map[string]bool) bool {
 // jsonDecoder is the json reading of a value of t.
 func (g *Generator) jsonDecoder(t GoType) string {
 	if !g.reachesInPlace(t) {
-		return "jsonAtJSON[" + t.GoTypeName() + "]"
+		return "rt.AtJSON[" + t.GoTypeName() + "]"
 	}
 	switch v := t.(type) {
 	case *NamedType:
@@ -306,7 +307,7 @@ func (g *Generator) jsonDecoder(t GoType) string {
 	case *MapType:
 		return g.mapDecoder(t, v.ValueType)
 	}
-	return "jsonAtJSON[" + t.GoTypeName() + "]"
+	return "rt.AtJSON[" + t.GoTypeName() + "]"
 }
 
 // The three generic container helpers, instantiated over a position's own type
@@ -329,19 +330,19 @@ func (g *Generator) pointerDecoder(self, inner GoType) string {
 		// of its own, so it was compiled once per struct type of the package.
 		// The same steps: a null leaves the pointer nil, and anything else is
 		// decoded into a newly allocated value.
-		return "func(_p *" + self.GoTypeName() + ", _d *jsonDoc, _s jsonSpan) error {\n" +
-			"if _d.isNull(_s) {\n*_p = nil\nreturn nil\n}\n" +
+		return "func(_p *" + self.GoTypeName() + ", _d *rt.Doc, _s rt.Span) error {\n" +
+			"if _d.IsNull(_s) {\n*_p = nil\nreturn nil\n}\n" +
 			"_v := new(" + inner.GoTypeName() + ")\n*_p = _v\nreturn _v.decodeJSONAt(_d, _s)\n}"
 	}
-	return jsonAtLiteral(self, "jsonDecodePtr["+self.GoTypeName()+", "+inner.GoTypeName()+"](_p, _d, _s, "+dec+")")
+	return jsonAtLiteral(self, "rt.DecodePtr["+self.GoTypeName()+", "+inner.GoTypeName()+"](_p, _d, _s, "+dec+")")
 }
 
 func (g *Generator) sliceDecoder(self, elem GoType) string {
-	return jsonAtLiteral(self, "jsonDecodeSlice["+self.GoTypeName()+", "+elem.GoTypeName()+"](_p, _d, _s, "+g.jsonDecoder(elem)+")")
+	return jsonAtLiteral(self, "rt.DecodeSlice["+self.GoTypeName()+", "+elem.GoTypeName()+"](_p, _d, _s, "+g.jsonDecoder(elem)+")")
 }
 
 func (g *Generator) mapDecoder(self, value GoType) string {
-	return jsonAtLiteral(self, "jsonDecodeMap["+self.GoTypeName()+", "+value.GoTypeName()+"](_p, _d, _s, "+g.jsonDecoder(value)+")")
+	return jsonAtLiteral(self, "rt.DecodeMap["+self.GoTypeName()+", "+value.GoTypeName()+"](_p, _d, _s, "+g.jsonDecoder(value)+")")
 }
 
 // structuralDecoder is the json reading of a value of the named type self whose
@@ -391,22 +392,22 @@ func (g *Generator) structuralDecoder(self *NamedType, underlying GoType) string
 // probe the refusal it is traced by. See jsonProbeLeaf.
 func (g *Generator) memberDecoder(t GoType) string {
 	if !g.reachesInPlace(t) {
-		return jsonAtLiteral(t, "jsonProbeLeaf["+t.GoTypeName()+"](_p, _d, _s, "+decodeMemberExpr(t)+")")
+		return jsonAtLiteral(t, "rt.ProbeLeaf["+t.GoTypeName()+"](_p, _d, _s, "+decodeMemberExpr(t)+")")
 	}
 	switch v := t.(type) {
 	case *ArrayType:
-		return jsonAtLiteral(t, "jsonProbeSlice["+v.ItemType.GoTypeName()+"](_p, _d, _s, "+g.memberDecoder(v.ItemType)+")")
+		return jsonAtLiteral(t, "rt.ProbeSlice["+v.ItemType.GoTypeName()+"](_p, _d, _s, "+g.memberDecoder(v.ItemType)+")")
 	case *MapType:
-		return jsonAtLiteral(t, "jsonProbeMap["+v.ValueType.GoTypeName()+"](_p, _d, _s, "+g.memberDecoder(v.ValueType)+")")
+		return jsonAtLiteral(t, "rt.ProbeMap["+v.ValueType.GoTypeName()+"](_p, _d, _s, "+g.memberDecoder(v.ValueType)+")")
 	}
-	return jsonAtLiteral(t, "jsonDecodeRefusal("+g.jsonDecoder(t)+"(_p, _d, _s))")
+	return jsonAtLiteral(t, "rt.DecodeRefusal("+g.jsonDecoder(t)+"(_p, _d, _s))")
 }
 
-// jsonAtLiteral writes a jsonAt[T] over t as a function literal returning body,
+// jsonAtLiteral writes a rt.At[T] over t as a function literal returning body,
 // which reads its arguments as _p, _d and _s. The literal captures nothing, so
 // it costs no allocation however often the decode runs.
 func jsonAtLiteral(t GoType, body string) string {
-	return "func(_p *" + t.GoTypeName() + ", _d *jsonDoc, _s jsonSpan) error { return " + body + " }"
+	return "func(_p *" + t.GoTypeName() + ", _d *rt.Doc, _s rt.Span) error { return " + body + " }"
 }
 
 // decodeMemberExpr is the decode of one position, written over the emitted
@@ -425,9 +426,9 @@ func jsonAtLiteral(t GoType, body string) string {
 func decodeMemberExpr(t GoType) string {
 	switch v := t.(type) {
 	case *ArrayType:
-		return "jsonDecodeItems(" + decodeMemberExpr(v.ItemType) + ")"
+		return "rt.DecodeItems(" + decodeMemberExpr(v.ItemType) + ")"
 	case *MapType:
-		return "jsonDecodeValues(" + decodeMemberExpr(v.ValueType) + ")"
+		return "rt.DecodeValues(" + decodeMemberExpr(v.ValueType) + ")"
 	}
-	return "jsonDecodeValue[" + t.GoTypeName() + "]"
+	return "rt.DecodeValue[" + t.GoTypeName() + "]"
 }

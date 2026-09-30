@@ -4,7 +4,7 @@ import "strings"
 
 // This file plans how a check that compares values -- uniqueItems, a const --
 // reads the identity of the values it compares: the counterpart of
-// encodeplan.go for jsonID, the identity the emitted helpers define.
+// encodeplan.go for rt.ID, the identity the runtime module defines.
 //
 // Those checks used to marshal each value and compare the text. A value of this
 // package's types was written out member by member into a buffer, subtree and
@@ -12,12 +12,12 @@ import "strings"
 // wrote each object out, the same check one level down wrote the same subtrees
 // out again, and a document whose arrays nest d deep was written d times over
 // to be judged once -- 0.8 to 3 ms per CycloneDX BOM went there. Now a value's
-// identity is read off the value as it is held: a struct's jsonIdentity reads
-// its members in the order and by the rules its appendJSON writes them (see
+// identity is read off the value as it is held: a struct's SchemagenJSONIdentity
+// reads its members in the order and by the rules its appendJSON writes them (see
 // struct_identity), a type with a MarshalJSON of its own reads what that writes,
-// and every other value is read from its Go kind by jsonIdentifyAt. The
+// and every other value is read from its Go kind by rt.IdentifyAt. The
 // identities of the elements of an array whose uniqueItems is checked are kept
-// in the jsonValidation one Validate shares with the values below it, so the
+// in the rt.Validation one Validate shares with the values below it, so the
 // check of the array beneath reads what the check above computed, and each
 // element's identity is computed once.
 
@@ -157,15 +157,6 @@ func (g *Generator) resolveIdentityPlans() {
 		}
 	}
 
-	// Every type that reads its own identity says what its tree is, exported:
-	// the one reading another package can call (see File.TreeTypes).
-	g.output.TreeTypes = nil
-	for _, td := range g.output.TypeDefs {
-		if defHasIdentity(td) {
-			g.output.TreeTypes = append(g.output.TreeTypes, TreeType{Name: td.TypeName()})
-		}
-	}
-
 	g.resolveValidateIn()
 }
 
@@ -248,7 +239,7 @@ func (g *Generator) elemIdentifier(t GoType) string {
 	if elem := g.itemType(t); elem != nil {
 		return g.jsonIdentifier(elem, false)
 	}
-	return "jsonIdentifyAt"
+	return "rt.IdentifyAt"
 }
 
 // identityIsScalar reports whether reading a value of t's identity costs a
@@ -329,9 +320,10 @@ func (g *Generator) identityReach() map[string]bool {
 	}
 	// In a run of several packages, another package may compare values of any
 	// type declared here, and it reads their identity through
-	// SchemagenJSONTree, which only a type that reads its own can declare. This
-	// package is generated before the packages that refer to it, so it cannot
-	// know which of its types they compare; every one reads its own.
+	// SchemagenJSONIdentity (the runtime's rt.Identifier), which only a type
+	// that reads its own can declare. This package is generated before the
+	// packages that refer to it, so it cannot know which of its types they
+	// compare; every one reads its own.
 	if g.config.CrossPackage != nil {
 		for _, td := range g.output.TypeDefs {
 			visit(&NamedType{Name: td.TypeName()})
@@ -398,8 +390,8 @@ func visitItemLevels(ivs []ItemValidationDef, g *Generator, visit func(GoType)) 
 
 // localTypeDef is the declaration of name among the types this call emits: the
 // only ones a method can still be added to. A type an earlier call of a
-// shared-types run declared is read through jsonIdentifyAt, which finds its
-// jsonIdentity where it has one.
+// shared-types run declared is read through rt.IdentifyAt, which finds its
+// SchemagenJSONIdentity where it has one.
 func (g *Generator) localTypeDef(name string) TypeDef {
 	for _, td := range g.output.TypeDefs {
 		if td.TypeName() == name {
@@ -435,13 +427,13 @@ func defHasIdentity(td TypeDef) bool {
 	return false
 }
 
-// jsonIdentifier is how a value of t reads its identity, as a jsonIdentify[T]
+// jsonIdentifier is how a value of t reads its identity, as an rt.Identify[T]
 // expression. keep says the value is an array whose uniqueItems check reads its
-// elements' identities back (see jsonIDSliceKept).
+// elements' identities back (see rt.IDSliceKept).
 //
-// A type that reads its own is its jsonIdentity; a pointer, a slice and a map
-// are read through the helper for their shape, down to what they hold; and
-// every other value through jsonIdentifyAt, which reads it from its Go kind.
+// A type that reads its own is its SchemagenJSONIdentity; a pointer, a slice and
+// a map are read through the helper for their shape, down to what they hold; and
+// every other value through rt.IdentifyAt, which reads it from its Go kind.
 func (g *Generator) jsonIdentifier(t GoType, keep bool) string {
 	switch v := t.(type) {
 	case *NamedType:
@@ -451,7 +443,7 @@ func (g *Generator) jsonIdentifier(t GoType, keep bool) string {
 		if v.PkgAlias == "" && !strings.Contains(v.Name, ".") {
 			if td := g.localTypeDef(v.Name); td != nil {
 				if defHasIdentity(td) {
-					return "(*" + v.Name + ").jsonIdentity"
+					return "(*" + v.Name + ").SchemagenJSONIdentity"
 				}
 				// An alias with no MarshalJSON is written by encoding/json as its
 				// underlying type, and read as that.
@@ -471,23 +463,23 @@ func (g *Generator) jsonIdentifier(t GoType, keep bool) string {
 			return g.mapIdentifier(t, v.ValueType)
 		}
 	}
-	return "jsonIdentifyAt[" + t.GoTypeName() + "]"
+	return "rt.IdentifyAt[" + t.GoTypeName() + "]"
 }
 
 func (g *Generator) pointerIdentifier(self, inner GoType) string {
-	return jsonIdentifyLiteral(self, "jsonIDPtr["+self.GoTypeName()+", "+inner.GoTypeName()+"](*_p, _m, "+g.jsonIdentifier(inner, false)+")")
+	return jsonIdentifyLiteral(self, "rt.IDPtr["+self.GoTypeName()+", "+inner.GoTypeName()+"](*_p, _m, "+g.jsonIdentifier(inner, false)+")")
 }
 
 func (g *Generator) sliceIdentifier(self, elem GoType, keep bool) string {
-	helper := "jsonIDSlice"
+	helper := "rt.IDSlice"
 	if keep {
-		helper = "jsonIDSliceKept"
+		helper = "rt.IDSliceKept"
 	}
 	return jsonIdentifyLiteral(self, helper+"["+self.GoTypeName()+", "+elem.GoTypeName()+"](*_p, _m, "+g.jsonIdentifier(elem, false)+")")
 }
 
 func (g *Generator) mapIdentifier(self, value GoType) string {
-	return jsonIdentifyLiteral(self, "jsonIDMap["+self.GoTypeName()+", "+value.GoTypeName()+"](*_p, _m, "+g.jsonIdentifier(value, false)+")")
+	return jsonIdentifyLiteral(self, "rt.IDMap["+self.GoTypeName()+", "+value.GoTypeName()+"](*_p, _m, "+g.jsonIdentifier(value, false)+")")
 }
 
 // structuralIdentifier reads a value of the named type self, whose underlying
@@ -513,15 +505,15 @@ func (g *Generator) structuralIdentifier(self *NamedType, underlying GoType, kee
 		// A declaration at the end of the chain that reads its own: over the
 		// value converted to it, which the shared underlying type allows.
 		name := end.Def.TypeName()
-		return jsonIdentifyLiteral(self, "(*"+name+")(_p).jsonIdentity(_m)")
+		return jsonIdentifyLiteral(self, "(*"+name+")(_p).SchemagenJSONIdentity(_m)")
 	}
 	return ""
 }
 
-// jsonIdentifyLiteral writes a jsonIdentify[T] over t as a function literal
+// jsonIdentifyLiteral writes a rt.Identify[T] over t as a function literal
 // returning body, which reads its arguments as _p and _m.
 func jsonIdentifyLiteral(t GoType, body string) string {
-	return "func(_p *" + t.GoTypeName() + ", _m *jsonValidation) (jsonID, error) { return " + body + " }"
+	return "func(_p *" + t.GoTypeName() + ", _m *rt.Validation) (rt.ID, error) { return " + body + " }"
 }
 
 // resolveValidateIn settles which types' Validate shares a jsonValidation with

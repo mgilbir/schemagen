@@ -617,8 +617,8 @@ func main() {
 		t.Fatal(err)
 	}
 	// The module the cogen sweep writes: the generated packages' own
-	// dependencies, and a stub of validationruntime for the hybrid-mode ones.
-	if err := writeCogenGoMod(dir, true); err != nil {
+	// dependencies, and the runtime module they import.
+	if err := writeCogenGoMod(dir); err != nil {
 		t.Fatal(err)
 	}
 

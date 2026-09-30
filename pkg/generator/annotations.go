@@ -198,7 +198,7 @@ const (
 	maxRuntimeHoists = 32
 )
 
-// nodeBuilder renders a schema as a Go _schemaNode composite literal.
+// nodeBuilder renders a schema as a Go rt.Node composite literal.
 //
 // allowed decides which keywords the caller is prepared to have modelled;
 // anything else refuses the whole subtree. inlineRefs turns on $ref resolution,
@@ -362,7 +362,7 @@ func (b *nodeBuilder) hoistRef(s *schema.Schema) string {
 		b.hoistOrder = append(b.hoistOrder, s)
 		b.restart = true
 	}
-	return "_schemaNode{Ref: &" + name + "}"
+	return "rt.Node{Ref: &" + name + "}"
 }
 
 // overBudget reports whether the fixpoint has grown past what it is willing to
@@ -488,7 +488,7 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 	// A schema already given a variable of its own is referred to, not written
 	// out again -- except in the one place its body is being produced.
 	if name, ok := b.hoisted[s]; ok && s != b.rendering {
-		return "_schemaNode{Ref: &" + name + "}", true
+		return "rt.Node{Ref: &" + name + "}", true
 	}
 	if at, on := b.stack[s]; on {
 		// A reference cycle. Where it closes without the value having got any
@@ -527,18 +527,18 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 	inner := strings.Repeat("\t", indent+1)
 
 	if s.IsBooleanSchema() {
-		return fmt.Sprintf("_schemaNode{Boolean: _boolPtr(%t)}", s.IsTrueSchema()), true
+		return fmt.Sprintf("rt.Node{Boolean: rt.BoolPtr(%t)}", s.IsTrueSchema()), true
 	}
 
 	// `"enum": []` admits nothing, so it compiles to the node the boolean
 	// `false` schema compiles to on the line above. It has to be answered before
 	// the keyword emission below, which asks len(s.Enum) > 0 and so left the
-	// empty list out: the node came back `_schemaNode{}`, which admits
+	// empty list out: the node came back `rt.Node{}`, which admits
 	// everything, and a `false` branch inside a oneOf turned into a matching one.
 	// Conditioned on the validation vocabulary, since without it `enum` asserts
 	// nothing at all. See emptyEnumSchema and schemaForbidsEveryValue.
 	if b.g != nil && b.g.schemaForbidsEveryValue(s) {
-		return "_schemaNode{Boolean: _boolPtr(false)}", true
+		return "rt.Node{Boolean: rt.BoolPtr(false)}", true
 	}
 
 	// Before draft 2019-09 a $ref replaces the schema object it sits in, so the
@@ -567,9 +567,9 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		if err != nil {
 			return "", false
 		}
-		add(fmt.Sprintf("Const: _strPtr(%q),", string(raw)))
+		add(fmt.Sprintf("Const: rt.StrPtr(%q),", string(raw)))
 	} else if s.ConstIsNull {
-		add(`Const: _strPtr("null"),`)
+		add(`Const: rt.StrPtr("null"),`)
 	}
 	if len(s.Enum) > 0 {
 		encoded := make([]string, 0, len(s.Enum))
@@ -595,27 +595,27 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 	// literal. A float64 here gave two numbers one reading wherever they differ
 	// past the 53rd bit.
 	if s.MultipleOf != nil {
-		add(fmt.Sprintf("MultipleOf: _strPtr(%q),", JSONNumberLiteral(*s.MultipleOf)))
+		add(fmt.Sprintf("MultipleOf: rt.StrPtr(%q),", JSONNumberLiteral(*s.MultipleOf)))
 	}
 	minimum, maximum, exclusiveMin, exclusiveMax := numericBounds(s)
 	if minimum != nil {
-		add(fmt.Sprintf("Minimum: _strPtr(%q),", JSONNumberLiteral(*minimum)))
+		add(fmt.Sprintf("Minimum: rt.StrPtr(%q),", JSONNumberLiteral(*minimum)))
 	}
 	if maximum != nil {
-		add(fmt.Sprintf("Maximum: _strPtr(%q),", JSONNumberLiteral(*maximum)))
+		add(fmt.Sprintf("Maximum: rt.StrPtr(%q),", JSONNumberLiteral(*maximum)))
 	}
 	if exclusiveMin != nil {
-		add(fmt.Sprintf("ExclusiveMinimum: _strPtr(%q),", JSONNumberLiteral(*exclusiveMin)))
+		add(fmt.Sprintf("ExclusiveMinimum: rt.StrPtr(%q),", JSONNumberLiteral(*exclusiveMin)))
 	}
 	if exclusiveMax != nil {
-		add(fmt.Sprintf("ExclusiveMaximum: _strPtr(%q),", JSONNumberLiteral(*exclusiveMax)))
+		add(fmt.Sprintf("ExclusiveMaximum: rt.StrPtr(%q),", JSONNumberLiteral(*exclusiveMax)))
 	}
 
 	if s.MinLength != nil {
-		add(fmt.Sprintf("MinLength: _intPtr(%s),", countBound(*s.MinLength).GoExpr()))
+		add(fmt.Sprintf("MinLength: rt.IntPtr(%s),", countBound(*s.MinLength).GoExpr()))
 	}
 	if s.MaxLength != nil {
-		add(fmt.Sprintf("MaxLength: _intPtr(%s),", countBound(*s.MaxLength).GoExpr()))
+		add(fmt.Sprintf("MaxLength: rt.IntPtr(%s),", countBound(*s.MaxLength).GoExpr()))
 	}
 	if s.Pattern != nil {
 		name, err := PatternVarName(*s.Pattern)
@@ -637,25 +637,25 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 	// "annotation" is a false reject.
 	if s.Format != nil && b.g != nil && b.g.formatAssertsFor(s) {
 		if name := b.g.formatNameForDialect(s); FormatCheckableOnString(name) {
-			add(fmt.Sprintf("Format: _strPtr(%q),", name))
+			add(fmt.Sprintf("Format: rt.StrPtr(%q),", name))
 		}
 	}
 	if b.g != nil && b.g.contentAssertsFor(s) {
 		if check, ok := contentCheckFor(s); ok {
 			if check.Encoding != "" {
-				add(fmt.Sprintf("ContentEncoding: _strPtr(%q),", check.Encoding))
+				add(fmt.Sprintf("ContentEncoding: rt.StrPtr(%q),", check.Encoding))
 			}
 			if check.MediaType != "" {
-				add(fmt.Sprintf("ContentMediaType: _strPtr(%q),", check.MediaType))
+				add(fmt.Sprintf("ContentMediaType: rt.StrPtr(%q),", check.MediaType))
 			}
 		}
 	}
 
 	if s.MinItems != nil {
-		add(fmt.Sprintf("MinItems: _intPtr(%s),", countBound(*s.MinItems).GoExpr()))
+		add(fmt.Sprintf("MinItems: rt.IntPtr(%s),", countBound(*s.MinItems).GoExpr()))
 	}
 	if s.MaxItems != nil {
-		add(fmt.Sprintf("MaxItems: _intPtr(%s),", countBound(*s.MaxItems).GoExpr()))
+		add(fmt.Sprintf("MaxItems: rt.IntPtr(%s),", countBound(*s.MaxItems).GoExpr()))
 	}
 	if s.UniqueItems != nil && *s.UniqueItems {
 		add("UniqueItems: true,")
@@ -699,7 +699,7 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		if !ok {
 			return "", false
 		}
-		add(fmt.Sprintf("Items: _node(%s),", lit))
+		add(fmt.Sprintf("Items: rt.NodePtr(%s),", lit))
 	}
 	// additionalItems applies only alongside a tuple. On its own it is ignored:
 	// it evaluates nothing and constrains nothing, so mapping it onto items
@@ -716,7 +716,7 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		if !ok {
 			return "", false
 		}
-		add(fmt.Sprintf("Items: _node(%s),", lit))
+		add(fmt.Sprintf("Items: rt.NodePtr(%s),", lit))
 	}
 
 	if s.Contains != nil {
@@ -724,12 +724,12 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		if !ok {
 			return "", false
 		}
-		add(fmt.Sprintf("Contains: _node(%s),", lit))
+		add(fmt.Sprintf("Contains: rt.NodePtr(%s),", lit))
 		if s.MinContains != nil {
-			add(fmt.Sprintf("MinContains: _intPtr(%s),", countBound(*s.MinContains).GoExpr()))
+			add(fmt.Sprintf("MinContains: rt.IntPtr(%s),", countBound(*s.MinContains).GoExpr()))
 		}
 		if s.MaxContains != nil {
-			add(fmt.Sprintf("MaxContains: _intPtr(%s),", countBound(*s.MaxContains).GoExpr()))
+			add(fmt.Sprintf("MaxContains: rt.IntPtr(%s),", countBound(*s.MaxContains).GoExpr()))
 		}
 	}
 
@@ -737,10 +737,10 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		add(fmt.Sprintf("Required: %s,", goStringSliceLiteral([]string(s.Required))))
 	}
 	if s.MinProperties != nil {
-		add(fmt.Sprintf("MinProperties: _intPtr(%s),", countBound(*s.MinProperties).GoExpr()))
+		add(fmt.Sprintf("MinProperties: rt.IntPtr(%s),", countBound(*s.MinProperties).GoExpr()))
 	}
 	if s.MaxProperties != nil {
-		add(fmt.Sprintf("MaxProperties: _intPtr(%s),", countBound(*s.MaxProperties).GoExpr()))
+		add(fmt.Sprintf("MaxProperties: rt.IntPtr(%s),", countBound(*s.MaxProperties).GoExpr()))
 	}
 	// --strict-properties. The flag reads "absent additionalProperties is
 	// treated as false", and until issue #221 it was read on the static path
@@ -786,7 +786,7 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		}
 	}
 	if ban {
-		add("AdditionalProperties: _node(_schemaNode{Boolean: _boolPtr(false)}),")
+		add("AdditionalProperties: rt.NodePtr(rt.Node{Boolean: rt.BoolPtr(false)}),")
 		if len(s.PatternProperties) > 0 || len(pooledPatterns) > 0 {
 			// The ban is what is left once the patterns have claimed their keys,
 			// so the evaluator has to run them to know what that is.
@@ -809,7 +809,7 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		if !ok {
 			return "", false
 		}
-		add(fmt.Sprintf("AdditionalProperties: _node(%s),", lit))
+		add(fmt.Sprintf("AdditionalProperties: rt.NodePtr(%s),", lit))
 		if len(s.PatternProperties) > 0 {
 			// additionalProperties skips whatever patternProperties claimed, so
 			// the evaluator has to run the patterns to know what is left.
@@ -920,7 +920,7 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		if !ok {
 			return "", false
 		}
-		add(fmt.Sprintf("%s: _node(%s),", branch.name, lit))
+		add(fmt.Sprintf("%s: rt.NodePtr(%s),", branch.name, lit))
 	}
 	// propertyNames judges a key rather than the object, and the unevaluated
 	// pair judges what is left of an item or a member, so all three descend.
@@ -936,14 +936,14 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 		if !ok {
 			return "", false
 		}
-		add(fmt.Sprintf("%s: _node(%s),", branch.name, lit))
+		add(fmt.Sprintf("%s: rt.NodePtr(%s),", branch.name, lit))
 	}
 
 	if len(fields) == 0 {
-		return "_schemaNode{}", true
+		return "rt.Node{}", true
 	}
 	sort.Strings(fields)
-	return "_schemaNode{\n" + strings.Join(fields, "\n") + "\n" + pad + "}", true
+	return "rt.Node{\n" + strings.Join(fields, "\n") + "\n" + pad + "}", true
 }
 
 // dynamicRefLiteral emits the field for a $recursiveRef or $dynamicRef whose
@@ -975,7 +975,7 @@ func (b *nodeBuilder) dynamicRefLiteral(s, target *schema.Schema, anchor string,
 	}
 	pad := strings.Repeat("\t", indent)
 	inner := strings.Repeat("\t", indent+1)
-	return fmt.Sprintf("DynamicRef: &_dynamicRef{\n%sAnchor: %q,\n%sFallback: _node(%s),\n%s},",
+	return fmt.Sprintf("DynamicRef: &rt.DynamicRef{\n%sAnchor: %q,\n%sFallback: rt.NodePtr(%s),\n%s},",
 		inner, anchor, inner, fallback, pad), true
 }
 
@@ -1019,12 +1019,12 @@ func (b *nodeBuilder) dynamicAnchorsLiteral(entry, resource *schema.Schema, inde
 		if !ok {
 			return "", false
 		}
-		parts = append(parts, fmt.Sprintf("%s{Name: %q, Node: _node(%s)},", pad, name, lit))
+		parts = append(parts, fmt.Sprintf("%s{Name: %q, Node: rt.NodePtr(%s)},", pad, name, lit))
 	}
 	if len(parts) == 0 {
 		return "", true
 	}
-	return "[]_schemaAnchor{\n" + strings.Join(parts, "\n") + "\n" + closePad + "}", true
+	return "[]rt.Anchor{\n" + strings.Join(parts, "\n") + "\n" + closePad + "}", true
 }
 
 func (b *nodeBuilder) list(subs []*schema.Schema, indent int) (string, bool) {
@@ -1038,7 +1038,7 @@ func (b *nodeBuilder) list(subs []*schema.Schema, indent int) (string, bool) {
 		}
 		parts = append(parts, pad+lit+",")
 	}
-	return "[]_schemaNode{\n" + strings.Join(parts, "\n") + "\n" + closePad + "}", true
+	return "[]rt.Node{\n" + strings.Join(parts, "\n") + "\n" + closePad + "}", true
 }
 
 // memberList renders a keyword whose argument maps names or patterns to
@@ -1055,7 +1055,7 @@ func (b *nodeBuilder) memberList(members map[string]*schema.Schema, indent int) 
 		}
 		parts = append(parts, fmt.Sprintf("%s{Key: %q, Node: %s},", pad, key, lit))
 	}
-	return "[]_schemaMember{\n" + strings.Join(parts, "\n") + "\n" + closePad + "}", true
+	return "[]rt.Member{\n" + strings.Join(parts, "\n") + "\n" + closePad + "}", true
 }
 
 // patternMemberList is memberList for patternProperties, whose members are
@@ -1079,7 +1079,7 @@ func (b *nodeBuilder) patternMemberList(members map[string]*schema.Schema, inden
 		}
 		parts = append(parts, fmt.Sprintf("%s{Pattern: %s, Node: %s},", pad, name, lit))
 	}
-	return "[]_schemaPatternMember{\n" + strings.Join(parts, "\n") + "\n" + closePad + "}", true
+	return "[]rt.PatternMember{\n" + strings.Join(parts, "\n") + "\n" + closePad + "}", true
 }
 
 func dependentRequiredLiteral(deps map[string][]string, indent int) string {
@@ -1094,7 +1094,7 @@ func dependentRequiredLiteral(deps map[string][]string, indent int) string {
 	for _, key := range keys {
 		parts = append(parts, fmt.Sprintf("%s{Key: %q, Keys: %s},", pad, key, goStringSliceLiteral(deps[key])))
 	}
-	return "[]_schemaDependency{\n" + strings.Join(parts, "\n") + "\n" + closePad + "}"
+	return "[]rt.Dependency{\n" + strings.Join(parts, "\n") + "\n" + closePad + "}"
 }
 
 // trueSchema is the boolean `true` schema, which admits every value.
@@ -2046,7 +2046,7 @@ func (g *Generator) runtimeSchemaDefBuilding(name string, s *schema.Schema) (def
 // nested inside a larger one are what a boolean branch compiles to, which is
 // half the point of this path.
 var unownedNodeLiterals = map[string]bool{
-	"_schemaNode{}":                         true,
-	"_schemaNode{Boolean: _boolPtr(true)}":  true,
-	"_schemaNode{Boolean: _boolPtr(false)}": true,
+	"rt.Node{}":                           true,
+	"rt.Node{Boolean: rt.BoolPtr(true)}":  true,
+	"rt.Node{Boolean: rt.BoolPtr(false)}": true,
 }

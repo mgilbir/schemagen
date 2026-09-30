@@ -205,7 +205,7 @@ var pinnedRefusals = map[string][]string{
 		"testdata/schemas/regression/two_callers_2020/b.json",
 		"testdata/schemas/regression/two_callers_2020/main.json",
 	},
-	// TestHelperFileDeclaresEveryHelperCalled over testdata/schemas without the
+	// TestGeneratedCodeNamesOnlyWhatTheRuntimeExports over testdata/schemas without the
 	// adversarial corpus, format as the dialect says. Both two_callers pairs are
 	// refused on purpose: see tests/roundtrip/two_callers_test.go. So is draft 3's
 	// {"disallow":[..., null, ...]}: a null where a schema belongs is a malformed

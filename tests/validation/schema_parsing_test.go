@@ -61,7 +61,7 @@ func runInlineSchema(t *testing.T, src string, cfg generator.Config, instances [
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(mainGo), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := writeCogenGoMod(dir, strings.Contains(code, "pkg/validationruntime")); err != nil {
+	if err := writeCogenGoMod(dir); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)

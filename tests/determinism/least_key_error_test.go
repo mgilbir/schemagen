@@ -158,8 +158,12 @@ func TestGeneratedCodeRefusesTheLeastBadMember(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(sub, "types.go"), tr.src, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(sub, "helpers.go"), tr.helpers, 0o644); err != nil {
-			t.Fatal(err)
+		// The helper file is the package's compiled patterns, and there is none
+		// when no schema names a pattern.
+		if tr.helpers != nil {
+			if err := os.WriteFile(filepath.Join(sub, "helpers.go"), tr.helpers, 0o644); err != nil {
+				t.Fatal(err)
+			}
 		}
 		fmt.Fprintf(&imports, "\t%s \"leastkey/%s\"\n", pkg, pkg)
 		fmt.Fprintf(&calls, "\trun(%q, %q, func(b []byte) error {\n\t\tvar v %s.Root\n\t\tif err := json.Unmarshal(b, &v); err != nil {\n\t\t\treturn err\n\t\t}\n\t\treturn v.Validate()\n\t})\n", c.name, c.doc, pkg)
@@ -308,8 +312,12 @@ func TestRefusedDecodeLeavesOneValue(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(sub, "types.go"), tr.src, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(sub, "helpers.go"), tr.helpers, 0o644); err != nil {
-			t.Fatal(err)
+		// The helper file is the package's compiled patterns, and there is none
+		// when no schema names a pattern.
+		if tr.helpers != nil {
+			if err := os.WriteFile(filepath.Join(sub, "helpers.go"), tr.helpers, 0o644); err != nil {
+				t.Fatal(err)
+			}
 		}
 		fmt.Fprintf(&imports, "\t%s \"refusedvalue/%s\"\n", pkg, pkg)
 		fmt.Fprintf(&calls, "\trun(%q, %q, func() any { return new(%s.Root) })\n", c.name, c.doc, pkg)

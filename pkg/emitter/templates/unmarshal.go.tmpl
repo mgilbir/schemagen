@@ -5,22 +5,23 @@
 // UnmarshalJSON replaces {{$recv}} with the value the document holds. See
 // decodeJSONAt.
 func ({{$recv}} *{{$struct.Name}}) UnmarshalJSON(data []byte) error {
-	_d, _sp, _err := jsonOpenDoc(data)
+	_d, _sp, _err := rt.OpenDoc(data)
 	if _err != nil {
-		return jsonDecodeRefusal(_err)
+		return rt.DecodeRefusal(_err)
 	}
-	return _d.finish({{$recv}}.decodeJSONAt(_d, _sp))
+	return _d.Finish({{$recv}}.decodeJSONAt(_d, _sp))
 }
+{{template "generated_marker" $struct}}
 
 // decodeJSONAt decodes the value at _sp into {{$recv}}, in place, and hands each
-// member's value to the member's own type in turn. See jsonDoc.
+// member's value to the member's own type in turn. See rt.Doc.
 //
 // The value is replaced, not merged into: whatever {{$recv}} held before is gone,
 // so a value decoded twice is exactly the second document, as one decoded once
 // would be. encoding/json's own decode merges -- a member the second document
 // leaves out keeps what the first one put there -- and a value that reported one
 // document's verdict while holding another's fields is what that left behind.
-func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *rt.Doc, _sp rt.Span) error {
 	*{{$recv}} = {{$struct.Name}}{}
 	{{- if $struct.NeedsDoc}}
 	{{$recv}}._doc = _d
@@ -41,9 +42,9 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	       "k1": ro: read-only property may not be set` came back from Validate().
 
 	       The refusal is recorded on the document rather than returned (see
-	       jsonDoc.finish), so a nested type that raises one goes on decoding and
-	       so does everything around it. See _decodeIgnoringReadOnly and
-	       _accessRefuseReadOnly. */}}
+	       rt.Doc.Finish), so a nested type that raises one goes on decoding and
+	       so does everything around it. See rt.DecodeIgnoringReadOnly and
+	       rt.AccessRefuseReadOnly. */}}
 	_bodyErr := func() error {
 	{{- end}}
 	{{- if $struct.NeedsNullCheck}}
@@ -53,8 +54,8 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	       map value reporting `null is not allowed for type T` -- a type the
 	       caller never wrote and cannot find, in place of the position they can.
 	       Issues #276 and #282. */}}
-	if _d.isNull(_sp) {
-		return jsonValueErrorf("null is not allowed")
+	if _d.IsNull(_sp) {
+		return rt.ValueErrorf("null is not allowed")
 	}
 	{{- end}}
 	{{- if $struct.RejectObject}}
@@ -62,17 +63,17 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	// "type" admits no object at all, so no document reaches them. Refused here
 	// rather than left to the constraints: an object decodes into the fields and
 	// never reaches the non-object block, which is where the type is checked.
-	if _d.data[_sp.start] == '{' {
-		return jsonValueErrorf("object is not allowed")
+	if _d.First(_sp) == '{' {
+		return rt.ValueErrorf("object is not allowed")
 	}
 	{{- end}}
 	{{- if $struct.AcceptNonObject}}
 	// The schema admits a document that is not an object, so object constraints
 	// are type-conditional. Non-object JSON data is accepted here and judged by
 	// Validate; raw bytes are preserved for roundtrip.
-	if _d.data[_sp.start] != '{' {
+	if _d.First(_sp) != '{' {
 		{{$recv}}._nonObject = true
-		{{$recv}}._rawNonObject = _d.keep(_sp)
+		{{$recv}}._rawNonObject = _d.Keep(_sp)
 		return nil
 	}
 	{{- end}}
@@ -85,20 +86,20 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	       encoding/json, and leaves the record of the document's keys empty
 	       rather than absent: a value decoded from a null was decoded from
 	       JSON, and its required members are missing. */}}
-	switch _d.data[_sp.start] {
+	switch _d.First(_sp) {
 	case '{', 'n':
 	default:
-		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*{{$struct.Name}})(nil)))
+		return rt.DecodeRefusal(rt.TypeErrorFor(_d, _sp, (*{{$struct.Name}})(nil)))
 	}
 	// The object's members, by key. A key is matched exactly: JSON Schema
 	// property names are case-sensitive, and "NAME" is not "name" -- it is an
 	// additional property, and "name" is absent (issue #245). A key written
 	// twice means its last value, as it does everywhere a document is read.
-	_raw := make(map[string]jsonSpan)
-	if _d.data[_sp.start] == '{' {
-		_it := _d.iter(_sp)
+	_raw := make(map[string]rt.Span)
+	if _d.First(_sp) == '{' {
+		_it := _d.Iter(_sp)
 		for {
-			_k, _v, _ok := _it.member()
+			_k, _v, _ok := _it.Member()
 			if !_ok {
 				break
 			}
@@ -107,7 +108,7 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	}
 	{{- /* Each declared member is decoded by its own type, in the order the
 	       schema declares them, and the first that refuses is the refusal: its
-	       position is known, so the message names it (see jsonPathError), and a
+	       position is known, so the message names it (see rt.PathError), and a
 	       document with two faults fails the same way every time. Issue #282. */}}
 	{{- range $struct.Fields}}
 	{{- if and (not .ManualJSON) .JSONName}}
@@ -127,16 +128,16 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 		// 3339 permits and time.Time's parse layout refuses; the shadow is what
 		// lets one through. A null leaves the field as it is.
 		{{- end}}
-		if !_d.isNull(_v) {
+		if !_d.IsNull(_v) {
 			var _iv {{goType .LeafDecode.ShadowType}}
 			if _err := {{.MemberDecoder}}(&_iv, _d, _v); _err != nil {
-				return jsonPathf(_err, "%s", {{printf "%q" .JSONName}})
+				return rt.Pathf(_err, "%s", {{printf "%q" .JSONName}})
 			}
 			{{$recv}}.{{.Name}} = {{.LeafDecode.Convert}}
 		}
 		{{- else}}
 		if _err := {{.MemberDecoder}}(&{{$recv}}.{{.Name}}, _d, _v); _err != nil {
-			return jsonPathf(_err, "%s", {{printf "%q" .JSONName}})
+			return rt.Pathf(_err, "%s", {{printf "%q" .JSONName}})
 		}
 		{{- end}}
 	}
@@ -168,7 +169,7 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 		{{- end}}
 		var _iv {{goType .LeafDecode.ShadowType}}
 		if _err := {{.ValueDecoder}}(&_iv, _d, _v); _err != nil {
-			return jsonPathf(jsonDecodeRefusal(_err), "%s", {{printf "%q" .JSONName}})
+			return rt.Pathf(rt.DecodeRefusal(_err), "%s", {{printf "%q" .JSONName}})
 		}
 		{{$recv}}.{{.Name}} = {{.LeafDecode.Convert}}
 		{{- else}}
@@ -177,7 +178,7 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 		       cannot be spelled in a struct tag, and `unmarshaling Root.AB1`
 		       is a name the caller has no way to find. Issue #282. */}}
 		if _err := {{.ValueDecoder}}(&{{$recv}}.{{.Name}}, _d, _v); _err != nil {
-			return jsonPathf(jsonDecodeRefusal(_err), "%s", {{printf "%q" .JSONName}})
+			return rt.Pathf(rt.DecodeRefusal(_err), "%s", {{printf "%q" .JSONName}})
 		}
 		{{- end}}
 	}
@@ -192,22 +193,22 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 		_ov, _has := _raw[{{printf "%q" $oof.JSONName}}]
 		// Every refusal this union raises is a sentence about the value the union
 		// holds, and the property that reaches it goes in front of that sentence
-		// by the rule every other message is joined by (see jsonPathError).
+		// by the rule every other message is joined by (see rt.PathError).
 		//
 		// What used to go in front was a Go type and a Go field pasted in by hand:
 		// {{$struct.Name}}.{{$oof.FieldName}}
 		// A caller cannot find either in the document they sent, and at any depth
 		// but the first the pair does not even resemble the path. Issue #289.
 		oneofErrf := func(format string, args ...any) error {
-			return jsonPathf(jsonValueErrorf(format, args...), "%s", {{printf "%q" $oof.JSONName}})
+			return rt.Pathf(rt.ValueErrorf(format, args...), "%s", {{printf "%q" $oof.JSONName}})
 		}
 		// oneofWrapf is oneofErrf for a sentence that ends with a branch's own
 		// refusal, which is kept as a step of the message rather than written
-		// into it (see jsonValueWrapf): at every level of a recursive document
+		// into it (see rt.ValueWrapf): at every level of a recursive document
 		// that refuses at the bottom, each union puts its words in front of the
 		// words of the one below it.
 		oneofWrapf := func(err error, prefix string) error {
-			return jsonPathf(jsonValueWrapf(err, prefix), "%s", {{printf "%q" $oof.JSONName}})
+			return rt.Pathf(rt.ValueWrapf(err, prefix), "%s", {{printf "%q" $oof.JSONName}})
 		}
 		{{- else}}
 		// Top-level oneOf: the entire JSON value is the variant data.
@@ -216,25 +217,25 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 		// report under and its refusals are sentences about the value; whatever
 		// contains it puts the path in front. Issue #289.
 		oneofErrf := func(format string, args ...any) error {
-			return jsonValueErrorf(format, args...)
+			return rt.ValueErrorf(format, args...)
 		}
 		// oneofWrapf is oneofErrf for a sentence that ends with a branch's own
 		// refusal; see the property spelling above.
-		oneofWrapf := jsonValueWrapf
+		oneofWrapf := rt.ValueWrapf
 		{{- end}}
 		{{- if $oof.RejectNull}}
 		// The schema behind this union excludes a JSON null, and the loop below
 		// steps over one rather than judging it -- which at the top level, where
 		// the union is the whole value and no parent check runs first, is an
 		// acceptance. See OneOfDef.RejectNull.
-		if _has && _d.isNull(_ov) {
+		if _has && _d.IsNull(_ov) {
 			return oneofErrf("null is not allowed")
 		}
 		{{- end}}
-		if _has && !_d.isNull(_ov) {
+		if _has && !_d.IsNull(_ov) {
 			{{- if $oof.HasDiscriminator}}
 			// Discriminator-based dispatch on "{{$oof.DiscriminatorField}}"
-			discVal, discErr := oneofDiscriminatorValue(_d, _ov, {{printf "%q" $oof.DiscriminatorField}})
+			discVal, discErr := rt.OneOfDiscriminatorValue(_d, _ov, {{printf "%q" $oof.DiscriminatorField}})
 			if discErr != nil {
 				return oneofErrf("%w", discErr)
 			}
@@ -264,7 +265,7 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 				       `for field "kind"` behind a Go-spelled prefix. Passed as an
 				       argument rather than pasted into the format string, so a name
 				       carrying a quote cannot break the literal. Issue #289. */}}
-				return oneofErrf("unknown discriminator value %s for property %q", _schemagenQuote(discVal), {{printf "%q" $oof.DiscriminatorField}})
+				return oneofErrf("unknown discriminator value %s for property %q", rt.Quote(discVal), {{printf "%q" $oof.DiscriminatorField}})
 			}
 			{{- else}}
 			var oneofMatched int
@@ -298,14 +299,14 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 			{{- end}}
 			// Every branch below is a trial, and one that holds the value's
 			// members as raw JSON takes views of the document rather than
-			// copies of them; see jsonDoc.copyOf.
-			_d.trial++
+			// copies of them; see rt.Doc.CopyOf.
+			_d.BeginTrial()
 			{{- range $i, $v := $oof.Variants}}
 
 			// Try variant: {{$v.FieldName}}
 			{
 				{{- if $v.RequiredFields}}
-				if oneofHasRequiredFields(_d, _ov, {{requiredFieldsList $v.RequiredFields}}) {
+				if rt.OneOfHasRequiredFields(_d, _ov, {{requiredFieldsList $v.RequiredFields}}) {
 				{{- end}}
 					var candidate {{goType $v.Type}}
 					{{- if $v.LeafDecode}}
@@ -315,7 +316,7 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 					// accepts is reported as matching no branch at all.
 					var _iv {{goType $v.LeafDecode.ShadowType}}
 					{{- if $struct.StrictReadWrite}}
-					_ivErr := jsonAttempt(_d, func() error { return {{$v.Decoder}}(&_iv, _d, _ov) })
+					_ivErr := rt.Attempt(_d, func() error { return {{$v.Decoder}}(&_iv, _d, _ov) })
 					{{- else}}
 					_ivErr := {{$v.Decoder}}(&_iv, _d, _ov)
 					{{- end}}
@@ -324,7 +325,7 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 					}
 					if err := _ivErr; err == nil {
 					{{- else if $struct.StrictReadWrite}}
-					if err := jsonAttempt(_d, func() error { return {{$v.Decoder}}(&candidate, _d, _ov) }); err == nil {
+					if err := rt.Attempt(_d, func() error { return {{$v.Decoder}}(&candidate, _d, _ov) }); err == nil {
 					{{- else}}
 					if err := {{$v.Decoder}}(&candidate, _d, _ov); err == nil {
 					{{- end}}
@@ -340,10 +341,10 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 						if utf8.RuneCountInString(candidate) > {{countExpr .Value}} { oneofOK = false }
 						{{- end}}
 						{{- if eq .RuleType "pattern"}}
-						if _matched, _mErr := {{patternVar .Value}}.matches(string(candidate)); _mErr != nil {
+						if _matched, _mErr := {{patternVar .Value}}.Matches(string(candidate)); _mErr != nil {
 							// With no verdict on this branch there is no
 							// telling which one the document selects.
-							_d.trial--
+							_d.EndTrial()
 							return oneofErrf("oneOf: %w", _mErr)
 						} else if !_matched {
 							oneofOK = false
@@ -355,7 +356,7 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 						       it. The rules carry no Go type for this reason; see
 						       oneOfVariantChecks. */}}
 						{{- if or (eq .RuleType "minimum") (eq .RuleType "maximum") (eq .RuleType "exclusiveMinimum") (eq .RuleType "exclusiveMaximum") (eq .RuleType "multipleOf")}}
-						if {{numViolated . "json.RawMessage(_d.raw(_ov))"}} { oneofOK = false }
+						if {{numViolated . "json.RawMessage(_d.Raw(_ov))"}} { oneofOK = false }
 						{{- end}}
 						{{- if eq .RuleType "minItems"}}
 						if len(candidate) < {{countExpr .Value}} { oneofOK = false }
@@ -405,8 +406,8 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 						{{- end}}
 						{{- end}}
 						{{- end}}
-					} else if _schemagenUndecided(err) {
-						_d.trial--
+					} else if rt.Undecided(err) {
+						_d.EndTrial()
 						return oneofErrf("variant {{$v.FieldName}}: %w", err)
 					} else {
 						oneofLastErr = err
@@ -416,7 +417,7 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 				{{- end}}
 			}
 			{{- end}}
-			_d.trial--
+			_d.EndTrial()
 
 			if oneofMatched == 0 {
 				{{- if $oof.HasVariantChecks}}
@@ -442,12 +443,12 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 					if _vErr := _vc{{$i}}.Validate(); _vErr == nil {
 						oneofStrict++
 						oneofStrictSel = &{{$v.WrapperName}}{{"{"}}{{$v.FieldName}}: _vc{{$i}}}
-					} else if _schemagenUndecided(_vErr) {
+					} else if rt.Undecided(_vErr) {
 						// No verdict on this branch, so no telling which one
 						// the document selects.
 						return oneofErrf("variant {{$v.FieldName}}: %w", _vErr)
 					} else {
-						oneofStrictErr = jsonValueWrapf(_vErr, "variant {{$v.FieldName}}: ")
+						oneofStrictErr = rt.ValueWrapf(_vErr, "variant {{$v.FieldName}}: ")
 					}
 				}
 				{{- end}}
@@ -489,14 +490,14 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	// would be answering a question the schema did not ask. Refusing to
 	// *decode* is this program declining to accept input, which is the
 	// caller's decision and is what the flag asked for.
-	if _d.refusal == nil {
+	if !_d.Refused() {
 		for _, _roKey := range []string{
 			{{- range $struct.ReadOnlyKeys}}
 			{{printf "%q" .}},
 			{{- end}}
 		} {
 			if _, ok := _raw[_roKey]; ok {
-				_d.refusal = &_readOnlyRefusal{Path: _roKey}
+				_d.Refuse(&rt.ReadOnlyRefusal{Path: _roKey})
 				break
 			}
 		}
@@ -507,22 +508,22 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	// the time the decode above has run there is nothing left to see: a null
 	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
 	// is exactly what an absent property leaves, so the verdict has to be
-	// taken from the document's own keys. See jsonNullRule for the nested
+	// taken from the document's own keys. See rt.NullRule for the nested
 	// spelling of the same rule.
 	for _, _nullKey := range []string{
 		{{- range $struct.FlatNullNames}}
 		{{printf "%q" .}},
 		{{- end}}
 	} {
-		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
-			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		if _v, ok := _raw[_nullKey]; ok && _d.IsNull(_v) {
+			return rt.Pathf(rt.ValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
 	}
 	{{- end}}
 	{{- range $struct.NestedNullChecks}}
 	if _v, ok := _raw[{{printf "%q" .JSONName}}]; ok {
-		if err := checkJSONNullsAt(_d, _v, {{template "nullrule" .}}); err != nil {
-			return jsonPathf(err, "%s", {{printf "%q" .JSONName}})
+		if err := rt.CheckNullsAt(_d, _v, {{template "nullrule" .}}); err != nil {
+			return rt.Pathf(err, "%s", {{printf "%q" .JSONName}})
 		}
 	}
 	{{- end}}
@@ -537,12 +538,12 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	// The members a Validate check reads back as JSON. Each is a view of the
 	// document's own copy rather than a copy of its own: at every depth of a
 	// recursive document these hold the member below, and a copy each was the
-	// whole subtree held once per level. See jsonDoc.keep.
-	if _d.data[_sp.start] == '{' {
+	// whole subtree held once per level. See rt.Doc.Keep.
+	if _d.First(_sp) == '{' {
 		{{$recv}}._jsonRawProps = make(map[string]json.RawMessage, len(_raw))
 		{{- /* maporder: files each member under its own key, which are distinct. */}}
 		for _k, _v := range _raw {
-			{{$recv}}._jsonRawProps[_k] = _d.keep(_v)
+			{{$recv}}._jsonRawProps[_k] = _d.Keep(_v)
 		}
 	}
 	{{- end}}
@@ -558,7 +559,7 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 		{{printf "%q" .}},
 		{{- end}}
 	} {
-		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+		if _v, ok := _raw[_nullKey]; ok && _d.IsNull(_v) {
 			if {{$recv}}._jsonNulls == nil {
 				{{$recv}}._jsonNulls = make(map[string]bool, 1)
 			}
@@ -614,9 +615,9 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 		matchesPattern := false
 		{{- range $struct.PatternProperties}}
 		if !matchesPattern {
-			_ppMatched, _ppErr := {{patternVar .Pattern}}.matches(rawKey)
+			_ppMatched, _ppErr := {{patternVar .Pattern}}.Matches(rawKey)
 			if _ppErr != nil {
-				return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
+				return rt.ElemPathf(rt.ValueErrorf("%w", _ppErr), "[%s]", rt.Quote(rawKey))
 			}
 			matchesPattern = _ppMatched
 		}
@@ -625,7 +626,7 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 			if _ppFiled == nil {
 				_ppFiled = make(map[string]json.RawMessage)
 			}
-			_ppFiled[rawKey] = _d.copyOf(rawVal)
+			_ppFiled[rawKey] = _d.CopyOf(rawVal)
 			{{if $refuses}}return nil{{else}}continue{{end}}
 		}
 		{{- end}}
@@ -635,12 +636,12 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 		       null: json.Unmarshal of `null` into a string leaves "" and
 		       reports no error at all. */}}
 		{{- if .Nested}}
-		if err := checkJSONNullsAt(_d, rawVal, {{template "nullrule" .}}); err != nil {
-			return jsonElemPathf(err, "[%s]", _schemagenQuote(rawKey))
+		if err := rt.CheckNullsAt(_d, rawVal, {{template "nullrule" .}}); err != nil {
+			return rt.ElemPathf(err, "[%s]", rt.Quote(rawKey))
 		}
 		{{- else}}
-		if _d.isNull(rawVal) {
-			return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%s]", _schemagenQuote(rawKey))
+		if _d.IsNull(rawVal) {
+			return rt.ElemPathf(rt.ValueErrorf("null is not allowed"), "[%s]", rt.Quote(rawKey))
 		}
 		{{- end}}
 		{{- end}}
@@ -649,17 +650,17 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 			_apFiled = make(map[string]{{goType $struct.AdditionalProperties.ValueType}})
 		}
 		{{- if isRawMessage $struct.AdditionalProperties.ValueType}}
-		_apFiled[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.CopyOf(rawVal)
 		{{- else if $struct.AdditionalProperties.LeafDecode}}
 		var _iv {{goType $struct.AdditionalProperties.LeafDecode.ShadowType}}
 		if err := {{$struct.AdditionalProperties.ValueDecoder}}(&_iv, _d, rawVal); err != nil {
-			return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
+			return rt.ElemPathf(rt.DecodeRefusal(err), "[%s]", rt.Quote(rawKey))
 		}
 		_apFiled[rawKey] = {{$struct.AdditionalProperties.LeafDecode.Convert}}
 		{{- else}}
 		var val {{goType $struct.AdditionalProperties.ValueType}}
 		if err := {{$struct.AdditionalProperties.ValueDecoder}}(&val, _d, rawVal); err != nil {
-			return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
+			return rt.ElemPathf(rt.DecodeRefusal(err), "[%s]", rt.Quote(rawKey))
 		}
 		_apFiled[rawKey] = val
 		{{- end}}
@@ -685,10 +686,10 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	{{- if $struct.AccessRules}}
 	// The locations below this struct's own members, which no Go field answers
 	// for: a tuple slot, a contains element, a patternProperties value. See
-	// _accessRefuseReadOnly.
-	if _d.refusal == nil {
-		if _err := _accessRefuseReadOnly(_d, _sp, {{$struct.AccessRulesVar}}); _err != nil {
-			_d.refusal = _err
+	// rt.AccessRefuseReadOnly.
+	if !_d.Refused() {
+		if _err := rt.AccessRefuseReadOnly(_d, _sp, {{$struct.AccessRulesVar}}); _err != nil {
+			_d.Refuse(_err)
 		}
 	}
 	{{- end}}
