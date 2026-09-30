@@ -248,16 +248,18 @@ func (f *FormatAliasAssertions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			return jsonPathf(err, "%s", "v4_list")
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "day", "email", "email_map", "site", "uuid", "v4", "v4_list", "v6":
 			continue
 		}
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }

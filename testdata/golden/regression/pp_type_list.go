@@ -59,6 +59,8 @@ func (r *Root) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			_raw[_k] = _v
 		}
 	}
+	var _ppFiled map[string]json.RawMessage
+	var _apFiled map[string]json.RawMessage
 	{
 		var _least string
 		var _failed error
@@ -76,16 +78,16 @@ func (r *Root) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 					matchesPattern = _ppMatched
 				}
 				if matchesPattern {
-					if r.PatternProperties == nil {
-						r.PatternProperties = make(map[string]json.RawMessage)
+					if _ppFiled == nil {
+						_ppFiled = make(map[string]json.RawMessage)
 					}
-					r.PatternProperties[rawKey] = _d.copyOf(rawVal)
+					_ppFiled[rawKey] = _d.copyOf(rawVal)
 					return nil
 				}
-				if r.AdditionalProperties == nil {
-					r.AdditionalProperties = make(map[string]json.RawMessage)
+				if _apFiled == nil {
+					_apFiled = make(map[string]json.RawMessage)
 				}
-				r.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+				_apFiled[rawKey] = _d.copyOf(rawVal)
 				return nil
 			}(); _err != nil {
 				_least, _failed = rawKey, _err
@@ -95,6 +97,8 @@ func (r *Root) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			return _failed
 		}
 	}
+	r.PatternProperties = _ppFiled
+	r.AdditionalProperties = _apFiled
 
 	return nil
 }

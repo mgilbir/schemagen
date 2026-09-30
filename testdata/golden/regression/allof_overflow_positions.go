@@ -131,6 +131,7 @@ func (l *Lower) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			_raw[_k] = _v
 		}
 	}
+	var _apFiled map[string]LowerValue
 	{
 		var _least string
 		var _failed error
@@ -139,14 +140,14 @@ func (l *Lower) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				continue
 			}
 			if _err := func() error {
-				if l.AdditionalProperties == nil {
-					l.AdditionalProperties = make(map[string]LowerValue)
+				if _apFiled == nil {
+					_apFiled = make(map[string]LowerValue)
 				}
 				var val LowerValue
 				if err := jsonAtJSON[LowerValue](&val, _d, rawVal); err != nil {
 					return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 				}
-				l.AdditionalProperties[rawKey] = val
+				_apFiled[rawKey] = val
 				return nil
 			}(); _err != nil {
 				_least, _failed = rawKey, _err
@@ -156,6 +157,7 @@ func (l *Lower) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			return _failed
 		}
 	}
+	l.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -562,16 +564,18 @@ func (a *AllOfOverflowPositionsNamedKey) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 			a._jsonRawProps[_k] = _d.keep(_v)
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "a":
 			continue
 		}
-		if a.AdditionalProperties == nil {
-			a.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		a.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	a.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -815,6 +819,7 @@ func (a *AllOfOverflowPositionsSoleBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpa
 			_raw[_k] = _v
 		}
 	}
+	var _apFiled map[string]AllOfOverflowPositionsSoleBranchValue
 	{
 		var _least string
 		var _failed error
@@ -823,14 +828,14 @@ func (a *AllOfOverflowPositionsSoleBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpa
 				continue
 			}
 			if _err := func() error {
-				if a.AdditionalProperties == nil {
-					a.AdditionalProperties = make(map[string]AllOfOverflowPositionsSoleBranchValue)
+				if _apFiled == nil {
+					_apFiled = make(map[string]AllOfOverflowPositionsSoleBranchValue)
 				}
 				var val AllOfOverflowPositionsSoleBranchValue
 				if err := jsonAtJSON[AllOfOverflowPositionsSoleBranchValue](&val, _d, rawVal); err != nil {
 					return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 				}
-				a.AdditionalProperties[rawKey] = val
+				_apFiled[rawKey] = val
 				return nil
 			}(); _err != nil {
 				_least, _failed = rawKey, _err
@@ -840,6 +845,7 @@ func (a *AllOfOverflowPositionsSoleBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpa
 			return _failed
 		}
 	}
+	a.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1224,16 +1230,18 @@ func (a *AllOfOverflowPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	for _k := range _raw {
 		a._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "items", "namedKey", "soleBranch", "twoBranches", "viaRef":
 			continue
 		}
-		if a.AdditionalProperties == nil {
-			a.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		a.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	a.AdditionalProperties = _apFiled
 
 	return nil
 }

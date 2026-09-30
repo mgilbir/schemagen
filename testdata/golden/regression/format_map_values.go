@@ -54,6 +54,7 @@ func (f *FormatMapValues) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			_raw[_k] = _v
 		}
 	}
+	var _apFiled map[string]string
 	{
 		var _least string
 		var _failed error
@@ -65,14 +66,14 @@ func (f *FormatMapValues) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				if _d.isNull(rawVal) {
 					return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%s]", _schemagenQuote(rawKey))
 				}
-				if f.AdditionalProperties == nil {
-					f.AdditionalProperties = make(map[string]string)
+				if _apFiled == nil {
+					_apFiled = make(map[string]string)
 				}
 				var val string
 				if err := jsonAtJSON[string](&val, _d, rawVal); err != nil {
 					return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 				}
-				f.AdditionalProperties[rawKey] = val
+				_apFiled[rawKey] = val
 				return nil
 			}(); _err != nil {
 				_least, _failed = rawKey, _err
@@ -82,6 +83,7 @@ func (f *FormatMapValues) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			return _failed
 		}
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }

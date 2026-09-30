@@ -130,16 +130,18 @@ func (f *FalsePropertyExplicitNullListItem) decodeJSONAt(_d *jsonDoc, _sp jsonSp
 	for _k := range _raw {
 		f._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "inner":
 			continue
 		}
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -280,16 +282,18 @@ func (f *FalsePropertyExplicitNullNested) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 	for _k := range _raw {
 		f._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "inner", "ok":
 			continue
 		}
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -479,16 +483,18 @@ func (f *FalsePropertyExplicitNull) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) erro
 	for _k := range _raw {
 		f._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "inline", "list", "nested", "ok", "viaRef":
 			continue
 		}
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }

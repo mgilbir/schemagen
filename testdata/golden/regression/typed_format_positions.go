@@ -148,6 +148,8 @@ func (t *TypedFormatPositionsBuckets) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) er
 			_raw[_k] = _v
 		}
 	}
+	var _ppFiled map[string]json.RawMessage
+	var _apFiled map[string]json.RawMessage
 	{
 		var _least string
 		var _failed error
@@ -165,16 +167,16 @@ func (t *TypedFormatPositionsBuckets) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) er
 					matchesPattern = _ppMatched
 				}
 				if matchesPattern {
-					if t.PatternProperties == nil {
-						t.PatternProperties = make(map[string]json.RawMessage)
+					if _ppFiled == nil {
+						_ppFiled = make(map[string]json.RawMessage)
 					}
-					t.PatternProperties[rawKey] = _d.copyOf(rawVal)
+					_ppFiled[rawKey] = _d.copyOf(rawVal)
 					return nil
 				}
-				if t.AdditionalProperties == nil {
-					t.AdditionalProperties = make(map[string]json.RawMessage)
+				if _apFiled == nil {
+					_apFiled = make(map[string]json.RawMessage)
 				}
-				t.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+				_apFiled[rawKey] = _d.copyOf(rawVal)
 				return nil
 			}(); _err != nil {
 				_least, _failed = rawKey, _err
@@ -184,6 +186,8 @@ func (t *TypedFormatPositionsBuckets) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) er
 			return _failed
 		}
 	}
+	t.PatternProperties = _ppFiled
+	t.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -597,16 +601,18 @@ func (t *TypedFormatPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			return jsonPathf(err, "%s", "stampList")
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "buckets", "chain", "inline", "list", "mailList", "map", "ref", "stampList", "tuple", "wrapped", "branch":
 			continue
 		}
-		if t.AdditionalProperties == nil {
-			t.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		t.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	t.AdditionalProperties = _apFiled
 
 	return nil
 }

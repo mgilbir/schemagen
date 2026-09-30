@@ -61,6 +61,7 @@ func (i *Inner) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			_raw[_k] = _v
 		}
 	}
+	var _apFiled map[string]*Inner
 	{
 		var _least string
 		var _failed error
@@ -69,8 +70,8 @@ func (i *Inner) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				continue
 			}
 			if _err := func() error {
-				if i.AdditionalProperties == nil {
-					i.AdditionalProperties = make(map[string]*Inner)
+				if _apFiled == nil {
+					_apFiled = make(map[string]*Inner)
 				}
 				var val *Inner
 				if err := func(_p **Inner, _d *jsonDoc, _s jsonSpan) error {
@@ -84,7 +85,7 @@ func (i *Inner) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				}(&val, _d, rawVal); err != nil {
 					return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 				}
-				i.AdditionalProperties[rawKey] = val
+				_apFiled[rawKey] = val
 				return nil
 			}(); _err != nil {
 				_least, _failed = rawKey, _err
@@ -94,6 +95,7 @@ func (i *Inner) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			return _failed
 		}
 	}
+	i.AdditionalProperties = _apFiled
 
 	return nil
 }

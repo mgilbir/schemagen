@@ -253,16 +253,18 @@ func (f *FormatBesideLength) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			f._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "declaredStamp", "declaredV4", "inferredV4", "patternedV4", "refStamp", "refV4":
 			continue
 		}
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }

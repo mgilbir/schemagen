@@ -393,6 +393,8 @@ func (u *UntypedFormatPositionsBuckets) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) 
 			_raw[_k] = _v
 		}
 	}
+	var _ppFiled map[string]json.RawMessage
+	var _apFiled map[string]json.RawMessage
 	{
 		var _least string
 		var _failed error
@@ -410,16 +412,16 @@ func (u *UntypedFormatPositionsBuckets) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) 
 					matchesPattern = _ppMatched
 				}
 				if matchesPattern {
-					if u.PatternProperties == nil {
-						u.PatternProperties = make(map[string]json.RawMessage)
+					if _ppFiled == nil {
+						_ppFiled = make(map[string]json.RawMessage)
 					}
-					u.PatternProperties[rawKey] = _d.copyOf(rawVal)
+					_ppFiled[rawKey] = _d.copyOf(rawVal)
 					return nil
 				}
-				if u.AdditionalProperties == nil {
-					u.AdditionalProperties = make(map[string]json.RawMessage)
+				if _apFiled == nil {
+					_apFiled = make(map[string]json.RawMessage)
 				}
-				u.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+				_apFiled[rawKey] = _d.copyOf(rawVal)
 				return nil
 			}(); _err != nil {
 				_least, _failed = rawKey, _err
@@ -429,6 +431,8 @@ func (u *UntypedFormatPositionsBuckets) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) 
 			return _failed
 		}
 	}
+	u.PatternProperties = _ppFiled
+	u.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1347,16 +1351,18 @@ func (u *UntypedFormatPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			u._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "buckets", "chain", "inline", "list", "mail", "map", "ref", "stamp", "tuple", "wrapped", "branch":
 			continue
 		}
-		if u.AdditionalProperties == nil {
-			u.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		u.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	u.AdditionalProperties = _apFiled
 
 	return nil
 }

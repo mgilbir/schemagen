@@ -87,16 +87,18 @@ func (s *StructReuse) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "a":
 			continue
 		}
-		if s.AdditionalProperties == nil {
-			s.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		s.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	s.AdditionalProperties = _apFiled
 
 	return nil
 }

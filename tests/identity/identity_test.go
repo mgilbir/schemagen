@@ -449,6 +449,83 @@ func TestATreeIsWhatEncodingJSONDecodes(t *testing.T) {
 	}
 }
 
+// TestCollidingKeysAreReadAsEncodingJSONWritesThem: two keys of a Go map that
+// are not valid UTF-8 can read as one name, each byte that is not UTF-8 read as
+// U+FFFD -- as can such a key and one that spells U+FFFD itself. encoding/json
+// writes every member, in the order of the keys, so a reader of what it writes
+// keeps the member with the greatest key. The tree filed each member under its
+// name as the map was ranged, so which of them it kept was the map's order's
+// choice. Each value is read many times over, since one reading is right by
+// chance as often as not.
+func TestCollidingKeysAreReadAsEncodingJSONWritesThem(t *testing.T) {
+	anyTwo := map[string]any{"\xff": 1.0, "\xfe": 2.0}
+	anyMixed := map[string]any{"\xef\xbf\xbd": "valid", "\xff": "invalid", "a\xff": 3.0, "a\xfe": 4.0, "a\xfd": 5.0}
+	strings3 := map[string]string{"k\xff": "x", "k\xfe": "y", "k\xfd": "z"}
+	raws := map[string]json.RawMessage{"\xff": json.RawMessage("1"), "\xfe": json.RawMessage("[2]"), "\xef\xbf\xbd": json.RawMessage("{}")}
+	// Each by its own type, which is the path its identity is read by; held as
+	// an any, the same value is read again by that path.
+	for i := 0; i < 64; i++ {
+		check(t, anyTwo)
+		check(t, anyMixed)
+		check(t, strings3)
+		check(t, raws)
+	}
+	// And by jsonIDMap, which a map the generator planned is read through: its
+	// identity, and the tree it gathers member by member when reading trees.
+	byMap := func(mp map[string]any) (jsonID, any, error) {
+		id, err := jsonIDMap(mp, nil, jsonIdentifyAt[any])
+		if err != nil {
+			return id, nil, err
+		}
+		tree, err := jsonTreeOf(&mp, func(p *map[string]any, m *jsonValidation) (jsonID, error) {
+			return jsonIDMap(*p, m, jsonIdentifyAt[any])
+		})
+		return id, tree, err
+	}
+	for _, mp := range []map[string]any{anyTwo, anyMixed} {
+		b, _ := json.Marshal(mp)
+		want, err := jsonTreeRaw(b, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < 64; i++ {
+			id, tree, err := byMap(mp)
+			if err != nil {
+				t.Fatalf("%#v: %v", mp, err)
+			}
+			if id != refID(t, mp) {
+				t.Errorf("%#v: jsonIDMap's identity is not that of %s", mp, b)
+				break
+			}
+			if !jsonTreeEqual(tree, want) {
+				t.Errorf("%#v: jsonIDMap's tree %#v is not what encoding/json decodes %s into", mp, tree, b)
+				break
+			}
+		}
+	}
+	values := []any{anyTwo, anyMixed, strings3, raws}
+	for _, v := range values {
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := jsonTreeRaw(b, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := 0; i < 64; i++ {
+			got, err := jsonTreeAny(v, nil)
+			if err != nil {
+				t.Fatalf("%#v: %v", v, err)
+			}
+			if !jsonTreeEqual(got, want) {
+				t.Errorf("%#v: tree %#v is not what encoding/json decodes %s into", v, got, b)
+				break
+			}
+		}
+	}
+}
+
 func TestAKindIsWhatEncodingJSONWrites(t *testing.T) {
 	cases := []struct {
 		v    any

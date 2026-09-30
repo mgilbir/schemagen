@@ -160,12 +160,14 @@ func (f *ForbiddenWhenK) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	for _k := range _raw {
 		f._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -318,12 +320,14 @@ func (n *NoNameAllowed) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	for _k := range _raw {
 		n._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if n.AdditionalProperties == nil {
-			n.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		n.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	n.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -910,6 +914,8 @@ func (e *EnumOutsideDeclaredTypeConstOutsidePattern) decodeJSONAt(_d *jsonDoc, _
 			_raw[_k] = _v
 		}
 	}
+	var _ppFiled map[string]json.RawMessage
+	var _apFiled map[string]json.RawMessage
 	{
 		var _least string
 		var _failed error
@@ -927,16 +933,16 @@ func (e *EnumOutsideDeclaredTypeConstOutsidePattern) decodeJSONAt(_d *jsonDoc, _
 					matchesPattern = _ppMatched
 				}
 				if matchesPattern {
-					if e.PatternProperties == nil {
-						e.PatternProperties = make(map[string]json.RawMessage)
+					if _ppFiled == nil {
+						_ppFiled = make(map[string]json.RawMessage)
 					}
-					e.PatternProperties[rawKey] = _d.copyOf(rawVal)
+					_ppFiled[rawKey] = _d.copyOf(rawVal)
 					return nil
 				}
-				if e.AdditionalProperties == nil {
-					e.AdditionalProperties = make(map[string]json.RawMessage)
+				if _apFiled == nil {
+					_apFiled = make(map[string]json.RawMessage)
 				}
-				e.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+				_apFiled[rawKey] = _d.copyOf(rawVal)
 				return nil
 			}(); _err != nil {
 				_least, _failed = rawKey, _err
@@ -946,6 +952,8 @@ func (e *EnumOutsideDeclaredTypeConstOutsidePattern) decodeJSONAt(_d *jsonDoc, _
 			return _failed
 		}
 	}
+	e.PatternProperties = _ppFiled
+	e.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1105,16 +1113,18 @@ func (e *EnumOutsideDeclaredTypeConstOutsideUnevalProps) decodeJSONAt(_d *jsonDo
 			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "a":
 			continue
 		}
-		if e.AdditionalProperties == nil {
-			e.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		e.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	e.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1456,6 +1466,8 @@ func (e *EnumOutsideDeclaredTypeEnumPartialPattern) decodeJSONAt(_d *jsonDoc, _s
 			_raw[_k] = _v
 		}
 	}
+	var _ppFiled map[string]json.RawMessage
+	var _apFiled map[string]json.RawMessage
 	{
 		var _least string
 		var _failed error
@@ -1473,16 +1485,16 @@ func (e *EnumOutsideDeclaredTypeEnumPartialPattern) decodeJSONAt(_d *jsonDoc, _s
 					matchesPattern = _ppMatched
 				}
 				if matchesPattern {
-					if e.PatternProperties == nil {
-						e.PatternProperties = make(map[string]json.RawMessage)
+					if _ppFiled == nil {
+						_ppFiled = make(map[string]json.RawMessage)
 					}
-					e.PatternProperties[rawKey] = _d.copyOf(rawVal)
+					_ppFiled[rawKey] = _d.copyOf(rawVal)
 					return nil
 				}
-				if e.AdditionalProperties == nil {
-					e.AdditionalProperties = make(map[string]json.RawMessage)
+				if _apFiled == nil {
+					_apFiled = make(map[string]json.RawMessage)
 				}
-				e.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+				_apFiled[rawKey] = _d.copyOf(rawVal)
 				return nil
 			}(); _err != nil {
 				_least, _failed = rawKey, _err
@@ -1492,6 +1504,8 @@ func (e *EnumOutsideDeclaredTypeEnumPartialPattern) decodeJSONAt(_d *jsonDoc, _s
 			return _failed
 		}
 	}
+	e.PatternProperties = _ppFiled
+	e.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -2535,16 +2549,18 @@ func (e *EnumOutsideDeclaredType) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 	for _k := range _raw {
 		e._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "arrayEnum", "arrayOutsideConst", "boolEnum", "boolOutsideConst", "constOutsideAllOf", "constOutsideAnyOf", "constOutsideContains", "constOutsideDependent", "constOutsideItems", "constOutsideNames", "constOutsideOneOf", "constOutsidePattern", "constOutsideProp", "constOutsideRef", "constOutsideSlot", "constOutsideUnevalItems", "constOutsideUnevalProps", "constOutsideValues", "enumAllOutsideProp", "enumOutsideProp", "enumPartialItems", "enumPartialPattern", "enumPartialProp", "enumPartialRef", "enumPartialSlot", "enumPartialValues", "fracInInteger", "fracOutsideInteger", "integerEnum", "integerFloatSpelling", "notConstOutside", "nullOutsideConst", "nullableEnum", "numberEnum", "numberOutsideConst", "objectEnum", "objectOutsideConst", "okItems", "typedConst", "typedEnum", "unionEnum", "untypedEnum":
 			continue
 		}
-		if e.AdditionalProperties == nil {
-			e.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		e.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	e.AdditionalProperties = _apFiled
 
 	return nil
 }

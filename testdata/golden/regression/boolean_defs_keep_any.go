@@ -155,16 +155,18 @@ func (b *BooleanDefsKeepAny) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			b._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "a", "b":
 			continue
 		}
-		if b.AdditionalProperties == nil {
-			b.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		b.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	b.AdditionalProperties = _apFiled
 
 	return nil
 }

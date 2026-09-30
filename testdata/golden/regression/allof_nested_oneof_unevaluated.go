@@ -129,16 +129,18 @@ func (p *PickOneValueOption0) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			p._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "b", "m", "n":
 			continue
 		}
-		if p.AdditionalProperties == nil {
-			p.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		p.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	p.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -383,16 +385,18 @@ func (p *PickOneValueOption1) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	for _k := range _raw {
 		p._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "a":
 			continue
 		}
-		if p.AdditionalProperties == nil {
-			p.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		p.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	p.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -734,12 +738,14 @@ func (p *PickOne) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			p._jsonRawProps[_k] = _d.keep(_v)
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if p.AdditionalProperties == nil {
-			p.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		p.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	p.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1016,16 +1022,18 @@ func (a *AllOfNestedOneOfUnevaluated) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) er
 			a._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "a", "b", "m", "n", "z":
 			continue
 		}
-		if a.AdditionalProperties == nil {
-			a.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		a.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	a.AdditionalProperties = _apFiled
 
 	return nil
 }

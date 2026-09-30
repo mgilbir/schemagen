@@ -163,12 +163,14 @@ func (f *ForbiddingSubschemaSpellingsAnyOfNames) decodeJSONAt(_d *jsonDoc, _sp j
 	for _k := range _raw {
 		f._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1007,12 +1009,14 @@ func (f *ForbiddingSubschemaSpellingsInlineDepRequired) decodeJSONAt(_d *jsonDoc
 	for _k := range _raw {
 		f._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1117,12 +1121,14 @@ func (f *ForbiddingSubschemaSpellingsInlineFalseDependent) decodeJSONAt(_d *json
 	for _k := range _raw {
 		f._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1225,12 +1231,14 @@ func (f *ForbiddingSubschemaSpellingsInlineFalseNames) decodeJSONAt(_d *jsonDoc,
 	for _k := range _raw {
 		f._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1347,12 +1355,14 @@ func (f *ForbiddingSubschemaSpellingsInlineMaxProps) decodeJSONAt(_d *jsonDoc, _
 	for _k := range _raw {
 		f._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1463,12 +1473,14 @@ func (f *ForbiddingSubschemaSpellingsInlineMinProps) decodeJSONAt(_d *jsonDoc, _
 	for _k := range _raw {
 		f._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1576,12 +1588,14 @@ func (f *ForbiddingSubschemaSpellingsInlineNotDependent) decodeJSONAt(_d *jsonDo
 	for _k := range _raw {
 		f._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1684,12 +1698,14 @@ func (f *ForbiddingSubschemaSpellingsInlineNotNames) decodeJSONAt(_d *jsonDoc, _
 	for _k := range _raw {
 		f._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1806,12 +1822,14 @@ func (f *ForbiddingSubschemaSpellingsInlineRequired) decodeJSONAt(_d *jsonDoc, _
 	for _k := range _raw {
 		f._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1921,12 +1939,14 @@ func (f *ForbiddingSubschemaSpellingsNotDependent) decodeJSONAt(_d *jsonDoc, _sp
 	for _k := range _raw {
 		f._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -2179,12 +2199,14 @@ func (f *ForbiddingSubschemaSpellingsNotNames) decodeJSONAt(_d *jsonDoc, _sp jso
 	for _k := range _raw {
 		f._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -2478,16 +2500,18 @@ func (f *ForbiddingSubschemaSpellingsNotUnevalProps) decodeJSONAt(_d *jsonDoc, _
 			f._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "k":
 			continue
 		}
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -2657,12 +2681,14 @@ func (f *ForbiddingSubschemaSpellingsNullableInlineNames) decodeJSONAt(_d *jsonD
 	for _k := range _raw {
 		f._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -2842,12 +2868,14 @@ func (f *ForbiddingSubschemaSpellingsOkNames) decodeJSONAt(_d *jsonDoc, _sp json
 	for _k := range _raw {
 		f._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -2967,12 +2995,14 @@ func (f *ForbiddingSubschemaSpellingsOneOfDependent) decodeJSONAt(_d *jsonDoc, _
 	for _k := range _raw {
 		f._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -3075,12 +3105,14 @@ func (f *ForbiddingSubschemaSpellingsOneOfNames) decodeJSONAt(_d *jsonDoc, _sp j
 	for _k := range _raw {
 		f._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -3299,16 +3331,18 @@ func (f *ForbiddingSubschemaSpellingsOneOfUnevalProps) decodeJSONAt(_d *jsonDoc,
 			f._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "k":
 			continue
 		}
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -3471,12 +3505,14 @@ func (f *ForbiddingSubschemaSpellingsRefNotNames) decodeJSONAt(_d *jsonDoc, _sp 
 	for _k := range _raw {
 		f._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -4338,16 +4374,18 @@ func (f *ForbiddingSubschemaSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 			f._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "allOfContains", "allOfNot", "anyOfNames", "anyOfNot", "anyOfOneFalse", "inferredNotItems", "inferredNotSlot", "inferredNotTail", "inferredOneOfItems", "inferredOneOfTail", "inlineDepRequired", "inlineFalseDependent", "inlineFalseNames", "inlineMaxProps", "inlineMinProps", "inlineNotDependent", "inlineNotNames", "inlineRequired", "mapWithMinProps", "notContains", "notDependent", "notEnumBranch", "notFalse", "notNames", "notShallowEnum", "notTypedConst", "notUnevalItems", "notUnevalProps", "nullableInlineNames", "okContains", "okNames", "oneOfContains", "oneOfDependent", "oneOfNames", "oneOfOneFalse", "oneOfUnevalItems", "oneOfUnevalProps", "plainItems", "refNotNames", "unionBranchRequired", "strBranchRequired":
 			continue
 		}
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }

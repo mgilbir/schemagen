@@ -159,12 +159,14 @@ func (n *NeverWithK) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	for _k := range _raw {
 		n._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if n.AdditionalProperties == nil {
-			n.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		n.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	n.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -267,12 +269,14 @@ func (n *NoNames) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	for _k := range _raw {
 		n._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if n.AdditionalProperties == nil {
-			n.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		n.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	n.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -623,6 +627,8 @@ func (i *InlineForbiddingPositionsEmptyEnumPattern) decodeJSONAt(_d *jsonDoc, _s
 			_raw[_k] = _v
 		}
 	}
+	var _ppFiled map[string]json.RawMessage
+	var _apFiled map[string]json.RawMessage
 	{
 		var _least string
 		var _failed error
@@ -640,16 +646,16 @@ func (i *InlineForbiddingPositionsEmptyEnumPattern) decodeJSONAt(_d *jsonDoc, _s
 					matchesPattern = _ppMatched
 				}
 				if matchesPattern {
-					if i.PatternProperties == nil {
-						i.PatternProperties = make(map[string]json.RawMessage)
+					if _ppFiled == nil {
+						_ppFiled = make(map[string]json.RawMessage)
 					}
-					i.PatternProperties[rawKey] = _d.copyOf(rawVal)
+					_ppFiled[rawKey] = _d.copyOf(rawVal)
 					return nil
 				}
-				if i.AdditionalProperties == nil {
-					i.AdditionalProperties = make(map[string]json.RawMessage)
+				if _apFiled == nil {
+					_apFiled = make(map[string]json.RawMessage)
 				}
-				i.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+				_apFiled[rawKey] = _d.copyOf(rawVal)
 				return nil
 			}(); _err != nil {
 				_least, _failed = rawKey, _err
@@ -659,6 +665,8 @@ func (i *InlineForbiddingPositionsEmptyEnumPattern) decodeJSONAt(_d *jsonDoc, _s
 			return _failed
 		}
 	}
+	i.PatternProperties = _ppFiled
+	i.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -816,16 +824,18 @@ func (i *InlineForbiddingPositionsEmptyEnumUnevalProps) decodeJSONAt(_d *jsonDoc
 			i._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "k":
 			continue
 		}
-		if i.AdditionalProperties == nil {
-			i.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		i.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	i.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -2471,16 +2481,18 @@ func (i *InlineForbiddingPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) erro
 			i._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "emptyEnumAllOf", "emptyEnumAnyOf", "emptyEnumBranch", "emptyEnumContains", "emptyEnumDependent", "emptyEnumItems", "emptyEnumNames", "emptyEnumPattern", "emptyEnumSlot", "emptyEnumUnevalItems", "emptyEnumUnevalProps", "emptyEnumValues", "falseItems", "inferredEmptyEnumItems", "inferredEmptyEnumSlot", "inferredEmptyEnumTail", "nestedFalseItems", "notAnyOfEmptyEnum", "notEmptyEnum", "notEmptyEnumBound", "notEmptyItems", "notTypedConst", "notTypedEmptyEnum", "nullableEmptyEnumValues", "nullableFalseItems", "okEnumItems", "plainItems", "refEmptyEnumAnyOf", "typedEmptyEnumItems", "viaRefEmptyEnum", "viaRefFalse":
 			continue
 		}
-		if i.AdditionalProperties == nil {
-			i.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		i.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	i.AdditionalProperties = _apFiled
 
 	return nil
 }

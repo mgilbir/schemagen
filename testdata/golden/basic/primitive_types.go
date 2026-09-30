@@ -132,16 +132,18 @@ func (p *PrimitiveTypes) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			p._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "bool_field", "int_field", "nullable_str", "num_field", "str_field":
 			continue
 		}
-		if p.AdditionalProperties == nil {
-			p.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		p.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	p.AdditionalProperties = _apFiled
 
 	return nil
 }

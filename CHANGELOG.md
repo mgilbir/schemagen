@@ -65,6 +65,21 @@
 
 ### Fixed
 
+- A document refused while decoding a struct's additional or pattern members
+  leaves the same value every time. The members were filed into the receiver as
+  the decoder met them, in Go's randomised map order, and a refusal at the least
+  failing key stopped with some filed and some not, so one refused document
+  left a different value from run to run, and a value decoded into twice was
+  not the value the second document alone leaves. The members are filed into
+  the receiver only once none has been refused; a refused decode leaves both
+  maps empty.
+- A Go map whose keys are not valid UTF-8, and read as one name -- each byte
+  that is not UTF-8 read as U+FFFD -- is compared as encoding/json writes it:
+  every member, in the order of the keys, of which a reader keeps the last. Its
+  identity counted every member, and its tree kept whichever member the map's
+  randomised order put last, so the same value could compare differently from
+  run to run. Of members sharing a name, the one with the greatest key now
+  counts, in the identity and in the tree.
 - Every JSON Schema pattern is matched by one engine, compiled once, and a
   match the engine cannot decide is an error rather than a "no". A `contains`
   whose sub-schema had a `pattern` compiled it with Go's RE2 on every element,

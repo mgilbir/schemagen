@@ -81,16 +81,18 @@ func (b *Base) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "x":
 			continue
 		}
-		if b.AdditionalProperties == nil {
-			b.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		b.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	b.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -240,16 +242,18 @@ func (i *Inner) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "bar":
 			continue
 		}
-		if i.AdditionalProperties == nil {
-			i.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		i.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	i.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -432,16 +436,18 @@ func (v *ValidatableFieldFmt) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			v._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "foo", "x":
 			continue
 		}
-		if v.AdditionalProperties == nil {
-			v.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		v.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	v.AdditionalProperties = _apFiled
 
 	return nil
 }

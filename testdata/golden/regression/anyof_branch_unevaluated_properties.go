@@ -94,16 +94,18 @@ func (a *AnyOfBranchUnevaluatedProperties) decodeJSONAt(_d *jsonDoc, _sp jsonSpa
 			a._jsonRawProps[_k] = _d.keep(_v)
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "a":
 			continue
 		}
-		if a.AdditionalProperties == nil {
-			a.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		a.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	a.AdditionalProperties = _apFiled
 
 	return nil
 }

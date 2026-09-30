@@ -157,16 +157,18 @@ func (b *ByID) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	for _k := range _raw {
 		b._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "id":
 			continue
 		}
-		if b.AdditionalProperties == nil {
-			b.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		b.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	b.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -304,16 +306,18 @@ func (b *ByName) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	for _k := range _raw {
 		b._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "name":
 			continue
 		}
-		if b.AdditionalProperties == nil {
-			b.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		b.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	b.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -536,16 +540,18 @@ func (d *DefaultedObject) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "n":
 			continue
 		}
-		if d.AdditionalProperties == nil {
-			d.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		d.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	d.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1716,16 +1722,18 @@ func (a *AnnotationReachPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 			a._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "annCondAnyOf", "annCondThen", "annPlain", "annViaAllOf", "annViaMergedAllOf", "annViaNestedAllOf", "annViaRef", "dfltAnyViaRef", "dfltBindsBoth", "dfltBoolViaRef", "dfltCondAnyOf", "dfltCondElse", "dfltCondOneOf", "dfltCondThen", "dfltEmptyViaRef", "dfltInline", "dfltIntViaRef", "dfltMismatchViaRef", "dfltMultiTypeViaRef", "dfltNearestWins", "dfltNone", "dfltNumberViaRef", "dfltObjectViaRef", "dfltRequiredViaRef", "dfltViaAllOf", "dfltViaAllOfRef", "dfltViaCycle", "dfltViaMergedAllOf", "dfltViaNestedAllOf", "dfltViaRef", "dfltViaRefChain", "mode", "pickA", "pickB", "annCondGroup", "annGroupPlain":
 			continue
 		}
-		if a.AdditionalProperties == nil {
-			a.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		a.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	a.AdditionalProperties = _apFiled
 
 	return nil
 }

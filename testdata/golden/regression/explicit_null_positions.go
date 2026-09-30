@@ -77,16 +77,18 @@ func (l *Leaf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "k":
 			continue
 		}
-		if l.AdditionalProperties == nil {
-			l.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		l.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	l.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -258,16 +260,18 @@ func (n *Numbered) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	for _k := range _raw {
 		n._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "num":
 			continue
 		}
-		if n.AdditionalProperties == nil {
-			n.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		n.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	n.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -400,6 +404,7 @@ func (o *Overflow) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
 	}
+	var _apFiled map[string]string
 	{
 		var _least string
 		var _failed error
@@ -415,14 +420,14 @@ func (o *Overflow) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				if _d.isNull(rawVal) {
 					return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%s]", _schemagenQuote(rawKey))
 				}
-				if o.AdditionalProperties == nil {
-					o.AdditionalProperties = make(map[string]string)
+				if _apFiled == nil {
+					_apFiled = make(map[string]string)
 				}
 				var val string
 				if err := jsonAtJSON[string](&val, _d, rawVal); err != nil {
 					return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 				}
-				o.AdditionalProperties[rawKey] = val
+				_apFiled[rawKey] = val
 				return nil
 			}(); _err != nil {
 				_least, _failed = rawKey, _err
@@ -432,6 +437,7 @@ func (o *Overflow) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			return _failed
 		}
 	}
+	o.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -588,16 +594,18 @@ func (t *Tagged) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	for _k := range _raw {
 		t._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "tag":
 			continue
 		}
-		if t.AdditionalProperties == nil {
-			t.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		t.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	t.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -820,16 +828,18 @@ func (e *ExplicitNullPositionsInline) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) er
 			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "x":
 			continue
 		}
-		if e.AdditionalProperties == nil {
-			e.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		e.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	e.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1461,16 +1471,18 @@ func (e *ExplicitNullPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			e._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "alias", "array", "arrayOfMap", "boundOnly", "bounded", "count", "inline", "mapOfArray", "mapOfString", "namedArray", "nested", "nullableAlias", "nullableItems", "nullableOuter", "nullableScalar", "nullableValues", "overflow", "reqAlias", "reqArray", "reqScalar", "reqStruct", "scalar", "struct", "tuple", "untyped", "union":
 			continue
 		}
-		if e.AdditionalProperties == nil {
-			e.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		e.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	e.AdditionalProperties = _apFiled
 
 	return nil
 }

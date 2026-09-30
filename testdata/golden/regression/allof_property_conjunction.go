@@ -157,16 +157,18 @@ func (c *CapBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			c._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "viaRef":
 			continue
 		}
-		if c.AdditionalProperties == nil {
-			c.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		c.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	c.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -735,16 +737,18 @@ func (a *AllOfPropertyConjunctionNested) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 	for _k := range _raw {
 		a._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "a", "b":
 			continue
 		}
-		if a.AdditionalProperties == nil {
-			a.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		a.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	a.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1322,16 +1326,18 @@ func (a *AllOfPropertyConjunction) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	for _k := range _raw {
 		a._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "branchOnly", "constAgainstEnum", "declared", "documented", "documentedWriteOnly", "enumBranchNarrower", "enumRootNarrower", "highBound", "highBoundRootTighter", "lenRootTighter", "lowBound", "lowBoundRootTighter", "nested", "numberMeetsInteger", "numberSpelling", "patternFirstWins", "reversed", "twice", "typeBranchNarrower", "typeRootNarrower", "viaRef":
 			continue
 		}
-		if a.AdditionalProperties == nil {
-			a.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		a.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	a.AdditionalProperties = _apFiled
 
 	return nil
 }

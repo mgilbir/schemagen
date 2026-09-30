@@ -95,16 +95,18 @@ func (d *DatabaseConfig) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	for _k := range _raw {
 		d._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "host", "port":
 			continue
 		}
-		if d.AdditionalProperties == nil {
-			d.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		d.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	d.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -284,16 +286,18 @@ func (c *Config) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			c._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "database", "name":
 			continue
 		}
-		if c.AdditionalProperties == nil {
-			c.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		c.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	c.AdditionalProperties = _apFiled
 
 	return nil
 }

@@ -121,16 +121,18 @@ func (s *SearchResultResult) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			s._jsonRawProps[_k] = _d.keep(_v)
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "description", "name", "title", "url":
 			continue
 		}
-		if s.AdditionalProperties == nil {
-			s.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		s.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	s.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -465,16 +467,18 @@ func (s *SearchResult) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	for _k := range _raw {
 		s._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "id", "result":
 			continue
 		}
-		if s.AdditionalProperties == nil {
-			s.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		s.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	s.AdditionalProperties = _apFiled
 
 	return nil
 }

@@ -188,16 +188,18 @@ func (n *NetworkConfig) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	for _k := range _raw {
 		n._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "admin_email", "config_path", "created_date", "device_id", "docs_ref", "gateway_ip", "homepage", "host", "name", "pattern_rule", "primary_ip", "start_time", "ttl":
 			continue
 		}
-		if n.AdditionalProperties == nil {
-			n.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		n.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	n.AdditionalProperties = _apFiled
 
 	return nil
 }

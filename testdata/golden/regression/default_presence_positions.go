@@ -106,16 +106,18 @@ func (l *Leaf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	for _k := range _raw {
 		l._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "lb", "ls":
 			continue
 		}
-		if l.AdditionalProperties == nil {
-			l.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		l.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	l.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -644,16 +646,18 @@ func (d *DefaultPresencePositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 			d._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "anyArr", "anyMap", "arrMismatch", "arrOfNamed", "leaf", "leafArr", "leafMap", "mapOfArr", "mismatch", "namedArr", "nullArr", "optArr", "optBool", "optInt", "optMap", "optNum", "optStr", "reqArr", "reqBool", "reqInt", "reqMap", "reqNamed", "reqNum", "reqStr", "structDflt":
 			continue
 		}
-		if d.AdditionalProperties == nil {
-			d.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		d.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	d.AdditionalProperties = _apFiled
 
 	return nil
 }

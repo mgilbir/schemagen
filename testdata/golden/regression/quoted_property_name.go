@@ -139,16 +139,18 @@ func (q *QuotedPropertyName) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	for _k := range _raw {
 		q._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "arr\"key", "foo\"bar", "map\"key", "pct%d":
 			continue
 		}
-		if q.AdditionalProperties == nil {
-			q.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		q.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	q.AdditionalProperties = _apFiled
 
 	return nil
 }

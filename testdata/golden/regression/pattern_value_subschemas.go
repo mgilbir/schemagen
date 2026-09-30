@@ -170,12 +170,14 @@ func (p *PatternValueSubschemasPattern2) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 	for _k := range _raw {
 		p._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if p.AdditionalProperties == nil {
-			p.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		p.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	p.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -306,16 +308,18 @@ func (p *PatternValueSubschemasPattern3) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 	for _k := range _raw {
 		p._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "x":
 			continue
 		}
-		if p.AdditionalProperties == nil {
-			p.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		p.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	p.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -597,12 +601,14 @@ func (p *PatternValueSubschemasPattern9) decodeJSONAt(_d *jsonDoc, _sp jsonSpan)
 	for _k := range _raw {
 		p._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if p.AdditionalProperties == nil {
-			p.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		p.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	p.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -711,6 +717,8 @@ func (p *PatternValueSubschemasPattern10) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 			_raw[_k] = _v
 		}
 	}
+	var _ppFiled map[string]json.RawMessage
+	var _apFiled map[string]json.RawMessage
 	{
 		var _least string
 		var _failed error
@@ -728,16 +736,16 @@ func (p *PatternValueSubschemasPattern10) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 					matchesPattern = _ppMatched
 				}
 				if matchesPattern {
-					if p.PatternProperties == nil {
-						p.PatternProperties = make(map[string]json.RawMessage)
+					if _ppFiled == nil {
+						_ppFiled = make(map[string]json.RawMessage)
 					}
-					p.PatternProperties[rawKey] = _d.copyOf(rawVal)
+					_ppFiled[rawKey] = _d.copyOf(rawVal)
 					return nil
 				}
-				if p.AdditionalProperties == nil {
-					p.AdditionalProperties = make(map[string]json.RawMessage)
+				if _apFiled == nil {
+					_apFiled = make(map[string]json.RawMessage)
 				}
-				p.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+				_apFiled[rawKey] = _d.copyOf(rawVal)
 				return nil
 			}(); _err != nil {
 				_least, _failed = rawKey, _err
@@ -747,6 +755,8 @@ func (p *PatternValueSubschemasPattern10) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 			return _failed
 		}
 	}
+	p.PatternProperties = _ppFiled
+	p.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -921,6 +931,7 @@ func (p *PatternValueSubschemasPattern11) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 			_raw[_k] = _v
 		}
 	}
+	var _apFiled map[string]string
 	{
 		var _least string
 		var _failed error
@@ -932,14 +943,14 @@ func (p *PatternValueSubschemasPattern11) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 				if _d.isNull(rawVal) {
 					return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%s]", _schemagenQuote(rawKey))
 				}
-				if p.AdditionalProperties == nil {
-					p.AdditionalProperties = make(map[string]string)
+				if _apFiled == nil {
+					_apFiled = make(map[string]string)
 				}
 				var val string
 				if err := jsonAtJSON[string](&val, _d, rawVal); err != nil {
 					return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 				}
-				p.AdditionalProperties[rawKey] = val
+				_apFiled[rawKey] = val
 				return nil
 			}(); _err != nil {
 				_least, _failed = rawKey, _err
@@ -949,6 +960,7 @@ func (p *PatternValueSubschemasPattern11) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 			return _failed
 		}
 	}
+	p.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1209,12 +1221,14 @@ func (p *PatternValueSubschemasPattern14) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 	for _k := range _raw {
 		p._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if p.AdditionalProperties == nil {
-			p.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		p.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	p.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1336,12 +1350,14 @@ func (p *PatternValueSubschemasPattern15) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 	for _k := range _raw {
 		p._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if p.AdditionalProperties == nil {
-			p.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		p.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	p.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1441,12 +1457,14 @@ func (p *PatternValueSubschemasPattern16) decodeJSONAt(_d *jsonDoc, _sp jsonSpan
 			_raw[_k] = _v
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if p.AdditionalProperties == nil {
-			p.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		p.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	p.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1627,6 +1645,8 @@ func (p *PatternValueSubschemas) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			_raw[_k] = _v
 		}
 	}
+	var _ppFiled map[string]json.RawMessage
+	var _apFiled map[string]json.RawMessage
 	{
 		var _least string
 		var _failed error
@@ -1784,16 +1804,16 @@ func (p *PatternValueSubschemas) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 					matchesPattern = _ppMatched
 				}
 				if matchesPattern {
-					if p.PatternProperties == nil {
-						p.PatternProperties = make(map[string]json.RawMessage)
+					if _ppFiled == nil {
+						_ppFiled = make(map[string]json.RawMessage)
 					}
-					p.PatternProperties[rawKey] = _d.copyOf(rawVal)
+					_ppFiled[rawKey] = _d.copyOf(rawVal)
 					return nil
 				}
-				if p.AdditionalProperties == nil {
-					p.AdditionalProperties = make(map[string]json.RawMessage)
+				if _apFiled == nil {
+					_apFiled = make(map[string]json.RawMessage)
 				}
-				p.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+				_apFiled[rawKey] = _d.copyOf(rawVal)
 				return nil
 			}(); _err != nil {
 				_least, _failed = rawKey, _err
@@ -1803,6 +1823,8 @@ func (p *PatternValueSubschemas) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			return _failed
 		}
 	}
+	p.PatternProperties = _ppFiled
+	p.AdditionalProperties = _apFiled
 
 	return nil
 }

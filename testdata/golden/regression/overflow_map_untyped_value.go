@@ -277,12 +277,14 @@ func (o *OverflowMapUntypedValueObjReqValue) decodeJSONAt(_d *jsonDoc, _sp jsonS
 	for _k := range _raw {
 		o._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
-		if o.AdditionalProperties == nil {
-			o.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		o.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	o.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -619,6 +621,7 @@ func (o *OverflowMapUntypedValue) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 			return jsonPathf(err, "%s", "typed")
 		}
 	}
+	var _apFiled map[string]OverflowMapUntypedValueValue
 	{
 		var _least string
 		var _failed error
@@ -631,14 +634,14 @@ func (o *OverflowMapUntypedValue) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 				case "arrLen", "bare", "objReq", "strLen", "typed", "viaRef":
 					return nil
 				}
-				if o.AdditionalProperties == nil {
-					o.AdditionalProperties = make(map[string]OverflowMapUntypedValueValue)
+				if _apFiled == nil {
+					_apFiled = make(map[string]OverflowMapUntypedValueValue)
 				}
 				var val OverflowMapUntypedValueValue
 				if err := jsonAtJSON[OverflowMapUntypedValueValue](&val, _d, rawVal); err != nil {
 					return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 				}
-				o.AdditionalProperties[rawKey] = val
+				_apFiled[rawKey] = val
 				return nil
 			}(); _err != nil {
 				_least, _failed = rawKey, _err
@@ -648,6 +651,7 @@ func (o *OverflowMapUntypedValue) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error 
 			return _failed
 		}
 	}
+	o.AdditionalProperties = _apFiled
 
 	return nil
 }

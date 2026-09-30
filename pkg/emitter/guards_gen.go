@@ -6,7 +6,7 @@ package emitter
 // guardTableTemplatesHash is gocontext.TemplatesHash of the templates this
 // table was computed from. New refuses to start if the embedded templates
 // hash to anything else.
-const guardTableTemplatesHash = "crc32c:db73c256"
+const guardTableTemplatesHash = "crc32c:16d3fc5c"
 
 // guardTable is every output action of every template and the guard for the
 // Go context it writes into. See internal/gocontext.
@@ -1692,23 +1692,18 @@ var guardTable = []guardEntry{
 	{"unmarshal", 24222, "_goCode"},
 	{"unmarshal", 24256, "_goCode"},
 	{"unmarshal", 24312, "_goCode"},
-	{"unmarshal", 25720, "_goCode"},
-	{"unmarshal", 26168, "_goCode"},
-	{"unmarshal", 26399, "_goCode"},
-	{"unmarshal", 26440, "_goCode"},
-	{"unmarshal", 26511, "_goCode"},
-	{"unmarshal", 27295, "_goCode"},
-	{"unmarshal", 27338, "_goCode"},
-	{"unmarshal", 27387, "_goCode"},
-	{"unmarshal", 27507, "_goCode"},
-	{"unmarshal", 27632, "_goCode"},
-	{"unmarshal", 27706, "_goCode"},
-	{"unmarshal", 27871, "_goCode"},
-	{"unmarshal", 27912, "_goCode"},
-	{"unmarshal", 27987, "_goCode"},
-	{"unmarshal", 28049, "_goCode"},
-	{"unmarshal", 28214, "_goCode"},
-	{"unmarshal", 28729, "_goCode"},
+	{"unmarshal", 25830, "_goCode"},
+	{"unmarshal", 26537, "_goCode"},
+	{"unmarshal", 26985, "_goCode"},
+	{"unmarshal", 28103, "_goCode"},
+	{"unmarshal", 28326, "_goCode"},
+	{"unmarshal", 28400, "_goCode"},
+	{"unmarshal", 28584, "_goCode"},
+	{"unmarshal", 28659, "_goCode"},
+	{"unmarshal", 28721, "_goCode"},
+	{"unmarshal", 29069, "_goCode"},
+	{"unmarshal", 29159, "_goCode"},
+	{"unmarshal", 29562, "_goCode"},
 	{"validate", 101, "_goComment"},
 	{"validate", 189, "_goCode"},
 	{"validate", 199, "_goCode"},

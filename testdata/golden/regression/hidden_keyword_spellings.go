@@ -88,16 +88,18 @@ func (a *AnyOfSummary) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			a._jsonRawProps[_k] = _d.keep(_v)
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "a":
 			continue
 		}
-		if a.AdditionalProperties == nil {
-			a.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		a.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	a.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -282,16 +284,18 @@ func (a *AnyOfSummaryFalse) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			a._jsonRawProps[_k] = _d.keep(_v)
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "a":
 			continue
 		}
-		if a.AdditionalProperties == nil {
-			a.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		a.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	a.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -738,6 +742,8 @@ func (h *HiddenKeywordSpellingsPatternConstNull) decodeJSONAt(_d *jsonDoc, _sp j
 			_raw[_k] = _v
 		}
 	}
+	var _ppFiled map[string]json.RawMessage
+	var _apFiled map[string]json.RawMessage
 	{
 		var _least string
 		var _failed error
@@ -755,16 +761,16 @@ func (h *HiddenKeywordSpellingsPatternConstNull) decodeJSONAt(_d *jsonDoc, _sp j
 					matchesPattern = _ppMatched
 				}
 				if matchesPattern {
-					if h.PatternProperties == nil {
-						h.PatternProperties = make(map[string]json.RawMessage)
+					if _ppFiled == nil {
+						_ppFiled = make(map[string]json.RawMessage)
 					}
-					h.PatternProperties[rawKey] = _d.copyOf(rawVal)
+					_ppFiled[rawKey] = _d.copyOf(rawVal)
 					return nil
 				}
-				if h.AdditionalProperties == nil {
-					h.AdditionalProperties = make(map[string]json.RawMessage)
+				if _apFiled == nil {
+					_apFiled = make(map[string]json.RawMessage)
 				}
-				h.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+				_apFiled[rawKey] = _d.copyOf(rawVal)
 				return nil
 			}(); _err != nil {
 				_least, _failed = rawKey, _err
@@ -774,6 +780,8 @@ func (h *HiddenKeywordSpellingsPatternConstNull) decodeJSONAt(_d *jsonDoc, _sp j
 			return _failed
 		}
 	}
+	h.PatternProperties = _ppFiled
+	h.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -951,6 +959,8 @@ func (h *HiddenKeywordSpellingsPatternConstString) decodeJSONAt(_d *jsonDoc, _sp
 			_raw[_k] = _v
 		}
 	}
+	var _ppFiled map[string]json.RawMessage
+	var _apFiled map[string]json.RawMessage
 	{
 		var _least string
 		var _failed error
@@ -968,16 +978,16 @@ func (h *HiddenKeywordSpellingsPatternConstString) decodeJSONAt(_d *jsonDoc, _sp
 					matchesPattern = _ppMatched
 				}
 				if matchesPattern {
-					if h.PatternProperties == nil {
-						h.PatternProperties = make(map[string]json.RawMessage)
+					if _ppFiled == nil {
+						_ppFiled = make(map[string]json.RawMessage)
 					}
-					h.PatternProperties[rawKey] = _d.copyOf(rawVal)
+					_ppFiled[rawKey] = _d.copyOf(rawVal)
 					return nil
 				}
-				if h.AdditionalProperties == nil {
-					h.AdditionalProperties = make(map[string]json.RawMessage)
+				if _apFiled == nil {
+					_apFiled = make(map[string]json.RawMessage)
 				}
-				h.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+				_apFiled[rawKey] = _d.copyOf(rawVal)
 				return nil
 			}(); _err != nil {
 				_least, _failed = rawKey, _err
@@ -987,6 +997,8 @@ func (h *HiddenKeywordSpellingsPatternConstString) decodeJSONAt(_d *jsonDoc, _sp
 			return _failed
 		}
 	}
+	h.PatternProperties = _ppFiled
+	h.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1265,16 +1277,18 @@ func (h *HiddenKeywordSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	for _k := range _raw {
 		h._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "anyOfSummaryEmptyEnum", "anyOfSummaryFalse", "constNullBranch", "constStringBranch", "oneOfConstNull", "patternConstNull", "patternConstString", "plainEnum":
 			continue
 		}
-		if h.AdditionalProperties == nil {
-			h.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		h.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	h.AdditionalProperties = _apFiled
 
 	return nil
 }

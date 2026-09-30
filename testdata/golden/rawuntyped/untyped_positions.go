@@ -575,16 +575,18 @@ func (u *UntypedPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			u._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "aliased", "aliasedList", "anything", "bareArray", "bounded", "choices", "constant", "containsConst", "containsEnum", "cycle", "elements", "empty", "freeObject", "integerBeside", "nestedUnique", "nullableFreeObject", "pair", "required", "scalar", "unique", "values":
 			continue
 		}
-		if u.AdditionalProperties == nil {
-			u.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		u.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	u.AdditionalProperties = _apFiled
 
 	return nil
 }

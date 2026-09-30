@@ -650,16 +650,18 @@ func (n *NullableCompositionBranchesAnyObj) decodeJSONAt(_d *jsonDoc, _sp jsonSp
 	for _k := range _raw {
 		n._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "k":
 			continue
 		}
-		if n.AdditionalProperties == nil {
-			n.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		n.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	n.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1078,16 +1080,18 @@ func (n *NullableCompositionBranches) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) er
 			n._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "anyArr", "anyBound", "anyConst", "anyEmpty", "anyEnum", "anyFalse", "anyItems", "anyLen", "anyMinIt", "anyObj", "anyPlain", "oneConst", "oneMapVal":
 			continue
 		}
-		if n.AdditionalProperties == nil {
-			n.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		n.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	n.AdditionalProperties = _apFiled
 
 	return nil
 }

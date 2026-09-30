@@ -255,16 +255,18 @@ func (o *OneOfBooleanAndConstBranchesObjectsOnlyOption0) decodeJSONAt(_d *jsonDo
 	for _k := range _raw {
 		o._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "k":
 			continue
 		}
-		if o.AdditionalProperties == nil {
-			o.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		o.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	o.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -402,16 +404,18 @@ func (o *OneOfBooleanAndConstBranchesObjectsOnlyOption1) decodeJSONAt(_d *jsonDo
 	for _k := range _raw {
 		o._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "j":
 			continue
 		}
-		if o.AdditionalProperties == nil {
-			o.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		o.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	o.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -549,16 +553,18 @@ func (o *OneOfBooleanAndConstBranchesTrueBranchOption0) decodeJSONAt(_d *jsonDoc
 	for _k := range _raw {
 		o._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "k":
 			continue
 		}
-		if o.AdditionalProperties == nil {
-			o.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		o.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	o.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1345,16 +1351,18 @@ func (o *OneOfBooleanAndConstBranches) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) e
 			o._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "falseBranch", "mixed", "typedEnumBranch", "objectsOnly", "scalarsOnly", "trueBranch":
 			continue
 		}
-		if o.AdditionalProperties == nil {
-			o.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		o.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	o.AdditionalProperties = _apFiled
 
 	return nil
 }

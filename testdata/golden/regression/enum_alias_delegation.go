@@ -262,16 +262,18 @@ func (e *EnumAliasDelegation) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			e._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "num", "raw", "raw_list":
 			continue
 		}
-		if e.AdditionalProperties == nil {
-			e.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		e.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	e.AdditionalProperties = _apFiled
 
 	return nil
 }

@@ -611,16 +611,18 @@ func (r *RefToFalseSchema) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			r._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "always", "alwaysAllOf", "alwaysList", "beside", "list", "map", "prop", "tuple", "viaAllOf", "viaAnyOf", "viaNested", "viaOneOf":
 			continue
 		}
-		if r.AdditionalProperties == nil {
-			r.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		r.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	r.AdditionalProperties = _apFiled
 
 	return nil
 }

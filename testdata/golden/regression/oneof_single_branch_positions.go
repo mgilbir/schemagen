@@ -424,16 +424,18 @@ func (o *OneOfSingleBranchPositionsObjBranchOption0) decodeJSONAt(_d *jsonDoc, _
 	for _k := range _raw {
 		o._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "k":
 			continue
 		}
-		if o.AdditionalProperties == nil {
-			o.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		o.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	o.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -1059,16 +1061,18 @@ func (o *OneOfSingleBranchPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) err
 	for _k := range _raw {
 		o._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "constBranch", "emptyEnum", "falseBranch", "list", "map", "twoBranch", "boundBranch", "objBranch", "typedBranch":
 			continue
 		}
-		if o.AdditionalProperties == nil {
-			o.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		o.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	o.AdditionalProperties = _apFiled
 
 	return nil
 }

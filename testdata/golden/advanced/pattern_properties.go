@@ -86,6 +86,8 @@ func (r *Record) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	for _k := range _raw {
 		r._jsonKeys[_k] = true
 	}
+	var _ppFiled map[string]json.RawMessage
+	var _apFiled map[string]bool
 	{
 		var _least string
 		var _failed error
@@ -114,23 +116,23 @@ func (r *Record) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 					matchesPattern = _ppMatched
 				}
 				if matchesPattern {
-					if r.PatternProperties == nil {
-						r.PatternProperties = make(map[string]json.RawMessage)
+					if _ppFiled == nil {
+						_ppFiled = make(map[string]json.RawMessage)
 					}
-					r.PatternProperties[rawKey] = _d.copyOf(rawVal)
+					_ppFiled[rawKey] = _d.copyOf(rawVal)
 					return nil
 				}
 				if _d.isNull(rawVal) {
 					return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%s]", _schemagenQuote(rawKey))
 				}
-				if r.AdditionalProperties == nil {
-					r.AdditionalProperties = make(map[string]bool)
+				if _apFiled == nil {
+					_apFiled = make(map[string]bool)
 				}
 				var val bool
 				if err := jsonAtJSON[bool](&val, _d, rawVal); err != nil {
 					return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 				}
-				r.AdditionalProperties[rawKey] = val
+				_apFiled[rawKey] = val
 				return nil
 			}(); _err != nil {
 				_least, _failed = rawKey, _err
@@ -140,6 +142,8 @@ func (r *Record) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			return _failed
 		}
 	}
+	r.PatternProperties = _ppFiled
+	r.AdditionalProperties = _apFiled
 
 	return nil
 }

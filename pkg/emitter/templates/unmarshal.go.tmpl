@@ -605,6 +605,20 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	       the loop only files each member under its own key, and stays a
 	       plain loop. */}}
 	{{- $refuses := or $struct.OverflowNullCheck (and $struct.AdditionalProperties (not (isRawMessage $struct.AdditionalProperties.ValueType))) $struct.HasPatternProperties}}
+	{{- /* The members are filed into these, and the receiver is given them only
+	       once every member has been filed. The loop visits the members in the
+	       map's randomised order, and a refusal ends the decode at the least
+	       failing key with some of them filed and some not -- which ones
+	       depended on that order, so the same refused document left a
+	       different value from run to run, and a value decoded into twice was
+	       not what the second document alone left in it. A refused decode now
+	       leaves both maps as the reset above left them, whatever the order. */}}
+	{{- if $struct.HasPatternProperties}}
+	var _ppFiled map[string]json.RawMessage
+	{{- end}}
+	{{- if $struct.AdditionalProperties}}
+	var _apFiled map[string]{{goType $struct.AdditionalProperties.ValueType}}
+	{{- end}}
 	{{- $lk := leastKey "rawKey" "rawVal" "_raw" "_failed"}}
 	{{- if $refuses}}
 	{{- template "least_key_open" $lk}}
@@ -638,10 +652,10 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 		}
 		{{- end}}
 		if matchesPattern {
-			if {{$recv}}.PatternProperties == nil {
-				{{$recv}}.PatternProperties = make(map[string]json.RawMessage)
+			if _ppFiled == nil {
+				_ppFiled = make(map[string]json.RawMessage)
 			}
-			{{$recv}}.PatternProperties[rawKey] = _d.copyOf(rawVal)
+			_ppFiled[rawKey] = _d.copyOf(rawVal)
 			{{if $refuses}}return nil{{else}}continue{{end}}
 		}
 		{{- end}}
@@ -661,23 +675,23 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 		{{- end}}
 		{{- end}}
 		{{- if $struct.AdditionalProperties}}
-		if {{$recv}}.AdditionalProperties == nil {
-			{{$recv}}.AdditionalProperties = make(map[string]{{goType $struct.AdditionalProperties.ValueType}})
+		if _apFiled == nil {
+			_apFiled = make(map[string]{{goType $struct.AdditionalProperties.ValueType}})
 		}
 		{{- if isRawMessage $struct.AdditionalProperties.ValueType}}
-		{{$recv}}.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 		{{- else if $struct.AdditionalProperties.LeafDecode}}
 		var _iv {{goType $struct.AdditionalProperties.LeafDecode.ShadowType}}
 		if err := {{$struct.AdditionalProperties.ValueDecoder}}(&_iv, _d, rawVal); err != nil {
 			return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 		}
-		{{$recv}}.AdditionalProperties[rawKey] = {{$struct.AdditionalProperties.LeafDecode.Convert}}
+		_apFiled[rawKey] = {{$struct.AdditionalProperties.LeafDecode.Convert}}
 		{{- else}}
 		var val {{goType $struct.AdditionalProperties.ValueType}}
 		if err := {{$struct.AdditionalProperties.ValueDecoder}}(&val, _d, rawVal); err != nil {
 			return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 		}
-		{{$recv}}.AdditionalProperties[rawKey] = val
+		_apFiled[rawKey] = val
 		{{- end}}
 		{{- end}}
 	{{- if $refuses}}
@@ -685,6 +699,12 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 	{{- template "least_key_close" $lk}}
 	{{- else}}
 	}
+	{{- end}}
+	{{- if $struct.HasPatternProperties}}
+	{{$recv}}.PatternProperties = _ppFiled
+	{{- end}}
+	{{- if $struct.AdditionalProperties}}
+	{{$recv}}.AdditionalProperties = _apFiled
 	{{- end}}
 	{{- end}}
 	{{- end}}

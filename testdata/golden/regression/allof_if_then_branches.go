@@ -84,16 +84,18 @@ func (b *Base) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "condition", "delay":
 			continue
 		}
-		if b.AdditionalProperties == nil {
-			b.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		b.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	b.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -231,16 +233,18 @@ func (t *TriggerToolItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	for _k := range _raw {
 		t._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "id":
 			continue
 		}
-		if t.AdditionalProperties == nil {
-			t.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		t.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	t.AdditionalProperties = _apFiled
 
 	return nil
 }
@@ -484,16 +488,18 @@ func (t *Trigger) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			t._jsonNulls[_nullKey] = true
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "condition", "default", "delay", "message", "notify", "title", "tool", "type":
 			continue
 		}
-		if t.AdditionalProperties == nil {
-			t.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		t.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	t.AdditionalProperties = _apFiled
 
 	return nil
 }

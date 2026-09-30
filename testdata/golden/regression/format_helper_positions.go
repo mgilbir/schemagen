@@ -282,16 +282,18 @@ func (f *FormatHelperPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			return jsonPathf(err, "%s", "v6List")
 		}
 	}
+	var _apFiled map[string]json.RawMessage
 	for rawKey, rawVal := range _raw {
 		switch rawKey {
 		case "dateList", "durationList", "hostList", "hostMap", "idnHostList", "idnMailList", "mailList", "mailMap", "nested", "regexList", "timeList", "uriList", "uuidList", "v4List", "v4Map", "v6List":
 			continue
 		}
-		if f.AdditionalProperties == nil {
-			f.AdditionalProperties = make(map[string]json.RawMessage)
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
 		}
-		f.AdditionalProperties[rawKey] = _d.copyOf(rawVal)
+		_apFiled[rawKey] = _d.copyOf(rawVal)
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }

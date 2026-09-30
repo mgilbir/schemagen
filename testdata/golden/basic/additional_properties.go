@@ -79,6 +79,7 @@ func (m *Metadata) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	for _k := range _raw {
 		m._jsonKeys[_k] = true
 	}
+	var _apFiled map[string]string
 	{
 		var _least string
 		var _failed error
@@ -94,14 +95,14 @@ func (m *Metadata) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 				if _d.isNull(rawVal) {
 					return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%s]", _schemagenQuote(rawKey))
 				}
-				if m.AdditionalProperties == nil {
-					m.AdditionalProperties = make(map[string]string)
+				if _apFiled == nil {
+					_apFiled = make(map[string]string)
 				}
 				var val string
 				if err := jsonAtJSON[string](&val, _d, rawVal); err != nil {
 					return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 				}
-				m.AdditionalProperties[rawKey] = val
+				_apFiled[rawKey] = val
 				return nil
 			}(); _err != nil {
 				_least, _failed = rawKey, _err
@@ -111,6 +112,7 @@ func (m *Metadata) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 			return _failed
 		}
 	}
+	m.AdditionalProperties = _apFiled
 
 	return nil
 }

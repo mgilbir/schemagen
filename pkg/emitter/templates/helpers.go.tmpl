@@ -3263,6 +3263,53 @@ func jsonIDObjectOf(sum jsonID, n uint64) jsonID {
 	return jsonIDMix(sum, jsonIDObjectKind, jsonID{n, 2})
 }
 
+// jsonKeyMayShare reports whether a key of a Go map can be read as the same name
+// as another key: whether it holds a byte that is not UTF-8, read as U+FFFD, or
+// U+FFFD itself. Ranging over a string yields utf8.RuneError for both, so one
+// pass over the key answers, and a key that answers no has a name of its own.
+func jsonKeyMayShare(k string) bool {
+	for _, r := range k {
+		if r == utf8.RuneError {
+			return true
+		}
+	}
+	return false
+}
+
+// jsonIDShared is what the sum of an object's members keeps of the members
+// whose keys may share a name (see jsonKeyMayShare): for each such name, the key
+// of the member counted under it and that member's identity. See jsonIDKeep.
+type jsonIDShared map[string]jsonIDSharedMember
+
+type jsonIDSharedMember struct {
+	key string
+	mem jsonID
+}
+
+// jsonIDKeep decides, for the member under key k of an object whose identity
+// sums its members, whether it counts -- k being a key that may share a name
+// with another. encoding/json writes every member, in the order of the keys,
+// each under its key read as UTF-8, and a reader of what it writes keeps the
+// last member of a name: so of the members sharing a name the one with the
+// greatest key is the one that counts, whatever order the map is ranged in.
+// mem is the member's identity (see jsonIDMemberOf); replaced is the identity of
+// a member counted before under the same name that this one replaces, when
+// replaces says there is one, to be taken back out of the sum.
+func jsonIDKeep(shared *jsonIDShared, k string, mem jsonID) (keep bool, replaced jsonID, replaces bool) {
+	name := jsonValidString(k)
+	if prev, ok := (*shared)[name]; ok {
+		if prev.key > k {
+			return false, jsonID{}, false
+		}
+		replaced, replaces = prev.mem, true
+	}
+	if *shared == nil {
+		*shared = make(jsonIDShared, 1)
+	}
+	(*shared)[name] = jsonIDSharedMember{key: k, mem: mem}
+	return true, replaced, replaces
+}
+
 // jsonIDIn reports whether id is one of ids.
 func jsonIDIn(id jsonID, ids []jsonID) bool {
 	for _, x := range ids {
@@ -3812,19 +3859,34 @@ func jsonIDJSON(v any) (jsonID, error) {
 			return jsonIDOfKind(jsonIDNullKind), nil
 		}
 		// A sum over the members, as jsonIDObject's: a member's place in the
-		// object is no part of the value.
+		// object is no part of the value. Of members whose keys read as one
+		// name, the one encoding/json writes last counts (see jsonIDKeep).
 		var sum jsonID
-		{{- /* maporder: sums the members, which no order of the loop changes. */}}
+		var n uint64
+		var shared jsonIDShared
+		{{- /* maporder: sums the members, and of members sharing a name counts the greatest key's (jsonIDKeep), which no order of the loop changes. */}}
 		for k, e := range x {
 			id, err := jsonIDJSON(e)
 			if err != nil {
 				return jsonID{}, err
 			}
 			m := jsonIDMemberOf(jsonIDString(k), id)
+			if jsonKeyMayShare(k) {
+				keep, old, replaces := jsonIDKeep(&shared, k, m)
+				if !keep {
+					continue
+				}
+				if replaces {
+					sum.a -= old.a
+					sum.b -= old.b
+					n--
+				}
+			}
 			sum.a += m.a
 			sum.b += m.b
+			n++
 		}
-		return jsonIDObjectOf(sum, uint64(len(x))), nil
+		return jsonIDObjectOf(sum, n), nil
 	case json.RawMessage:
 		return jsonIDRawMessage(x)
 	{{- if .Decode}}
@@ -4120,8 +4182,13 @@ func jsonIDTime(t time.Time) (jsonID, error) {
 type jsonIDObject struct {
 	m    *jsonValidation
 	tree map[string]any
-	sum  jsonID
-	n    uint64
+	// renamed is jsonTreeKeep's record of the members of tree filed under a
+	// name other than their key, and shared jsonIDKeep's of the members of sum
+	// whose keys may share a name.
+	renamed map[string]string
+	shared  jsonIDShared
+	sum     jsonID
+	n       uint64
 }
 
 func (o *jsonIDObject) addID(key, val jsonID) {
@@ -4138,10 +4205,67 @@ func (o *jsonIDObject) add(key string, val jsonID) {
 		if o.tree == nil {
 			o.tree = map[string]any{}
 		}
-		o.tree[jsonValidString(key)] = o.m.pop()
+		t := o.m.pop()
+		if name := jsonValidString(key); jsonTreeKeep(o.tree, &o.renamed, key, name) {
+			o.tree[name] = t
+		}
 		return
 	}
-	o.addID(jsonIDString(key), val)
+	if !jsonKeyMayShare(key) {
+		o.addID(jsonIDString(key), val)
+		return
+	}
+	// A key that may be read as another's name: of the members sharing one,
+	// the one encoding/json writes last counts. See jsonIDKeep.
+	m := jsonIDMemberOf(jsonIDString(key), val)
+	keep, old, replaces := jsonIDKeep(&o.shared, key, m)
+	if !keep {
+		return
+	}
+	if replaces {
+		o.sum.a -= old.a
+		o.sum.b -= old.b
+		o.n--
+	}
+	o.sum.a += m.a
+	o.sum.b += m.b
+	o.n++
+}
+
+// jsonTreeKeep reports whether the member under key k of a Go map is the one a
+// tree keeps under name, the text k is read as, and records it when it is.
+//
+// Two keys that are not valid UTF-8 can be read as one name, each byte that is
+// not UTF-8 read as U+FFFD -- as can such a key and one that spells U+FFFD. The
+// tree has room for one member per name, and a map is ranged in no fixed order,
+// so filing each member as it came kept whichever the order put last.
+// encoding/json writes every member, in the order of the keys, and a reader of
+// what it writes keeps the last of them: so of the members sharing a name the
+// tree keeps the one with the greatest key, whatever the order. renamed holds
+// the key of each member kept under a name other than its own; until the first
+// such member it is nil, and a member whose key is its name is kept at once.
+func jsonTreeKeep(tree map[string]any, renamed *map[string]string, k, name string) bool {
+	if name == k && *renamed == nil {
+		return true
+	}
+	if _, taken := tree[name]; taken {
+		held, ok := (*renamed)[name]
+		if !ok {
+			held = name
+		}
+		if held > k {
+			return false
+		}
+	}
+	if name != k {
+		if *renamed == nil {
+			*renamed = make(map[string]string, 1)
+		}
+		(*renamed)[name] = k
+	} else {
+		delete(*renamed, name)
+	}
+	return true
 }
 
 func (o *jsonIDObject) id() jsonID {
@@ -4714,13 +4838,16 @@ func jsonTreeAny(v any, m *jsonValidation) (any, error) {
 			return nil, nil
 		}
 		out := make(map[string]any, len(x))
-		{{- /* maporder: copies members under their own keys, which no order of the loop changes. */}}
+		var renamed map[string]string
+		{{- /* maporder: files each member under its name, and of members sharing one keeps the greatest key's (jsonTreeKeep), which no order of the loop changes. */}}
 		for k, e := range x {
 			t, err := jsonTreeAny(e, m)
 			if err != nil {
 				return nil, err
 			}
-			out[jsonValidString(k)] = t
+			if name := jsonValidString(k); jsonTreeKeep(out, &renamed, k, name) {
+				out[name] = t
+			}
 		}
 		return out, nil
 	case map[string]string:
@@ -4728,9 +4855,12 @@ func jsonTreeAny(v any, m *jsonValidation) (any, error) {
 			return nil, nil
 		}
 		out := make(map[string]any, len(x))
-		{{- /* maporder: copies members under their own keys, which no order of the loop changes. */}}
+		var renamed map[string]string
+		{{- /* maporder: files each member under its name, and of members sharing one keeps the greatest key's (jsonTreeKeep), which no order of the loop changes. */}}
 		for k, e := range x {
-			out[jsonValidString(k)] = jsonValidString(e)
+			if name := jsonValidString(k); jsonTreeKeep(out, &renamed, k, name) {
+				out[name] = jsonValidString(e)
+			}
 		}
 		return out, nil
 	case map[string]json.RawMessage:
@@ -4738,13 +4868,16 @@ func jsonTreeAny(v any, m *jsonValidation) (any, error) {
 			return nil, nil
 		}
 		out := make(map[string]any, len(x))
-		{{- /* maporder: copies members under their own keys, which no order of the loop changes. */}}
+		var renamed map[string]string
+		{{- /* maporder: files each member under its name, and of members sharing one keeps the greatest key's (jsonTreeKeep), which no order of the loop changes. */}}
 		for k, e := range x {
 			t, err := jsonTreeAny(e, m)
 			if err != nil {
 				return nil, err
 			}
-			out[jsonValidString(k)] = t
+			if name := jsonValidString(k); jsonTreeKeep(out, &renamed, k, name) {
+				out[name] = t
+			}
 		}
 		return out, nil
 	case json.RawMessage:
