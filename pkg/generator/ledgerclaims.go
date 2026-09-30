@@ -71,8 +71,8 @@ func (l *ledgerRun) scopeRoot(d *ledgerDefInfo) *schema.Schema {
 
 // provenanceClaims credits whatever one element's provenance names.
 func (l *ledgerRun) provenanceClaims(d *ledgerDefInfo, p Provenance) {
-	for _, n := range p.Evaluated {
-		l.claimWhole(d, n, claimEvaluator)
+	for _, e := range p.Evaluated {
+		d.runsEvaluator(e)
 	}
 	if p.Source != nil && p.Keyword != "" {
 		l.claim(d, p.Source, p.Keyword, claimStatic)
@@ -598,10 +598,9 @@ func (l *ledgerRun) structClaims(d *ledgerDefInfo, sd *StructDef) {
 		l.typeClaims(d, group, kindObject)
 	}
 	l.requiredClaims(d, group, sd.RequiredJSON)
-	var buf []*schema.Schema
+	byName := indexProperties(group)
 	for _, f := range sd.Fields {
-		buf = propertyNodes(buf, group, f.JSONName)
-		props := l.withReach(buf)
+		props := l.withReach(byName[f.JSONName])
 		l.goTypeClaims(d, props, f.Type)
 		for _, p := range props {
 			l.nullableUnionClaims(d, p, f.Type)
@@ -754,16 +753,22 @@ func (l *ledgerRun) objectPathOnly(d *ledgerDefInfo, sd *StructDef) {
 			delete(d.pool, k)
 		}
 	}
-	var wholes []*schema.Schema
-	// maporder: the nodes are collected and each is handled on its own.
-	for n := range d.whole {
-		if own[n] {
-			wholes = append(wholes, n)
+	// The declaration's own nodes it is credited with whole -- by its own IR
+	// or by an evaluator literal it runs -- are credited keyword by keyword
+	// instead. A literal's set is shared, so the node is taken out of this
+	// declaration's reading of it rather than out of the set.
+	// maporder: each node is handled on its own, and what is done depends on
+	// the node alone.
+	for n := range own {
+		how, ok := d.wholeHow(n)
+		if !ok {
+			continue
 		}
-	}
-	for _, n := range wholes {
-		how := d.whole[n]
 		delete(d.whole, n)
+		if d.unwhole == nil {
+			d.unwhole = make(map[*schema.Schema]bool)
+		}
+		d.unwhole[n] = true
 		for _, k := range l.assertions(n) {
 			if carried(n, k) {
 				d.setPool(ledgerKey{n, k}, how)
@@ -859,20 +864,29 @@ func admitsOnlyNull(b *schema.Schema) bool {
 	return len(b.Enum) == 1 && b.Enum[0] == nil
 }
 
-// propertyNodes lists the node each member of nodes states for property name.
+// propertyIndex lists, for each property name, the node each member of a
+// group states for it, in the group's order.
 //
-// The list is written over dst, a buffer the caller reuses from field to field.
-func propertyNodes(dst, nodes []*schema.Schema, name string) []*schema.Schema {
-	out := dst[:0]
-	for _, n := range nodes {
+// It is built once per declaration and read once per field. Scanning the group
+// for each field instead cost the fields times the group, and a declaration
+// merged from a long allOf chain has as many of each as the chain is long.
+type propertyIndex map[string][]*schema.Schema
+
+func indexProperties(group []*schema.Schema) propertyIndex {
+	idx := propertyIndex{}
+	for _, n := range group {
 		if n == nil || n.IsBooleanSchema() {
 			continue
 		}
-		if p := n.Properties[name]; p != nil {
-			out = append(out, p)
+		// maporder: each name's list is appended to in the group's order,
+		// whichever name comes first.
+		for name, p := range n.Properties {
+			if p != nil {
+				idx[name] = append(idx[name], p)
+			}
 		}
 	}
-	return out
+	return idx
 }
 
 // withReach extends nodes by everything each reaches in place.

@@ -62,6 +62,11 @@ type source struct {
 	doc *Schema
 	// set records that the node has been located.
 	set bool
+	// at is one more than the index of this node's entry in parent's
+	// srcChildren, when it was located from that entry; 0 when not known.
+	// Written reads it to find the entry without scanning the holder's
+	// subschemas, which for a $defs of n definitions cost n for each.
+	at int32
 }
 
 // unlocated is the location of a node that has none and must not be given one
@@ -145,16 +150,24 @@ func (s *Schema) Written() (orig *Schema, found bool) {
 		}
 		return s, false
 	}
-	for _, c := range s.src.parent.srcChildren {
-		if !sameTokens(c.tokens, s.src.rel) {
-			continue
-		}
+	entry := func(c srcChild) *Schema {
 		if c.node != nil {
-			return c.node, true
+			return c.node
 		}
 		// A boolean held by a SchemaOrBool, made a node on demand: the node
 		// is the holder's own, and a copy of the holder shares it.
-		return s, true
+		return s
+	}
+	children := s.src.parent.srcChildren
+	// The entry the node was located from, where it is still that entry;
+	// otherwise the entry at the node's tokens, by a scan.
+	if i := int(s.src.at) - 1; i >= 0 && i < len(children) && sameTokens(children[i].tokens, s.src.rel) {
+		return entry(children[i]), true
+	}
+	for _, c := range children {
+		if sameTokens(c.tokens, s.src.rel) {
+			return entry(c), true
+		}
 	}
 	return s, false
 }
@@ -215,15 +228,15 @@ func (s *Schema) locateChildren() {
 	if !s.src.set {
 		return
 	}
-	for _, c := range s.srcChildren {
+	for i, c := range s.srcChildren {
 		if c.holder != nil {
 			if c.holder.src == nil {
-				c.holder.src = &source{parent: s, rel: c.tokens, set: true}
+				c.holder.src = &source{parent: s, rel: c.tokens, set: true, at: int32(i + 1)}
 			}
 			continue
 		}
 		if !c.node.src.set {
-			c.node.src = source{parent: s, rel: c.tokens, set: true}
+			c.node.src = source{parent: s, rel: c.tokens, set: true, at: int32(i + 1)}
 			c.node.locateChildren()
 		}
 	}

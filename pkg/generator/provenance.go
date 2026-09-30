@@ -32,15 +32,43 @@ import (
 // it after normalization ("dependentSchemas", not "dependencies").
 //
 // Evaluated is set on an element that carries a runtime-evaluator literal: the
-// nodes the literal compiles whole. The evaluator refuses a schema carrying a
-// keyword it does not model (nodeBuilder.keywordsOnly), so a literal that was
-// built at all enforces every keyword each of these nodes states.
+// sets of nodes the literals it runs compile whole. The evaluator refuses a
+// schema carrying a keyword it does not model (nodeBuilder.keywordsOnly), so a
+// literal that was built at all enforces every keyword each of these nodes
+// states.
 //
 // Nothing in the emitter reads any of this; it is provenance, not code.
 type Provenance struct {
 	Source    *schema.Schema
 	Keyword   string
-	Evaluated []*schema.Schema
+	Evaluated []*EvaluatorNodes
+}
+
+// EvaluatorNodes is the set of schema nodes one evaluator literal compiles
+// whole, in the order the build first met them.
+//
+// It is a value of its own, referred to by pointer, so that one compiled
+// literal is one set however many elements run it: an element names the sets
+// it runs, and the ledger credits each set's nodes by asking the set, once per
+// node it meets, rather than copying the set into every declaration that
+// reaches it. A literal shared by several types is one set shared by them.
+type EvaluatorNodes struct {
+	Nodes []*schema.Schema
+	has   map[*schema.Schema]bool
+}
+
+// NewEvaluatorNodes is the set of nodes, in the order given.
+func NewEvaluatorNodes(nodes []*schema.Schema) *EvaluatorNodes {
+	has := make(map[*schema.Schema]bool, len(nodes))
+	for _, n := range nodes {
+		has[n] = true
+	}
+	return &EvaluatorNodes{Nodes: nodes, has: has}
+}
+
+// Has reports whether the literal compiles n whole.
+func (e *EvaluatorNodes) Has(n *schema.Schema) bool {
+	return e != nil && e.has[n]
 }
 
 // claimOf is the provenance of an element enforcing one keyword of src.
@@ -132,5 +160,5 @@ func closedTupleKeyword(s *schema.Schema) string {
 // evaluatorClaim is the provenance of an element carrying a runtime-evaluator
 // literal compiled by b for keyword of owner.
 func evaluatorClaim(owner *schema.Schema, keyword string, b *nodeBuilder) Provenance {
-	return Provenance{Source: owner, Keyword: keyword, Evaluated: b.compiledNodes()}
+	return Provenance{Source: owner, Keyword: keyword, Evaluated: []*EvaluatorNodes{b.takeCompiled()}}
 }

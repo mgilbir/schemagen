@@ -34,6 +34,9 @@ type scopeWalk struct {
 	d *ledgerDefInfo
 	// id marks the nodes this walk has visited (ledgerNode.visitedBy).
 	id int32
+	// shared is set for the walk of a declaration that claims nothing, which
+	// shares what it has visited with every other such walk; see visit.
+	shared bool
 }
 
 // scopeFrame is what a node's position in the walk says about it.
@@ -69,11 +72,17 @@ func (l *ledgerRun) checkScope(d *ledgerDefInfo) {
 		return
 	}
 	l.walks++
-	w := &scopeWalk{l: l, d: d, id: l.walks}
+	w := &scopeWalk{l: l, d: d, id: l.walks, shared: d.claimsNothing()}
 	// The declaration's own Go type decodes only some kinds, and every
 	// instance it holds is one of them.
 	kinds := l.goKinds(&NamedType{Name: d.name}, 0) | kindNull
 	w.visit(root, scopeFrame{kinds: kinds, inRootGroup: true})
+}
+
+// ledgerSharedVisit is a node and the kinds of instance a walk met it with.
+type ledgerSharedVisit struct {
+	node  *schema.Schema
+	kinds jsonKinds
 }
 
 func (w *scopeWalk) visit(n *schema.Schema, f scopeFrame) {
@@ -86,12 +95,30 @@ func (w *scopeWalk) visit(n *schema.Schema, f scopeFrame) {
 		return
 	}
 	rn.visitedBy = w.id
+	if w.shared {
+		// A declaration that claims nothing and hands nothing on meets every
+		// node the way every other such declaration does: what a visit finds
+		// depends on the node and the kinds the instance can be, and on no
+		// claim. Once one of them has visited a node with those kinds, what
+		// the visit could report is reported, and what lies below it is
+		// reached, so the rest stop there. Without this, n such declarations
+		// reaching one graph -- a recursive anyOf the evaluator declined,
+		// each branch a type of its own -- walked it n times.
+		k := ledgerSharedVisit{node: n, kinds: f.kinds}
+		if l.sharedVisits[k] {
+			return
+		}
+		if l.sharedVisits == nil {
+			l.sharedVisits = make(map[ledgerSharedVisit]bool)
+		}
+		l.sharedVisits[k] = true
+	}
 	c := l.canonical(n)
 	rn.reached = true
 	if c != n {
 		l.node(c).reached = true
 	}
-	if d.forbidsAll || d.whole[n] != 0 || d.whole[c] != 0 {
+	if d.forbidsAll || d.carriesWhole(n) || d.carriesWhole(c) {
 		// Compiled whole into an evaluator literal, or refused whenever it is
 		// present at all: nothing under it is left to claim.
 		l.markReached(n)
@@ -516,14 +543,20 @@ func (w *scopeWalk) ownerName(node *schema.Schema) string {
 //
 // A keyword written inside another the runtime evaluator declined -- a node
 // below a `not` too large for it, say -- is unchecked because that keyword is,
-// and where the declaration has already been told so about the keyword above,
-// the finding is folded into that one instead of standing beside it: the one
+// and where the ledger has already reported the keyword above, the finding is
+// folded into that one instead of standing beside it: the one
 // above says what went wrong and, in its count, how much it takes with it. A
 // chain of declined keywords otherwise reports every link of the chain at its
 // own location, and locations grow with depth, so a document n levels deep
 // read as n findings of up to n tokens each -- quadratic in the input, in time
-// and in the length of the report. Only the same declaration's finding covers
-// one: a node another declaration reaches is reported for that one as usual.
+// and in the length of the report.
+//
+// Whichever declaration's walk reported the keyword above, it covers the one
+// below: a finding is a keyword at a location, reported once whatever reaches
+// it, and the keyword below is unchecked because the one above is. Were the
+// cover asked of the same declaration only, every other declaration reaching
+// the node would have to walk to it to report it again, and in a graph every
+// declaration reaches that is a walk of the whole graph per declaration.
 func (w *scopeWalk) report(n *schema.Schema, keyword string, f scopeFrame) {
 	l := w.l
 	c := l.canonical(n)
@@ -533,8 +566,8 @@ func (w *scopeWalk) report(n *schema.Schema, keyword string, f scopeFrame) {
 	}
 	reason, above := l.declineReason(n, keyword)
 	if above.node != nil {
-		if at, ok := l.reported[ledgerFindingKey{node: l.canonical(above.node), keyword: above.keyword}]; ok && l.findings[at].Def == w.d.name {
-			fk := ledgerFindingKey{node: c, keyword: keyword, def: w.d.name}
+		if at, ok := l.reported[ledgerFindingKey{node: l.canonical(above.node), keyword: above.keyword}]; ok {
+			fk := ledgerFindingKey{node: c, keyword: keyword}
 			if !l.foldedKeys[fk] {
 				if l.folded == nil {
 					l.folded = make(map[int]int)
@@ -666,15 +699,25 @@ func (l *ledgerRun) assertionsOf(r *ledgerNode, n *schema.Schema) []string {
 }
 
 // markReached marks n and everything below it reached.
+//
+// Every declaration that carries a node whole marks it, and in a schema that
+// describes itself every one of them reaches the whole graph. A node marked
+// here has everything below it marked by the same call -- the mark is set on
+// the way in, and a call returns only once the walk below it is done -- so a
+// later call stops at it: each node is walked once per run, not once per
+// declaration.
 func (l *ledgerRun) markReached(n *schema.Schema) {
-	seen := make(map[*schema.Schema]bool)
 	var walk func(m *schema.Schema)
 	walk = func(m *schema.Schema) {
-		if m == nil || seen[m] {
+		if m == nil {
 			return
 		}
-		seen[m] = true
-		l.node(m).reached = true
+		rm := l.node(m)
+		if rm.has&hasSubtreeReached != 0 {
+			return
+		}
+		rm.has |= hasSubtreeReached
+		rm.reached = true
 		l.node(l.canonical(m)).reached = true
 		for _, ch := range l.children(m, false) {
 			walk(ch.node)

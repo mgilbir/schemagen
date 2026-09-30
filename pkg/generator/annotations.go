@@ -292,9 +292,13 @@ func (b *nodeBuilder) noteCompiled(s *schema.Schema) {
 	b.compiledOrder = append(b.compiledOrder, s)
 }
 
-// compiledNodes lists the nodes rendered so far, in the order first met.
-func (b *nodeBuilder) compiledNodes() []*schema.Schema {
-	return append([]*schema.Schema(nil), b.compiledOrder...)
+// takeCompiled hands over the set of nodes rendered so far, without copying
+// it, and starts the builder on a new one: a node rendered after this belongs
+// to no literal the set's element runs, so it must not be added to the set.
+func (b *nodeBuilder) takeCompiled() *EvaluatorNodes {
+	e := &EvaluatorNodes{Nodes: b.compiledOrder, has: b.compiled}
+	b.compiled, b.compiledOrder = nil, nil
+	return e
 }
 
 // refuse records why the build is refusing and returns the refusal.

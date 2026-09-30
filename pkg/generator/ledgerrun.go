@@ -80,6 +80,13 @@ type ledgerRun struct {
 
 	// declinedAbove memoises inheritedDecline.
 	declinedAbove map[*schema.Schema]ledgerDecline
+
+	// evalCanon memoises evaluatorCanonicals.
+	evalCanon map[*EvaluatorNodes]map[*schema.Schema]bool
+
+	// sharedVisits records what the walks of declarations that claim nothing
+	// have visited; see scopeWalk.visit.
+	sharedVisits map[ledgerSharedVisit]bool
 }
 
 // ledgerDecline is a decline of the runtime evaluator that covers a node from
@@ -131,6 +138,9 @@ const (
 	hasForm
 	hasIndexed
 	hasDynamic
+	// hasSubtreeReached is set once markReached has marked the node and
+	// everything below it reached.
+	hasSubtreeReached
 )
 
 // node is the run's record of n, made on first use. Records are carved out of
@@ -265,6 +275,17 @@ type ledgerDefInfo struct {
 	// declarations write to only some of them, and a run has thousands.
 	pool  map[ledgerKey]claimHow
 	whole map[*schema.Schema]claimHow
+
+	// evaluated are the evaluator literals the declaration runs, each the set
+	// of nodes it compiles whole, which the declaration is credited with by
+	// asking the set (see wholeHow): the sets are shared, never copied into a
+	// declaration. unwhole names the nodes of those sets the declaration is
+	// not credited with whole after all (see objectPathOnly).
+	evaluated []*EvaluatorNodes
+	unwhole   map[*schema.Schema]bool
+	// run is the run the declaration belongs to, whose memo of each set's
+	// canonical nodes wholeHow reads.
+	run *ledgerRun
 
 	// dispatchAll names every type this declaration's Validate reaches a value
 	// through; dispatchProp narrows that to the types reached through one
@@ -738,7 +759,7 @@ func (l *ledgerRun) collectDefs() {
 		if root == nil {
 			root = l.g.typeSchemas[name]
 		}
-		d := &ledgerDefInfo{name: name, td: td, root: root}
+		d := &ledgerDefInfo{name: name, td: td, root: root, run: l}
 		if root != nil {
 			l.setRoot(d, root)
 		}
@@ -854,10 +875,9 @@ func (l *ledgerRun) eachTypedPosition(d *ledgerDefInfo, visit func(*schema.Schem
 	}
 	switch td := d.td.(type) {
 	case *StructDef:
-		var buf []*schema.Schema
+		byName := indexProperties(group)
 		for _, f := range td.Fields {
-			buf = propertyNodes(buf, group, f.JSONName)
-			byGoType(buf, f.Type)
+			byGoType(byName[f.JSONName], f.Type)
 		}
 		for i := range td.OneOfs {
 			for _, v := range td.OneOfs[i].Variants {
@@ -987,9 +1007,75 @@ func (l *ledgerRun) claimWhole(d *ledgerDefInfo, n *schema.Schema, how claimHow)
 	}
 }
 
+// claimsNothing reports whether d's IR claims no keyword of any node, carries
+// none whole, and validates or holds no value through another type: whatever
+// its walk meets, it meets the way any other such declaration's does.
+func (d *ledgerDefInfo) claimsNothing() bool {
+	return len(d.pool) == 0 && len(d.whole) == 0 && len(d.evaluated) == 0 &&
+		len(d.dispatchAll) == 0 && len(d.dispatchProp) == 0 && len(d.dispatchSkips) == 0 &&
+		len(d.typeRefs) == 0 && !d.forbidsAll && len(d.dependentRequired) == 0
+}
+
+// runsEvaluator records that d runs the evaluator literal compiling e.
+func (d *ledgerDefInfo) runsEvaluator(e *EvaluatorNodes) {
+	if e == nil || len(e.Nodes) == 0 || slices.Contains(d.evaluated, e) {
+		return
+	}
+	d.evaluated = append(d.evaluated, e)
+}
+
+// wholeHow reports whether d is credited with every keyword of n, and how:
+// by a whole claim of its own IR, or by an evaluator literal it runs that
+// compiles n or a node whose canonical form is n.
+func (d *ledgerDefInfo) wholeHow(n *schema.Schema) (claimHow, bool) {
+	if how, ok := d.whole[n]; ok {
+		return how, true
+	}
+	if n == nil || d.unwhole[n] {
+		return 0, false
+	}
+	for _, e := range d.evaluated {
+		if e.Has(n) || d.run.evaluatorCanonicals(e)[n] {
+			return claimEvaluator, true
+		}
+	}
+	return 0, false
+}
+
+// carriesWhole reports whether d is credited with every keyword of n.
+func (d *ledgerDefInfo) carriesWhole(n *schema.Schema) bool {
+	how, ok := d.wholeHow(n)
+	return ok && how != 0
+}
+
+// evaluatorCanonicals is, for the set e, the canonical form of each node of it
+// that is not its own: a value copy the generator compiled stands for the node
+// the document wrote. Worked out once per set and run, however many
+// declarations run the set, and nil for the usual set whose nodes are all
+// canonical already.
+func (l *ledgerRun) evaluatorCanonicals(e *EvaluatorNodes) map[*schema.Schema]bool {
+	if c, ok := l.evalCanon[e]; ok {
+		return c
+	}
+	var c map[*schema.Schema]bool
+	for _, n := range e.Nodes {
+		if cn := l.canonical(n); cn != n && !e.Has(cn) {
+			if c == nil {
+				c = make(map[*schema.Schema]bool)
+			}
+			c[cn] = true
+		}
+	}
+	if l.evalCanon == nil {
+		l.evalCanon = make(map[*EvaluatorNodes]map[*schema.Schema]bool)
+	}
+	l.evalCanon[e] = c
+	return c
+}
+
 // claimed reports whether d holds a claim on keyword of n.
 func (d *ledgerDefInfo) claimed(n *schema.Schema, keyword string) bool {
-	if _, ok := d.whole[n]; ok {
+	if _, ok := d.wholeHow(n); ok {
 		return true
 	}
 	_, ok := d.pool[ledgerKey{n, keyword}]
