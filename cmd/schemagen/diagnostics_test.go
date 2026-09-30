@@ -20,7 +20,18 @@ func runGenerateCapturing(t *testing.T, args ...string) (string, error) {
 	cmd.SetErr(&stderr)
 	cmd.SetArgs(append([]string{"generate"}, args...))
 	err := cmd.Execute()
-	return stderr.String(), err
+	return withoutRuntimeHint(stderr.String()), err
+}
+
+// withoutRuntimeHint drops the hint every successful run ends with (see
+// runtimehint.go). The tests that use it are about the warnings and notes a run
+// gives about its schemas, and compare them exactly; the hint has tests of its
+// own.
+func withoutRuntimeHint(stderr string) string {
+	if i := strings.LastIndex(stderr, runtimeHintPrefix); i >= 0 && strings.Count(stderr[i:], "\n") == 1 && strings.HasSuffix(stderr, "\n") {
+		return stderr[:i]
+	}
+	return stderr
 }
 
 // ---------- issue #223: a $ref by document $id ----------
@@ -265,10 +276,9 @@ func TestLenientRefsSaysNothingWhenEverythingResolves(t *testing.T) {
 // file spells a name for the ref and nothing declares it.
 //
 // patternProperties is deliberately absent: it belongs with the first group
-// (checked by hand against the repository's own module), but the package it
-// emits imports goecma262, which the bare go.mod buildGenerated writes does not
-// have, so it would fail to build for a reason that has nothing to do with the
-// ref.
+// (checked by hand against the repository's own module) and is not one of the
+// positions this table is about: it says nothing about where a lenient ref may
+// stand.
 var lenientRefPositions = []struct {
 	name      string
 	schema    string
