@@ -1,4 +1,4 @@
-package fuzz
+package testsupport
 
 import (
 	"bytes"
@@ -13,9 +13,17 @@ import (
 	"github.com/mgilbir/schemagen/pkg/emitter"
 )
 
-// The memory half of the fuzz gate. Its sibling is the wall-clock half in
-// fuzz_test.go -- fuzzSeedBudget and TestFuzzSeedCorpusFitsTheWorkerDeadline --
+// The memory half of the fuzz gate. Its sibling is the CPU-time half in
+// tests/fuzzdeadline -- fuzzSeedBudget and TestFuzzSeedCorpusFitsTheWorkerDeadline --
 // and the two exist for the same reason and catch different things.
+//
+// It lives here, not in one of the fuzz test packages, because three binaries
+// run the pipeline under it: FuzzGenerate (tests/fuzz), the deadline sweep
+// (tests/fuzzdeadline) and the memory sweep (tests/fuzzmemory). They were one
+// package until the two corpus sweeps, each replaying every seed, took most of
+// that package's run time and pushed it to go test's ten-minute timeout on a
+// four-vCPU runner; each is now a binary of its own. Each binary that imports
+// this gets its own copy of the sampler goroutine and poison state below.
 //
 // What a time gate cannot see: issue #348 was 35 bytes of legal schema,
 // {"items":{"$ref":"#","minItems":1}}, that recursed with the same *schema.Schema
@@ -356,7 +364,7 @@ func fuzzMemorySampler() {
 }
 
 // fuzzMemoryTrip builds the message. Everything needed to reproduce is in it:
-// the config byte, because fuzzConfig turns it into a whole generator.Config and
+// the config byte, because FuzzConfig turns it into a whole generator.Config and
 // #348 only reproduced under three of the five seed bytes, and the input itself,
 // because a panic during a `go test ./...` seed replay has no crasher file to
 // point at.
@@ -449,8 +457,8 @@ func fuzzQuoteInput(data []byte) string {
 //
 // Checked against the thing itself rather than only against a benchmark: two
 // 180-second `-fuzz FuzzGenerate` runs on the same machine, same corpus, two
-// workers each, one binary with the gate and one with fuzzOnce calling
-// fuzzPipeline directly, both from a cold fuzz cache. 1,656,062 execs ungated
+// workers each, one binary with the gate and one with FuzzOnce calling
+// FuzzPipeline directly, both from a cold fuzz cache. 1,656,062 execs ungated
 // against 1,608,292 gated -- 2.9%, at 9,200 execs/sec. Those binaries were built
 // with `go test -c`, so they run without coverage instrumentation and about
 // twice as fast per exec as the nightly's workers do; the cost is a fixed number
@@ -541,7 +549,7 @@ func fuzzMemoryRecordPeaks(inFlight *fuzzMemoryInFlight) {
 // body with the sampler turned up, and fails on any seed that trips the gate.
 //
 // This is the seed half, and it is a different job from the watchdog inside
-// fuzzOnce even though they share the machinery. The watchdog catches a bad
+// FuzzOnce even though they share the machinery. The watchdog catches a bad
 // *mutation*, during a nightly fuzz run, and is the only thing that can: nobody
 // has the mutation in advance. This test catches a bad *seed*, on the pull
 // request, before a run starts -- and a bad seed is worse than a bad mutation,
@@ -560,15 +568,19 @@ func fuzzMemoryRecordPeaks(inFlight *fuzzMemoryInFlight) {
 // It also publishes the measurements fuzzMemoryBudgets is set from, one per
 // dimension. The numbers it logs are that comment's numbers, taken through the
 // same code path the fuzzer runs, which is the only way the two cannot drift.
-func TestFuzzSeedCorpusFitsTheMemoryCeiling(t *testing.T) {
+//
+// The test itself is tests/fuzzmemory's TestFuzzSeedCorpusFitsTheMemoryCeiling,
+// which calls this; the body is here because it reaches into the gate's
+// unexported state, which the other two binaries reach only through FuzzOnce.
+func FuzzSeedCorpusFitsTheMemoryCeiling(t *testing.T) {
 	em, err := emitter.New()
 	if err != nil {
 		t.Fatalf("emitter.New: %v", err)
 	}
 
 	// Warm the sampler up and then turn it up, so that seeds measured in
-	// microseconds are still looked at. Restored afterwards: the fuzz target and
-	// the deadline test run in this same binary and should not pay for it.
+	// microseconds are still looked at. Restored afterwards, so that nothing
+	// run after it in this binary pays for it.
 	fuzzMemoryGate(0, nil, func() {})
 	previous := fuzzMemoryPeriodNanos.Swap(int64(fuzzMemoryMeasurePeriod))
 	defer fuzzMemoryPeriodNanos.Store(previous)
@@ -583,11 +595,11 @@ func TestFuzzSeedCorpusFitsTheMemoryCeiling(t *testing.T) {
 	var tripped *sample
 	var trippedMsg string
 
-	local, external, err := fuzzSeedCorpus(func(origin string, schema []byte) {
+	local, external, err := SeedCorpus(func(origin string, schema []byte) {
 		if tripped != nil {
 			return // see the FailNow below: the run is over, drain the walk
 		}
-		for _, bits := range fuzzSeedCfgBits {
+		for _, bits := range FuzzSeedCfgBits {
 			seeds++
 			func() {
 				defer func() {
@@ -602,7 +614,7 @@ func TestFuzzSeedCorpusFitsTheMemoryCeiling(t *testing.T) {
 					tripped = &sample{origin: origin, bits: bits}
 					trippedMsg = trip.Error()
 				}()
-				fuzzOnce(em, bits, schema)
+				FuzzOnce(em, bits, schema)
 			}()
 			for d := range fuzzMemoryBudgets {
 				if grew := fuzzMemoryLastPeak[d].Load(); grew > worst[d].grew {
@@ -647,7 +659,10 @@ func TestFuzzSeedCorpusFitsTheMemoryCeiling(t *testing.T) {
 // way through parse -> generate -> emit, and a mutation json.Unmarshal refuses at
 // the first byte -- and they bracket where that fixed cost lands as a
 // percentage.
-func BenchmarkFuzzMemoryGate(b *testing.B) {
+//
+// The benchmark itself is tests/fuzzmemory's BenchmarkFuzzMemoryGate, which
+// calls this.
+func FuzzMemoryGateBenchmark(b *testing.B) {
 	em, err := emitter.New()
 	if err != nil {
 		b.Fatalf("emitter.New: %v", err)
@@ -679,12 +694,12 @@ func BenchmarkFuzzMemoryGate(b *testing.B) {
 	for _, c := range cases {
 		b.Run(c.name+"/gated", func(b *testing.B) {
 			for b.Loop() {
-				fuzzOnce(em, 0x1F, c.data)
+				FuzzOnce(em, 0x1F, c.data)
 			}
 		})
 		b.Run(c.name+"/ungated", func(b *testing.B) {
 			for b.Loop() {
-				fuzzPipeline(em, 0x1F, c.data)
+				FuzzPipeline(em, 0x1F, c.data)
 			}
 		})
 	}

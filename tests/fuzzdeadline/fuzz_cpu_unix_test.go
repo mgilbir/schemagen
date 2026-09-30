@@ -1,6 +1,6 @@
 //go:build unix
 
-package fuzz
+package fuzzdeadline
 
 import "syscall"
 

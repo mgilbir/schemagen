@@ -13,4 +13,7 @@ const (
 var (
 	corpusSchemaPaths = testsupport.CorpusSchemaPaths
 	fuzzSeedCorpus    = testsupport.SeedCorpus
+	fuzzSeedCfgBits   = testsupport.FuzzSeedCfgBits
+	fuzzConfig        = testsupport.FuzzConfig
+	fuzzOnce          = testsupport.FuzzOnce
 )

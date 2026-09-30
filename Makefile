@@ -297,7 +297,7 @@ test-determinism: download-test-suite
 # the test binary stops its timeout alarm before entering the fuzzing loop.
 #
 # The package is named rather than matched: `go test -fuzz` refuses a pattern
-# that matches more than one package, and ./tests/... matches a dozen.
+# that matches more than one package, and ./tests/... matches every package under tests/.
 FUZZTIME ?= 60s
 
 # Depends on the suite for its seeds. FuzzGenerate takes the schema of every
@@ -329,7 +329,7 @@ fuzz: download-test-suite fuzz-seeds
 # `fatal error: out of memory` or `fatal error: stack overflow`, either of which
 # takes the worker with it and leaves the coordinator with nothing to say.
 fuzz-seeds:
-	go test ./tests/fuzz -run '^(FuzzGenerate|TestFuzzSeedCorpusFitsTheWorkerDeadline|TestFuzzSeedCorpusFitsTheMemoryCeiling)$$' -count=1
+	go test ./tests/fuzz ./tests/fuzzdeadline ./tests/fuzzmemory -run '^(FuzzGenerate|TestFuzzSeedCorpusFitsTheWorkerDeadline|TestFuzzSeedCorpusFitsTheMemoryCeiling)$$' -count=1
 
 # Layer 2 of the fuzzing effort. FuzzGenerate only proves the pipeline does not
 # panic, which says nothing about whether the code it emits is correct. This

@@ -1,6 +1,6 @@
 //go:build !unix
 
-package fuzz
+package fuzzdeadline
 
 // cpuTimeAvailable is false here: getrusage(RUSAGE_SELF) is a unix call and
 // there is no portable equivalent that stays correct on every platform this

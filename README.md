@@ -1178,7 +1178,9 @@ under `tests/`, one package per area:
 | `tests/patterns` | the ECMA-262 pattern engine in every position a pattern can occupy |
 | `tests/numbers` | numeric precision, saturated bounds, canonical numbers |
 | `tests/corpus` | sweeps over every schema in `testdata/schemas`: compile, field alignment, helper file, refusals |
-| `tests/fuzz` | `FuzzGenerate`, its seed corpus and the limits a fuzz worker imposes (`make fuzz`); crashers land in `tests/fuzz/testdata/fuzz/` |
+| `tests/fuzz` | `FuzzGenerate` and its seed corpus, and the backstop sweep (`make fuzz`); crashers land in `tests/fuzz/testdata/fuzz/` |
+| `tests/fuzzdeadline` | every fuzz seed held to the CPU-time budget a fuzz worker's ten-second deadline implies (`make fuzz-seeds`) |
+| `tests/fuzzmemory` | every fuzz seed held to the heap and stack ceilings the memory gate enforces (`make fuzz-seeds`) |
 | `tests/determinism` | same input, same output; the static map-order guard (`make test-determinism`) |
 | `tests/external` | the JSON Schema Test Suite harness (`make test-external`) |
 | `tests/cogen` | co-generated schemas and instances (`make cogen`) |
