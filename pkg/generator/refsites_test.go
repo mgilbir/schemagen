@@ -91,6 +91,11 @@ var refReadingSites = map[string]refReadingSite{
 	},
 
 	// ------------------------------------------------ reads whichever is there
+	"generator/accessrules.go | (*Generator).accessMarksReachable": {
+		Verdict: refReadsWhicheverIsThere, Reads: "$dynamicRef,$recursiveRef",
+		Why: "follows any reference through accessSuccessors (inPlaceSuccessors and referenceTargetUncounted), and names the " +
+			"two dynamic ones only to note that what the node reaches turns on the dynamic scope, which keys its access graph",
+	},
 	"generator/accessrules.go | (*Generator).evaluatingReach": {
 		Verdict: refReadsWhicheverIsThere, Reads: "$dynamicRef,$recursiveRef",
 		Why: "follows any reference through referenceOn and referenceTargetUncounted, and names the two dynamic ones only " +

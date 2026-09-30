@@ -64,8 +64,8 @@ func (o *IDObj) Value(key string, member IDMemberFunc, m *Validation) (any, bool
 func (o *IDObj) Of(member IDMemberFunc, m *Validation) (ID, error) { return o.idOf(member, m) }
 
 // StripWriteOnly takes out of the members already set the locations rules mark
-// writeOnly, below the members themselves.
-func (o *IDObj) StripWriteOnly(rules []AccessRule, member IDMemberFunc, m *Validation) error {
+// writeOnly, the members themselves included.
+func (o *IDObj) StripWriteOnly(rules AccessRules, member IDMemberFunc, m *Validation) error {
 	return o.idStripWriteOnly(rules, member, m)
 }
 

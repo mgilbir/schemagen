@@ -153,6 +153,20 @@ var costShapes = []costShape{
 		unit:  1, open: `{"n":"x","t":[{"wo":"s"}],"c":`, close: `}`, good: `{"n":"y"}`, bad: `{"n":1}`, invalid: `{"n":"long"}`,
 	},
 	{
+		// --strict-read-write over a recursive value no type decodes: below
+		// the first level everything is held as raw JSON in a prefixItems
+		// slot, so the machine's walk is all that reads it. The writeOnly
+		// member at the bottom is stripped from every level on the way out,
+		// and the readOnly one refuses the document at the bottom. Refusing
+		// built the path to it at every level, and stripping decoded and wrote
+		// out every level again: quadratic in the depth, both.
+		name: "strict read-write, raw",
+		schema: `{"type":"object","properties":{"h":{"type":"array","prefixItems":[{"$ref":"#"}]},"n":{"type":"string","maxLength":3},
+		  "ro":{"type":"string","readOnly":true},"wo":{"type":"string","writeOnly":true}}}`,
+		flags: []string{"--strict-read-write"},
+		unit:  2, open: `{"n":"x","h":[`, close: `]}`, good: `{"wo":"s"}`, bad: `{"ro":"x"}`, invalid: `{"n":"long"}`,
+	},
+	{
 		// A patternProperties value is held as raw JSON; Validate decodes it
 		// into its type. The decode never refuses at the bottom: nothing below
 		// the first level is decoded until Validate asks.

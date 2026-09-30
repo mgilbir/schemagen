@@ -134,6 +134,21 @@ type Generator struct {
 	// See noteSkippedDefault.
 	skippedDefaults []SkippedDefault
 
+	// accessMarks memoizes, per schema node, whether any "readOnly": true or
+	// "writeOnly": true is reachable from it (accessMarksReachable), and
+	// accessDynamic whether a $dynamicRef or a $recursiveRef is (see
+	// accessScopeFree); accessGraphs holds the access graphs accessRulesFor
+	// builds, one shared by every schema that reaches no dynamic reference and
+	// one per dynamic scope for the rest (accessGraphFor). All are per Generate
+	// call.
+	accessMarks   map[*schema.Schema]bool
+	accessDynamic map[*schema.Schema]bool
+	accessGraphs  map[string]*accessGraph
+	// accessStates numbers the file's machine states by the graph node each
+	// stands for, and accessStateKeys reads the number back. See accessState.
+	accessStates    map[accessStateID]int
+	accessStateKeys map[int]accessStateID
+
 	// unresolvedRefs records reference values that resolveRefInContext could not
 	// resolve anywhere (local defs, anchors, document roots, or the external
 	// resolver). Unless Config.LenientRefs is set, Generate fails when this
@@ -452,6 +467,13 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	g.resolvedRefMemo = nil
 	g.hooks = testHooks{forceEvaluator: options.forceEvaluator}
 	g.skippedDefaults = nil
+	// References resolve against this call's documents and scope, so what a
+	// node reaches is this call's answer.
+	g.accessMarks = nil
+	g.accessDynamic = nil
+	g.accessGraphs = nil
+	g.accessStates = nil
+	g.accessStateKeys = nil
 	g.rootSchema = s
 	if g.config.Draft != schema.DraftUnknown {
 		g.draft = g.config.Draft
@@ -1162,14 +1184,14 @@ func (g *Generator) appendDef(def TypeDef) {
 func (g *Generator) claimCarriedIdents(def TypeDef) {
 	switch d := def.(type) {
 	case *StructDef:
-		if len(d.AccessRules) > 0 {
+		if d.AccessRules != nil {
 			d.AccessRulesVar = g.names.claim(d.Name+"AccessRules",
 				memberHolder(d.Name, "access-rules", "the access rules of "+d.Name))
 		}
 	case *AnnotationSchemaDef:
 		d.SchemaVar = g.names.claim(d.Name+"Schema",
 			memberHolder(d.Name, "schema", "the compiled schema of "+d.Name))
-		if len(d.AccessRules) > 0 {
+		if d.AccessRules != nil {
 			d.AccessRulesVar = g.names.claim(d.Name+"AccessRules",
 				memberHolder(d.Name, "access-rules", "the access rules of "+d.Name))
 		}
@@ -5927,21 +5949,27 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	// which readOnly must never reach, and `writeOnly` was emitted straight back
 	// out at all of them.
 	accessRules := g.accessRulesFor(s, 2)
-	if len(accessRules) > 0 {
+	var accessRoot *accessStateID
+	if g.config.StrictReadWrite {
+		accessRoot = g.accessRootOf(s)
+	}
+	var startMoves []AccessMove
+	if accessRules != nil {
 		needsUnmarshal = true
 		needsMarshal = true
+		startMoves = g.output.AccessMachine[accessRules.Start].Moves
 	}
 	if additionalProps != nil && s.AdditionalProperties != nil {
 		additionalProps.Claim = claimOf(s, "additionalProperties")
 	}
 	// A required property is refused just as surely by a readOnly on the
 	// patternProperties or additionalProperties value that governs its key as by
-	// one on the property itself -- the decoder applies the depth-1 rules to the
-	// struct's own members -- so it is reported the same way. Only a key the
-	// rule is known to reach counts: a pattern with no answer is not a match.
+	// one on the property itself -- the decoder applies the start state's marks
+	// to the struct's own members -- so it is reported the same way. Only a key
+	// the rule is known to reach counts: a pattern with no answer is not a match.
 	for _, key := range requiredJSON {
-		for _, rule := range accessRules {
-			if rule.ReadOnly && len(rule.Path) == 1 && accessStepReachesKey(rule.Path[0], key) {
+		for _, move := range startMoves {
+			if move.ReadOnly && accessStepReachesKey(move.Step, key) {
 				g.noteUnsatisfiableRequired(name, key)
 				break
 			}
@@ -5954,6 +5982,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		ReadOnlyKeys:           readOnlyKeys,
 		WriteOnlyKeys:          writeOnlyKeys,
 		AccessRules:            accessRules,
+		accessRoot:             accessRoot,
 		StrictReadWrite:        g.config.StrictReadWrite,
 		Fields:                 fields,
 		OneOfs:                 oneOfs,

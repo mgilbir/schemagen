@@ -75,7 +75,7 @@ func (o *Obj) MemberBytes(key string, member MemberEnc) ([]byte, bool, error) {
 func (o *Obj) Write(b []byte, member MemberEnc) ([]byte, error) { return o.write(b, member) }
 
 // StripWriteOnly takes out of the members already set the locations rules mark
-// writeOnly, below the members themselves.
-func (o *Obj) StripWriteOnly(rules []AccessRule, member MemberEnc) error {
+// writeOnly, the members themselves included.
+func (o *Obj) StripWriteOnly(rules AccessRules, member MemberEnc) error {
 	return o.stripWriteOnly(rules, member)
 }

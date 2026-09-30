@@ -117,18 +117,23 @@ type StructDef struct {
 	// what a Go field can answer for; these are the positions where the value
 	// stays raw JSON and no nested type is ever decoded -- a prefixItems slot, a
 	// contains element, a patternProperties value -- which is where the flag was
-	// a silent no-op until issue #219. See accessRulesFor.
-	AccessRules []AccessRule
+	// a silent no-op until issue #219. See accessRulesFor. Nil where there is
+	// nothing to say.
+	AccessRules *AccessRules
+	// accessRoot is the access graph node this struct's rules were built from,
+	// set under the flag whether or not they came to anything: what a parent's
+	// rules are compared against in stripRulesFor.
+	accessRoot *accessStateID
 	// AccessRulesVar is the package variable AccessRules is declared as, named
 	// by the generator's name registry when the def is added to the file. It
 	// used to be spelled in the template as the type name plus "AccessRules",
 	// which a definition keyed "FooAccessRules" beside a type Foo declared
 	// twice.
 	AccessRulesVar string
-	// StripRules are the writeOnly AccessRules MarshalJSON applies: all of them
-	// but those that step into a member whose own type strips the rest of the
-	// path itself. See stripRulesFor.
-	StripRules []AccessRule
+	// StripRules are the writeOnly half of AccessRules MarshalJSON applies:
+	// the same machine, from a start that does not walk into a member whose own
+	// type strips what lies below it itself. See stripRulesFor.
+	StripRules *AccessRules
 	// EncodeKeysVar and StripRulesVar are the package variables the encode
 	// declares beside the type -- its member names as encoding/json spells
 	// them, and StripRules -- named by the name registry in
@@ -2836,7 +2841,7 @@ type AnnotationSchemaDef struct {
 	// so the flat key lists a struct carries have nowhere to live here and the
 	// flag did nothing: issue #219's unevaluatedProperties and unevaluatedItems
 	// positions are both this type. See accessRulesFor.
-	AccessRules []AccessRule
+	AccessRules *AccessRules
 
 	// SchemaVar and AccessRulesVar are the package variables the compiled
 	// schema and the access rules are declared as. Both are named by the
@@ -3011,6 +3016,13 @@ type File struct {
 	// the package does not build. Empty when every degraded ref landed
 	// somewhere `any` fits. See UndeclaredRefType and issue #240.
 	UndeclaredRefTypes []UndeclaredRefType
+
+	// AccessMachine is the file's --strict-read-write machine, whose states
+	// every type's AccessRules start in, and AccessMachineVar the package
+	// variable it is declared as. Empty where no type of the file has rules.
+	// See accessRulesFor.
+	AccessMachine    []AccessState
+	AccessMachineVar string
 
 	// ElementNodes are the schemas of the types an element held as decoded JSON
 	// is judged against -- a tuple position, a contains, an inferred array's

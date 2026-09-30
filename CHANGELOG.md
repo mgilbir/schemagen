@@ -75,6 +75,26 @@
   - The `pkg/generator.HelperSet` is reduced to the patterns a package
     compiles, and the pruning that decided which helper blocks a package needed
     is gone with the blocks.
+- `--strict-read-write` generates in time proportionate to the schema. Its
+  rules for values held as raw JSON were a table of paths, found by walking
+  every path through the schema to 24 steps, and a schema whose references
+  loop back through several keywords has exponentially many: a metaschema did
+  not finish generating in 45 seconds (ten groups of the JSON Schema Test Suite
+  that `$ref` a metaschema, drafts 4 to 2020-12), and one that marked something
+  would have produced an exponential table. The rules are now a small state
+  machine per file, built once per schema node, which the generated decoder and
+  encoder run over the document, reading each value once; those groups generate
+  in about a tenth of a second. A schema that refers to itself is a cycle in the
+  machine, so a rule binds at every depth of a recursive value -- the path walk
+  stopped at the first repeat of a schema node on a path, and so bound a
+  writeOnly member of a recursive value held as raw JSON at its first level and
+  not below; now it is stripped, and a readOnly one refused, 1,000 levels down
+  -- and a struct's walk stops at a member decoded into a type of its own only
+  where that type's rules are proven, on the machine, to do everything the walk
+  would at every depth. In the runtime, `rt.AccessRule` and `rt.AccessStep`
+  give way to `rt.AccessRules`, `rt.AccessState` and `rt.AccessMove`, which
+  `rt.AccessRefuseReadOnly`, `rt.AccessStripWriteOnly`, `rt.AccessStripTree`
+  and the two `StripWriteOnly` methods now take.
 - `default` has one policy. `SetDefaults` plants a default only when the
   field's Go type holds it exactly and it is valid against every schema that
   describes the property on every document — its own, its `$ref`/`allOf`

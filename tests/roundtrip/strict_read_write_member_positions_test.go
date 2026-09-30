@@ -218,6 +218,16 @@ var accessPositions = []accessPosition{
 		woIn:   `{"m":1}`, woOut: `{}`,
 	},
 	{
+		// A member decoded into a type of its own, which a branch describes
+		// further: the member's type knows nothing of "m", so the struct's walk
+		// may not leave the member to it -- the cut that stops a struct walking
+		// into a member whose own type does the work must not fire here.
+		name:   "memberATypedMemberTypeDoesNotKnow",
+		schema: `{"type":"object","properties":{"p":{"$ref":"#/$defs/Plain"}},"if":{"required":["t"]},"then":{"properties":{"p":{"properties":{"m":{"type":"integer",KW}}}}}}`,
+		accept: []string{`{"t":1,"p":{"m":1}}`},
+		woIn:   `{"t":1,"p":{"m":2,"k":3}}`, woOut: `{"t":1,"p":{"k":3}}`,
+	},
+	{
 		name:   "memberUnderNot",
 		schema: `{"type":"object","not":{"required":["zz"],"properties":{"m":{"type":"integer",KW}}}}`,
 		accept: []string{`{"m":1}`},
@@ -275,7 +285,8 @@ func accessPositionsSchema(dialect string, positions []accessPosition) string {
 	}
 	return `{"$schema":` + strconv.Quote(dialect) + `,"type":"object","properties":{` +
 		strings.Join(props, ",") +
-		`},"$defs":{"RO":{"type":"integer","readOnly":true},"WO":{"type":"integer","writeOnly":true}}}`
+		`},"$defs":{"RO":{"type":"integer","readOnly":true},"WO":{"type":"integer","writeOnly":true},` +
+		`"Plain":{"type":"object","properties":{"k":{"type":"integer"}}}}}`
 }
 
 // accessPositionsMain is the program the matrix runs: every document of every
@@ -375,6 +386,158 @@ func main() {
 	}
 }
 `
+}
+
+// TestStrictReadWriteBindsAtEveryDepthOfARawRecursiveValue holds the rules of a
+// value held as raw JSON to every depth a recursive schema describes.
+//
+// The rules were once a table of paths, walked to 24 steps and cut at the first
+// repeat of a schema node on a path, so a writeOnly member below the first level
+// of a recursive value held as raw JSON -- here a
+// prefixItems slot, whose element is never decoded into a type -- was written
+// straight back out, and a readOnly one accepted. The rules are a machine now,
+// and a schema that refers to itself is a cycle in it: the member is stripped,
+// and refused, at depth 1, at the old bound and one past it, and a thousand
+// levels down, while the member beside it that nothing marks is kept.
+func TestStrictReadWriteBindsAtEveryDepthOfARawRecursiveValue(t *testing.T) {
+	const schemaJSON = `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object","properties":{` +
+		`"holder":{"type":"array","prefixItems":[{"$ref":"#/$defs/T"}]}},` +
+		`"$defs":{"T":{"type":"object","properties":{"child":{"$ref":"#/$defs/T"},` +
+		`"secret":{"type":"string","writeOnly":true},"id":{"type":"string","readOnly":true},"keep":{"type":"string"}}}}}`
+	const mainGo = `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"enginetest/gen"
+)
+
+// nested is a holder whose element nests depth levels of "child", with
+// member at the bottom.
+func nested(depth int, member string) string {
+	return ` + "`" + `{"holder":[` + "`" + ` + strings.Repeat(` + "`" + `{"child":` + "`" + `, depth-1) +
+		` + "`" + `{` + "`" + ` + member + ` + "`" + `,"keep":"k"}` + "`" + ` + strings.Repeat("}", depth-1) + "]}"
+}
+
+func main() {
+	failed := false
+	for _, depth := range []int{1, 24, 25, 100, 1000} {
+		var v gen.Root
+		if err := json.Unmarshal([]byte(nested(depth, ` + "`" + `"secret":"s"` + "`" + `)), &v); err != nil {
+			fmt.Printf("depth %d: decoding the writeOnly document: %v\n", depth, err)
+			failed = true
+			continue
+		}
+		out, err := json.Marshal(&v)
+		if err != nil {
+			fmt.Printf("depth %d: marshal: %v\n", depth, err)
+			failed = true
+			continue
+		}
+		if strings.Contains(string(out), "secret") {
+			fmt.Printf("depth %d: the writeOnly member was written back out\n", depth)
+			failed = true
+		}
+		if strings.Count(string(out), ` + "`" + `"keep":"k"` + "`" + `) != 1 {
+			fmt.Printf("depth %d: the member nothing marks was not kept\n", depth)
+			failed = true
+		}
+		var w gen.Root
+		err = json.Unmarshal([]byte(nested(depth, ` + "`" + `"id":"x"` + "`" + `)), &w)
+		if err == nil || !strings.Contains(err.Error(), "read-only property may not be set") {
+			fmt.Printf("depth %d: the readOnly member was not refused: %v\n", depth, err)
+			failed = true
+		}
+		var x gen.Root
+		if err := json.Unmarshal([]byte(nested(depth, ` + "`" + `"keep":"y"` + "`" + `)), &x); err != nil {
+			fmt.Printf("depth %d: a document nothing marks was refused: %v\n", depth, err)
+			failed = true
+		}
+	}
+	if !failed {
+		fmt.Println("PASS")
+	}
+}
+`
+	cfg := generator.DefaultConfig()
+	cfg.StrictReadWrite = true
+	if out := runEngineProgram(t, schemaJSON, cfg, mainGo); out != "PASS" {
+		t.Fatalf("a rule stopped short of the depth the schema describes:\n%s", out)
+	}
+}
+
+// TestStrictReadWriteCutsTheWalkOnlyWhereTheMemberTypeStripsAtEveryDepth pins
+// the cut stripRulesFor makes into a member held as a type of its own, where
+// the branch walks it through recursive definitions the type does not share.
+//
+// Under the then-branch, "a" is U0 and "b" is U1, which alternate down "child"
+// and mark "t" at every other level; the members' types are T, which strips
+// only "s" at every level, and T2, which is T plus "t" at its own top. Neither
+// type strips a "t" two levels down, so the walk into neither member may be
+// cut. That is decided on the machine as a greatest simulation, and the pairs
+// it decides are kept for the rest of the Generate: "a" decides the pair of
+// U1's "child" and T's "child" (false, because the pair below it fails), and
+// "b" reaches that same pair from its start. A refinement that removed the
+// failing pair but did not recheck the pairs leaning on it kept that one as
+// true, "b" read it back, and its walk was cut: a "t" two levels into "b" was
+// written back out.
+func TestStrictReadWriteCutsTheWalkOnlyWhereTheMemberTypeStripsAtEveryDepth(t *testing.T) {
+	const schemaJSON = `{"$schema":"https://json-schema.org/draft/2020-12/schema","type":"object",` +
+		`"properties":{"on":{"type":"integer"},"a":{"$ref":"#/$defs/T"},"b":{"$ref":"#/$defs/T2"}},` +
+		`"if":{"required":["on"]},"then":{"properties":{"a":{"$ref":"#/$defs/U0"},"b":{"$ref":"#/$defs/U1"}}},` +
+		`"$defs":{` +
+		`"T":{"type":"object","properties":{"child":{"$ref":"#/$defs/T"},"s":{"type":"string","writeOnly":true}}},` +
+		`"T2":{"type":"object","allOf":[{"$ref":"#/$defs/T"}],"properties":{"t":{"type":"string","writeOnly":true}}},` +
+		`"U0":{"type":"object","properties":{"child":{"$ref":"#/$defs/U1"}}},` +
+		`"U1":{"type":"object","properties":{"child":{"$ref":"#/$defs/U0"},` +
+		`"s":{"type":"string","writeOnly":true},"t":{"type":"string","writeOnly":true}}}}}`
+	const mainGo = `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"strings"
+
+	"enginetest/gen"
+)
+
+func main() {
+	failed := false
+	for _, doc := range []string{
+		` + "`" + `{"on":1,"a":{"child":{"t":"x","keep":"k"}}}` + "`" + `,
+		` + "`" + `{"on":1,"a":{"child":{"child":{"child":{"t":"x","keep":"k"}}}}}` + "`" + `,
+		` + "`" + `{"on":1,"b":{"child":{"child":{"t":"x","keep":"k"}}}}` + "`" + `,
+		` + "`" + `{"on":1,"b":{"child":{"child":{"child":{"child":{"t":"x","keep":"k"}}}}}}` + "`" + `,
+	} {
+		var v gen.Root
+		if err := json.Unmarshal([]byte(doc), &v); err != nil {
+			fmt.Printf("%s: decode: %v\n", doc, err)
+			failed = true
+			continue
+		}
+		out, err := json.Marshal(&v)
+		if err != nil {
+			fmt.Printf("%s: marshal: %v\n", doc, err)
+			failed = true
+			continue
+		}
+		if strings.Contains(string(out), ` + "`" + `"t"` + "`" + `) || !strings.Contains(string(out), ` + "`" + `"keep":"k"` + "`" + `) {
+			fmt.Printf("%s: written back as %s, want the writeOnly \"t\" left out and \"keep\" kept\n", doc, out)
+			failed = true
+		}
+	}
+	if !failed {
+		fmt.Println("PASS")
+	}
+}
+`
+	cfg := generator.DefaultConfig()
+	cfg.StrictReadWrite = true
+	if out := runEngineProgram(t, schemaJSON, cfg, mainGo); out != "PASS" {
+		t.Fatalf("a walk into a member was cut that its type does not strip at every depth:\n%s", out)
+	}
 }
 
 // TestStrictReadWriteBindsEveryMemberExactlyWhereItsRouteIsFixed is the whole

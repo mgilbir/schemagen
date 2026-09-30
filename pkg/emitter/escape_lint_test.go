@@ -64,6 +64,7 @@ var inertFields = map[string]string{
 	"Var":                     "ElementNode.Var: a Go package-variable identifier the generator's name registry mints",
 	"EncodeKeysVar":           "a Go package-variable identifier the generator's name registry mints",
 	"StripRulesVar":           "a Go package-variable identifier the generator's name registry mints",
+	"AccessMachineVar":        "a Go package-variable identifier the generator's name registry mints",
 	"AllowedVar":              "a Go package-variable identifier the generator's name registry mints",
 	"GetterName":              "a Go method identifier the generator's name registry mints in the parent's member scope",
 }
@@ -97,7 +98,8 @@ var codeFuncs = map[string]string{
 	"requiredFieldsList":  "strconv-quoted names",
 	"stringList":          "strconv-quoted feature names",
 	"validationFeatures":  "strconv-quoted feature names",
-	"accessRules":         "a composite literal of strconv-quoted names and patterns",
+	"accessRules":         "a composite literal of a registry-minted variable and an int",
+	"accessMachine":       "a composite literal of strconv-quoted names, registry-minted pattern variables and ints",
 	"numLit":              "a Go number literal; refuses anything else",
 	"countExpr":           "a count bound's int as a decimal or a fixed min/max expression over it (CountBound.GoExpr); anything else goes through numLit",
 	"numViolated":         "a condition built from a code expression, strconv-quoted literals and Go number literals the generator rendered",

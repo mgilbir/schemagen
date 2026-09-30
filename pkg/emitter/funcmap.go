@@ -60,6 +60,7 @@ func FuncMap() template.FuncMap {
 		"validationFeatures":     validationFeaturesFunc,
 		"stringList":             stringListFunc,
 		"accessRules":            accessRulesFunc,
+		"accessMachine":          accessMachineFunc,
 		"validationValue":        validationValueFunc,
 		"validationNonNil":       validationNonNilFunc,
 		"validationStringSet":    validationStringSetFunc,
@@ -591,23 +592,29 @@ func stringListFunc(features []generator.ValidationFeature) string {
 	return "[]string{" + strings.Join(parts, ", ") + "}"
 }
 
-// accessRulesFunc renders --strict-read-write's path table as a Go literal.
-//
-// The order is the generator's, which sorted it: the rules refuse and delete the
-// same things whichever way round they are read, but a generated file that
-// changed between runs of one input would be unusable.
-func accessRulesFunc(rules []generator.AccessRule) (string, error) {
-	if len(rules) == 0 {
-		return "nil", nil
+// accessRulesFunc renders where a type's --strict-read-write walk starts in its
+// file's machine, as a Go literal.
+func accessRulesFunc(rules *generator.AccessRules) (string, error) {
+	if rules == nil {
+		return "rt.AccessRules{}", nil
 	}
+	// Machine is a package variable the generator's name registry minted.
+	return fmt.Sprintf("rt.AccessRules{States: %s, Start: %d}", rules.Machine, rules.Start), nil
+}
+
+// accessMachineFunc renders a file's --strict-read-write machine as a Go
+// literal: one state per line, each the moves a walk in it makes. The order is
+// the generator's, which numbered the states as it built them.
+func accessMachineFunc(states []generator.AccessState) (string, error) {
 	var b strings.Builder
-	b.WriteString("[]rt.AccessRule{\n")
-	for _, rule := range rules {
-		b.WriteString("\t{Path: []rt.AccessStep{")
-		for i, step := range rule.Path {
-			if i > 0 {
+	b.WriteString("[]rt.AccessState{\n")
+	for _, state := range states {
+		b.WriteString("\t{Moves: []rt.AccessMove{")
+		for j, move := range state.Moves {
+			if j > 0 {
 				b.WriteString(", ")
 			}
+			step := move.Step
 			b.WriteString("{Kind: " + accessStepKindName(step.Kind))
 			// A pattern step is matched through the package's compiled
 			// pattern, never by compiling its text in the walker.
@@ -628,25 +635,33 @@ func accessRulesFunc(rules []generator.AccessRule) (string, error) {
 			}
 			if len(step.ExceptPatterns) > 0 {
 				names := make([]string, len(step.ExceptPatterns))
-				for j, pattern := range step.ExceptPatterns {
+				for k, pattern := range step.ExceptPatterns {
 					name, err := generator.PatternVarName(pattern)
 					if err != nil {
 						return "", err
 					}
-					names[j] = name
+					names[k] = name
 				}
 				b.WriteString(", ExceptPatterns: []*rt.Pattern{" + strings.Join(names, ", ") + "}")
 			}
+			if move.Next >= 0 {
+				fmt.Fprintf(&b, ", Next: %d", move.Next+1)
+			}
+			if move.ReadOnly {
+				b.WriteString(", ReadOnly: true")
+			}
+			if move.WriteOnly {
+				b.WriteString(", WriteOnly: true")
+			}
+			if move.SeekReadOnly {
+				b.WriteString(", SeekReadOnly: true")
+			}
+			if move.SeekWriteOnly {
+				b.WriteString(", SeekWriteOnly: true")
+			}
 			b.WriteString("}")
 		}
-		b.WriteString("}")
-		if rule.ReadOnly {
-			b.WriteString(", ReadOnly: true")
-		}
-		if rule.WriteOnly {
-			b.WriteString(", WriteOnly: true")
-		}
-		b.WriteString("},\n")
+		b.WriteString("}},\n")
 	}
 	b.WriteString("}")
 	return b.String(), nil

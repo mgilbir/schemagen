@@ -1,10 +1,10 @@
 package runtime
 
-// --strict-read-write: the path model that reaches the readOnly and writeOnly
+// --strict-read-write: the machine that reaches the readOnly and writeOnly
 // locations no Go field answers for, and the refusal type a Validate check has
 // to be able to tell from a real decode failure.
 
-// The kinds of an AccessStep.
+// The kinds of an AccessMove.
 const (
 	AccessProperty = _accessProperty
 	AccessPattern  = _accessPattern
@@ -14,20 +14,20 @@ const (
 )
 
 // AccessRefuseReadOnly is the refusal of a value that sets a readOnly location
-// the rules name, or nil.
-func AccessRefuseReadOnly(d *Doc, sp Span, rules []AccessRule) error {
+// the machine reaches from rules, or nil.
+func AccessRefuseReadOnly(d *Doc, sp Span, rules AccessRules) error {
 	return _accessRefuseReadOnly(d, sp, rules)
 }
 
-// AccessStripWriteOnly is data with the writeOnly locations the rules name taken
-// out of it.
-func AccessStripWriteOnly(data []byte, rules []AccessRule) ([]byte, error) {
+// AccessStripWriteOnly is data with the writeOnly locations the machine reaches
+// from rules taken out of it.
+func AccessStripWriteOnly(data []byte, rules AccessRules) ([]byte, error) {
 	return _accessStripWriteOnly(data, rules)
 }
 
-// AccessStripTree is a value's tree with the writeOnly locations the rules name
-// taken out of it.
-func AccessStripTree(t any, rules []AccessRule) (any, error) { return _accessStripTree(t, rules) }
+// AccessStripTree is a value's tree with the writeOnly locations the machine
+// reaches from rules taken out of it.
+func AccessStripTree(t any, rules AccessRules) (any, error) { return _accessStripTree(t, rules) }
 
 // DecodeIgnoringReadOnly decodes for a validation check: it runs to the end and
 // drops ReadOnlyRefusal, so that the value is fully populated and the verdict is

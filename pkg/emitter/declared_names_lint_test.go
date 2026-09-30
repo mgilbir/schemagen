@@ -34,6 +34,7 @@ var declaredNameActions = map[string]string{
 	"{{.Var}}":                 "ElementNode.Var, claimed by elementNode",
 	"{{.EncodeKeysVar}}":       "claimed by resolveEncodePlans",
 	"{{.StripRulesVar}}":       "claimed by resolveEncodePlans",
+	"{{.AccessMachineVar}}":    "File.AccessMachineVar, claimed by accessMachineVar",
 	"{{$allowedVar}}":          "EnumDef.AllowedVar, claimed where the raw enum is built",
 	"{{.AccessorName}}":        "a fixed accessor per inferred JSON type (Float64, StringValue, ...), a method of a type with no fields",
 	"{{.TypeCheckName}}":       "a fixed predicate per inferred JSON type (IsNumber, IsString, ...), a method of a type with no fields",

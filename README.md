@@ -651,8 +651,18 @@ bind. The member can be a property, or a member chosen by its key — a
 generated code keeps the value as raw JSON and never decodes it into the type
 built for the sub-schema: a member inside a `prefixItems` slot, an `items`
 element, a `patternProperties` value, and a schema whose whole shape is
-`unevaluatedProperties` or `unevaluatedItems`. Those positions carry a path
-table rather than a key list, because there is no Go field at them to key on.
+`unevaluatedProperties` or `unevaluatedItems`. Those positions carry a small
+state machine rather than a key list, because there is no Go field at them to
+key on: each state is what the schema says about the members and elements of a
+value, and the generated decoder and encoder run it over the document, reading
+each value once. It is built in time proportionate to the schema, however its
+references loop back -- a metaschema, whose every keyword leads back to the
+root, generates as fast with the flag as without. A schema that refers to
+itself is a cycle in the machine, so a rule binds at every depth of a recursive
+value, however deep the document nests it: the machine has no depth bound, and
+runs in time linear in the document at any depth. A struct stops walking into a
+member it decodes into a type of its own only where that type's rules are
+proven, on the machine, to do everything the walk would at every depth.
 
 An array element marked `readOnly` or `writeOnly` is documentation and nothing
 more: an element cannot be left out of an array without changing its length,
@@ -719,8 +729,8 @@ and nothing anywhere reports that it happened. `--strict-read-write` is a policy
 the caller chose rather than spec validation, so it is allowed to be stricter
 than §7.7.1's annotation rules in the direction that fails safe. The cost is
 named rather than hidden: a `writeOnly` inside a branch the document does not
-match is stripped anyway, because the rules are a static table of locations and
-cannot evaluate a condition. So one inside `contains` is stripped from every
+match is stripped anyway, because the rules are fixed when the type is
+generated and do not evaluate a condition. So one inside `contains` is stripped from every
 element, and one inside `unevaluatedProperties` from every member the object's
 unconditional keywords — its own and its `allOf` and `$ref` reach — do not
 evaluate. `Validate` is untouched by any of it — no verdict

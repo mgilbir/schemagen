@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // --strict-read-write's reach below a value the generated code keeps as raw
@@ -19,11 +20,17 @@ import (
 // At those positions the flag used to do nothing, and a `writeOnly` secret was
 // written straight back out (issue #219).
 //
-// The rules below are paths rather than names for that reason. Each names the
-// route from the value in hand down to one object member, and only an object
-// member: "do not accept this" and "do not write this" have no action at a
-// location with no name -- an array element cannot be left out without changing
-// the array's length, which minItems can see.
+// What the schema says there is a machine. Each state is the moves a walk in it
+// makes from the value in hand to the members or elements inside it; a move
+// says which ones it reaches, whether the schema marks them readOnly or
+// writeOnly, and the state they are walked in next. A schema that refers to
+// itself is a cycle in the machine, so a walk follows a recursive value to
+// whatever depth the document has. A walk carries the set of states a value is
+// walked in -- several routes through a schema can describe one value, and the
+// set never holds more states than the machine has -- so each value of the
+// document is read once, whatever the number of routes. "Do not accept this"
+// and "do not write this" act only on an object member: an array element cannot
+// be left out without changing the array's length, which minItems can see.
 //
 // Everything is walked as json.RawMessage. Decoding into `any` would turn every
 // number into a float64 and write it back rounded, so a leaf this walker does
@@ -36,16 +43,15 @@ const (
 	_accessTuple
 )
 
-// AccessStep is one step of a path down to a location --strict-read-write's
-// rules name. Declared with the members that carry a pointer first and the
-// plain integers last, which is what keeps the garbage collector's scan of a
-// rule's path short.
-type AccessStep struct {
-	// Pattern is an _accessPattern step's key test, one of the package's
+// AccessMove is one move out of a state of a --strict-read-write machine.
+// Declared with the members that carry a pointer first and the plain values
+// last, which is what keeps the garbage collector's scan of a machine short.
+type AccessMove struct {
+	// Pattern is an AccessPattern move's key test, one of the package's
 	// compiled patterns.
 	Pattern *Pattern
 	Name    string
-	// Except and ExceptPatterns are what an _accessOther step steps past: the
+	// Except and ExceptPatterns are what an AccessOther move steps past: the
 	// members the same schema object declares by name and by pattern, which are
 	// exactly the ones additionalProperties and unevaluatedProperties do not
 	// reach.
@@ -53,15 +59,30 @@ type AccessStep struct {
 	ExceptPatterns []*Pattern
 	Kind           int
 	Index          int
-}
-
-// AccessRule is a location no Go field answers for, as a path from a generated
-// struct, and whether a document may set it (ReadOnly) or it is written back
-// (WriteOnly).
-type AccessRule struct {
-	Path      []AccessStep
+	// Next is the state what the move reaches is walked in, plus one; zero
+	// where it is walked in none.
+	Next int
+	// ReadOnly and WriteOnly say the schema marks what the move reaches.
 	ReadOnly  bool
 	WriteOnly bool
+	// SeekReadOnly and SeekWriteOnly say a walk in Next can find a readOnly or
+	// a writeOnly member, so each half of the walker follows only the moves that
+	// matter to it.
+	SeekReadOnly  bool
+	SeekWriteOnly bool
+}
+
+// AccessState is one state of a --strict-read-write machine: the moves a walk
+// in it makes.
+type AccessState struct {
+	Moves []AccessMove
+}
+
+// AccessRules is where a type's --strict-read-write walk starts: a state of its
+// file's machine.
+type AccessRules struct {
+	States []AccessState
+	Start  int
 }
 
 // ReadOnlyRefusal is the error --strict-read-write's decoder returns for a
@@ -106,24 +127,24 @@ func _decodeIgnoringReadOnly(data []byte, dst any) error {
 	return nil
 }
 
-// _accessKeyMatches reports whether one object member is the one a step names.
+// _accessKeyMatches reports whether one object member is the one a move names.
 // The error is a pattern match with no answer, which the walker reports rather
 // than guessing either way: a guess of "no" lets a readOnly member in or a
-// writeOnly one out, and a guess of "yes" does the opposite to one the rule
+// writeOnly one out, and a guess of "yes" does the opposite to one the move
 // does not name.
-func _accessKeyMatches(step _accessStep, key string) (bool, error) {
-	switch step.Kind {
+func _accessKeyMatches(move *_accessMove, key string) (bool, error) {
+	switch move.Kind {
 	case _accessProperty:
-		return key == step.Name, nil
+		return key == move.Name, nil
 	case _accessPattern:
-		return step.Pattern.matches(key)
+		return move.Pattern.matches(key)
 	case _accessOther:
-		for _, name := range step.Except {
+		for _, name := range move.Except {
 			if key == name {
 				return false, nil
 			}
 		}
-		for _, pat := range step.ExceptPatterns {
+		for _, pat := range move.ExceptPatterns {
 			matched, err := pat.matches(key)
 			if err != nil {
 				return false, err
@@ -137,175 +158,127 @@ func _accessKeyMatches(step _accessStep, key string) (bool, error) {
 	return false, nil
 }
 
-// _accessApply walks one rule's path over raw.
-//
-// strip deletes the member the path ends at and returns the rebuilt document;
-// otherwise the document is returned untouched and the second result says
-// whether the member was present. The third is where it was found, for the
-// message.
-//
-// A value of the wrong JSON kind is not an error and not a match: a rule
-// descends where the schema described an object or an array, and a document
-// putting something else there has already failed or will, by a check that is
-// about the document rather than about who owns which field.
-func _accessApply(raw json.RawMessage, path []_accessStep, prefix string, strip bool) (json.RawMessage, string, error) {
-	if len(path) == 0 {
-		return raw, "", nil
+// _accessElementMatches reports whether the element at index i is one a move
+// names.
+func _accessElementMatches(move *_accessMove, i int) bool {
+	switch move.Kind {
+	case _accessItems:
+		return i >= move.Index
+	case _accessTuple:
+		return i == move.Index
 	}
-	step := path[0]
-	switch step.Kind {
-	case _accessProperty, _accessPattern, _accessOther:
-		var obj map[string]json.RawMessage
-		if json.Unmarshal(raw, &obj) != nil {
-			return raw, "", nil
-		}
-		found := ""
-		changed := false
-		for _, key := range _accessSortedKeys(obj) {
-			matched, err := _accessKeyMatches(step, key)
-			if err != nil {
-				return raw, "", fmt.Errorf("%s: %w", _schemagenQuote(key), err)
+	return false
+}
+
+// _accessMember is what the moves of the states in set say about the object
+// member key: whether it is marked readOnly or writeOnly, and the states it is
+// walked in next -- those that can find a readOnly member where readOnly is
+// set, and a writeOnly one where writeOnly is.
+func _accessMember(states []_accessState, set []int, key string, readOnly, writeOnly bool) (ro, wo bool, next []int, err error) {
+	for _, s := range set {
+		for i := range states[s].Moves {
+			move := &states[s].Moves[i]
+			if move.Kind >= _accessItems {
+				continue
+			}
+			matched, mErr := _accessKeyMatches(move, key)
+			if mErr != nil {
+				return false, false, nil, fmt.Errorf("%s: %w", _schemagenQuote(key), mErr)
 			}
 			if !matched {
 				continue
 			}
-			// The path is only ever a message, so a key taken from the document
-			// is cut short by the quoting rule when it is long.
-			at := _schemagenClipText(key)
-			if prefix != "" {
-				at = prefix + "." + at
-			}
-			if len(path) == 1 {
-				if found == "" {
-					found = at
-				}
-				if strip {
-					delete(obj, key)
-					changed = true
-				}
-				continue
-			}
-			next, deeper, err := _accessApply(obj[key], path[1:], at, strip)
-			if err != nil {
-				return raw, "", err
-			}
-			if deeper != "" && found == "" {
-				found = deeper
-			}
-			if strip && !_accessSameBytes(next, obj[key]) {
-				obj[key] = next
-				changed = true
+			ro = ro || move.ReadOnly
+			wo = wo || move.WriteOnly
+			if move.Next > 0 && (readOnly && move.SeekReadOnly || writeOnly && move.SeekWriteOnly) {
+				next = _accessAdd(next, move.Next-1)
 			}
 		}
-		if strip && changed {
-			out, err := json.Marshal(obj)
-			if err != nil {
-				return raw, "", err
-			}
-			return out, found, nil
-		}
-		return raw, found, nil
-	case _accessItems, _accessTuple:
-		var arr []json.RawMessage
-		if json.Unmarshal(raw, &arr) != nil {
-			return raw, "", nil
-		}
-		found := ""
-		changed := false
-		for i := range arr {
-			if step.Kind == _accessTuple && i != step.Index {
-				continue
-			}
-			if step.Kind == _accessItems && i < step.Index {
-				continue
-			}
-			at := fmt.Sprintf("%s[%d]", prefix, i)
-			next, deeper, err := _accessApply(arr[i], path[1:], at, strip)
-			if err != nil {
-				return raw, "", err
-			}
-			if deeper != "" && found == "" {
-				found = deeper
-			}
-			if strip && !_accessSameBytes(next, arr[i]) {
-				arr[i] = next
-				changed = true
-			}
-		}
-		if strip && changed {
-			out, err := json.Marshal(arr)
-			if err != nil {
-				return raw, "", err
-			}
-			return out, found, nil
-		}
-		return raw, found, nil
 	}
-	return raw, "", nil
+	return ro, wo, next, nil
 }
 
-func _accessSameBytes(a, b json.RawMessage) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
+// _accessElement is _accessMember for the element at index i.
+func _accessElement(states []_accessState, set []int, i int, readOnly, writeOnly bool) []int {
+	var next []int
+	for _, s := range set {
+		for j := range states[s].Moves {
+			move := &states[s].Moves[j]
+			if move.Next > 0 && _accessElementMatches(move, i) && (readOnly && move.SeekReadOnly || writeOnly && move.SeekWriteOnly) {
+				next = _accessAdd(next, move.Next-1)
+			}
 		}
 	}
-	return true
+	return next
 }
 
-// _accessSortedKeys fixes the order the walker visits an object's members in, so
-// that a document offending several rules fails the same way every time.
-func _accessSortedKeys(obj map[string]json.RawMessage) []string {
-	keys := make([]string, 0, len(obj))
-	for k := range obj {
-		keys = append(keys, k)
+// _accessAdd adds a state to a set.
+func _accessAdd(set []int, s int) []int {
+	for _, have := range set {
+		if have == s {
+			return set
+		}
 	}
-	sort.Strings(keys)
-	return keys
+	return append(set, s)
 }
 
 // _accessRefuseReadOnly is the decoder's half: a document that sets any location
 // the schema marked readOnly is refused outright.
 //
-// It walks the value in place (see jsonDoc), so each step costs the members of
-// the level it reads rather than a decode of everything below it: the value is
-// a struct's whole object, reached at every level of a recursive document, and
-// decoding it once per level for this was quadratic in the depth.
-func _accessRefuseReadOnly(d *jsonDoc, sp jsonSpan, rules []_accessRule) error {
-	for _, rule := range rules {
-		if !rule.ReadOnly {
-			continue
-		}
-		at, err := _accessFind(d, sp, rule.Path, "")
-		if err != nil {
-			return err
-		}
-		if at != "" {
-			return &_readOnlyRefusal{Path: at}
-		}
+// It walks the value in place (see jsonDoc), so each value costs the moves of
+// the states it is walked in rather than a decode of everything below it.
+func _accessRefuseReadOnly(d *jsonDoc, sp jsonSpan, rules _accessRules) error {
+	path, found, err := _accessFind(d, sp, rules.States, []int{rules.Start})
+	if err != nil {
+		return err
+	}
+	if found {
+		return &_readOnlyRefusal{Path: _accessPathText(path)}
 	}
 	return nil
 }
 
-// _accessFind is _accessApply's search without the strip, over a document in
-// place: where the member a path ends at is first found, or "" if nowhere. The
-// order is _accessApply's -- members by key, a key written twice by its last
-// value, elements by index -- so both halves find the same member, and a key no
-// pattern match could be decided for is reported the way _accessApply reports
-// it.
-func _accessFind(d *jsonDoc, sp jsonSpan, path []_accessStep, prefix string) (string, error) {
-	if len(path) == 0 {
-		return "", nil
-	}
-	step := path[0]
-	switch step.Kind {
-	case _accessProperty, _accessPattern, _accessOther:
-		if d.data[sp.start] != '{' {
-			return "", nil
+// _accessPathStep is one step of the path to a member _accessFind found: a key,
+// or an element's index.
+type _accessPathStep struct {
+	key   string
+	index int
+	elem  bool
+}
+
+// _accessPathText writes the path _accessFind returns, innermost step first, as
+// the refusal names it: keys joined by dots, an index in brackets. The path is
+// only ever a message, so a key taken from the document is cut short by the
+// quoting rule when it is long.
+func _accessPathText(path []_accessPathStep) string {
+	var b strings.Builder
+	for i := len(path) - 1; i >= 0; i-- {
+		switch st := path[i]; {
+		case st.elem:
+			fmt.Fprintf(&b, "[%d]", st.index)
+		case i == len(path)-1:
+			b.WriteString(_schemagenClipText(st.key))
+		default:
+			b.WriteString(".")
+			b.WriteString(_schemagenClipText(st.key))
 		}
+	}
+	return b.String()
+}
+
+// _accessFind reports whether a readOnly member lies below the value at sp, and
+// where the first one is, in the order members are visited -- by key, a key
+// written twice by its last value, elements by index. A key no pattern match
+// could be decided for is reported as an error.
+//
+// The path is returned innermost step first, each level adding its own step on
+// the way back from the member found, so a walk that finds nothing builds none
+// and one that finds a member builds it once. A path written out at every level
+// on the way down was a copy of the path so far at every level: quadratic in
+// the depth of the document.
+func _accessFind(d *jsonDoc, sp jsonSpan, states []_accessState, set []int) ([]_accessPathStep, bool, error) {
+	switch d.data[sp.start] {
+	case '{':
 		members := make(map[string]jsonSpan)
 		it := d.iter(sp)
 		for {
@@ -316,268 +289,373 @@ func _accessFind(d *jsonDoc, sp jsonSpan, path []_accessStep, prefix string) (st
 			members[key] = vsp
 		}
 		keys := make([]string, 0, len(members))
+		// maporder: gathers the keys, which are sorted before any is read.
 		for key := range members {
 			keys = append(keys, key)
 		}
 		sort.Strings(keys)
-		found := ""
 		for _, key := range keys {
-			matched, err := _accessKeyMatches(step, key)
+			ro, _, next, err := _accessMember(states, set, key, true, false)
 			if err != nil {
-				return "", fmt.Errorf("%s: %w", _schemagenQuote(key), err)
+				return nil, false, err
 			}
-			if !matched {
-				continue
+			if ro {
+				return []_accessPathStep{{key: key}}, true, nil
 			}
-			at := _schemagenClipText(key)
-			if prefix != "" {
-				at = prefix + "." + at
-			}
-			if len(path) == 1 {
-				if found == "" {
-					found = at
+			if len(next) > 0 {
+				path, found, err := _accessFind(d, members[key], states, next)
+				if err != nil || found {
+					return append(path, _accessPathStep{key: key}), found, err
 				}
-				continue
-			}
-			deeper, err := _accessFind(d, members[key], path[1:], at)
-			if err != nil {
-				return "", err
-			}
-			if deeper != "" && found == "" {
-				found = deeper
 			}
 		}
-		return found, nil
-	case _accessItems, _accessTuple:
-		if d.data[sp.start] != '[' {
-			return "", nil
-		}
-		found := ""
+	case '[':
 		it := d.iter(sp)
 		for i := 0; ; i++ {
 			esp, ok := it.elem()
 			if !ok {
 				break
 			}
-			if step.Kind == _accessTuple && i != step.Index {
+			next := _accessElement(states, set, i, true, false)
+			if len(next) == 0 {
 				continue
 			}
-			if step.Kind == _accessItems && i < step.Index {
-				continue
-			}
-			at := fmt.Sprintf("%s[%d]", prefix, i)
-			deeper, err := _accessFind(d, esp, path[1:], at)
-			if err != nil {
-				return "", err
-			}
-			if deeper != "" && found == "" {
-				found = deeper
+			path, found, err := _accessFind(d, esp, states, next)
+			if err != nil || found {
+				return append(path, _accessPathStep{index: i, elem: true}), found, err
 			}
 		}
-		return found, nil
 	}
-	return "", nil
+	return nil, false, nil
+}
+
+// _accessStrip deletes every writeOnly member below raw and returns the
+// rebuilt document, raw itself where nothing was deleted.
+//
+// A value of the wrong JSON kind is not an error and not a match: a move
+// descends where the schema described an object or an array, and a document
+// putting something else there has already failed or will, by a check that is
+// about the document rather than about who owns which field.
+//
+// raw is read once and what is returned written once. The first pass walks the
+// machine over the document in place (see jsonDoc) and marks the objects and
+// arrays something is deleted from, at any depth below; the second writes those
+// alone and copies everything else as it stands. An object written is written
+// as encoding/json writes a map of its members -- keys sorted, a key written
+// twice by its last value -- and an array element by element: what the walk
+// wrote when it decoded and encoded every level again, which read and wrote the
+// rest of the value at every level of it, quadratic in the depth.
+func _accessStrip(raw json.RawMessage, states []_accessState, set []int) (json.RawMessage, error) {
+	d, sp, err := jsonOpenDoc(raw)
+	if err != nil {
+		return raw, nil
+	}
+	s := _accessStripper{d: d, states: states, members: map[int][]_accessStripMember{}, changed: map[int]bool{}}
+	changed, err := s.mark(sp, set)
+	if err != nil || !changed {
+		return raw, err
+	}
+	return json.RawMessage(s.write(make([]byte, 0, len(raw)), sp, set)), nil
+}
+
+// _accessStripper is one _accessStrip over one document.
+//
+// The members are declared in the order the garbage collector scans least of:
+// the pointers and maps first, and the slice, whose pointer leads, last.
+type _accessStripper struct {
+	d *jsonDoc
+	// members is every object mark walked, by where it starts: its members in
+	// key order, a key once, by its last value.
+	members map[int][]_accessStripMember
+	// changed is every object and array something is deleted from, at any
+	// depth below it, by where it starts.
+	changed map[int]bool
+	states  []_accessState
+}
+
+// _accessStripMember is one member of an object _accessStripper walked, its
+// members declared in the order the garbage collector scans least of.
+type _accessStripMember struct {
+	key string
+	// next is the states a member something below is deleted from is walked
+	// in, nil for any other; gone is a member the machine marks writeOnly.
+	next []int
+	val  jsonSpan
+	gone bool
+}
+
+// mark walks the value at sp in the states set, and reports whether anything
+// is deleted below it. Keys are visited in order, and each member's subtree
+// before the next key, as _accessStrip always visited them, so that a key no
+// pattern match could be decided for is the same one reported.
+func (s *_accessStripper) mark(sp jsonSpan, set []int) (bool, error) {
+	changed := false
+	switch s.d.data[sp.start] {
+	case '{':
+		var ms []_accessStripMember
+		it := s.d.iter(sp)
+		for {
+			key, vsp, ok := it.member()
+			if !ok {
+				break
+			}
+			ms = append(ms, _accessStripMember{key: key, val: vsp})
+		}
+		sort.SliceStable(ms, func(i, j int) bool { return ms[i].key < ms[j].key })
+		// A key written twice is its last value, the last of its run.
+		kept := ms[:0]
+		for i := range ms {
+			if i+1 < len(ms) && ms[i+1].key == ms[i].key {
+				continue
+			}
+			kept = append(kept, ms[i])
+		}
+		for i := range kept {
+			m := &kept[i]
+			_, wo, next, err := _accessMember(s.states, set, m.key, false, true)
+			if err != nil {
+				return false, err
+			}
+			if wo {
+				m.gone, changed = true, true
+				continue
+			}
+			if len(next) == 0 {
+				continue
+			}
+			below, err := s.mark(m.val, next)
+			if err != nil {
+				return false, err
+			}
+			if below {
+				m.next, changed = next, true
+			}
+		}
+		s.members[sp.start] = kept
+	case '[':
+		it := s.d.iter(sp)
+		for i := 0; ; i++ {
+			esp, ok := it.elem()
+			if !ok {
+				break
+			}
+			next := _accessElement(s.states, set, i, false, true)
+			if len(next) == 0 {
+				continue
+			}
+			below, err := s.mark(esp, next)
+			if err != nil {
+				return false, err
+			}
+			changed = changed || below
+		}
+	}
+	if changed {
+		s.changed[sp.start] = true
+	}
+	return changed, nil
+}
+
+// write appends the value at sp, which mark found something to delete below,
+// without what it deletes.
+func (s *_accessStripper) write(out []byte, sp jsonSpan, set []int) []byte {
+	data := s.d.data
+	if data[sp.start] == '{' {
+		out = append(out, '{')
+		first := true
+		for _, m := range s.members[sp.start] {
+			if m.gone {
+				continue
+			}
+			if !first {
+				out = append(out, ',')
+			}
+			first = false
+			key, _ := json.Marshal(m.key)
+			out = append(append(out, key...), ':')
+			if m.next != nil {
+				out = s.write(out, m.val, m.next)
+			} else {
+				out = append(out, data[m.val.start:m.val.end]...)
+			}
+		}
+		return append(out, '}')
+	}
+	out = append(out, '[')
+	it := s.d.iter(sp)
+	for i := 0; ; i++ {
+		esp, ok := it.elem()
+		if !ok {
+			break
+		}
+		if i > 0 {
+			out = append(out, ',')
+		}
+		if s.changed[esp.start] {
+			if next := _accessElement(s.states, set, i, false, true); len(next) > 0 {
+				out = s.write(out, esp, next)
+				continue
+			}
+		}
+		out = append(out, data[esp.start:esp.end]...)
+	}
+	return append(out, ']')
 }
 
 // stripWriteOnly is _accessStripWriteOnly over an object whose members are still
-// gathered (see jsonObj): each rule is applied to the members its first step
-// names, member by member, and a member no rule names is never read. Applied to
-// the written object instead, every rule parsed the whole of it and wrote it out
+// gathered (see jsonObj): the start state's moves are applied to the members,
+// member by member, and a member no move names is never read. Applied to the
+// written object instead, the walk parsed the whole of it and wrote it out
 // again -- the value's whole subtree, at every level of a recursive one.
 //
-// The result is the same: a member matched by a one-step rule is deleted, and a
-// member a longer rule reaches into is read as encoding/json writes it and
-// rewritten only where the rule deletes something inside it.
-func (o *jsonObj) stripWriteOnly(rules []_accessRule, member jsonMemberEnc) error {
-	for _, rule := range rules {
-		if !rule.WriteOnly || len(rule.Path) == 0 {
+// The result is the same: a marked member is deleted, and a member a move walks
+// into is read as encoding/json writes it and rewritten only where the walk
+// deletes something inside it.
+func (o *jsonObj) stripWriteOnly(rules _accessRules, member jsonMemberEnc) error {
+	// In key order, as _accessStrip reads an object, so that a key no pattern
+	// match could be decided for is the same one reported.
+	live := make([]*jsonMember, 0, len(o.ms))
+	for i := range o.ms {
+		if !o.ms[i].gone {
+			live = append(live, &o.ms[i])
+		}
+	}
+	sort.Slice(live, func(i, j int) bool { return live[i].key < live[j].key })
+	set := []int{rules.Start}
+	for _, m := range live {
+		_, wo, next, err := _accessMember(rules.States, set, m.key, false, true)
+		if err != nil {
+			return err
+		}
+		if wo {
+			m.gone = true
 			continue
 		}
-		step := rule.Path[0]
-		// In key order, as _accessApply reads an object, so that a key no
-		// pattern match could be decided for is the same one reported.
-		live := make([]*jsonMember, 0, len(o.ms))
-		for i := range o.ms {
-			if !o.ms[i].gone {
-				live = append(live, &o.ms[i])
-			}
+		if len(next) == 0 {
+			continue
 		}
-		sort.Slice(live, func(i, j int) bool { return live[i].key < live[j].key })
-		for _, m := range live {
-			matched, mErr := _accessKeyMatches(step, m.key)
-			if mErr != nil {
-				return fmt.Errorf("%s: %w", _schemagenQuote(m.key), mErr)
-			}
-			if !matched {
-				continue
-			}
-			if len(rule.Path) == 1 {
-				m.gone = true
-				continue
-			}
-			var val []byte
-			var err error
-			switch {
-			case m.idx >= 0:
-				val, err = member(m.idx, m.key, nil)
-			case m.raw:
-				val, err = AppendLeaf(json.RawMessage(m.val), nil)
-			default:
-				val = m.val
-			}
-			if err != nil {
-				return err
-			}
-			next, _, err := _accessApply(val, rule.Path[1:], _schemagenClipText(m.key), true)
-			if err != nil {
-				return err
-			}
-			m.val, m.idx, m.raw = next, -1, false
+		var val []byte
+		switch {
+		case m.idx >= 0:
+			val, err = member(m.idx, m.key, nil)
+		case m.raw:
+			val, err = AppendLeaf(json.RawMessage(m.val), nil)
+		default:
+			val = m.val
 		}
+		if err != nil {
+			return err
+		}
+		stripped, err := _accessStrip(val, rules.States, next)
+		if err != nil {
+			return err
+		}
+		m.val, m.idx, m.raw = stripped, -1, false
 	}
 	return nil
 }
 
 // _accessStripWriteOnly is the encoder's half: every location the schema marked
 // writeOnly is deleted on the way out.
-func _accessStripWriteOnly(data []byte, rules []_accessRule) ([]byte, error) {
-	out := json.RawMessage(data)
-	for _, rule := range rules {
-		if !rule.WriteOnly {
-			continue
-		}
-		next, _, err := _accessApply(out, rule.Path, "", true)
-		if err != nil {
-			return nil, err
-		}
-		out = next
-	}
-	return out, nil
+func _accessStripWriteOnly(data []byte, rules _accessRules) ([]byte, error) {
+	return _accessStrip(json.RawMessage(data), rules.States, []int{rules.Start})
 }
 
 // _accessStripTree is _accessStripWriteOnly over a tree (see jsonValidation):
-// the members the rules reach are taken out of it, by the same steps in the same
-// key order, and nothing is written out or read back to do it. It is how the
+// the members the machine marks writeOnly are taken out of it, in the same key
+// order, and nothing is written out or read back to do it. It is how the
 // identity of a value whose writing strips members is read.
 //
 // The tree is changed in place. Every tree a reading leaves is built for that
 // reading -- copied off the value, or decoded from bytes -- so nothing else
 // holds it.
-func _accessStripTree(t any, rules []_accessRule) (any, error) {
-	for _, rule := range rules {
-		if !rule.WriteOnly {
-			continue
-		}
-		next, err := _accessStripTreeAt(t, rule.Path)
-		if err != nil {
-			return nil, err
-		}
-		t = next
-	}
-	return t, nil
+func _accessStripTree(t any, rules _accessRules) (any, error) {
+	return _accessStripTreeAt(t, rules.States, []int{rules.Start})
 }
 
-// _accessStripTreeAt is _accessApply, stripping, over a tree. A value of the
-// wrong JSON kind is left as it is, as _accessApply leaves it.
-func _accessStripTreeAt(t any, path []_accessStep) (any, error) {
-	if len(path) == 0 {
-		return t, nil
-	}
-	step := path[0]
-	switch step.Kind {
-	case _accessProperty, _accessPattern, _accessOther:
-		obj, ok := t.(map[string]any)
-		if !ok {
-			return t, nil
-		}
-		keys := make([]string, 0, len(obj))
-		for k := range obj {
+// _accessStripTreeAt is _accessStrip over a tree. A value of the wrong JSON kind
+// is left as it is, as _accessStrip leaves it.
+func _accessStripTreeAt(t any, states []_accessState, set []int) (any, error) {
+	switch v := t.(type) {
+	case map[string]any:
+		keys := make([]string, 0, len(v))
+		// maporder: gathers the keys, which are sorted before any is read.
+		for k := range v {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 		for _, key := range keys {
-			matched, err := _accessKeyMatches(step, key)
-			if err != nil {
-				return t, fmt.Errorf("%s: %w", _schemagenQuote(key), err)
-			}
-			if !matched {
-				continue
-			}
-			if len(path) == 1 {
-				delete(obj, key)
-				continue
-			}
-			next, err := _accessStripTreeAt(obj[key], path[1:])
+			_, wo, next, err := _accessMember(states, set, key, false, true)
 			if err != nil {
 				return t, err
 			}
-			obj[key] = next
-		}
-		return obj, nil
-	case _accessItems, _accessTuple:
-		arr, ok := t.([]any)
-		if !ok {
-			return t, nil
-		}
-		for i := range arr {
-			if step.Kind == _accessTuple && i != step.Index {
+			if wo {
+				delete(v, key)
 				continue
 			}
-			if step.Kind == _accessItems && i < step.Index {
+			if len(next) == 0 {
 				continue
 			}
-			next, err := _accessStripTreeAt(arr[i], path[1:])
+			value, err := _accessStripTreeAt(v[key], states, next)
 			if err != nil {
 				return t, err
 			}
-			arr[i] = next
+			v[key] = value
 		}
-		return arr, nil
+		return v, nil
+	case []any:
+		for i := range v {
+			next := _accessElement(states, set, i, false, true)
+			if len(next) == 0 {
+				continue
+			}
+			value, err := _accessStripTreeAt(v[i], states, next)
+			if err != nil {
+				return t, err
+			}
+			v[i] = value
+		}
+		return v, nil
 	}
 	return t, nil
 }
 
-// idStripWriteOnly is jsonObj.stripWriteOnly for an identity, over trees: a member
-// matched by a one-step rule is taken out, and a member a longer rule reaches
-// into is read as its tree and has the rest of the path taken out of that. m
-// reads trees, so every member read so far holds one.
-func (o *jsonIDObj) idStripWriteOnly(rules []_accessRule, member jsonIDMemberFunc, m *jsonValidation) error {
-	for _, rule := range rules {
-		if !rule.WriteOnly || len(rule.Path) == 0 {
+// idStripWriteOnly is jsonObj.stripWriteOnly for an identity, over trees: a
+// marked member is taken out, and a member a move walks into is read as its
+// tree and has what the walk marks taken out of that. m reads trees, so every
+// member read so far holds one.
+func (o *jsonIDObj) idStripWriteOnly(rules _accessRules, member jsonIDMemberFunc, m *jsonValidation) error {
+	// In key order, as _accessStrip reads an object, so that a key no pattern
+	// match could be decided for is the same one reported.
+	live := make([]*jsonIDObjMember, 0, len(o.ms))
+	for i := range o.ms {
+		if !o.ms[i].gone {
+			live = append(live, &o.ms[i])
+		}
+	}
+	sort.Slice(live, func(i, j int) bool { return live[i].key < live[j].key })
+	set := []int{rules.Start}
+	for _, mb := range live {
+		_, wo, next, err := _accessMember(rules.States, set, mb.key, false, true)
+		if err != nil {
+			return err
+		}
+		if wo {
+			mb.gone = true
 			continue
 		}
-		step := rule.Path[0]
-		// In key order, as _accessApply reads an object, so that a key no
-		// pattern match could be decided for is the same one reported.
-		live := make([]*jsonIDObjMember, 0, len(o.ms))
-		for i := range o.ms {
-			if !o.ms[i].gone {
-				live = append(live, &o.ms[i])
-			}
+		if len(next) == 0 {
+			continue
 		}
-		sort.Slice(live, func(i, j int) bool { return live[i].key < live[j].key })
-		for _, mb := range live {
-			matched, mErr := _accessKeyMatches(step, mb.key)
-			if mErr != nil {
-				return fmt.Errorf("%s: %w", _schemagenQuote(mb.key), mErr)
-			}
-			if !matched {
-				continue
-			}
-			if len(rule.Path) == 1 {
-				mb.gone = true
-				continue
-			}
-			t, _, err := o.idTree(mb, member, m)
-			if err != nil {
-				return err
-			}
-			next, err := _accessStripTreeAt(t, rule.Path[1:])
-			if err != nil {
-				return err
-			}
-			mb.tree, mb.kind = next, jsonIDObjComputed
+		t, _, err := o.idTree(mb, member, m)
+		if err != nil {
+			return err
 		}
+		stripped, err := _accessStripTreeAt(t, rules.States, next)
+		if err != nil {
+			return err
+		}
+		mb.tree, mb.kind = stripped, jsonIDObjComputed
 	}
 	return nil
 }

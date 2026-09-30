@@ -50,6 +50,13 @@ var _ rt.API1
 {{- range .ElementNodes}}
 {{template "element_node" .}}
 {{end}}
+{{- if .AccessMachineVar}}
+// {{.AccessMachineVar}} is this file's --strict-read-write machine: each
+// state is the moves a walk in it makes from the value in hand to the members
+// and elements inside it, and every type's rules start in one of them. See
+// rt.AccessState.
+var {{.AccessMachineVar}} = {{accessMachine .AccessMachine}}
+{{end}}
 {{- if .HasValidationCapability}}
 {{template "validation_capability" .}}
 {{- end}}
