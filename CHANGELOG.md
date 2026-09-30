@@ -4,6 +4,52 @@
 
 ### Changed
 
+- **Generated code imports a runtime module instead of carrying its own
+  helpers.** The decoder, the encoder, the identity and tree code, the exact
+  number core, the format checkers and the schema evaluator used to be written
+  into every generated package as `schemagen_helpers.go`: some 1,500 lines a
+  package, 982,000 of the 1.33 million lines the 631-schema test corpus
+  generates, and a cold `go build ./...` of it cost about 248 s of CPU. They are
+  now the
+  separate Go module `github.com/mgilbir/schemagen/runtime` (its own `go.mod`,
+  requiring only `goecma262` and `golang.org/x/net`), which every generated
+  file imports as `rt`. A generated package's `schemagen_helpers.go` now holds
+  only the package's compiled patterns, and is written only when the package
+  names one: the corpus is 366,000 lines and builds in about 110 s of CPU.
+  Behaviour is unchanged: the JSON Schema Test Suite, in seven
+  configurations, decodes, validates and marshals to the same bytes and the same
+  error text as before. What changes for you:
+  - A module that holds generated code must require the runtime:
+    `go get github.com/mgilbir/schemagen/runtime@latest` (`go mod tidy` does it
+    once the generated code is in the tree). Generated code no longer needs the
+    `schemagen` module itself, and the `goecma262` and `x/net` it needs come with
+    the runtime.
+  - Every generated file declares `var _ rt.API1`. The runtime's exported API is
+    versioned by level and only grows; a runtime older than the schemagen that
+    generated the file fails to compile at exactly that line with
+    `undefined: rt.API1`, and `go get` of the runtime fixes it. A newer runtime
+    is always compatible.
+  - The methods generated types carry to be told apart across packages are
+    exported, because packages that share one runtime can no longer see each
+    other's unexported names: the per-type `jsonIdentity` is
+    `SchemagenJSONIdentity`, `SchemagenJSONTree` (declared by the types
+    another package compared) is gone, and each type declares
+    `SchemagenGenerated()`, which the runtime uses to tell a type schemagen
+    wrote from one that merely has an `UnmarshalJSON`. Both names are
+    reserved, as `Validate` and `MarshalJSON` are: a property that would be
+    spelled either is renamed.
+  - `schemagen generate` ends a successful run with one `hint:` line on stderr
+    naming the runtime module the generated code imports, and the
+    `go get github.com/mgilbir/schemagen/runtime@vX.Y.Z` that matches this
+    schemagen when it is a release. A build that is not a release says so instead
+    of naming a version that does not exist.
+  - `pkg/validationruntime`, the capability metadata `--validation hybrid` and
+    `runtime` record, is `rt.Capability` and `rt.Feature` in the runtime; the
+    generated `SchemagenValidationCapability()` returns `rt.Capability`.
+    Generated code no longer imports any package of this repository.
+  - The `pkg/generator.HelperSet` is reduced to the patterns a package
+    compiles, and the pruning that decided which helper blocks a package needed
+    is gone with the blocks.
 - A pattern is judged by the ECMA-262 grammar for the `u` flag, the dialect
   JSON Schema names, and nothing looser. ES2025 modifier groups are accepted
   and matched as specified, in every position a pattern occupies:

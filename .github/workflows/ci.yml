@@ -54,21 +54,37 @@ jobs:
             exit 1
           fi
 
-      # Several tests build and run a throwaway module that imports the ECMA-262
-      # regexp package, and x/net/idna for the two hostname formats. Those
-      # dependencies are only reachable from generated code, so `go build ./...`
-      # never fetches them and the first such test would do the download itself.
-      # They are named in go.mod for exactly this reason -- nothing in this
-      # repository imports them -- so a bare `go mod download` still pulls them.
-      # A network problem then fails here, plainly, instead of inside a test.
+      # Several tests build and run a throwaway module that imports the runtime
+      # module, which imports the ECMA-262 regexp package and x/net/idna for the
+      # two hostname formats. Generated code reaches those through the runtime
+      # only, and x/net is not in the root go.mod, so `go build ./...` never
+      # fetches it and the first such test would do the download itself. The
+      # runtime's own go.mod names them, so downloading in both modules pulls
+      # everything the throwaway modules need. A network problem then fails
+      # here, plainly, instead of inside a test.
       - name: download dependencies
-        run: go mod download
+        run: |
+          go mod download
+          cd runtime && go mod download
 
       - name: go vet
         run: go vet ./...
 
       - name: build
         run: go build ./...
+
+      # The runtime is a module of its own, and `go vet ./...` and `go test ./...`
+      # at the root stop at its boundary: without these two steps nothing would
+      # ever run its tests. It holds the code every generated package shares, and
+      # the test that keeps its exported API and its independence from the main
+      # module.
+      - name: runtime vet
+        working-directory: runtime
+        run: go vet ./...
+
+      - name: runtime test
+        working-directory: runtime
+        run: go test ./... -count=1
 
       # The suite is checked out, at the pinned JSTS_COMMIT, for its fuzz
       # seeds: FuzzGenerate takes every test group's schema as a seed when the
@@ -119,6 +135,32 @@ jobs:
       - name: cogen smoke
         run: make cogen COGEN_SEED=1 COGEN_ITERS=50
 
+  # The runtime module with the oldest Go it promises to build with. Every module
+  # that holds generated code imports the runtime, so its go directive (1.23.0) is
+  # the oldest Go those modules can use; a language feature or a standard library
+  # name newer than that compiles under the main module's toolchain and breaks
+  # every user on the oldest one. It has happened once already: a type alias used
+  # inside its own definition, which Go 1.23 refuses. TestRuntimeGoDirectiveIsCoherent
+  # holds the declared versions together; this is what holds the code to them.
+  runtime-oldest-go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.23"
+          cache: true
+          cache-dependency-path: runtime/go.sum
+
+      - name: vet
+        working-directory: runtime
+        run: go vet ./...
+
+      - name: test
+        working-directory: runtime
+        run: go test ./... -count=1
+
   # The field-alignment check, in its own job because it takes about three
   # minutes and has nothing to say about anything the job above tests.
   #
@@ -142,9 +184,11 @@ jobs:
 
       # The analyzer is a build of another module and is fetched rather than
       # vendored, so this job needs the proxy. Generated code reaches the same
-      # two dependencies the test job names.
+      # dependencies the test job names, through the runtime module.
       - name: download dependencies
-        run: go mod download
+        run: |
+          go mod download
+          cd runtime && go mod download
 
       - name: fieldalignment
         run: make lint-alignment
@@ -182,11 +226,13 @@ jobs:
           go-version: ${{ matrix.go-version }}
           cache: true
 
-      # The generated code the sweep type-checks imports the same two
-      # dependencies the test job names; the suite is cloned at its pinned
-      # commit by the target itself.
+      # The generated code the sweep type-checks imports the runtime module and
+      # so the same dependencies the test job names; the suite is cloned at its
+      # pinned commit by the target itself.
       - name: download dependencies
-        run: go mod download
+        run: |
+          go mod download
+          cd runtime && go mod download
 
       - name: determinism
         run: make test-determinism

@@ -32,6 +32,11 @@ make build
 # binary is placed in bin/schemagen
 ```
 
+Code schemagen generates imports a small runtime module of its own,
+`github.com/mgilbir/schemagen/runtime`. A module that holds generated code
+requires it like any other dependency (`go get github.com/mgilbir/schemagen/runtime@latest`,
+or `go mod tidy`); see [The runtime module](#the-runtime-module).
+
 ## Usage
 
 ```bash
@@ -1031,16 +1036,16 @@ Notes:
 - The mode currently requires `--validation static`, and `--package` does not
   apply (each package is named after its import path).
 - A generated type whose values a `const`, an `enum` or a `uniqueItems`
-  compares declares `SchemagenJSONTree() (any, error)`: the value as `encoding/json`
-  decodes the JSON its `MarshalJSON` writes into an `any` (`map[string]any`,
-  `[]any`, `string`, `bool`, `nil`, `json.Number`), read off the value rather
-  than written out and decoded. A package compares another package's values
-  through it, since it cannot call that package's unexported helpers; in a run
-  of several packages (this mode and `--shared-types`) every struct, and every
-  type with a `MarshalJSON` of its own, declares it -- any other type is read by
-  its Go kind, which needs nothing from it. The name is reserved: a property that would
-  be spelled `SchemagenJSONTree` is renamed, and a `--field-map` override to it
-  is refused, as for `Validate` and `MarshalJSON`.
+  compares declares `SchemagenJSONIdentity(*rt.Validation) (rt.ID, error)`: the
+  identity of the JSON its `MarshalJSON` writes, read off the value rather than
+  written out and decoded. Every package imports the same runtime, which cannot
+  see a package's unexported methods, so a package compares another package's
+  values through this exported one; every struct, and every type with a
+  `MarshalJSON` of its own, declares it -- any other type is read by its Go
+  kind, which needs nothing from it. Its companion `SchemagenGenerated()` marks
+  a type schemagen wrote. Both names are reserved: a property that would be
+  spelled either is renamed, and a `--field-map` override to one is refused, as
+  for `Validate` and `MarshalJSON`.
 
 ### Config File
 
@@ -1207,13 +1212,90 @@ Limitations:
 
 JSON Schema `pattern`, `patternProperties`, and `propertyNames.pattern` are ECMA-262 regular expressions, compiled with the `u` flag. Every one of them, wherever it sits -- a property, an array element, a `contains`, a `patternProperties` key or value, a branch of `anyOf`/`oneOf`/`not`/`if`, the runtime evaluator, the `--strict-read-write` walker, the decoder choosing which overflow map a key goes in -- is matched by one engine, `github.com/mgilbir/goecma262`, and nothing in generated code or in the generator uses Go's `regexp`, which is RE2: a different language, with no lookaround or backreferences and different meanings for `\s`, `\b` and `.`.
 
-- **Compiled once.** The package's helper file declares one variable per distinct pattern, compiled when the package is initialised; checks match through it. `Validate()` compiles no schema pattern (the one thing it compiles is a value asserted `format: regex`, which is the document's own text). Generated code therefore needs the goecma262 schemagen requires, or a later one: it calls the error-returning match API (`MatchStringErr`, `ErrStepLimit`), and it is judged by the parser generation judged the patterns with. `go mod tidy` picks it up from schemagen's own requirement.
+- **Compiled once.** The package's helper file (`schemagen_helpers.go`, written only when the package names a pattern) declares one variable per distinct pattern, compiled when the package is initialised; checks match through it. `Validate()` compiles no schema pattern (the one thing it compiles is a value asserted `format: regex`, which is the document's own text). The engine is the runtime module's requirement, so generated code needs the goecma262 the runtime requires, or a later one: it calls the error-returning match API (`MatchStringErr`, `ErrStepLimit`), and it is judged by the parser generation judged the patterns with. `go mod tidy` picks it up from the runtime's requirement.
 - **A pattern that is not a regular expression is a schema error.** Generation fails, naming the JSON Pointer of the keyword (`#/properties/s/pattern: "(?<" is not an ECMA-262 regular expression (u flag): ...`), wherever the pattern is -- including a `$defs` entry nothing references. The pointer is where the document wrote the pattern, even under a keyword the generator rewrites (`#/extends/0/pattern` in draft 3, `#/definitions/d/pattern` in draft 7). It used to reach generated code, where it panicked at the first `Validate()` or matched nothing.
 - **The engine gets the schema's bytes.** A pattern that compiles is compiled exactly as written. The one exception is a pattern the `u` flag refuses only because it escapes ASCII punctuation that is not an ECMA-262 syntax character, such as `\:` or `\-` outside a class: without the flag such an escape is the character itself, which is also what PCRE, Python, Java, .NET and RE2 read it as, so it is rewritten to the `\xHH` escape of the same character -- `^[A-Za-z0-9_\-\.\:]+$` is compiled as `^[A-Za-z0-9_\x2d\.\x3a]+$` -- and used only if the whole pattern then compiles. A backslash before a letter is never rewritten (`\e`, `\a`, `\z` mean different things in different dialects), and messages quote the pattern as the schema wrote it. The `i`, `m` and `s` flags have no JSON Schema spelling of their own, but ES2025 modifier groups turn them on or off for part of a pattern, and are matched as ECMA-262 says: `^(?i:ab)c$` accepts `ABc` and refuses `ABC`, and under `i` a class, `\w`, `\b`, `\p{...}` and a backreference compare by simple case folding (`(?i:\w)` matches U+017F LATIN SMALL LETTER LONG S). The Perl spelling `(?i)abc`, with no group, is not ECMA-262 and is refused, as is a modifier group that names a flag twice or none at all. So is a `\p{...}` name the specification does not list, even where Unicode has it as an alias: `\p{White_Space}` and `\p{space}`, not `\p{WSpace}`.
 - **"Could not decide" is an error, never "no match".** The engine bounds backtracking with a budget that grows with the input, so a linear pattern such as `^[a-z]+$` matches a string of any length, and a pattern that backtracks exponentially (`^(.*?,){30}P` against a long enough input) stops. A match that ran out of budget has no answer, and `Validate()` returns an error for it -- the document is not known to be valid -- that says so (`s: pattern ^(.*?,){30}P could not be evaluated within the regular expression engine's step budget`) and wraps `ecma262.ErrStepLimit`, so `errors.Is(err, ecma262.ErrStepLimit)` tells it from an ordinary refusal. It is never read as a match or a mismatch, including inside `not`, `anyOf`, `oneOf`, `if` and `contains`, where either reading would flip the verdict. Where the decoder itself has to match -- which overflow map an undeclared key goes in, which `oneOf` branch a value selects, which members a `--strict-read-write` rule names -- `UnmarshalJSON` returns that error instead of guessing.
 - **Messages quote a bounded value.** A string taken from the document -- a value, a key, a format argument, a `const` or `enum` value -- is written into an error whole up to 128 bytes; a longer one is cut to its first 64 bytes, at a character boundary, followed by its length and the word `truncated` (`"aaaa…"... (600000 bytes, truncated)`). The error from a parser such as `time.Parse` or `url.Parse`, which quotes its input back, is cut by the same rule and kept underneath for `errors.Is`/`errors.As`.
 
 A property declared in `properties` whose name a `patternProperties` key matches is held to both: its own schema, and the whole of every matching pattern's schema -- `type`, `enum`, `const`, `format`, nested properties, anything the pattern's schema says -- exactly as an undeclared member the pattern matches is. For a decoded value the check reads the bytes the document wrote; for a hand-constructed value it marshals the field, where the property counts as present (a required property always, an optional one when its field is non-nil).
+
+### The runtime module
+
+What is the same for every schema -- the in-place JSON decoder, the encoder, the
+identity of a value that `const`, `enum` and `uniqueItems` compare by, the exact
+number core, the `format` checkers, the schema evaluator -- is not generated. It
+is the Go module `github.com/mgilbir/schemagen/runtime` (in `runtime/` of this
+repository, with its own `go.mod`), and every generated file imports it as
+`rt`. A generated package is only what depends on the schemas: the types, their
+methods, the schema nodes and the compiled patterns. That is what keeps a large
+corpus quick to build: the shared code is compiled once, where it used to be
+compiled into every package.
+
+The runtime depends on the standard library, `github.com/mgilbir/goecma262` (the
+regular expression engine) and `golang.org/x/net` (the two hostname formats), and
+on nothing else. In particular it does not import schemagen, and generated code
+never does either: `go install github.com/mgilbir/schemagen@latest` installs the
+generator, and a project that only holds generated code needs no schemagen module
+at all.
+
+**Getting it.** A module that contains generated code requires the runtime:
+
+```bash
+go get github.com/mgilbir/schemagen/runtime@latest
+```
+
+`go mod tidy` does the same once the generated files are in the tree. A run of
+`schemagen generate` ends with a `hint:` line on stderr saying so, and naming the
+version to ask for when the schemagen is a release (`go get
+github.com/mgilbir/schemagen/runtime@v0.2.0`); a development build has no runtime
+release to name, and says that instead. The runtime declares `go 1.23.0` and builds
+with it: the module that imports it is never asked for a newer Go than that (CI
+builds and tests it with Go 1.23). A release
+`vX.Y.Z` of schemagen is paired with the tag `runtime/vX.Y.Z` of this module, and
+the runtime a build resolves has to be at least the one the generator that wrote
+the code was released with.
+
+**What it promises.** Its exported API exists for generated code: documented,
+kept small, and not a library to write against. Within a major version it only
+grows -- a name, a signature or a behaviour generated code depends on does not
+change -- so a runtime newer than the schemagen that generated a package always
+serves it, and the runtime can be updated without regenerating. The list of
+exported names is `runtime/testdata/api.txt`, and a test holds the package to it.
+The implementation is unexported (or under `runtime/internal`), so nothing else
+is a promise.
+
+**An older runtime.** Code generated by a newer schemagen may use API an older
+runtime does not have. Every generated file says which level it needs
+(`var _ rt.API1`), so an older runtime fails at that one line with
+`undefined: rt.API1` rather than at whichever call comes first. The fix is the
+`go get` above. The other direction is safe: a newer runtime serves code
+generated by an older schemagen.
+
+**In this repository.** The main module does not import the runtime and does not
+require it, so `go install ...@latest` needs no tag of the runtime to exist. The
+tests that compile generated code do it in throwaway modules that require the
+runtime and `replace` it onto this checkout's `./runtime` (`internal/testgo`
+writes them), so a test always builds against the runtime being changed. There is
+no `go.work`, on purpose: it would apply to every `go` command run in the
+checkout, tests included -- the harness sets `GOWORK=off` for that reason -- and
+it would hide exactly the failure a user of a released pair would meet, a
+generated file needing a runtime the module graph does not resolve. Nor does the
+main `go.mod` require the runtime at a version: it has no import to justify one,
+and a requirement would make building the generator depend on a tag of the
+runtime having been published. The runtime is tested on its own,
+`cd runtime && go test ./...`, which CI runs (a root `go test ./...` does not
+descend into a nested module).
+
+**Releasing.** The maintainer tags every release twice, at the same commit: `vX.Y.Z`
+and `runtime/vX.Y.Z`. The runtime tag has to exist before anyone regenerates
+code with the new generator, or `go get github.com/mgilbir/schemagen/runtime@latest`
+resolves the previous release and the build stops at `undefined: rt.API1` (or at
+whichever name is new). When a generator change needs a name the released
+runtime lacks, the name is added to the runtime and the API level a generated
+file declares is raised (`rt.API2`); `runtime/testdata/api.txt` is regenerated
+(`go test ./runtime -run TestTheExportedAPI -update-api`) and the change is
+reviewed as an addition to the API.
 
 ## How It Works
 
@@ -1232,11 +1314,15 @@ Note that generation performs I/O: `$ref` targets are read from the local filesy
 ## Development
 
 ```bash
-# Run all tests
+# Run all tests, in both modules: the generator's, and the runtime's (a root
+# `go test ./...` does not descend into the nested runtime module)
 make test
 
 # Run tests (skip external suite)
 make test-short
+
+# Only the runtime module: vet and test
+make test-runtime
 
 # Update golden test fixtures
 make golden
@@ -1296,7 +1382,7 @@ under `tests/`, one package per area:
 | `tests/names` | what schema text becomes in source: identifiers, receivers, comments, literals |
 | `tests/patterns` | the ECMA-262 pattern engine in every position a pattern can occupy |
 | `tests/numbers` | numeric precision, saturated bounds, canonical numbers; the exact-number core held to `big.Rat`, and the number verdict grid against its frozen oracle (a sample here, all of it under `make grid-numbers`) |
-| `tests/corpus` | sweeps over every schema in `testdata/schemas`: compile, field alignment, helper file, refusals |
+| `tests/corpus` | sweeps over every schema in `testdata/schemas`: compile, field alignment, the runtime names generated code uses, refusals |
 | `tests/fuzz` | `FuzzGenerate` and its seed corpus, and the backstop sweep (`make fuzz`); crashers land in `tests/fuzz/testdata/fuzz/` |
 | `tests/fuzzdeadline` | every fuzz seed held to the CPU-time budget a fuzz worker's ten-second deadline implies (`make fuzz-seeds`) |
 | `tests/fuzzmemory` | every fuzz seed held to the heap and stack ceilings the memory gate enforces (`make fuzz-seeds`) |
