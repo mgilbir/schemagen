@@ -78,7 +78,9 @@ func BuildResourceGraph(root *Schema, baseURI *url.URL, defaultDraft Draft) *Res
 	if root == nil {
 		return &ResourceGraph{Resources: map[string]*Resource{}}
 	}
-	x := NewResourceIndex(nil, WithIndexDraft(defaultDraft))
+	// No dialect is chosen from outside: defaultDraft is what a resource that
+	// declares none is described as, not an override of one that does.
+	x := NewResourceIndex(nil)
 	// A refused document still has its base URIs computed, which is all Graph
 	// reads; see above.
 	_ = x.AddDocument(root, baseURI)
@@ -115,7 +117,7 @@ func resourceDraft(s *Schema, fallback Draft) Draft {
 	return DraftUnknown
 }
 
-func collectResourceAnchors(s *Schema, res *Resource, isRoot bool, fallback Draft) {
+func collectResourceAnchors(s *Schema, res *Resource, isRoot bool, dialect func(*Schema) Draft) {
 	if s == nil || s.IsBooleanSchema() {
 		return
 	}
@@ -129,7 +131,7 @@ func collectResourceAnchors(s *Schema, res *Resource, isRoot bool, fallback Draf
 	// a second node declaring it marks the name ambiguous; see Resource.ambiguous.
 	// The same node reached twice -- "definitions" and "$defs" are mirrored into
 	// each other by Normalize -- is one declaration, not two.
-	for _, name := range anchorNamesIn(s, fallback) {
+	for _, name := range anchorNamesIn(s, dialect) {
 		if have, ok := res.Anchors[name]; ok {
 			if have != s {
 				if res.ambiguous == nil {
@@ -151,6 +153,6 @@ func collectResourceAnchors(s *Schema, res *Resource, isRoot bool, fallback Draf
 		res.DynamicAnchors[""] = s
 	}
 	for _, sub := range subSchemas(s) {
-		collectResourceAnchors(sub, res, false, fallback)
+		collectResourceAnchors(sub, res, false, dialect)
 	}
 }

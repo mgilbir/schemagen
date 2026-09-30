@@ -250,6 +250,7 @@ var (
 		"schemagen-external-", // one generated module, compiled
 		"schemagen-rt-",       // one generated module, built and round-tripped
 		"schemagen-val-",      // one generated module, built and asked for a verdict
+		"schemagen-grid-",     // one package of keyword-grid cells, built and asked for their verdicts
 	}
 )
 

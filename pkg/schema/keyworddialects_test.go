@@ -434,7 +434,10 @@ func TestNormalizeForDraftOverridesTheRootAndNotAnEmbeddedResource(t *testing.T)
 	doc := `{
 		"$schema": "http://json-schema.org/draft-07/schema#",
 		"const": "x",
-		"$defs": {"kept": {"$schema": "https://json-schema.org/draft/2020-12/schema", "const": "y"}}
+		"$defs": {
+			"kept": {"$id": "https://ex.test/kept", "$schema": "https://json-schema.org/draft/2020-12/schema", "const": "y"},
+			"overridden": {"$schema": "https://json-schema.org/draft/2020-12/schema", "const": "z"}
+		}
 	}`
 	var s Schema
 	if err := json.Unmarshal([]byte(doc), &s); err != nil {
@@ -447,6 +450,15 @@ func TestNormalizeForDraftOverridesTheRootAndNotAnEmbeddedResource(t *testing.T)
 	}
 	if kept := s.Defs["kept"]; kept.Const == nil {
 		t.Errorf("the embedded 2020-12 resource lost its const; --draft supplies the root's dialect only")
+	}
+	// A $schema on a node that declares no resource of its own is part of the
+	// document --draft is the caller's statement about, and is overridden with
+	// the root's: the rule the resource index and the generator read too (see
+	// dialect.go). Before they shared one, normalization let it switch the
+	// subtree while the generator read the subtree under --draft.
+	if over := s.Defs["overridden"]; over.Const != nil {
+		t.Errorf("a $schema-only node kept its 2020-12 const under --draft 4; only an embedded resource "+
+			"declaring its own $id keeps its dialect. const = %v", *over.Const)
 	}
 
 	// DraftUnknown means "read the dialect from the document", not "this document

@@ -1831,6 +1831,7 @@ func TestSchemaFieldsAreClassifiedForPresence(t *testing.T) {
 		"extensionSchemas": "a parse cache for Extensions",
 		"malformed":        "which keywords' values were malformed; MalformedKeywords reports them, and a malformed keyword's field is left unset",
 		"normalized":       "whether Normalize has rewritten the node, not something the document states",
+		"dialectGiven":     "whether the dialect Normalize used was chosen from outside the document, not something the document states",
 		"srcChildren":      "where the document wrote each subschema, relative to this node; locates nodes and answers $ref into rewritten keywords, not a keyword",
 		"src":              "where the document wrote this node (SourceLocation); for diagnostics, not a keyword",
 		"droppedKeywords":  "the values of keywords the dialect does not define, kept for $ref only, as Extensions keeps unknown ones",

@@ -53,6 +53,7 @@ func newGenerateCmd() *cobra.Command {
 		omitEmpty        bool
 		strictProperties bool
 		strictReadWrite  bool
+		strictKeywords   bool
 		bigInt           bool
 		exactNumbers     bool
 		rawUntyped       bool
@@ -100,6 +101,7 @@ func newGenerateCmd() *cobra.Command {
 				applyBool(cmd, "omit-empty", cfg.OmitEmpty, &omitEmpty)
 				applyBool(cmd, "strict-properties", cfg.StrictProperties, &strictProperties)
 				applyBool(cmd, "strict-read-write", cfg.StrictReadWrite, &strictReadWrite)
+				applyBool(cmd, "strict-keywords", cfg.StrictKeywords, &strictKeywords)
 				applyBool(cmd, "big-int", cfg.BigInt, &bigInt)
 				applyBool(cmd, "exact-numbers", cfg.ExactNumbers, &exactNumbers)
 				applyBool(cmd, "raw-untyped", cfg.RawUntyped, &rawUntyped)
@@ -309,6 +311,7 @@ func newGenerateCmd() *cobra.Command {
 					omitEmpty:        omitEmpty,
 					strictProperties: strictProperties,
 					strictReadWrite:  strictReadWrite,
+					strictKeywords:   strictKeywords,
 					bigInt:           bigInt,
 					exactNumbers:     exactNumbers,
 					rawUntyped:       rawUntyped,
@@ -463,6 +466,7 @@ func newGenerateCmd() *cobra.Command {
 					OmitEmpty:           omitEmpty,
 					StrictProperties:    strictProperties,
 					StrictReadWrite:     strictReadWrite,
+					StrictKeywords:      strictKeywords,
 					BigIntSupport:       bigInt,
 					ExactNumbers:        exactNumbers,
 					RawUntyped:          rawUntyped,
@@ -520,6 +524,7 @@ func newGenerateCmd() *cobra.Command {
 						OmitEmpty:           omitEmpty,
 						StrictProperties:    strictProperties,
 						StrictReadWrite:     strictReadWrite,
+						StrictKeywords:      strictKeywords,
 						BigIntSupport:       bigInt,
 						ExactNumbers:        exactNumbers,
 						RawUntyped:          rawUntyped,
@@ -575,7 +580,9 @@ func newGenerateCmd() *cobra.Command {
 					generatedInputs = append(generatedInputs, schemaPath)
 				}
 
+				warnDialectOverrides(cmd.ErrOrStderr(), schemaPath, gen.DialectOverrides())
 				warnUnenforcedSchemas(cmd.ErrOrStderr(), schemaPath, gen.UnenforcedSchemas())
+				warnUnclaimedKeywords(cmd.ErrOrStderr(), schemaPath, gen.Unclaimed())
 				warnUnresolvedRefs(cmd.ErrOrStderr(), schemaPath, gen.UnresolvedRefs(), gen.UnresolvedRefKeywords(), gen.UndeclaredRefTypes())
 				warnUnsatisfiableRequired(cmd.ErrOrStderr(), schemaPath, gen.UnsatisfiableRequiredProperties())
 				// Both read from the generator's name registry, after the types
@@ -669,6 +676,7 @@ func newGenerateCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&pkgName, "package", "p", "generated", "Go package name for generated code")
 	cmd.Flags().BoolVar(&omitEmpty, "omit-empty", true, "Add omitempty to optional JSON fields")
 	cmd.Flags().BoolVar(&strictProperties, "strict-properties", false, "Treat absent additionalProperties as false for validation (extra JSON keys are still captured for round-trip but rejected by Validate)")
+	cmd.Flags().BoolVar(&strictKeywords, "strict-keywords", false, "Refuse a schema that uses a keyword schemagen does not know, naming where each one is written. Without it such a keyword is an annotation, as JSON Schema 2019-09 and later define it, and constrains nothing. A metaschema requiring a vocabulary schemagen does not implement is refused either way")
 	cmd.Flags().BoolVar(&strictReadWrite, "strict-read-write", false, "Make \"readOnly\" and \"writeOnly\" change what the type accepts and emits, rather than only its doc comment. The generated type becomes the owning authority's view: UnmarshalJSON rejects a document that sets a readOnly property, and MarshalJSON omits every writeOnly one. Validation is unaffected under either setting -- both keywords are annotations in every draft that defines them. A type built this way deliberately does not round-trip")
 	cmd.Flags().BoolVar(&bigInt, "big-int", false, "Hold \"type\":\"integer\" in an arbitrary-precision wrapper (int64 + *big.Int) instead of an int64 that refuses an integer past its range at decode. The wrapper reads the literal exactly -- 1e100 is 10^100, 12345678901234567891.5 is not an integer -- and builds at most 10000 zeros from an exponent")
 	cmd.Flags().BoolVar(&exactNumbers, "exact-numbers", false, "Hold \"type\":\"number\" as the literal the document wrote (json.Number) instead of the float64 it rounds to, so a value round-trips byte for byte. Numeric keywords are decided exactly, on the number as a mathematical value, under every configuration; what this flag changes is which number a \"number\" position holds. Without it a literal float64 cannot hold -- a 17th significant digit, 1e400 -- is rounded or refused at decode, and the keywords judge the float64 that is left. A position typed \"integer\" is exact without a flag, and --big-int carries it past int64")
@@ -707,6 +715,40 @@ func warnUnenforcedSchemas(w io.Writer, schemaPath string, unenforced []generato
 	for _, u := range unenforced {
 		fmt.Fprintf(w, "warning: %s: type %s is `any` and validates nothing, but the schema states %s\n",
 			schemaPath, u.TypeName, strings.Join(u.Keywords, ", "))
+	}
+}
+
+// warnDialectOverrides reports each "$schema" of an input that --draft
+// overrode. The flag wins -- it is the caller's statement about the documents
+// they listed -- but a document that says otherwise means one of the two is
+// wrong, and the run should say which statement it followed and where the
+// other one is. See generator.Generator.DialectOverrides.
+func warnDialectOverrides(w io.Writer, schemaPath string, overrides []generator.DialectOverride) {
+	if w == nil {
+		return
+	}
+	for _, o := range overrides {
+		fmt.Fprintf(w, "warning: %s: %s: $schema names %s, and --draft reads it as %s\n",
+			schemaPath, o.Location, o.Stated, o.Applied)
+	}
+}
+
+// warnUnclaimedKeywords reports what the keyword ledger found the generated
+// code does not enforce: each assertion a schema states that no check carries,
+// and each schema no generated type is responsible for. See
+// generator.Generator.Unclaimed.
+//
+// It is the general form of warnUnenforcedSchemas, which says the same thing
+// for the one shape -- `type X any` -- where nothing at all is enforced. Here
+// the type exists and validates something, and what is listed is the part of
+// the schema it does not: a document the schema rejects for that keyword alone
+// is accepted.
+func warnUnclaimedKeywords(w io.Writer, schemaPath string, unclaimed []generator.LedgerEntry) {
+	if w == nil {
+		return
+	}
+	for _, e := range unclaimed {
+		fmt.Fprintf(w, "warning: %s: %s\n", schemaPath, e.String())
 	}
 }
 
@@ -1090,6 +1132,7 @@ type multiPackageParams struct {
 	omitEmpty        bool
 	strictProperties bool
 	strictReadWrite  bool
+	strictKeywords   bool
 	bigInt           bool
 	exactNumbers     bool
 	rawUntyped       bool
@@ -1349,6 +1392,7 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 			OmitEmpty:        p.omitEmpty,
 			StrictProperties: p.strictProperties,
 			StrictReadWrite:  p.strictReadWrite,
+			StrictKeywords:   p.strictKeywords,
 			BigIntSupport:    p.bigInt,
 			ExactNumbers:     p.exactNumbers,
 			RawUntyped:       p.rawUntyped,
@@ -1408,7 +1452,9 @@ func runMultiPackage(out io.Writer, args []string, p multiPackageParams) error {
 				return fmt.Errorf("generating IR for %s: %w", in.path, err)
 			}
 
+			warnDialectOverrides(p.warnings, in.path, gen.DialectOverrides())
 			warnUnenforcedSchemas(p.warnings, in.path, gen.UnenforcedSchemas())
+			warnUnclaimedKeywords(p.warnings, in.path, gen.Unclaimed())
 			warnUnresolvedRefs(p.warnings, in.path, gen.UnresolvedRefs(), gen.UnresolvedRefKeywords(), gen.UndeclaredRefTypes())
 			warnUnsatisfiableRequired(p.warnings, in.path, gen.UnsatisfiableRequiredProperties())
 			nameReport.moves(in.path, gen)

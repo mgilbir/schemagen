@@ -1,0 +1,62 @@
+name: Keyword grid
+
+# The whole keyword grid (tests/keywordgrid): every assertion keyword at every
+# position under every composition, in drafts 4, 6 and 7, 2019-09 and 2020-12,
+# generated both as the static code a caller gets and through the runtime
+# evaluator, compiled, run on its instances, and
+# held to the verdicts recorded in testdata/grid/verdicts.json and to the known
+# failures in testdata/grid/known_failing.txt in both directions -- a cell that
+# starts failing and a known failure that starts passing both fail the run.
+#
+# `go test ./...` runs a stable sample of the cells (gridSampled in
+# tests/keywordgrid/grid_test.go), so every pull request exercises every keyword
+# under 2020-12 and some under each other dialect. This is the rest of the
+# grid, nightly and on demand: a cell outside the sample regresses and is found
+# here the next morning instead of whenever someone runs `make grid`.
+#
+# The run reads the recorded verdicts; it does not consult the reference
+# implementations itself. Re-recording them is `make grid-oracle`, run by hand
+# after the grid changes (it needs Docker and uv).
+on:
+  schedule:
+    # 06:29 UTC, after fuzz.yml (03:17), cogen.yml (04:41) and external.yml
+    # (05:53), so the nightly jobs never contend for runners or confuse a
+    # failure between them. Off the hour on purpose: Actions defers cron jobs
+    # piled on round times.
+    - cron: '29 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Never cancel a run in progress: a half-finished grid says less than a
+# finished one, and the next nightly is a day away.
+concurrency:
+  group: grid-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  grid:
+    runs-on: ubuntu-latest
+    # The go test inside `make grid` has its own -timeout 90m, which fails
+    # loudly with every goroutine's stack. This is the backstop above it, for a
+    # hang outside the test binary and for a slow runner; the grid takes about
+    # four minutes on a 16-core workstation.
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Generated code imports the ECMA-262 regexp package and x/net/idna,
+      # which only generated code reaches; see ci.yml. Pulled up front so a
+      # network problem fails here, plainly, rather than as a column of cells
+      # that did not compile.
+      - name: download dependencies
+        run: go mod download
+
+      - name: keyword grid
+        run: make grid

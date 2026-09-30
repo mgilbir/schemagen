@@ -108,6 +108,15 @@ var refReadingSites = map[string]refReadingSite{
 		Why: "the runtime node builder compiles all three: a $ref as a conjunct, and the dynamic pair as a " +
 			"conjunct too where the document settles their target and as a scope-resolved frame where it does not",
 	},
+	"generator/ledgerrun.go | (*ledgerRun).dynamicBesideRef": {
+		Verdict: refReadsWhicheverIsThere, Reads: "$dynamicRef,EffectiveRef()",
+		Why: "the ledger walks both references a node carries: refTarget follows the funnel's precedence, " +
+			"and this is the $dynamicRef that precedence passes over when a $ref stands beside it",
+	},
+	"schema/keywordset_gen.go | (*Schema).appendMarshaledKeywords": {
+		Verdict: refReadsWhicheverIsThere, Reads: "$dynamicRef,$recursiveRef,$ref",
+		Why: "it lists every keyword a node states, each reference keyword as itself",
+	},
 	"generator/generator.go | refKeywordOf": {
 		Verdict: refReadsWhicheverIsThere, Reads: "$dynamicRef,$recursiveRef,$ref",
 		Why: "it exists to say which of the three a reference string was written as",
@@ -224,6 +233,16 @@ var refReadingSites = map[string]refReadingSite{
 		Why: "the accessor whose contract is 'the reference that resolves like a $ref'. $dynamicRef is excluded " +
 			"because it does not: its target is chosen from the resources an evaluation entered. Widening it " +
 			"would silently hand every caller a reference resolved by the wrong rule",
+	},
+	"generator/ledgerkeywords.go | (*Generator).statedAssertions": {
+		Verdict: refAsksAboutOneKeyword, Reads: "$ref",
+		Why: "the drafts-3-to-7 rule that a $ref replaces its siblings, which is $ref's own rule; the other two " +
+			"keywords do not exist in those drafts and never replaced anything",
+	},
+	"generator/ledgerrun.go | impliesKeyword": {
+		Verdict: refAsksAboutOneKeyword, Reads: "$ref",
+		Why: "compares the $ref keyword of two nodes as the keyword the ledger was asked about; the other two are " +
+			"compared as themselves, through the subschemas they lead to",
 	},
 	"schema/parse.go | (*Schema).decodeSpecialKeyword": {
 		Verdict: refAsksAboutOneKeyword, Reads: "$ref",

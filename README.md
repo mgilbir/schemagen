@@ -81,6 +81,7 @@ Note that `-v` is `--version` on `schemagen` itself and `--verbose` on
 | `--omit-empty` | | `true` | Add `omitempty` to optional JSON fields. With `--omit-empty=false` an optional field is written even when it holds its Go zero — `{}` marshals as `{"s":"","i":0,"b":false}` — except where that zero is a value the schema forbids at that position: a `null` for a typed property, or a zero the property's `const`, `enum`, `minLength`, `pattern` or numeric bounds exclude. Those are omitted rather than written, because there is no value to write there and every candidate is one the schema may equally reject |
 | `--strict-properties` | | `false` | Treat absent `additionalProperties` as false for validation while still preserving overflow properties for round-trip output. Read on every object schema, including the sub-schemas the generator compiles to schema data rather than to a struct. An `allOf` branch's properties are pooled into the object the branches compose, as the merged struct pools them; every other applicator's sub-schema is a schema object in its own right and is read on its own terms, which is `additionalProperties`' own reading and can make a discriminated or conditional object unsatisfiable |
 | `--strict-read-write` | | `false` | Make `readOnly` and `writeOnly` change what the type accepts and emits, not just its doc comment (see below) |
+| `--strict-keywords` | | `false` | Refuse a schema that uses a keyword schemagen does not know, naming where each is written. Without it such a keyword is an annotation and constrains nothing (see below) |
 | `--big-int` | | `false` | Hold `"type":"integer"` in an arbitrary-precision wrapper (`int64` + `*big.Int`) rather than an `int64` that refuses an integer past its range (see below) |
 | `--exact-numbers` | | `false` | Hold `"type":"number"` as the literal the document wrote (`json.Number`) rather than the `float64` it rounds to, and compare every numeric keyword on it exactly (see below) |
 | `--raw-untyped` | | `false` | Hold a position the schema gives no type to as the bytes the document wrote (`json.RawMessage`) rather than the `any` they decode into, so number spelling, member order and every digit round-trip (see below) |
@@ -1100,7 +1101,7 @@ schemagen generate --config schemagen.json
   so a build never changes behaviour because of a stray file in the working
   directory.
 - Every boolean flag above has a config key of the same name in camel case --
-  `omitEmpty`, `strictProperties`, `strictReadWrite`, `bigInt`, `exactNumbers`,
+  `omitEmpty`, `strictProperties`, `strictReadWrite`, `strictKeywords`, `bigInt`, `exactNumbers`,
   `rawUntyped`, `formatAssertion`, `formatAnnotation`, `allowRemoteRefs`,
   `lenientRefs`, `sharedTypes`, `rootNameFromFilename`.
 - `--field-map` keeps working and takes precedence over a document's
@@ -1137,6 +1138,8 @@ This affects keyword interpretation (e.g., whether `$ref` overrides siblings, tu
 
 `--draft` forces the draft: it takes precedence over the `$schema` URI declared by the input document, so `--draft 2020-12` on a document that declares draft-07 interprets every keyword under 2020-12 rules. A keyword the forced draft does not define at all is ignored, as that draft ignores any unknown keyword. A keyword it defines but written in a form it does not -- array-form `items` under 2020-12 (a tuple only up to 2019-09), a boolean `exclusiveMinimum` under draft 6 or later, a number under draft 4, draft 3's per-property boolean `required` under draft 4 or later, draft 4's `required` array under draft 3, draft 3's schema-valued `type` entries anywhere else -- is refused, because the forced draft's meta-schema rejects the value: the error names whose spelling it is, what that draft writes instead, and the dialect the document itself declares. Ignoring it instead would drop a constraint the author wrote. The one exception is an embedded or remote resource that establishes its own `$id` scope *and* declares its own `$schema` -- that resource keeps its declared dialect, so cross-draft `$ref` semantics are preserved.
 
+Where a listed document's own `$schema` names a different dialect than `--draft`, the override is carried out and reported: a `warning:` line names where that `$schema` is written, the dialect it names, and the one the document was read as. One of the two statements is a mistake and only the caller knows which. Every part of the run -- which nodes are resources, how a `$ref` resolves, what each keyword means -- reads the dialect of a node from one rule, so they cannot disagree about it; in the library, a `schema.ResourceIndex` passed as `Config.Resolver` must have been built with the same draft as `Config.Draft` (`schema.WithIndexDraft`), and one that was not is an error naming both.
+
 A document that is pulled in by a `$ref` rather than listed on the command line follows the same rule, whether it is read off disk or fetched with `--allow-remote-refs`: it takes the forced draft when it declares no `$schema` of its own, and keeps its own dialect when it declares one. Until #314 the forced draft did not reach it at all, so a keyword the stated dialect does not define went on binding there while it was dropped from every document the caller listed -- one command line, one schema set, two verdicts on the same JSON.
 
 ### Validation Strategy
@@ -1162,6 +1165,18 @@ The same applies to a value **assigned after decoding**. The record of which key
 A schema that constrains a value without giving it a Go type -- a root `anyOf`/`oneOf`/`allOf`, an `if`/`then`/`else`, a `not` -- is generated as a small struct wrapping the raw JSON, with `UnmarshalJSON`, `MarshalJSON`, `Raw()`, `String()` and a `Validate()` that checks the schema. It is not `any`: Go forbids methods on a type whose underlying type is an interface, so `type X any` could carry no `Validate()` at all and `json.Unmarshal` into it could never fail.
 
 `type X any` is still what a schema that genuinely constrains nothing produces (`{}`, or a bare `title`). It is also what a schema schemagen cannot compile produces -- and when that happens the generated source says so, in a comment above the declaration naming the keywords being dropped, and `schemagen generate` prints a `warning:` line for it. Treat both as "this value is not validated": there is no `Validate()` to call and no decode that can fail.
+
+#### What the generated code does not enforce
+
+Every run checks the code it is about to emit against the schema it was generated from, keyword by keyword. Each assertion a schema states must be carried by a check in the generated code, be unable to reject any value the Go type can hold, or be handed to another generated type that checks it; and every schema the document evaluates must be the responsibility of some generated type. What fails that is printed as a `warning:` line naming where the keyword is written, the type it belongs to and why it is listed:
+
+```
+warning: schema.json: #/allOf/1 (type Name): pattern: no check in the generated code carries it
+```
+
+Each such line is a document the generated `Validate()` may accept although the schema rejects it. The check reads the generated code's own description, so what it lists is what the code does, not what the generator meant it to do. It reports and does not refuse: the code is written either way. In the library, `Generator.Unclaimed()` returns the same list after `Generate`.
+
+A keyword schemagen does not know -- a vendor extension, or a misspelled assertion such as `minLenght` -- is an annotation, as JSON Schema 2019-09 and later define it, and constrains nothing. `--strict-keywords` (`strictKeywords` in the config file, `Config.StrictKeywords` in the library) refuses such a schema instead, naming where each unknown keyword is written. A schema whose metaschema declares a vocabulary schemagen does not implement as required is refused either way, as JSON Schema requires; one declared optional is ignored.
 
 ### Field Name Overrides
 

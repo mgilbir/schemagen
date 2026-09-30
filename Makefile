@@ -1,4 +1,4 @@
-.PHONY: guards unicode-tables build test test-runtime lint lint-alignment clean install fmt vet golden download-test-suite test-suite-drift download-metaschemas test-external test-determinism grid-numbers fuzz fuzz-seeds cogen bench-cyclonedx validate-seeds
+.PHONY: guards unicode-tables build test test-runtime lint lint-alignment clean install fmt vet golden download-test-suite test-suite-drift download-metaschemas test-external test-determinism grid-numbers grid grid-oracle ledger-update fuzz fuzz-seeds cogen bench-cyclonedx validate-seeds
 
 BINARY := schemagen
 MODULE := github.com/mgilbir/schemagen
@@ -283,6 +283,41 @@ test-determinism: download-test-suite
 # a number is read, compared or decoded.
 grid-numbers:
 	SCHEMAGEN_NUMBER_GRID_FULL=1 go test ./tests/numbers -run '^TestNumberVerdictGrid$$' -v -count=1 -timeout 30m
+
+# The whole keyword grid (tests/keywordgrid): every assertion keyword at every
+# position under every composition, in each of drafts 4, 6 and 7, 2019-09 and
+# 2020-12, each generated both as the static code a caller gets and through
+# the runtime evaluator, compiled, and held to the verdicts in
+# testdata/grid/verdicts.json and the known failures in
+# testdata/grid/known_failing.txt. `go test ./...` runs 2020-12's root position
+# and a stable twentieth of the rest, and a stable hundredth of each other
+# dialect; this runs every cell. Nightly CI runs it.
+#
+#	make grid GRID_UPDATE=1   rewrites known_failing.txt from this run
+#
+# Read the diff before committing one: a line added is a keyword newly
+# unenforced somewhere, and nothing but a person should decide that is
+# acceptable.
+GRID_UPDATE ?=
+grid:
+	SCHEMAGEN_GRID=full SCHEMAGEN_GRID_UPDATE=$(GRID_UPDATE) go test ./tests/keywordgrid -run '^TestKeywordGrid$$' -v -count=1 -timeout 90m
+
+# Records Bowtie's verdict on every grid document in testdata/grid/verdicts.json:
+# several independent implementations (GRID_IMPLS), a document they disagree on
+# recorded as unknown. Run it after changing the grid; TestKeywordGrid fails on
+# a document with no recorded verdict. Needs uv and Docker; nothing here reaches
+# go.mod.
+GRID_IMPLS ?= js-ajv,python-jsonschema,go-jsonschema,rust-boon
+grid-oracle:
+	SCHEMAGEN_GRID_ORACLE=1 SCHEMAGEN_GRID_IMPLS=$(GRID_IMPLS) go test ./tests/keywordgrid -run '^TestKeywordGridOracle$$' -v -count=1 -timeout 90m
+
+# Rewrites testdata/ledger/unclaimed.txt, the keyword ledger's findings over the
+# corpus and the JSON Schema Test Suite, from this tree. TestLedgerRatchet holds
+# the file both ways on every run; see tests/external/ledger_ratchet_test.go.
+# The generation benchmarks, which include the ledger's cost, are ordinary ones:
+# go test ./tests/corpus -run '^$$' -bench BenchmarkGenerate -benchmem.
+ledger-update: download-test-suite download-metaschemas
+	SCHEMAGEN_LEDGER_UPDATE=1 go test ./tests/external -run '^TestLedgerRatchet$$' -v -count=1 -timeout 30m
 
 # Fuzzing has no natural end: `go test -fuzz` keeps mutating inputs until it
 # finds a crash or something kills it, so a run without -fuzztime never returns

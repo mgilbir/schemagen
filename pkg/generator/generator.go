@@ -43,7 +43,6 @@ type Generator struct {
 	ownIndex                   *schema.ResourceIndex
 	rootSchema                 *schema.Schema        // the root schema for local ref resolution
 	draft                      schema.Draft          // effective draft version of the root schema
-	draftOverridden            bool                  // true when Config.Draft explicitly set the draft (takes precedence over $schema)
 	resourceGraph              *schema.ResourceGraph // document/dialect/anchor graph for validation planning
 	validationKeywordsDisabled bool                  // true when the declared metaschema omits the validation vocabulary
 
@@ -304,6 +303,22 @@ type Generator struct {
 	// it is checked on arrival and refused. Generate reports this in preference
 	// to the "cannot resolve $ref" that refusing it produces.
 	nullSubschemaErr error
+
+	// ledger is the keyword ledger's record of this Generate call; see
+	// ledger.go.
+	ledger ledgerState
+
+	// resolvedRefMemo is every reference this Generate call resolved, by the
+	// reference and the node it is written on; see
+	// resolveRefInContextUncounted. Reset by Generate.
+	resolvedRefMemo map[resolvedRefKey]*schema.Schema
+
+	// dialectOverrides lists the $schema statements of this call's document
+	// that Config.Draft overrode; see DialectOverrides.
+	dialectOverrides []DialectOverride
+
+	// hooks are internal/gentest's settings for this call; see testhooks.go.
+	hooks testHooks
 }
 
 // New creates a new Generator with the given configuration.
@@ -429,13 +444,17 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// several documents, and a warning left over from an earlier one would be
 	// reported against the file being written now.
 	g.unsatisfiableRequired = nil
+	g.ledger = ledgerState{}
+	g.resolvedRefMemo = nil
+	g.hooks = testHooks{forceEvaluator: options.forceEvaluator}
 	g.rootSchema = s
 	if g.config.Draft != schema.DraftUnknown {
 		g.draft = g.config.Draft
-		g.draftOverridden = true
 	} else {
 		g.draft = schema.DetectDraft(s)
-		g.draftOverridden = false
+	}
+	if err := g.checkDialectSource(); err != nil {
+		return nil, err
 	}
 
 	// Determine root type name.
@@ -508,6 +527,10 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// The validation planner's view of the same resources, read from the same
 	// index, so the two cannot disagree about what a resource is.
 	g.resourceGraph = g.index.Graph(s, g.draft)
+	g.noteDialectOverrides(s)
+	if err := g.checkKeywordsAndVocabularies(s); err != nil {
+		return nil, err
+	}
 
 	// Initialize dynamic scope with the root document root. Every type body
 	// reseeds it at the schema it is declaring for (see generateTypeDefBody), so
@@ -581,6 +604,9 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	// about the same schema in the first place.
 	if err := g.generateTypeDef(g.rootTypeName, s); err != nil {
 		return nil, fmt.Errorf("generating root type: %w", err)
+	}
+	if err := g.forcedEvaluatorError(); err != nil {
+		return nil, err
 	}
 
 	// Mark aliases that cannot have methods (underlying resolves to pointer or interface).
@@ -744,6 +770,9 @@ func (g *Generator) Generate(s *schema.Schema, opts ...GenerateOption) (*File, e
 	if g.config.SharedTypes {
 		g.priorTypeDefs = append(g.priorTypeDefs, g.output.TypeDefs...)
 	}
+
+	// The keyword ledger, last: it reads the IR as it will be emitted.
+	g.runLedger(s)
 
 	return g.output, nil
 }
@@ -2973,12 +3002,12 @@ func withoutContentRules(rules []ValidationRule) []ValidationRule {
 //
 // This and the field-rule filter in generateStructDef are the only two places a
 // format rule reaches emitted code. Every other consumer of
-// extractValidationRules already drops it -- oneOfVariantChecks and
+// rulesFor already drops it -- oneOfVariantChecks and
 // aliasVariantRules by keyword whitelist, elementRules and allOfConstraintRules
 // by a default-deny switch, and the unevaluatedProperties template by having no
 // arm for it -- so gating those two gates the keyword.
 func (g *Generator) aliasValidationRules(s *schema.Schema, goType GoType) []ValidationRule {
-	rules := extractAliasValidationRules(s, goType)
+	rules := g.extractAliasValidationRules(s, goType)
 	if !g.contentAssertsFor(s) {
 		rules = withoutContentRules(rules)
 	}
@@ -3184,6 +3213,10 @@ func (g *Generator) generateTypeDefFor(name string, owner, s *schema.Schema) err
 			g.releaseTypeName(name, owner)
 		}
 	}()
+	if def := g.forcedEvaluatorDef(name, s); def != nil {
+		g.emitDefAs(name, def)
+		return nil
+	}
 
 	// The backstop for the guard above's blind spot: a node whose own generation
 	// is still in flight, arriving here under a *different* name.
@@ -3225,6 +3258,7 @@ func (g *Generator) generateTypeDefFor(name string, owner, s *schema.Schema) err
 	}
 	g.applyNullRejection(name, s)
 	g.applyTypeReconciliation(name, s)
+	g.applyLedger(name, s)
 	return nil
 }
 
@@ -4071,8 +4105,8 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 		var oneOfVariants [][]ValidationRule
 		if g.validationKeywordsEnabled() {
 			rules = g.aliasValidationRules(s, goType)
-			anyOfVariants = extractAnyOfVariantRules(s, goType)
-			oneOfVariants = extractOneOfVariantRules(s, goType)
+			anyOfVariants = g.extractAnyOfVariantRules(s, goType)
+			oneOfVariants = g.extractOneOfVariantRules(s, goType)
 		}
 		g.declare(name)
 		if isInferred || (g.config.BigIntSupport && primaryType == "integer") {
@@ -4145,8 +4179,8 @@ func (g *Generator) generateTypeDefBody(name string, s *schema.Schema) error {
 		var oneOfVariants [][]ValidationRule
 		if g.validationKeywordsEnabled() {
 			rules = g.aliasValidationRules(s, goType)
-			anyOfVariants = extractAnyOfVariantRules(s, goType)
-			oneOfVariants = extractOneOfVariantRules(s, goType)
+			anyOfVariants = g.extractAnyOfVariantRules(s, goType)
+			oneOfVariants = g.extractOneOfVariantRules(s, goType)
 		}
 		if isInferred {
 			// Inferred array type — wrapper struct for non-array fallback.
@@ -4327,11 +4361,13 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 	if g.validationKeywordsEnabled() && s.MaxProperties != nil {
 		validations = append(validations, ValidationRule{
 			RuleType: "maxProperties", Value: countBound(*s.MaxProperties),
+			Claim: claimOf(s, "maxProperties"),
 		})
 	}
 	if g.validationKeywordsEnabled() && s.MinProperties != nil {
 		validations = append(validations, ValidationRule{
 			RuleType: "minProperties", Value: countBound(*s.MinProperties),
+			Claim: claimOf(s, "minProperties"),
 		})
 	}
 	// Required fields on property-less object schemas (e.g., {"type":"object","required":["foo"]}).
@@ -4353,6 +4389,7 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 				depRequired = append(depRequired, DependentRequiredDef{
 					TriggerKey: trigger,
 					Required:   sorted,
+					Claim:      claimOf(s, "dependentRequired"),
 				})
 			}
 		}
@@ -4405,6 +4442,9 @@ func (g *Generator) generatePropertylessObjectDef(name string, s *schema.Schema)
 	runtimeBranchChecks = append(runtimeBranchChecks, g.collectConditionalRuntimeChecks(s, false)...)
 	if len(branchChecks) > 0 || len(runtimeBranchChecks) > 0 {
 		needsUnmarshal = true
+	}
+	if additionalProps != nil && s.AdditionalProperties != nil {
+		additionalProps.Claim = claimOf(s, "additionalProperties")
 	}
 	g.appendDef(&StructDef{
 		Name:                 name,
@@ -5203,6 +5243,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 					RuleType: "forbidden", Value: true,
 					PresenceTracked: true,
 					FieldNilable:    g.hasNilState(fieldTypes[goFieldName]),
+					Claim:           claimOf(propSchema, "false"),
 				})
 			}
 			continue
@@ -5219,12 +5260,12 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 		var rules []ValidationRule
 		if g.validationKeywordsEnabled() {
 			if !conditionalOnlyProp {
-				rules = extractValidationRules(goFieldName, propName, propSchema)
+				rules = g.rulesFor(goFieldName, propName, propSchema)
 				// An allOf on the property itself tightens the same value. When the
 				// branches carry object shape it is generateAllOfDef that flattens
 				// them, but a branch that only bounds a scalar leaves the property a
 				// plain Go string or int64 and its keywords reach nothing.
-				rules = append(rules, allOfConstraintRules(goFieldName, propName, propSchema, fieldTypes[goFieldName])...)
+				rules = append(rules, g.allOfConstraintRules(goFieldName, propName, propSchema, fieldTypes[goFieldName])...)
 			}
 			// A patternProperties key matching this property's name is not
 			// read here. It used to be: the matched sub-schema's keywords were
@@ -5344,7 +5385,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				// A format is asserted one way against the Go type it maps to
 				// and another against the raw string, and against several field
 				// types not at all. Deciding here rather than where the rule was
-				// built is what lets extractValidationRules admit a format whose
+				// built is what lets rulesFor admit a format whose
 				// schema named no "type": the positions that cannot carry the
 				// check drop it again, instead of emitting one that does not
 				// compile. This is the same decision aliasFormatCheckable makes
@@ -5527,7 +5568,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	var patternProps []PatternPropertyDef
 	for i, pattern := range sortedKeys(s.PatternProperties) {
 		ppSchema := s.PatternProperties[pattern]
-		ppDef := PatternPropertyDef{Pattern: pattern, StrictReadWrite: g.config.StrictReadWrite}
+		ppDef := PatternPropertyDef{Pattern: pattern, StrictReadWrite: g.config.StrictReadWrite, Claim: claimOf(s, "patternProperties")}
 		// A sub-schema admitting nothing forbids every key the pattern matches.
 		// `{"enum":[]}` says that as much as `false` does, and reached neither
 		// this arm nor patternValueTypeName below -- so
@@ -5561,12 +5602,14 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	if g.validationKeywordsEnabled() && s.MaxProperties != nil {
 		validations = append(validations, ValidationRule{
 			RuleType: "maxProperties", Value: countBound(*s.MaxProperties),
+			Claim: claimOf(s, "maxProperties"),
 		})
 		needsUnmarshal = true
 	}
 	if g.validationKeywordsEnabled() && s.MinProperties != nil {
 		validations = append(validations, ValidationRule{
 			RuleType: "minProperties", Value: countBound(*s.MinProperties),
+			Claim: claimOf(s, "minProperties"),
 		})
 		needsUnmarshal = true
 	}
@@ -5598,6 +5641,7 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 				depRequired = append(depRequired, DependentRequiredDef{
 					TriggerKey: trigger,
 					Required:   sorted,
+					Claim:      claimOf(s, "dependentRequired"),
 				})
 			}
 		}
@@ -5856,6 +5900,9 @@ func (g *Generator) generateStructDef(name string, s *schema.Schema, acceptNonOb
 	if len(accessRules) > 0 {
 		needsUnmarshal = true
 		needsMarshal = true
+	}
+	if additionalProps != nil && s.AdditionalProperties != nil {
+		additionalProps.Claim = claimOf(s, "additionalProperties")
 	}
 
 	structDef := &StructDef{
@@ -6374,11 +6421,12 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 				// wider bound leaves a tail to check.
 				if arraySchema != merged && merged.MaxItems == nil {
 					if n, ok := closedTupleMaxItems(arraySchema); ok {
-						rules = append(rules, ValidationRule{RuleType: "maxItems", Value: n})
+						rules = append(rules, ValidationRule{RuleType: "maxItems", Value: n,
+							Claim: claimOf(arraySchema, closedTupleKeyword(arraySchema))})
 					}
 				}
-				anyOfVariants = extractAnyOfVariantRules(s, goType)
-				oneOfVariants = extractOneOfVariantRules(s, goType)
+				anyOfVariants = g.extractAnyOfVariantRules(s, goType)
+				oneOfVariants = g.extractOneOfVariantRules(s, goType)
 				tupleItems = g.buildTupleItemDefs(arraySchema, name)
 				tupleTail = g.buildTupleTailDef(arraySchema, name)
 				containsDef, minContains, maxContains = g.containsDefFor(arraySchema, name)
@@ -6424,8 +6472,8 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			var oneOfVariants [][]ValidationRule
 			if g.validationKeywordsEnabled() {
 				rules = g.aliasValidationRules(merged, goType)
-				anyOfVariants = extractAnyOfVariantRules(s, goType)
-				oneOfVariants = extractOneOfVariantRules(s, goType)
+				anyOfVariants = g.extractAnyOfVariantRules(s, goType)
+				oneOfVariants = g.extractOneOfVariantRules(s, goType)
 			}
 			g.declare(name)
 			// A JSON null is refused by a *declared* array and permitted by an
@@ -6519,8 +6567,8 @@ func (g *Generator) generateAllOfDef(name string, s *schema.Schema) error {
 			var oneOfVariants [][]ValidationRule
 			if g.validationKeywordsEnabled() {
 				rules = g.aliasValidationRules(merged, goType)
-				anyOfVariants = extractAnyOfVariantRules(s, goType)
-				oneOfVariants = extractOneOfVariantRules(s, goType)
+				anyOfVariants = g.extractAnyOfVariantRules(s, goType)
+				oneOfVariants = g.extractOneOfVariantRules(s, goType)
 			}
 			g.declare(name)
 			if inferredFromConstraints || (g.config.BigIntSupport && primaryType == "integer") {
@@ -7102,6 +7150,7 @@ func (g *Generator) extractObjectOneOfDefs(s *schema.Schema, taken []RuntimeBran
 	var defs []ObjectOneOfDef
 	if !runtimeBranchTaken(taken, s, "oneOf") {
 		if def := g.objectOneOfDefFromVariants(s.OneOf); def != nil {
+			def.Claim = claimOf(s, "oneOf")
 			defs = append(defs, *def)
 		}
 	}
@@ -7111,6 +7160,7 @@ func (g *Generator) extractObjectOneOfDefs(s *schema.Schema, taken []RuntimeBran
 			continue
 		}
 		if def := g.objectOneOfDefFromVariants(resolved.OneOf); def != nil {
+			def.Claim = claimOf(resolved, "oneOf")
 			defs = append(defs, *def)
 		}
 	}
@@ -7160,6 +7210,7 @@ func (g *Generator) extractObjectAnyOfDefs(s *schema.Schema, taken []RuntimeBran
 	var defs []ObjectAnyOfDef
 	if !runtimeBranchTaken(taken, s, "anyOf") {
 		if def := g.objectAnyOfDefFromVariants(s.AnyOf); def != nil {
+			def.Claim = claimOf(s, "anyOf")
 			defs = append(defs, *def)
 		}
 	}
@@ -7169,6 +7220,7 @@ func (g *Generator) extractObjectAnyOfDefs(s *schema.Schema, taken []RuntimeBran
 			continue
 		}
 		if def := g.objectAnyOfDefFromVariants(resolved.AnyOf); def != nil {
+			def.Claim = claimOf(resolved, "anyOf")
 			defs = append(defs, *def)
 		}
 	}
@@ -7211,7 +7263,7 @@ func (g *Generator) objectOneOfBranchOnPath(s *schema.Schema, onPath map[*schema
 	if resolved == nil || resolved.IsBooleanSchema() || onPath[resolved] {
 		return ObjectOneOfBranch{}
 	}
-	branch := ObjectOneOfBranch{RequiredKeys: append([]string(nil), resolved.Required...)}
+	branch := ObjectOneOfBranch{RequiredKeys: append([]string(nil), resolved.Required...), Claim: claimOf(s, "")}
 	sort.Strings(branch.RequiredKeys)
 	propNames := sortedKeys(resolved.Properties)
 	for _, propName := range propNames {
@@ -7286,7 +7338,7 @@ func objectPropertyCheckFromSchema(jsonName string, s *schema.Schema) *ObjectPro
 	if s == nil || s.IsBooleanSchema() {
 		return nil
 	}
-	check := &ObjectPropertyCheck{JSONName: jsonName}
+	check := &ObjectPropertyCheck{JSONName: jsonName, Claim: claimOf(s, "")}
 	if len(s.Type) == 1 {
 		check.JSONType = s.Type[0]
 	}
@@ -8561,6 +8613,7 @@ func (g *Generator) generateAnyOfDef(name string, s *schema.Schema) error {
 			}
 			if !runtimeBranchTaken(runtimeChecks, s, "anyOf") {
 				if anyOfDef := g.objectAnyOfDefFromVariants(s.AnyOf); anyOfDef != nil {
+					anyOfDef.Claim = claimOf(s, "anyOf")
 					sd.ObjectAnyOfs = append(sd.ObjectAnyOfs, *anyOfDef)
 					sd.NeedsUnmarshal = true
 				}
@@ -8741,8 +8794,9 @@ func (g *Generator) generateOneOfForProperty(parentName, jsonName, goFieldName s
 
 		name, getter, wrapperName := g.claimVariantMemberNames(parentName, goFieldName, i, result.Name, variant)
 
-		checks := oneOfVariantChecks(variant, result.Type)
+		checks := g.oneOfVariantChecks(variant, result.Type)
 		variants = append(variants, OneOfVariant{
+			Claim:          claimOf(variant, ""),
 			WrapperName:    wrapperName,
 			FieldName:      name,
 			GetterName:     getter,
@@ -8755,6 +8809,7 @@ func (g *Generator) generateOneOfForProperty(parentName, jsonName, goFieldName s
 	}
 
 	oneOfDef := &OneOfDef{
+		Claim:         claimOf(s, "oneOf"),
 		InterfaceName: interfaceName,
 		FieldName:     goFieldName,
 		JSONName:      jsonName,
@@ -9116,7 +9171,7 @@ func hasPropertyOneOf(oneOfs []OneOfDef) bool {
 // variant that resolved to `any` (a constraint-only branch) or to a named type
 // (a $ref or an inline object, whose own type carries the constraints) gets
 // none.
-func oneOfVariantChecks(variant *schema.Schema, goType GoType) []ValidationRule {
+func (g *Generator) oneOfVariantChecks(variant *schema.Schema, goType GoType) []ValidationRule {
 	if variant == nil || goType == nil {
 		return nil
 	}
@@ -9136,7 +9191,7 @@ func oneOfVariantChecks(variant *schema.Schema, goType GoType) []ValidationRule 
 		return nil
 	}
 	var checks []ValidationRule
-	for _, r := range extractValidationRules("", "", variant) {
+	for _, r := range g.rulesFor("", "", variant) {
 		switch r.RuleType {
 		case "minLength", "maxLength", "pattern":
 			if kind == "string" {
@@ -9275,11 +9330,11 @@ func (g *Generator) oneOfVariantFullyChecked(variant *schema.Schema, goType GoTy
 	for _, c := range checks {
 		checked[c.RuleType] = true
 	}
-	for _, r := range extractValidationRules("", "", variant) {
+	for _, r := range g.rulesFor("", "", variant) {
 		if ruleVacuousForType(goType, r.RuleType) {
 			continue
 		}
-		// extractValidationRules builds a "format" and a "content" rule whatever
+		// rulesFor builds a "format" and a "content" rule whatever
 		// the dialect says, and every caller that emits one drops it again when
 		// the posture is annotation -- see the two filters in generateStructDef.
 		// This caller emits nothing, it only counts, so it has to apply the same
@@ -11161,8 +11216,22 @@ func (g *Generator) resolveRefInContextUncounted(ref string, ctx *schema.Schema)
 	// index refuses such a reference, and so the run reports it rather than
 	// generating against a schema the document did not name. The same rule the
 	// runtime evaluator's node builder applies to a node with no DocumentRoot.
+	// A reference that resolved is remembered for the rest of the call: the
+	// same reference on the same node is asked again and again -- the dynamic
+	// scope walk alone asks it for every path that reaches the node -- and the
+	// answer cannot change, because the index refuses a second resource under
+	// a URI it already holds. A failure is not remembered: a later load can
+	// answer it, and every attempt is noted where it fails.
+	key := resolvedRefKey{ref: ref, ctx: ctx}
+	if s, ok := g.resolvedRefMemo[key]; ok {
+		return s
+	}
 	s, err := g.index.Resolve(ref, ctx)
 	if err == nil {
+		if g.resolvedRefMemo == nil {
+			g.resolvedRefMemo = make(map[resolvedRefKey]*schema.Schema)
+		}
+		g.resolvedRefMemo[key] = s
 		return s
 	}
 	var refErr *schema.ReferenceError
@@ -14720,10 +14789,6 @@ func (g *Generator) unevaluatedItemsImpliesFixedTuple(s *schema.Schema) bool {
 	return true
 }
 
-func unevaluatedItemsImpliesFixedTuple(s *schema.Schema) bool {
-	return (&Generator{}).unevaluatedItemsImpliesFixedTuple(s)
-}
-
 // buildUnevaluatedItemsDef builds an UnevaluatedItemsDef from a schema's unevaluatedItems keyword.
 // Returns nil if the schema has no unevaluatedItems or if all items are statically evaluated.
 func (g *Generator) buildUnevaluatedItemsDef(s *schema.Schema) *UnevaluatedItemsDef {
@@ -14741,7 +14806,7 @@ func (g *Generator) buildUnevaluatedItemsDef(s *schema.Schema) *UnevaluatedItems
 	// `{"enum":[]}` says that as much as `false` does, and fell to the
 	// schema-valued path below, which extracts no check from it and returns nil.
 	if g.schemaForbidsEveryValue(ui) {
-		def := &UnevaluatedItemsDef{IsForbidden: true}
+		def := &UnevaluatedItemsDef{IsForbidden: true, Claim: claimOf(s, "unevaluatedItems")}
 		g.collectEvaluatedItems(s, def)
 		// If all items are already evaluated, unevaluatedItems:false is a no-op
 		if def.AllEvaluated {
@@ -14751,7 +14816,7 @@ func (g *Generator) buildUnevaluatedItemsDef(s *schema.Schema) *UnevaluatedItems
 	}
 
 	// Schema-valued unevaluatedItems — validate each unevaluated item
-	def := &UnevaluatedItemsDef{}
+	def := &UnevaluatedItemsDef{Claim: claimOf(s, "unevaluatedItems")}
 
 	// Extract type constraint
 	if len(ui.Type) == 1 {
@@ -14812,7 +14877,7 @@ func extractUnevalItemChecks(ui *schema.Schema) []ContainsCheck {
 	if ui.Pattern != nil {
 		checks = append(checks, ContainsCheck{CheckType: "pattern", Value: *ui.Pattern})
 	}
-	return checks
+	return claimContainsChecks(checks, ui)
 }
 
 // noteUnevalItemCheckImports records what the checks extractUnevalItemChecks
@@ -16228,7 +16293,7 @@ func (g *Generator) buildItemValidation(parentName, fieldName, jsonName string, 
 		return nil
 	}
 
-	def := &ItemValidationDef{FieldName: fieldName, JSONName: jsonName, IsPointer: isPointer}
+	def := &ItemValidationDef{FieldName: fieldName, JSONName: jsonName, IsPointer: isPointer, Claim: claimOf(s, "")}
 	g.descendItemLevels(def, elemType, g.containerElemSchema(s, isMap), isMap, parentName+fieldName)
 	if !def.trim(ItemLevel.pending) {
 		return nil
@@ -16362,9 +16427,10 @@ func (g *Generator) descendItemLevels(def *ItemValidationDef, elemType GoType, e
 			ElemIsPointer: elemType.IsPointer(),
 			ElemType:      elemType,
 			ElemTypeName:  namedTypeName(elemType),
+			Claim:         claimOf(elemSchema, ""),
 		}
 		if level.ElemTypeName == "" {
-			level.Rules = elementRules(elemType, elemSchema)
+			level.Rules = g.elementRules(elemType, elemSchema)
 			// The format posture is the schema's, not the container's: an
 			// element is read under the dialect of the document it is written
 			// in, like every other position. elementRules cannot ask, having no
@@ -16477,6 +16543,7 @@ func (g *Generator) buildFieldContains(parentName, fieldName, jsonName string, f
 		return nil
 	}
 	return &FieldContainsDef{
+		Claim:       claimOf(s, "contains"),
 		FieldName:   fieldName,
 		JSONName:    jsonName,
 		IsPointer:   isPointer,
@@ -16564,6 +16631,7 @@ func (g *Generator) buildFieldTuple(fieldName, jsonName, parentName string, fiel
 		return nil
 	}
 	return &FieldTupleDef{
+		Claim:     claimOf(s, ""),
 		FieldName: fieldName,
 		JSONName:  jsonName,
 		IsPointer: isPointer,
@@ -16610,6 +16678,7 @@ func (g *Generator) buildFieldUnevalItems(fieldName, jsonName string, fieldType 
 		return nil
 	}
 	return &FieldUnevalItemsDef{
+		Claim:     claimOf(s, "unevaluatedItems"),
 		FieldName: fieldName,
 		JSONName:  jsonName,
 		IsPointer: isPointer,
@@ -16668,11 +16737,11 @@ func noteFieldUnevalItemsImports(defs []FieldUnevalItemsDef, needsFmt, needsJSON
 // property: a branch that only bounds a scalar leaves the element a plain Go
 // value with nothing to dispatch to, so its keywords would otherwise reach
 // nothing. See allOfConstraintRules.
-func elementRules(elemType GoType, s *schema.Schema) []ValidationRule {
+func (g *Generator) elementRules(elemType GoType, s *schema.Schema) []ValidationRule {
 	kind := elementGoKind(elemType)
 	var out []ValidationRule
-	elemRules := extractValidationRules("", "", s)
-	elemRules = append(elemRules, allOfConstraintRules("", "", s, elemType)...)
+	elemRules := g.rulesFor("", "", s)
+	elemRules = append(elemRules, g.allOfConstraintRules("", "", s, elemType)...)
 	for _, rule := range elemRules {
 		want, classified := elementRuleKinds[rule.RuleType]
 		if !classified {
@@ -16717,7 +16786,7 @@ func elementRules(elemType GoType, s *schema.Schema) []ValidationRule {
 // an element of any Go kind.
 const anyElementKind = ""
 
-// elementRuleKinds classifies every rule type extractValidationRules can produce
+// elementRuleKinds classifies every rule type rulesFor can produce
 // by the element Go kind whose emitted check compiles -- the kinds elementGoKind
 // answers, or anyElementKind for a check that needs nothing of the element but
 // that it marshals.
@@ -16725,7 +16794,7 @@ const anyElementKind = ""
 // This table and elementRulesDeclined together must name *every* rule type the
 // extractor can produce. That total-ness is the point, and it replaces a
 // `default: continue` arm that had none: a keyword added to
-// extractValidationRules did not reach the element position, and because the
+// rulesFor did not reach the element position, and because the
 // failure mode of a missing check is silent acceptance, nothing said so.
 // uniqueItems is how that was found -- honoured on an array property and
 // dropped one position over on an array *element*, so
@@ -16735,7 +16804,7 @@ const anyElementKind = ""
 //
 // A rule type in neither map is refused by
 // TestEveryElementRuleTypeIsClassified, which reads the extractor's own source
-// for the rule types it builds. Adding a keyword to extractValidationRules
+// for the rule types it builds. Adding a keyword to rulesFor
 // therefore fails that test until this position has an answer for it -- which is
 // the loudness the default arm could not give, since dropping an unrenderable
 // rule is the only thing this function may safely do at generation time and
@@ -17778,31 +17847,32 @@ func declaresValidationVocabulary(vocabulary map[string]bool) bool {
 	return false
 }
 
+// draftForSchema is the dialect s is read under: the resource index's answer
+// (schema.ResourceIndex.DialectOf), which is the one the index itself read the
+// document's resources under, and the root's own dialect where nothing
+// decides it.
+//
+// It used to answer from here, by a rule of its own -- Config.Draft over
+// everything but a resource whose DocumentRoot was not the root being
+// generated -- while the index answered from the dialect normalization had
+// settled. The two disagreed for a document normalized under its own $schema
+// and generated under Config.Draft: an $id beside a $ref started no resource
+// for the index and had its siblings read for the generator. One function now
+// answers for both; see pkg/schema/dialect.go for the rule.
 func (g *Generator) draftForSchema(s *schema.Schema) schema.Draft {
 	if s == nil {
 		return g.draft
 	}
-	if g.draftOverridden {
-		// An explicit --draft (Config.Draft) is the user's statement about the
-		// document they passed in. It takes precedence over the root document's
-		// own $schema and over any $schema-less node. The one exception: an
-		// embedded or remote resource that establishes its own $id-scoped
-		// document root with an explicit $schema keeps its dialect, so
-		// cross-draft $ref semantics are preserved.
-		if root := s.DocumentRoot; root != nil && root != g.rootSchema {
-			if d := schema.DetectDraft(root); d != schema.DraftUnknown {
-				return d
-			}
-		}
-		return g.draft
+	var d schema.Draft
+	if g.index != nil {
+		d = g.index.DialectOf(s)
+	} else {
+		// Asked outside Generate, with no index yet: the same rule, over the
+		// document s is written in.
+		d = schema.DialectOf(s, g.config.Draft)
 	}
-	if d := schema.DetectDraft(s); d != schema.DraftUnknown {
+	if d != schema.DraftUnknown {
 		return d
-	}
-	if s.DocumentRoot != nil {
-		if d := schema.DetectDraft(s.DocumentRoot); d != schema.DraftUnknown {
-			return d
-		}
 	}
 	return g.draft
 }
@@ -17814,7 +17884,7 @@ func (g *Generator) draftForSchema(s *schema.Schema) schema.Draft {
 // refOverridesSiblingsForDraft already applies, and the same one every
 // reference implementation applies -- python-jsonschema and ajv both fall back
 // to the newest draft they know. Treating DraftUnknown as pre-2020 instead left
-// the keyword half-read: extractValidationRules and collectEvaluatedItems take
+// the keyword half-read: rulesFor and collectEvaluatedItems take
 // the *length* of prefixItems with no draft gate at all, so an undialected
 // document already got a maxItems out of it while every positional subschema
 // was dropped. That is what made {"prefixItems":[{"type":"string"}]} accept an
@@ -17860,8 +17930,25 @@ func supportsDependentRequired(draft schema.Draft) bool {
 	return schema.KeywordDefinedIn("dependentRequired", draft)
 }
 
-// extractValidationRules extracts validation rules from a property schema.
-func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []ValidationRule {
+// rulesFor extracts the validation rules a schema states, each stamped with
+// the node and keyword it enforces (see Provenance).
+//
+// It is a method, not a free function, for the reason the one question it asks
+// of the generator shows. Whether unevaluatedItems:false closes a tuple is
+// answered by unevaluatedItemsImpliesFixedTuple, which resolves references and
+// reads the node's dialect; asked of a zero Generator -- the free function this
+// was used to build one on the spot -- it had no resource index to resolve a
+// $ref through, no draft override and no vocabulary, and a legal schema such as
+// {"properties":{"a":{"unevaluatedItems":{"anyOf":[{"$ref":"#/$defs/s"}]}}},
+// "$defs":{"s":{}}} panicked the generator (a nil map, later a nil index). The
+// generator that is generating is the only one that can answer.
+func (g *Generator) rulesFor(goFieldName, jsonName string, s *schema.Schema) []ValidationRule {
+	rules := g.statedRules(goFieldName, jsonName, s)
+	return claimRules(rules, s)
+}
+
+// statedRules is rulesFor before the rules are stamped with their provenance.
+func (g *Generator) statedRules(goFieldName, jsonName string, s *schema.Schema) []ValidationRule {
 	var rules []ValidationRule
 	if s.MinLength != nil {
 		rules = append(rules, ValidationRule{
@@ -17911,13 +17998,14 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 			rules = append(rules, ValidationRule{
 				FieldName: goFieldName, JSONName: jsonName,
 				RuleType: "maxItems", Value: n,
+				Claim: claimOf(s, closedTupleKeyword(s)),
 			})
 		}
 	}
 	// unevaluatedItems:false with a fixed tuple and no extending applicators →
 	// implicit maxItems = tuple length. Only applied when the schema is a simple
 	// self-contained tuple (see unevaluatedItemsImpliesFixedTuple).
-	if s.MaxItems == nil && unevaluatedItemsImpliesFixedTuple(s) {
+	if s.MaxItems == nil && g.unevaluatedItemsImpliesFixedTuple(s) {
 		tupleLen := len(s.PrefixItems)
 		if tupleLen == 0 && s.Items != nil {
 			tupleLen = len(s.Items.Schemas)
@@ -17925,6 +18013,7 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
 			RuleType: "maxItems", Value: tupleLen,
+			Claim: claimOf(s, "unevaluatedItems"),
 		})
 	}
 	// exclusiveMinimum: can be a number (Draft 2020-12) or a boolean (Draft 4).
@@ -17985,9 +18074,14 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 	// dialect where `format` is an annotation, which is a check the two callers
 	// that do hold a generator still emit; see acceptsEveryInstance.
 	if (s.Not != nil && s.Not.Format == nil && isAcceptAllSchema(s.Not)) || (s.Enum != nil && len(s.Enum) == 0) {
+		forbidding := "enum"
+		if s.Not != nil && s.Not.Format == nil && isAcceptAllSchema(s.Not) {
+			forbidding = "not"
+		}
 		rules = append(rules, ValidationRule{
 			FieldName: goFieldName, JSONName: jsonName,
 			RuleType: "forbidden", Value: true,
+			Claim: claimOf(s, forbidding),
 		})
 	}
 	// Format validation: for string-typed fields where the format doesn't map to
@@ -18095,7 +18189,7 @@ func extractValidationRules(goFieldName, jsonName string, s *schema.Schema) []Va
 // not have -- allOf: [{"type":"integer","minimum":5}] beside "type":"string" is
 // a contradiction no value satisfies -- and emitting `float64(r.A) < 5` for a
 // string field would turn a schema that generates today into one that does not.
-func allOfConstraintRules(goFieldName, jsonName string, s *schema.Schema, fieldType GoType) []ValidationRule {
+func (g *Generator) allOfConstraintRules(goFieldName, jsonName string, s *schema.Schema, fieldType GoType) []ValidationRule {
 	if s == nil || len(s.AllOf) == 0 {
 		return nil
 	}
@@ -18103,6 +18197,7 @@ func allOfConstraintRules(goFieldName, jsonName string, s *schema.Schema, fieldT
 	// tighter* helper returns one of its arguments rather than mutating it, so
 	// the property schema itself is left untouched.
 	merged := *s
+	g.noteSynthesized(&merged, s)
 	folded := false
 	for _, branch := range s.AllOf {
 		if branch == nil || branch.IsBooleanSchema() {
@@ -18118,13 +18213,13 @@ func allOfConstraintRules(goFieldName, jsonName string, s *schema.Schema, fieldT
 	// Only what the merge added or tightened: the property's own keywords have
 	// already produced their rules, and repeating them would emit the same check
 	// twice.
-	base := extractValidationRules(goFieldName, jsonName, s)
+	base := g.rulesFor(goFieldName, jsonName, s)
 	baseByType := make(map[string]any, len(base))
 	for _, r := range base {
 		baseByType[r.RuleType] = r.Value
 	}
 	var out []ValidationRule
-	for _, r := range extractValidationRules(goFieldName, jsonName, &merged) {
+	for _, r := range g.rulesFor(goFieldName, jsonName, &merged) {
 		if had, ok := baseByType[r.RuleType]; ok && had == r.Value {
 			continue
 		}
@@ -18548,20 +18643,21 @@ func (g *Generator) extractNotSchemaBranches(subs []*schema.Schema) []NotSchemaB
 			return nil
 		}
 		if len(sub.Type) > 0 && g.isTypeOnlyNegationOperand(sub) {
-			branches = append(branches, NotSchemaBranch{Types: append([]string(nil), sub.Type...)})
+			branches = append(branches, NotSchemaBranch{Types: append([]string(nil), sub.Type...), Claim: claimOf(sub, "")})
 			continue
 		}
 		if len(sub.Type) == 1 && hasSimpleNotBranchValidations(sub) &&
 			g.negationOperandStatesOnly(sub, notBranchValidationKeywords) {
 			branches = append(branches, NotSchemaBranch{
 				Types:       append([]string(nil), sub.Type...),
-				Validations: extractSimpleNotBranchValidations(sub),
+				Validations: g.extractSimpleNotBranchValidations(sub),
+				Claim:       claimOf(sub, ""),
 			})
 			continue
 		}
 		if len(sub.Properties) > 0 && len(sub.Type) <= 1 && (len(sub.Type) == 0 || sub.Type[0] == "object") &&
 			g.negationOperandStatesOnly(sub, notBranchPropertyKeywords) {
-			branch := NotSchemaBranch{}
+			branch := NotSchemaBranch{Claim: claimOf(sub, "")}
 			for _, name := range sortedKeys(sub.Properties) {
 				prop := sub.Properties[name]
 				// The emitted branch checks a property's JSON type and nothing
@@ -18588,8 +18684,8 @@ func hasSimpleNotBranchValidations(s *schema.Schema) bool {
 		s.MinItems != nil || s.MaxItems != nil
 }
 
-func extractSimpleNotBranchValidations(s *schema.Schema) []ValidationRule {
-	rules := extractValidationRules("", "", s)
+func (g *Generator) extractSimpleNotBranchValidations(s *schema.Schema) []ValidationRule {
+	rules := g.rulesFor("", "", s)
 	out := make([]ValidationRule, 0, len(rules))
 	for _, rule := range rules {
 		switch rule.RuleType {
@@ -18834,7 +18930,7 @@ func (g *Generator) anyOfUnionType(s *schema.Schema, contextName string) (GoType
 		if !ok {
 			return nil, false
 		}
-		branches = append(branches, TypeSchemaBranch{TypeName: branchName})
+		branches = append(branches, TypeSchemaBranch{TypeName: branchName, Claim: claimOf(variant, "")})
 	}
 	g.declareFor(name, s)
 	g.appendDef(&TypeOnlySchemaDef{
@@ -19142,7 +19238,7 @@ func (g *Generator) declaredFormatStringSchema(s *schema.Schema) bool {
 // vocabulary: {"type":"string"} stating a contentEncoding or contentMediaType
 // the generated code can decide, on the one dialect that asserts them.
 //
-// The two keywords are a pair in every other position -- extractValidationRules
+// The two keywords are a pair in every other position -- rulesFor
 // builds both, elementRules keeps both, stringAnnotationOnlySchema wraps a
 // schema stating either -- and they were a pair here too, right up to the arm
 // that gives a bare string branch a type to hang its Validate on. So under
@@ -19321,12 +19417,13 @@ func (g *Generator) typeUnionBranches(s *schema.Schema, name string) ([]TypeSche
 			allowed = append(allowed, t)
 			continue
 		}
-		branchName, ok := g.delegatedBranchType(narrowedToType(s, t), name+SchemaNameToGoName(t))
+		narrowed := narrowedToType(s, t)
+		branchName, ok := g.delegatedBranchType(narrowed, name+SchemaNameToGoName(t))
 		if !ok {
 			allowed = append(allowed, t)
 			continue
 		}
-		branches = append(branches, TypeSchemaBranch{TypeName: branchName})
+		branches = append(branches, TypeSchemaBranch{TypeName: branchName, Claim: claimOf(narrowed, "")})
 	}
 	return branches, allowed
 }
@@ -19430,7 +19527,9 @@ func (g *Generator) extractInferredItemConstraints(s *schema.Schema, parentName 
 	// Draft 2020-12: prefixItems defines tuple positions. Older drafts ignore it.
 	if hasPrefixItems && g.supportsPrefixItems(s) {
 		for i, sub := range s.PrefixItems {
-			tupleItems = append(tupleItems, g.inferredTupleItemFromSchema(sub, fmt.Sprintf("%sItem%d", parentName, i)))
+			item := g.inferredTupleItemFromSchema(sub, fmt.Sprintf("%sItem%d", parentName, i))
+			item.Claim = claimOf(sub, "")
+			tupleItems = append(tupleItems, item)
 		}
 		// In draft 2020-12, "items" (as single schema) acts as additionalItems.
 		if hasSingleItems {
@@ -19449,7 +19548,9 @@ func (g *Generator) extractInferredItemConstraints(s *schema.Schema, parentName 
 	// Pre-2020-12: items as array of schemas = tuple form.
 	if hasTupleItems {
 		for i, sub := range s.Items.Schemas {
-			tupleItems = append(tupleItems, g.inferredTupleItemFromSchema(sub, fmt.Sprintf("%sItem%d", parentName, i)))
+			item := g.inferredTupleItemFromSchema(sub, fmt.Sprintf("%sItem%d", parentName, i))
+			item.Claim = claimOf(sub, "")
+			tupleItems = append(tupleItems, item)
 		}
 		// additionalItems constrains elements beyond the tuple.
 		if s.AdditionalItems != nil {
@@ -19703,14 +19804,14 @@ func (g *Generator) extractPropertyNamesDef(pn *schema.Schema) *PropertyNamesDef
 	// Every caller is already behind validationKeywordsEnabled, which is the
 	// gate the empty enum needs; see emptyEnumSchema.
 	if g.schemaForbidsEveryValue(pn) {
-		return &PropertyNamesDef{IsForbidden: true}
+		return &PropertyNamesDef{IsForbidden: true, Claim: claimOf(pn, "")}
 	}
 	// Boolean true schema: no constraint.
 	if pn.IsTrueSchema() {
 		return nil
 	}
 
-	def := &PropertyNamesDef{}
+	def := &PropertyNamesDef{Claim: claimOf(pn, "")}
 	hasConstraint := false
 
 	if pn.MaxLength != nil {
@@ -19846,7 +19947,7 @@ func extractSchemaChecks(s *schema.Schema) []ContainsCheck {
 	if len(s.Type) == 1 {
 		checks = append(checks, ContainsCheck{CheckType: "type", Value: s.Type[0]})
 	}
-	return checks
+	return claimContainsChecks(checks, s)
 }
 
 // containsChecksCarryTheWholeSchema reports whether the flat per-element tests
@@ -19968,7 +20069,7 @@ func (g *Generator) extractDependentSchemaConstraints(s *schema.Schema, taken su
 			continue
 		}
 		depSchema := s.DependentSchemas[trigger]
-		constraint := DependentSchemaConstraint{TriggerKey: trigger}
+		constraint := DependentSchemaConstraint{TriggerKey: trigger, Claim: claimOf(s, "dependentSchemas")}
 		hasConstraint := false
 
 		// A sub-schema admitting nothing: always reject when the trigger is
@@ -20049,6 +20150,8 @@ func (g *Generator) extractDependentSchemaConstraints(s *schema.Schema, taken su
 func (g *Generator) containsDefFor(s *schema.Schema, parentName string) (*ContainsDef, *CountBound, *CountBound) {
 	def, minC, maxC := g.extractContainsDef(s, parentName)
 	if def != nil {
+		def.Claim = claimOf(s.Contains, "contains")
+		claimContainsChecks(def.Checks, s.Contains)
 		// What the flag decides is how a candidate element is decoded for the
 		// check. Under --strict-read-write the type named by TypeName refuses a
 		// document setting a readOnly property, and a `contains` that let the
@@ -20198,13 +20301,13 @@ func (g *Generator) extractContainsDef(s *schema.Schema, parentName string) (*Co
 	return nil, nil, nil
 }
 
-func extractAliasValidationRules(s *schema.Schema, goType GoType) []ValidationRule {
+func (g *Generator) extractAliasValidationRules(s *schema.Schema, goType GoType) []ValidationRule {
 	// Skip validation on untyped "any" fields — can't compile numeric/string checks.
 	if pt, ok := goType.(*PrimitiveType); ok && pt.Name == "any" {
 		return nil
 	}
 	var rules []ValidationRule
-	for _, r := range extractValidationRules("", "", s) {
+	for _, r := range g.rulesFor("", "", s) {
 		// A keyword about some other JSON type is satisfied by every value this
 		// alias can hold, so the check would be enforcing nothing the schema
 		// says. See ruleVacuousForType.
@@ -20335,7 +20438,7 @@ var aliasVariantKeywords = map[string]bool{
 //   - any other rule list, possibly empty: the checks that decide the branch. An
 //     empty list is a branch every value of this type satisfies, which is what a
 //     branch made only of keywords about other types means.
-func aliasVariantRules(variant *schema.Schema, goType GoType) ([]ValidationRule, bool) {
+func (g *Generator) aliasVariantRules(variant *schema.Schema, goType GoType) ([]ValidationRule, bool) {
 	if variant == nil {
 		return nil, false
 	}
@@ -20343,7 +20446,7 @@ func aliasVariantRules(variant *schema.Schema, goType GoType) ([]ValidationRule,
 		return nil, true
 	}
 	if variant.IsFalseSchema() {
-		return []ValidationRule{{RuleType: "never"}}, true
+		return []ValidationRule{{RuleType: "never", Claim: claimOf(variant, "false")}}, true
 	}
 	if len(variant.Extensions) > 0 || len(variant.TypeSchemas) > 0 {
 		return nil, false
@@ -20373,7 +20476,7 @@ func aliasVariantRules(variant *schema.Schema, goType GoType) ([]ValidationRule,
 	if len(variant.Type) > 0 {
 		switch branchTypeVerdict(variant.Type, kind) {
 		case typeVerdictNever:
-			return []ValidationRule{{RuleType: "never"}}, true
+			return []ValidationRule{{RuleType: "never", Claim: claimOf(variant, "type")}}, true
 		case typeVerdictUnknown:
 			return nil, false
 		}
@@ -20382,7 +20485,7 @@ func aliasVariantRules(variant *schema.Schema, goType GoType) ([]ValidationRule,
 	}
 
 	var rules []ValidationRule
-	for _, r := range extractValidationRules("", "", variant) {
+	for _, r := range g.rulesFor("", "", variant) {
 		if ruleVacuousForType(goType, r.RuleType) {
 			continue
 		}
@@ -20435,7 +20538,7 @@ func branchTypeVerdict(types []string, kind string) typeVerdict {
 
 // aliasBranchVariants converts a list of anyOf/oneOf branches of a scalar or
 // array alias, failing closed if any one of them cannot be judged.
-func aliasBranchVariants(subs []*schema.Schema, goType GoType) ([][]ValidationRule, bool) {
+func (g *Generator) aliasBranchVariants(subs []*schema.Schema, goType GoType) ([][]ValidationRule, bool) {
 	// Skip for untyped "any" — nothing about the value's type is known, so no
 	// branch can be judged against it.
 	if pt, ok := goType.(*PrimitiveType); ok && pt.Name == "any" {
@@ -20443,7 +20546,7 @@ func aliasBranchVariants(subs []*schema.Schema, goType GoType) ([][]ValidationRu
 	}
 	variants := make([][]ValidationRule, 0, len(subs))
 	for _, sub := range subs {
-		rules, ok := aliasVariantRules(sub, goType)
+		rules, ok := g.aliasVariantRules(sub, goType)
 		if !ok {
 			return nil, false
 		}
@@ -20458,11 +20561,11 @@ func aliasBranchVariants(subs []*schema.Schema, goType GoType) ([][]ValidationRu
 // Returns nil when the schema has no anyOf, when a branch cannot be judged (see
 // aliasVariantRules), or when every branch is satisfied by every value -- an
 // anyOf that nothing can fail needs no check emitted for it.
-func extractAnyOfVariantRules(s *schema.Schema, goType GoType) [][]ValidationRule {
+func (g *Generator) extractAnyOfVariantRules(s *schema.Schema, goType GoType) [][]ValidationRule {
 	if len(s.AnyOf) == 0 {
 		return nil
 	}
-	variants, ok := aliasBranchVariants(s.AnyOf, goType)
+	variants, ok := g.aliasBranchVariants(s.AnyOf, goType)
 	if !ok {
 		return nil
 	}
@@ -20483,11 +20586,11 @@ func extractAnyOfVariantRules(s *schema.Schema, goType GoType) [][]ValidationRul
 // matches every value, so the count is the branch count and "exactly one" fails
 // for all of them. A lone check-free branch matches everything exactly once and
 // needs nothing emitted.
-func extractOneOfVariantRules(s *schema.Schema, goType GoType) [][]ValidationRule {
+func (g *Generator) extractOneOfVariantRules(s *schema.Schema, goType GoType) [][]ValidationRule {
 	if len(s.OneOf) == 0 {
 		return nil
 	}
-	variants, ok := aliasBranchVariants(s.OneOf, goType)
+	variants, ok := g.aliasBranchVariants(s.OneOf, goType)
 	if !ok {
 		return nil
 	}
@@ -20799,7 +20902,7 @@ func extractPatternPropertyValidationRules(s *schema.Schema) []ValidationRule {
 	// in-place rules cover, and the bucket is therefore given no type of its own
 	// to fall back to. That claim is what makes reading half the keyword a
 	// silent drop rather than a route to somewhere that would read it whole, and
-	// it is why the reading here has to match what extractValidationRules does
+	// it is why the reading here has to match what rulesFor does
 	// at a property. Which dialects honour which spelling is a separate question
 	// and a separate issue (#203); this is the one position where the spelling
 	// the dialect does honour was going nowhere.
@@ -20839,7 +20942,7 @@ func extractPatternPropertyValidationRules(s *schema.Schema) []ValidationRule {
 	if s.MaxItems != nil {
 		rules = append(rules, ValidationRule{RuleType: "ppMaxItems", Value: countBound(*s.MaxItems)})
 	}
-	return rules
+	return claimRules(rules, s)
 }
 
 // extractNonObjectValidationRules extracts validation rules from the schema
@@ -20874,7 +20977,7 @@ func (g *Generator) buildUnevaluatedPropertiesDef(s *schema.Schema) *Unevaluated
 		return nil
 	}
 
-	def := &UnevaluatedPropertiesDef{}
+	def := &UnevaluatedPropertiesDef{Claim: claimOf(s, "unevaluatedProperties")}
 
 	// Check if unevaluatedProperties is a boolean schema.
 	if uneval.IsTrueSchema() {
@@ -20911,7 +21014,7 @@ func (g *Generator) buildUnevaluatedPropertiesDef(s *schema.Schema) *Unevaluated
 			goType := g.primitiveTypeFromSchema(unevalType)
 			if goType != nil {
 				def.ValueType = goType.GoTypeName()
-				rules := extractValidationRules("", "", uneval)
+				rules := g.rulesFor("", "", uneval)
 				if unevalType == "integer" || unevalType == "number" {
 					// A number is judged on the member's own literal rather
 					// than decoded into a Go number first: int64 refused 1.0,
@@ -21631,7 +21734,7 @@ func (g *Generator) oneOfBranchOutrunsSelection(v *schema.Schema) bool {
 	if goType == nil {
 		return false
 	}
-	return !g.oneOfVariantFullyChecked(v, goType, v.Required, oneOfVariantChecks(v, goType))
+	return !g.oneOfVariantFullyChecked(v, goType, v.Required, g.oneOfVariantChecks(v, goType))
 }
 
 // oneOfUnionOutrunsBranches reports whether the sealed-interface union would
@@ -22025,12 +22128,14 @@ func (g *Generator) collectRuntimeBranchChecks(s *schema.Schema) []RuntimeBranch
 			b := &nodeBuilder{g: g, allowed: validatorKeywords, inlineRefs: true, stack: map[*schema.Schema]int{}}
 			list, ok := b.list(group.subs, 2)
 			if !ok {
+				g.noteEvaluatorDecline(owner, group.keyword, b.declined)
 				continue
 			}
 			checks = append(checks, RuntimeBranchCheck{
 				Keyword:     group.keyword,
 				NodeLiteral: fmt.Sprintf("rt.Node{\n\t%s: %s,\n}", group.field, list),
 				owner:       owner,
+				Claim:       evaluatorClaim(owner, group.keyword, b),
 			})
 		}
 	}
@@ -22115,8 +22220,11 @@ func (g *Generator) collectSubschemaRuntimeChecks(s *schema.Schema) ([]RuntimeBr
 				Keyword:     "propertyNames",
 				NodeLiteral: fmt.Sprintf("rt.Node{\n\tPropertyNames: rt.NodePtr(%s),\n}", lit),
 				owner:       s,
+				Claim:       evaluatorClaim(s, "propertyNames", b),
 			})
 			taken.propertyNames = true
+		} else {
+			g.noteEvaluatorDecline(s, "propertyNames", b.declined)
 		}
 	}
 
@@ -22131,11 +22239,16 @@ func (g *Generator) collectSubschemaRuntimeChecks(s *schema.Schema) ([]RuntimeBr
 		}
 		if len(routed) > 0 {
 			b := &nodeBuilder{g: g, allowed: validatorKeywords, inlineRefs: true, stack: map[*schema.Schema]int{}}
-			if list, ok := b.memberList(routed, 2); ok {
+			list, ok := b.memberList(routed, 2)
+			if !ok {
+				g.noteEvaluatorDecline(s, "dependentSchemas", b.declined)
+			}
+			if ok {
 				checks = append(checks, RuntimeBranchCheck{
 					Keyword:     "dependentSchemas",
 					NodeLiteral: fmt.Sprintf("rt.Node{\n\tDependentSchemas: %s,\n}", list),
 					owner:       s,
+					Claim:       evaluatorClaim(s, "dependentSchemas", b),
 				})
 				taken.dependentTriggers = map[string]bool{}
 				// maporder: fills a set; the same members end up in it in any order.
@@ -22403,6 +22516,7 @@ func (g *Generator) collectConditionalRuntimeChecks(s *schema.Schema, staticRead
 			}
 			lit, ok := b.literal(branch.sub, 2)
 			if !ok {
+				g.noteEvaluatorDecline(owner, conditionalRuntimeKeyword, b.declined)
 				return
 			}
 			fields = append(fields, fmt.Sprintf("\t%s: rt.NodePtr(%s),", branch.field, lit))
@@ -22411,6 +22525,7 @@ func (g *Generator) collectConditionalRuntimeChecks(s *schema.Schema, staticRead
 			Keyword:     conditionalRuntimeKeyword,
 			NodeLiteral: "rt.Node{\n" + strings.Join(fields, "\n") + "\n}",
 			owner:       owner,
+			Claim:       evaluatorClaim(owner, conditionalRuntimeKeyword, b),
 		})
 	}
 	collect(s)
@@ -22641,6 +22756,7 @@ func (g *Generator) buildBranchAdditionalCheck(s *schema.Schema, ownerName strin
 		return nil
 	}
 	check := &BranchOverflowCheck{
+		Claim:             claimOf(s, "additionalProperties"),
 		Keyword:           "additionalProperties",
 		AccountedNames:    sortedKeys(s.Properties),
 		AccountedPatterns: sortedKeys(s.PatternProperties),
@@ -22759,6 +22875,7 @@ func (g *Generator) buildBranchUnevalCheck(s *schema.Schema, ownerName string, i
 	}
 
 	check := &BranchOverflowCheck{
+		Claim:             claimOf(s, "unevaluatedProperties"),
 		Keyword:           "unevaluatedProperties",
 		AccountedNames:    sortedKeys(names),
 		AccountedPatterns: sortedKeys(patterns),
@@ -22841,6 +22958,7 @@ func (g *Generator) tupleItemDefFor(posSch *schema.Schema, posName string) (Tupl
 	// A tuple is written with array-form items in draft 3 and draft 4, which
 	// read "integer" off the token; see TupleItemDef.StrictInteger.
 	def.StrictInteger = g.requiresStrictIntegerToken(posSch)
+	def.Claim = claimOf(posSch, "")
 	return def, ok
 }
 
@@ -23071,7 +23189,7 @@ func (g *Generator) buildTupleItemDefs(s *schema.Schema, parentName string) []Tu
 // buildTupleTailDef builds the check every position past a tuple's prefix
 // carries, or nil when there is none to make.
 //
-// A false tail is normally left to the length bound: extractValidationRules
+// A false tail is normally left to the length bound: rulesFor
 // turns "items": false beside a tuple into an implicit maxItems of the tuple's
 // length, which rejects the same documents with a clearer message. That
 // inference only fires when the schema states no maxItems of its own, so a
@@ -23089,7 +23207,7 @@ func (g *Generator) buildTupleTailDef(s *schema.Schema, parentName string) *Tupl
 	}
 	if tail.IsFalseSchema() {
 		if s.MaxItems != nil && s.MaxItems.Int() > len(positionSchemas) {
-			return &TupleItemDef{IsFalse: true}
+			return &TupleItemDef{IsFalse: true, Claim: claimOf(tail, "")}
 		}
 		return nil
 	}
@@ -23274,6 +23392,9 @@ type generateOptions struct {
 	resolver      schema.SchemaResolver
 	fieldNames    FieldNameMap
 	fieldNamesSet bool
+
+	// forceEvaluator is internal/gentest's; see testhooks.go.
+	forceEvaluator bool
 }
 
 // WithRootTypeName overrides Config.RootTypeName for this Generate call.

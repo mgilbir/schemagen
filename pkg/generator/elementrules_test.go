@@ -14,7 +14,7 @@ import (
 // old `default: continue`.
 //
 // That arm is why three separate issues existed at once. A keyword added to
-// extractValidationRules reached the property position, the alias position and
+// statedRules reached the property position, the alias position and
 // the $ref position, and was dropped on an array element and a map value by an
 // arm that said nothing -- and the failure mode of a dropped assertion is silent
 // acceptance, so nothing ever reported it. uniqueItems (issue #179) was found
@@ -27,13 +27,13 @@ import (
 // lives here instead, and it is loud in the only way that matters -- it reads
 // the *extractor's own source* for the rule types it builds, rather than a list
 // somebody would have to remember to update. Adding `RuleType: "foo"` to
-// extractValidationRules fails this test until the element position has an
+// statedRules fails this test until the element position has an
 // answer for foo: a Go kind in elementRuleKinds, or a stated reason in
 // elementRulesDeclined.
 func TestEveryElementRuleTypeIsClassified(t *testing.T) {
-	built := ruleTypesBuiltBy(t, "extractValidationRules")
+	built := ruleTypesBuiltBy(t, "statedRules")
 	if len(built) < 10 {
-		t.Fatalf("only %d rule types found in extractValidationRules (%v); the source scan has stopped seeing what it reads, "+
+		t.Fatalf("only %d rule types found in statedRules (%v); the source scan has stopped seeing what it reads, "+
 			"so this test would pass no matter what the element position dropped", len(built), built)
 	}
 	for _, rt := range built {
@@ -43,7 +43,7 @@ func TestEveryElementRuleTypeIsClassified(t *testing.T) {
 		case kept && declined:
 			t.Errorf("rule type %q is both kept and declined by the element position; one of the two entries is stale", rt)
 		case !kept && !declined:
-			t.Errorf("extractValidationRules builds rule type %q and the element position has no answer for it. "+
+			t.Errorf("statedRules builds rule type %q and the element position has no answer for it. "+
 				"An array element and a map value would drop it in silence, which is how uniqueItems came to be "+
 				"honoured on an array property and ignored one position over at `items` (issue #179). "+
 				"Add it to elementRuleKinds with the Go kind its check compiles against, or to elementRulesDeclined "+
@@ -71,7 +71,7 @@ func TestEveryElementRuleTypeIsClassified(t *testing.T) {
 	} {
 		for _, rt := range table.entries {
 			if !inBuilt[rt] {
-				t.Errorf("%s classifies rule type %q, which extractValidationRules no longer builds", table.name, rt)
+				t.Errorf("%s classifies rule type %q, which statedRules no longer builds", table.name, rt)
 			}
 		}
 	}
@@ -106,12 +106,15 @@ func sortedMapKeys(m map[string]string) []string {
 }
 
 // ruleTypesBuiltBy parses generator.go and returns every string literal
-// assigned to a ValidationRule's RuleType field inside the named function.
+// assigned to a ValidationRule's RuleType field inside the named function or
+// method.
 //
 // The AST is what makes this a gate rather than a grep: a `RuleType:` written
 // in a comment or in another function's body is not a composite-literal field
 // and does not reach here, and the function is located by declaration rather
-// than by a line range that would drift.
+// than by a line range that would drift. A method is found as readily as a
+// function: the extractor became one when it stopped building a zero Generator
+// to ask its questions of.
 func ruleTypesBuiltBy(t *testing.T, funcName string) []string {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -121,7 +124,7 @@ func ruleTypesBuiltBy(t *testing.T, funcName string) []string {
 	}
 	var fn *ast.FuncDecl
 	for _, decl := range file.Decls {
-		if fd, ok := decl.(*ast.FuncDecl); ok && fd.Name.Name == funcName && fd.Recv == nil {
+		if fd, ok := decl.(*ast.FuncDecl); ok && fd.Name.Name == funcName {
 			fn = fd
 			break
 		}

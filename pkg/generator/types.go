@@ -315,13 +315,15 @@ func (d *NullCheckDef) prune() *NullCheckDef {
 // DependentRequiredDef describes a dependentRequired constraint: when the
 // trigger property is present, the listed dependent properties must also be present.
 type DependentRequiredDef struct {
-	TriggerKey string   // JSON property name that activates the constraint
-	Required   []string // JSON property names that must be present when trigger is present
+	Claim      Provenance // the node stating dependentRequired; see ValidationRule.Claim
+	TriggerKey string     // JSON property name that activates the constraint
+	Required   []string   // JSON property names that must be present when trigger is present
 }
 
 // PropertyNamesDef describes a propertyNames constraint on a struct.
 // All property names in the JSON object must satisfy these string validation rules.
 type PropertyNamesDef struct {
+	Claim       Provenance  // the propertyNames sub-schema this reads; see ValidationRule.Claim
 	IsForbidden bool        // true when propertyNames: false (any property is invalid)
 	MaxLength   *CountBound // maximum length of property names
 	MinLength   *CountBound // minimum length of property names
@@ -344,6 +346,7 @@ type PropertyNamesDef struct {
 // DependentSchemaConstraint describes a dependentSchemas entry. When the trigger key
 // is present in the JSON object, the sub-schema's constraints are applied.
 type DependentSchemaConstraint struct {
+	Claim         Provenance  // the dependentSchemas branch this reads; see ValidationRule.Claim
 	TriggerKey    string      // JSON property name that activates the constraint
 	IsFalse       bool        // boolean false schema — always reject when trigger is present
 	AllowedKeys   []string    // set of JSON property names allowed (additionalProperties: false)
@@ -727,6 +730,7 @@ func (d *StructDef) HasPropertyCountValidation() bool {
 // ObjectOneOfDef describes one object-level oneOf group whose variants should be
 // checked against raw JSON properties after a schema has been flattened.
 type ObjectOneOfDef struct {
+	Claim    Provenance // the node stating the oneOf; see ValidationRule.Claim
 	Branches []ObjectOneOfBranch
 }
 
@@ -734,11 +738,13 @@ type ObjectOneOfDef struct {
 // shape with ObjectOneOfDef but requires at least one branch to match rather
 // than exactly one.
 type ObjectAnyOfDef struct {
+	Claim    Provenance // the node stating the anyOf; see ValidationRule.Claim
 	Branches []ObjectOneOfBranch
 }
 
 // ObjectOneOfBranch describes one variant in an object-level oneOf group.
 type ObjectOneOfBranch struct {
+	Claim        Provenance // the branch; see ValidationRule.Claim
 	RequiredKeys []string
 	Checks       []ObjectPropertyCheck
 	// ClosedKeySets holds, for each schema in the branch that closes its object
@@ -774,16 +780,18 @@ type ObjectOneOfBranch struct {
 // Each carries the part of itself that survived, and a branch left with nothing
 // is absent rather than fatal to the group.
 type ObjectConditionalDef struct {
-	If   ObjectConditionalBranch
-	Then *ObjectConditionalBranch
-	Else *ObjectConditionalBranch
+	Claim Provenance // the node stating the if; see ValidationRule.Claim
+	If    ObjectConditionalBranch
+	Then  *ObjectConditionalBranch
+	Else  *ObjectConditionalBranch
 }
 
 // ObjectConditionalBranch is one side of an object-level conditional: the
 // property names it requires present, and the constraints it puts on individual
 // properties.
 type ObjectConditionalBranch struct {
-	Keyword      string // "then" or "else" — names the branch in an error message
+	Claim        Provenance // the if, then or else sub-schema; see ValidationRule.Claim
+	Keyword      string     // "then" or "else" — names the branch in an error message
 	RequiredKeys []string
 	Properties   []ObjectPropertyConstraint
 }
@@ -983,6 +991,7 @@ func (d *StructDef) ConditionalNeedsUTF8() bool {
 // ObjectPropertyCheck describes a JSON property constraint used to match an
 // object-level oneOf branch. Checks only apply when the property is present.
 type ObjectPropertyCheck struct {
+	Claim    Provenance // the property sub-schema; see ValidationRule.Claim
 	JSONName string
 	JSONType string
 	// AllowedValues are the canonical JSON texts of an enum's members or a
@@ -999,8 +1008,9 @@ type ObjectPropertyCheck struct {
 // to preserve them through marshal/unmarshal round-trips. The patterns are used
 // during unmarshal to distinguish pattern-matched keys from truly additional keys.
 type PatternPropertyDef struct {
-	Pattern     string // regex pattern (e.g., "^v", "f.o")
-	IsForbidden bool   // true when sub-schema is boolean false (matching keys rejected)
+	Claim       Provenance // the patternProperties sub-schema; see ValidationRule.Claim
+	Pattern     string     // regex pattern (e.g., "^v", "f.o")
+	IsForbidden bool       // true when sub-schema is boolean false (matching keys rejected)
 	// StrictReadWrite says the file was generated under Config.StrictReadWrite.
 	// See TupleItemDef.StrictReadWrite: a matched value is decoded into TypeName
 	// below, and under the flag that decoder refuses a document setting a
@@ -1068,8 +1078,9 @@ type DeclaredPatternMember struct {
 
 // AdditionalPropertiesDef describes an additionalProperties field on a struct.
 type AdditionalPropertiesDef struct {
-	ValueType GoType // the type of the map values (e.g., PrimitiveType{Name: "string"} or PrimitiveType{Name: "any"})
-	Forbidden bool   // true when additionalProperties: false (overflow map is still generated to capture unknown keys for validation)
+	Claim     Provenance // the node stating additionalProperties, where one did; see ValidationRule.Claim
+	ValueType GoType     // the type of the map values (e.g., PrimitiveType{Name: "string"} or PrimitiveType{Name: "any"})
+	Forbidden bool       // true when additionalProperties: false (overflow map is still generated to capture unknown keys for validation)
 	// LeafDecode is set when the value type holds a leaf encoding/json would
 	// read into the wrong thing: an int64 the draft lets be written in float
 	// notation, a json.Number a JSON string could fill, or a time.Time whose
@@ -1092,6 +1103,7 @@ type AdditionalPropertiesDef struct {
 // Properties are "evaluated" if they are covered by properties, patternProperties,
 // additionalProperties, or unevaluatedProperties in nested applicator subschemas.
 type UnevaluatedPropertiesDef struct {
+	Claim             Provenance        // the node stating unevaluatedProperties; see ValidationRule.Claim
 	IsForbidden       bool              // true when unevaluatedProperties: false (reject any unevaluated property)
 	IsAllowed         bool              // true when unevaluatedProperties: true (allow any unevaluated property — no-op)
 	EvaluatedNames    []string          // statically known evaluated property names from allOf/$ref/properties (always-true sources)
@@ -1185,6 +1197,8 @@ type ConstCheck struct {
 // and nothing else, while `unevaluatedProperties` also sees what the branch's own
 // $ref and nested allOf evaluated.
 type BranchOverflowCheck struct {
+	Claim Provenance // the allOf branch stating Keyword; see ValidationRule.Claim
+
 	// Keyword names the failure in the error message: "additionalProperties" or
 	// "unevaluatedProperties".
 	Keyword string
@@ -1265,6 +1279,10 @@ type BranchOverflowCheck struct {
 // among the five, not what the message opens with. See
 // MessageNamesItsOwnKeyword and collectConditionalRuntimeChecks.
 type RuntimeBranchCheck struct {
+	// Claim is owner and Keyword, with the nodes NodeLiteral compiles; see
+	// ValidationRule.Claim and Provenance.Evaluated.
+	Claim Provenance
+
 	// Keyword names the keyword this check was compiled from: "anyOf", "oneOf",
 	// "propertyNames", "dependentSchemas" or conditionalRuntimeKeyword. It is
 	// also what the emitted message opens with, except where
@@ -1328,6 +1346,12 @@ type ContentCheck struct {
 
 // ValidationRule describes a validation constraint on a struct field.
 type ValidationRule struct {
+	// Claim is the keyword of the schema node this rule enforces, which the
+	// keyword ledger reads off the IR as it is finally emitted; see Provenance.
+	// The same field on every other element of the IR says the same thing
+	// about that element.
+	Claim Provenance
+
 	FieldName string // Go field name (PascalCase)
 	JSONName  string // JSON property name (original)
 	RuleType  string // "minLength", "maxLength", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "pattern", "minItems", "maxItems", "uniqueItems", "required"
@@ -1745,9 +1769,10 @@ func (f FieldDef) DefaultAsksJSONKeys() bool {
 // schema's own description and annotations are already on the StructDef, and
 // there is no property name for a key list to name.
 type OneOfDef struct {
-	InterfaceName string // unexported: isTypeName_FieldName
-	FieldName     string // exported field name on parent struct
-	JSONName      string // JSON property name
+	Claim         Provenance // the node stating the union; see ValidationRule.Claim
+	InterfaceName string     // unexported: isTypeName_FieldName
+	FieldName     string     // exported field name on parent struct
+	JSONName      string     // JSON property name
 	// PropertyNamedEmpty is set on a union at a property whose name is the
 	// empty string. JSONName is "" there too, and "" is also how the union
 	// standing for the whole value is told apart, so without this the two
@@ -1826,8 +1851,9 @@ func (d *OneOfDef) HasValidatableVariants() bool {
 
 // OneOfVariant represents one variant of a oneOf.
 type OneOfVariant struct {
-	WrapperName string // TypeName_VariantName
-	FieldName   string // exported field inside wrapper
+	Claim       Provenance // the branch this variant holds; see ValidationRule.Claim
+	WrapperName string     // TypeName_VariantName
+	FieldName   string     // exported field inside wrapper
 	// GetterName is the method on the parent struct that returns this variant.
 	// It lives in the parent's member scope beside the parent's fields, and the
 	// name registry claims it there (claimVariantMemberNames); the template used
@@ -1971,9 +1997,10 @@ type EnumValue struct {
 // The generated Validate() method will re-unmarshal each element into the position's
 // type and call its Validate() method, or check JSON type for simple schemas.
 type TupleItemDef struct {
-	TypeName string // Go type name for this position (e.g., "Item", "SubItem")
-	JSONType string // simple JSON type constraint (e.g., "integer", "string", "number", "boolean", "null", "array", "object")
-	IsFalse  bool   // boolean false schema — reject any value at this position
+	Claim    Provenance // the position's sub-schema; see ValidationRule.Claim
+	TypeName string     // Go type name for this position (e.g., "Item", "SubItem")
+	JSONType string     // simple JSON type constraint (e.g., "integer", "string", "number", "boolean", "null", "array", "object")
+	IsFalse  bool       // boolean false schema — reject any value at this position
 	// StrictReadWrite says the file was generated under Config.StrictReadWrite,
 	// which is what decides how this position's value is decoded for the check.
 	// The type named above carries the flag's readOnly refusal in its own
@@ -2202,9 +2229,10 @@ func (d *AliasDef) HasItemValidations() bool {
 // map[string][]string each carry two — and each level owns the checks for the
 // value at that depth.
 type ItemValidationDef struct {
-	FieldName string // Go field name; empty when the container is the receiver itself (an array alias)
-	JSONName  string // JSON property name for the error path; empty for a container alias
-	IsPointer bool   // the field is *[]T, so the loop needs a nil guard
+	Claim     Provenance // the container's sub-schema; see ValidationRule.Claim
+	FieldName string     // Go field name; empty when the container is the receiver itself (an array alias)
+	JSONName  string     // JSON property name for the error path; empty for a container alias
+	IsPointer bool       // the field is *[]T, so the loop needs a nil guard
 	Levels    []ItemLevel
 
 	// OwnsOutermost says this definition answers for the outermost element's
@@ -2229,9 +2257,10 @@ type ItemValidationDef struct {
 // ValidatableFields already dispatches to; a second check here would count the
 // same elements twice.
 type FieldContainsDef struct {
-	FieldName string // Go field name
-	JSONName  string // JSON property name, for the error path
-	IsPointer bool   // the field is *[]T, so the check needs a nil guard
+	Claim     Provenance // the property's sub-schema, which states contains; see ValidationRule.Claim
+	FieldName string     // Go field name
+	JSONName  string     // JSON property name, for the error path
+	IsPointer bool       // the field is *[]T, so the check needs a nil guard
 
 	// Optional gates the check on the property having actually been present in
 	// the source JSON. A nil slice is indistinguishable from an empty one in Go,
@@ -2262,9 +2291,10 @@ type FieldContainsDef struct {
 // type is answered by that type's own Validate, which ValidatableFields already
 // dispatches to, and a second check here would report the same failure twice.
 type FieldTupleDef struct {
-	FieldName string // Go field name
-	JSONName  string // JSON property name, for the error path
-	IsPointer bool   // the field is *[]any, so the loop needs a nil guard
+	Claim     Provenance // the property's sub-schema, which states the tuple; see ValidationRule.Claim
+	FieldName string     // Go field name
+	JSONName  string     // JSON property name, for the error path
+	IsPointer bool       // the field is *[]any, so the loop needs a nil guard
 
 	Items []TupleItemDef // one entry per declared position; a position that constrains nothing renders nothing
 	Tail  *TupleItemDef  // what every position past the prefix must satisfy, when anything does
@@ -2286,23 +2316,25 @@ func (d FieldTupleDef) TupleTailStart() int {
 // inlineAnnotationWrapper. What is left for this def is the static case, which
 // is exactly what buildUnevaluatedItemsDef already decides for an array alias.
 type FieldUnevalItemsDef struct {
-	FieldName string // Go field name
-	JSONName  string // JSON property name, for the error path
-	IsPointer bool   // the field is *[]any, so the loop needs a nil guard
+	Claim     Provenance // the property's sub-schema, which states unevaluatedItems; see ValidationRule.Claim
+	FieldName string     // Go field name
+	JSONName  string     // JSON property name, for the error path
+	IsPointer bool       // the field is *[]any, so the loop needs a nil guard
 
 	Def *UnevaluatedItemsDef
 }
 
 // ItemLevel is one container level of an ItemValidationDef.
 type ItemLevel struct {
-	IndexVar      string // loop index (slice) or key (map) variable for this level
-	ElemVar       string // element variable for this level
-	IsMap         bool   // the level ranges over a map, so it is addressed by key rather than by index
-	ElemIsPointer bool   // the element is a pointer, so a JSON null left nil behind
-	ElemTypeName  string // the element's named Go type, when it has one
-	ElemType      GoType // the element's Go type
-	CallValidate  bool   // settled after generation: dispatch to the element's own Validate
-	ValidateIn    bool   // the element's Validate shares the caller's jsonValidation; see resolveValidateIn
+	Claim         Provenance // the element's sub-schema; see ValidationRule.Claim
+	IndexVar      string     // loop index (slice) or key (map) variable for this level
+	ElemVar       string     // element variable for this level
+	IsMap         bool       // the level ranges over a map, so it is addressed by key rather than by index
+	ElemIsPointer bool       // the element is a pointer, so a JSON null left nil behind
+	ElemTypeName  string     // the element's named Go type, when it has one
+	ElemType      GoType     // the element's Go type
+	CallValidate  bool       // settled after generation: dispatch to the element's own Validate
+	ValidateIn    bool       // the element's Validate shares the caller's jsonValidation; see resolveValidateIn
 	Rules         []ValidationRule
 
 	// An element that is itself a tuple carries its positions here, and what
@@ -2427,8 +2459,9 @@ type NestedItemsDef struct {
 
 // ContainsDef describes a contains constraint on an array.
 type ContainsDef struct {
-	IsFalse bool // contains: false — no element can ever match
-	IsTrue  bool // contains: true — every element matches
+	Claim   Provenance // the contains sub-schema; see ValidationRule.Claim
+	IsFalse bool       // contains: false — no element can ever match
+	IsTrue  bool       // contains: true — every element matches
 	// ConstJSON and EnumJSON are the canonical JSON texts of a const, or of an
 	// enum's members, which an element matches by identity, read off the
 	// element as it is held (see jsonMatchesConstAt), so 1.0 matches a const of
@@ -2457,14 +2490,16 @@ type ContainsDef struct {
 // ContainsCheck describes one validation check applied to each element
 // when evaluating whether it matches the contains sub-schema.
 type ContainsCheck struct {
-	CheckType string // "minimum", "maximum", "multipleOf", "type", "exclusiveMinimum", "exclusiveMaximum", "minLength", "maxLength", "pattern"
-	Value     any    // the constraint value
+	Claim     Provenance // see ValidationRule.Claim
+	CheckType string     // "minimum", "maximum", "multipleOf", "type", "exclusiveMinimum", "exclusiveMaximum", "minLength", "maxLength", "pattern"
+	Value     any        // the constraint value
 }
 
 // UnevaluatedItemsDef describes an unevaluatedItems constraint on an array.
 // Items are "evaluated" if covered by items, prefixItems, additionalItems, contains,
 // or by sub-schemas in allOf/$ref/anyOf/oneOf/if-then-else.
 type UnevaluatedItemsDef struct {
+	Claim             Provenance      // the node stating unevaluatedItems; see ValidationRule.Claim
 	IsForbidden       bool            // unevaluatedItems: false — reject any unevaluated items
 	IsAllowed         bool            // unevaluatedItems: true — allow any unevaluated item (no-op)
 	AllEvaluated      bool            // true when items (uniform) or additionalItems covers all positions
@@ -2516,9 +2551,10 @@ type UnevalItemsBranch struct {
 
 // InferredTupleItem describes a per-position item schema for inferred arrays.
 type InferredTupleItem struct {
-	IsFalse  bool   // boolean false schema — reject any value at this position
-	JSONType string // simple JSON type constraint (e.g., "integer", "string")
-	TypeName string // named Go type for $ref-based items (unmarshal + Validate())
+	Claim    Provenance // the position's sub-schema; see ValidationRule.Claim
+	IsFalse  bool       // boolean false schema — reject any value at this position
+	JSONType string     // simple JSON type constraint (e.g., "integer", "string")
+	TypeName string     // named Go type for $ref-based items (unmarshal + Validate())
 	// Node is TypeName's schema compiled for the evaluator. See ElementNode.
 	Node *ElementNode
 }
@@ -2679,6 +2715,7 @@ type NotSchemaDef struct {
 }
 
 type NotSchemaBranch struct {
+	Claim       Provenance // the negated branch; see ValidationRule.Claim
 	Types       []string
 	Properties  []NotPropertyBranch
 	Validations []ValidationRule
@@ -2703,7 +2740,8 @@ type NotPropertyBranch struct {
 // rather than a comparison of source bytes: it settles number formatting,
 // string escaping and object key order identically on both sides.
 type DynamicCheck struct {
-	Kind  string // "type", "const", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minLength", "maxLength", "pattern"
+	Claim Provenance // see ValidationRule.Claim
+	Kind  string     // "type", "const", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minLength", "maxLength", "pattern"
 	Value any
 	// Strict is set on a "type":"integer" check under draft 3 and draft 4,
 	// which read an integer off the token -- 1.0 is not one there. The value
@@ -2754,6 +2792,9 @@ type DynamicSchemaDef struct {
 type AnnotationSchemaDef struct {
 	Name string
 	Doc
+	// Claim is the schema compiled, with the nodes NodeLiteral compiles; see
+	// ValidationRule.Claim and Provenance.Evaluated.
+	Claim       Provenance
 	NodeLiteral string // Go composite literal for the root _schemaNode
 
 	// Nodes are the schemas hoisted into variables of their own because a
@@ -2861,6 +2902,7 @@ type TypeOnlySchemaDef struct {
 }
 
 type TypeSchemaBranch struct {
+	Claim        Provenance // the alternative's sub-schema; see ValidationRule.Claim
 	AllowedTypes []string
 	Properties   []TypeSchemaProperty
 

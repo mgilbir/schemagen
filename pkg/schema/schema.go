@@ -795,6 +795,11 @@ type Schema struct {
 	// NormalizeForDraft for why a rewritten node is not read again.
 	normalized bool
 
+	// dialectGiven records that DetectedDraft was chosen from outside the
+	// document rather than read from a $schema in it, which decides which
+	// nested $schema may switch the dialect below this node. See dialect.go.
+	dialectGiven bool
+
 	// srcChildren is every subschema this node's object holds, at the JSON
 	// Pointer reference tokens that lead to it from this node, as the decode
 	// found them -- before Normalize moves any of them. It is what locates each
@@ -906,25 +911,6 @@ func init() {
 	slices.Sort(knownSchemaKeyOrder)
 }
 
-// isEmptyForJSON is encoding/json's isEmptyValue, which is what decides whether
-// an omitempty field is written. It is reproduced rather than approximated: the
-// whole value of MarshaledKeywords is that it answers what a marshal would have
-// answered, and TestMarshaledKeywordsMatchesMarshaling holds the two together
-// field by field.
-func isEmptyForJSON(v reflect.Value) bool {
-	switch v.Kind() {
-	case reflect.Array, reflect.Map, reflect.Slice, reflect.String:
-		return v.Len() == 0
-	case reflect.Bool,
-		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr,
-		reflect.Float32, reflect.Float64,
-		reflect.Interface, reflect.Pointer:
-		return v.IsZero()
-	}
-	return false
-}
-
 // MarshaledKeywords returns the set of top-level keys s.MarshalJSON would write,
 // and reports whether s has such a form at all.
 //
@@ -959,22 +945,29 @@ func isEmptyForJSON(v reflect.Value) bool {
 // KeywordsMarshaledFormOmits is the one place that knows which those are. Every
 // gate reads both.
 func (s *Schema) MarshaledKeywords() (map[string]bool, bool) {
-	if s == nil || s.BooleanSchema != nil {
+	keys, ok := s.AppendMarshaledKeywords(nil)
+	if !ok {
 		return nil, false
 	}
-	v := reflect.ValueOf(s).Elem()
-	present := make(map[string]bool, len(marshaledKeywordFields))
-	for _, f := range marshaledKeywordFields {
-		fv := v.Field(f.index)
-		if f.omitEmpty && isEmptyForJSON(fv) {
-			continue
-		}
-		if f.omitZero && fv.IsZero() {
-			continue
-		}
-		present[f.key] = true
+	present := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		present[k] = true
 	}
 	return present, true
+}
+
+// AppendMarshaledKeywords is MarshaledKeywords as a list, appended to dst in
+// struct order: the same keys, read the same way, for a caller that walks
+// every node of a document and has no use for the set -- the set is sized for
+// every field a schema can have, and building one per node is most of what
+// such a walk would allocate.
+func (s *Schema) AppendMarshaledKeywords(dst []string) ([]string, bool) {
+	if s == nil || s.BooleanSchema != nil {
+		return dst, false
+	}
+	// Written out from the tags rather than read through reflection; see
+	// keywordset.go.
+	return s.appendMarshaledKeywords(dst), true
 }
 
 // Examples returns the "examples" annotation as the raw JSON of each element,
@@ -1035,14 +1028,13 @@ func (s Schema) MarshalJSON() ([]byte, error) {
 // The documentRoot is the schema node that serves as the current document root for
 // fragment resolution (initially the schema itself).
 func (s *Schema) ComputeBaseURIs(parentBaseURI *url.URL, documentRoot *Schema) {
-	s.computeBaseURIs(parentBaseURI, documentRoot, DraftUnknown)
+	s.computeBaseURIs(parentBaseURI, documentRoot, nil)
 }
 
-// computeBaseURIs is ComputeBaseURIs with the dialect a node is read under when
-// normalization settled none for it -- the dialect a caller generates the
-// document under (Config.Draft), which decides whether an $id beside a $ref
-// starts a resource. See refReplacesSiblings.
-func (s *Schema) computeBaseURIs(parentBaseURI *url.URL, documentRoot *Schema, fallback Draft) {
+// computeBaseURIs is ComputeBaseURIs with the answer to which dialect a node
+// is read under -- ResourceIndex.DialectOf, which decides whether an $id beside
+// a $ref starts a resource. See refReplacesSiblings and dialect.go.
+func (s *Schema) computeBaseURIs(parentBaseURI *url.URL, documentRoot *Schema, dialect func(*Schema) Draft) {
 	if s == nil || s.IsBooleanSchema() {
 		return
 	}
@@ -1066,7 +1058,7 @@ func (s *Schema) computeBaseURIs(parentBaseURI *url.URL, documentRoot *Schema, f
 	// Which ids those are is scopeID's answer, and the resolver's anchor walk
 	// asks the same function: an id this walk could not parse used to be no
 	// scope change here and one there, which is the same two-walks shape again.
-	if idURL, ok := scopeIDIn(s, fallback); ok {
+	if idURL, ok := scopeIDIn(s, dialect); ok {
 		if currentBase != nil {
 			currentBase = currentBase.ResolveReference(idURL)
 		} else {
@@ -1083,7 +1075,7 @@ func (s *Schema) computeBaseURIs(parentBaseURI *url.URL, documentRoot *Schema, f
 	// positions hold a subschema, which the resource index and the anchor
 	// walks read too.
 	for _, sub := range subSchemas(s) {
-		sub.computeBaseURIs(currentBase, currentDocRoot, fallback)
+		sub.computeBaseURIs(currentBase, currentDocRoot, dialect)
 	}
 }
 
@@ -1138,7 +1130,7 @@ func (s *Schema) extensionSchema(key string, tokens []string, raw json.RawMessag
 	// so a draft-4 document's "#/x-vendor" target enforced a const draft 4 does
 	// not have.
 	d := s.DetectedDraft
-	if own := DetectDraft(&sub); own != DraftUnknown {
+	if own := ownDialect(&sub, s.dialectGiven); own != DraftUnknown {
 		d = own
 	}
 	// It is located inside the keyword's value, in this node's document, before
@@ -1151,7 +1143,7 @@ func (s *Schema) extensionSchema(key string, tokens []string, raw json.RawMessag
 		sub.src = unlocated
 	}
 	sub.locateChildren()
-	sub.NormalizeForDraft(d)
+	sub.normalizeForDraft(d, s.dialectGiven)
 	if s.extensionSchemas == nil {
 		s.extensionSchemas = make(map[string]*Schema)
 	}

@@ -152,12 +152,12 @@ func plainNameFragment(id string) string {
 // Multiple names on one node are possible and all of them count: a node may
 // carry "$anchor": "a" and "$dynamicAnchor": "b" and answer to both.
 func AnchorNames(s *Schema) []string {
-	return anchorNamesIn(s, DraftUnknown)
+	return anchorNamesIn(s, nil)
 }
 
-// anchorNamesIn is AnchorNames for a node read under fallback where
-// normalization settled no dialect for it.
-func anchorNamesIn(s *Schema, fallback Draft) []string {
+// anchorNamesIn is AnchorNames for a node whose dialect dialect answers; nil
+// reads the dialect normalization settled. See dialect.go.
+func anchorNamesIn(s *Schema, dialect func(*Schema) Draft) []string {
 	if s == nil {
 		return nil
 	}
@@ -177,7 +177,7 @@ func anchorNamesIn(s *Schema, fallback Draft) []string {
 	add(s.DynamicAnchor)
 	// An id beside a $ref that replaces its siblings names nothing; see
 	// refReplacesSiblings.
-	if !refReplacesSiblings(s, fallback) {
+	if !refReplacesSiblings(s, dialect) {
 		add(plainNameFragment(s.ID))
 		add(plainNameFragment(s.LegacyID))
 	}
@@ -221,13 +221,13 @@ func changesScope(s *Schema) bool {
 // (see MalformedKeywords), so a document that states one is refused wherever
 // its dialect defines the keyword.
 func scopeID(s *Schema) (*url.URL, bool) {
-	return scopeIDIn(s, DraftUnknown)
+	return scopeIDIn(s, nil)
 }
 
-// scopeIDIn is scopeID for a node read under fallback where normalization
-// settled no dialect for it.
-func scopeIDIn(s *Schema, fallback Draft) (*url.URL, bool) {
-	if refReplacesSiblings(s, fallback) {
+// scopeIDIn is scopeID for a node whose dialect dialect answers; nil reads the
+// dialect normalization settled. See dialect.go.
+func scopeIDIn(s *Schema, dialect func(*Schema) Draft) (*url.URL, bool) {
+	if refReplacesSiblings(s, dialect) {
 		return nil, false
 	}
 	id := s.ID
@@ -254,16 +254,23 @@ func scopeIDIn(s *Schema, fallback Draft) (*url.URL, bool) {
 // changing the base uri". From 2019-09 on $ref is an ordinary applicator and
 // its siblings, $id among them, apply. A node never normalized has no settled
 // dialect and is read as the later drafts read it, as the generator reads a
-// node whose dialect is unknown -- unless the caller states the dialect the
-// document is generated under (fallback), which is the dialect the generator
-// then reads such a node under.
-func refReplacesSiblings(s *Schema, fallback Draft) bool {
+// node whose dialect is unknown.
+//
+// Which dialect the node is in is dialect's answer, where the caller has one:
+// the resource index passes ResourceIndex.DialectOf, so that a dialect chosen
+// from outside the document (WithIndexDraft) decides here exactly as it decides
+// for the generator. It used to be read here as a fallback only, beneath the
+// dialect normalization had settled, so a document normalized under its own
+// $schema and generated under Config.Draft had its resources computed under
+// the one and its keywords read under the other. nil reads the dialect
+// normalization settled.
+func refReplacesSiblings(s *Schema, dialect func(*Schema) Draft) bool {
 	if s == nil || s.Ref == "" {
 		return false
 	}
 	d := s.DetectedDraft
-	if d == DraftUnknown {
-		d = fallback
+	if dialect != nil {
+		d = dialect(s)
 	}
 	switch d {
 	case Draft03, Draft04, Draft06, Draft07:
@@ -1511,10 +1518,10 @@ func (s *Schema) legacyTarget(key string, rest []string) (*Schema, []string, boo
 		target := s.childAt(tokens...)
 		if target != nil && !target.normalized {
 			d := s.DetectedDraft
-			if own := DetectDraft(target); own != DraftUnknown {
+			if own := ownDialect(target, s.dialectGiven); own != DraftUnknown {
 				d = own
 			}
-			target.NormalizeForDraft(d)
+			target.normalizeForDraft(d, s.dialectGiven)
 		}
 		return target
 	}
