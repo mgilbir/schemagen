@@ -18,7 +18,7 @@ import (
 // times over the same input, each run a process of its own, and requires every
 // run to write the same files, print the same stderr and exit the same way.
 //
-// tests/TestGenerationIsDeterministic compares generations inside one process,
+// TestGenerationIsDeterministic, in tests/determinism, compares generations inside one process,
 // which is where Go already varies every map's order, and covers the corpus
 // under the configuration matrix. What it cannot see is the command: the
 // warnings the CLI assembles and prints, the order it writes packages and

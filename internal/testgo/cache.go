@@ -235,7 +235,7 @@ var (
 	// legacyDirPrefixes are the names two tests used before MkdirProcessTemp
 	// existed, for a CLI built once per test binary and never removed:
 	// root main_test.go's "schemagen-main-test" and
-	// tests/crosspackage_agreement_test.go's "schemagen-bin" (no dash, a random
+	// tests/refs/crosspackage_agreement_test.go's "schemagen-bin" (no dash, a random
 	// suffix straight after). Nothing makes them any more; they are swept, as
 	// work directories, so that the ones earlier versions left behind -- 252 of
 	// them, 863 MB, on the machine the 2026-09-26 audit ran on -- are reclaimed

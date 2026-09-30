@@ -1158,6 +1158,48 @@ make lint
 make lint-alignment
 ```
 
+### Test packages and their time budget
+
+`go test ./...` builds each package's tests into a binary of its own, runs
+several at once, and gives each one Go's default ten-minute timeout. CI runs it
+exactly that way, and the timeout stays: a test binary that has quietly grown
+to twice its size is something to hear about, not something to make room for.
+
+The end-to-end tests, the ones that generate code, compile it and run it, live
+under `tests/`, one package per area:
+
+| Package | What it holds |
+|---|---|
+| `tests/golden` | the golden files: regenerated and compared, and every one compiled (`make golden`) |
+| `tests/roundtrip` | fixtures decoded, validated and re-encoded through compiled types |
+| `tests/validation` | documents put to compiled types: verdicts, and the paths and messages of refusals |
+| `tests/refs` | reference resolution, and the multi-package and shared-type differential |
+| `tests/names` | what schema text becomes in source: identifiers, receivers, comments, literals |
+| `tests/patterns` | the ECMA-262 pattern engine in every position a pattern can occupy |
+| `tests/numbers` | numeric precision, saturated bounds, canonical numbers |
+| `tests/corpus` | sweeps over every schema in `testdata/schemas`: compile, field alignment, helper file, refusals |
+| `tests/fuzz` | `FuzzGenerate` and its seed corpus, and the backstop sweep (`make fuzz`); crashers land in `tests/fuzz/testdata/fuzz/` |
+| `tests/fuzzdeadline` | every fuzz seed held to the CPU-time budget a fuzz worker's ten-second deadline implies (`make fuzz-seeds`) |
+| `tests/fuzzmemory` | every fuzz seed held to the heap and stack ceilings the memory gate enforces (`make fuzz-seeds`) |
+| `tests/determinism` | same input, same output; the static map-order guard (`make test-determinism`) |
+| `tests/external` | the JSON Schema Test Suite harness (`make test-external`) |
+| `tests/cogen` | co-generated schemas and instances (`make cogen`) |
+
+What more than one of them needs is in `tests/internal/testsupport`. Every
+package whose tests can reach the go tool, directly or through that package,
+declares `func TestMain(m *testing.M) { testgo.Main(m) }`, and
+`TestEveryTestBinaryThatRunsTheGoToolInstallsMain` in `internal/testgo` fails
+for one that does not.
+
+The budget is **four minutes per package, locally, on a machine under moderate
+load**. That leaves the room a GitHub runner needs: it has fewer cores and runs
+fewer binaries at once, and the single `tests` package these were split from
+took 440-590s locally and was killed at 600s on a runner. When a package
+approaches the budget, split it along an area boundary into a new sibling
+directory under `tests/`; do not raise `-timeout`. `go test ./tests/... -json`
+reports the elapsed time of every package and every test, which is where to
+start.
+
 ## License
 
 See [LICENSE](LICENSE).

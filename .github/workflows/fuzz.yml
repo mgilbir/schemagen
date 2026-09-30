@@ -4,7 +4,7 @@ name: Fuzz
 # `pull_request`: a fuzz run costs its whole -fuzztime budget every time and
 # almost always finds nothing, so on a PR it would add half an hour of latency
 # for no signal. Regressions are handled the other way round -- a crasher the
-# fuzzer writes into tests/testdata/fuzz/FuzzGenerate/ gets committed and from
+# fuzzer writes into tests/fuzz/testdata/fuzz/FuzzGenerate/ gets committed and from
 # then on replays as an ordinary test case in the CI workflow's `go test ./...`.
 # This job does the searching; CI does the remembering.
 on:
@@ -67,7 +67,7 @@ jobs:
       # always() additionally covers cancellation and the timeout-minutes kill,
       # where a crasher may already have been written to disk.
       #
-      # go test writes failing inputs to tests/testdata/fuzz/<FuzzName>/ (the
+      # go test writes failing inputs to tests/fuzz/testdata/fuzz/<FuzzName>/ (the
       # generated non-failing corpus lives in the build cache and is not worth
       # keeping). Nothing is committed there -- seeds live as readable .json
       # under testdata/schemas/adversarial, which FuzzGenerate walks -- so on a
@@ -106,6 +106,6 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: fuzz-corpus-${{ github.run_id }}
-          path: tests/testdata/fuzz/
+          path: tests/fuzz/testdata/fuzz/
           if-no-files-found: ignore
           retention-days: 90

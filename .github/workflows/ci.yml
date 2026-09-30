@@ -89,6 +89,15 @@ jobs:
       # Goldens are compared here, never rewritten: the golden tests refuse
       # UPDATE_GOLDEN when GITHUB_ACTIONS is set, so a job that regenerated its
       # goldens before comparing them cannot pass.
+      #
+      # Under go test's default ten-minute timeout per test binary, on purpose.
+      # The tests under tests/ were one package whose binary reached that limit
+      # on this runner -- killed at 600s mid-run while every other package
+      # finished in under 95s -- and the answer was to split it into packages
+      # go test runs side by side, not to raise the limit: a timeout is what
+      # turns a run that has quietly doubled into a failure somebody reads. The
+      # per-package budget, and what to do when a package approaches it, is in
+      # the README's Development section.
       - name: test
         run: go test ./... -count=1
 

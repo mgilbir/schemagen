@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -127,10 +128,160 @@ func TestNoTestRunsTheGoToolDirectly(t *testing.T) {
 	}
 }
 
+// modulePath is this module's import path, which a directory's import path is
+// spelled from.
+const modulePath = "github.com/mgilbir/schemagen"
+
+// TestEveryTestBinaryThatRunsTheGoToolInstallsMain holds every test binary
+// that can reach Command, MakeCommand or Env to installing Main (or Run) as its
+// TestMain.
+//
+// Command already refuses to run in a binary that skipped it, but only when it
+// is called, which is only when the one test that calls it runs -- and a test
+// behind an environment variable nobody sets, or a helper a package imports and
+// has not called yet, reaches that refusal on somebody else's day. When the
+// tests package was split into the packages under tests/, every one of them
+// needed its own TestMain; this is what says so for all of them at once, and for
+// the next one.
+//
+// "Can reach" is read from imports, transitively through non-test code: a
+// package whose test binary imports this package, or imports a package whose
+// non-test files do -- tests/internal/testsupport is the one that exists -- has
+// the go tool within reach, whether or not a test calls it today.
+func TestEveryTestBinaryThatRunsTheGoToolInstallsMain(t *testing.T) {
+	type dirInfo struct {
+		testFiles     int
+		importsInCode map[string]bool // imports of the non-test files
+		importsAll    map[string]bool // imports of every file, tests included
+		installsMain  bool
+	}
+	dirs := map[string]*dirInfo{}
+	forEachGoFile(t, func(path string, f *ast.File, fset *token.FileSet) {
+		dir := filepath.Dir(path)
+		d := dirs[dir]
+		if d == nil {
+			d = &dirInfo{importsInCode: map[string]bool{}, importsAll: map[string]bool{}}
+			dirs[dir] = d
+		}
+		isTest := strings.HasSuffix(path, "_test.go")
+		if isTest {
+			d.testFiles++
+		}
+		for _, imp := range f.Imports {
+			p, err := strconv.Unquote(imp.Path.Value)
+			if err != nil {
+				continue
+			}
+			d.importsAll[p] = true
+			if !isTest {
+				d.importsInCode[p] = true
+			}
+		}
+		if isTest && testMainInstallsMain(f) {
+			d.installsMain = true
+		}
+	})
+
+	importPath := func(dir string) string {
+		rel, err := filepath.Rel(moduleRoot, dir)
+		if err != nil || rel == "." {
+			return modulePath
+		}
+		return modulePath + "/" + filepath.ToSlash(rel)
+	}
+	thisPackage := modulePath + "/internal/testgo"
+
+	// The packages whose non-test code can run the go tool: this one, and
+	// anything whose non-test code imports one of them.
+	reaches := map[string]bool{thisPackage: true}
+	for changed := true; changed; {
+		changed = false
+		for dir, d := range dirs {
+			p := importPath(dir)
+			if reaches[p] {
+				continue
+			}
+			for imp := range d.importsInCode {
+				if reaches[imp] {
+					reaches[p] = true
+					changed = true
+					break
+				}
+			}
+		}
+	}
+
+	checked := 0
+	var missing []string
+	for dir, d := range dirs {
+		if d.testFiles == 0 {
+			continue
+		}
+		p := importPath(dir)
+		needs := p == thisPackage || reaches[p]
+		for imp := range d.importsAll {
+			if reaches[imp] {
+				needs = true
+			}
+		}
+		if !needs {
+			continue
+		}
+		checked++
+		if !d.installsMain {
+			missing = append(missing, p)
+		}
+	}
+	// The module has well over a dozen test binaries that build generated code;
+	// finding fewer than ten would mean the import reading has stopped seeing
+	// them.
+	if checked < 10 {
+		t.Fatalf("found only %d test binaries within reach of the go tool; the check is not seeing the module", checked)
+	}
+	sort.Strings(missing)
+	for _, p := range missing {
+		t.Errorf("%s: its test binary can reach testgo.Command, and it has no TestMain calling testgo.Main or testgo.Run; add\n"+
+			"\tfunc TestMain(m *testing.M) { testgo.Main(m) }", p)
+	}
+}
+
+// testMainInstallsMain reports whether f declares a TestMain whose body calls
+// testgo.Main or testgo.Run -- or, inside this package, Main or Run.
+func testMainInstallsMain(f *ast.File) bool {
+	for _, decl := range f.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Recv != nil || fn.Name.Name != "TestMain" || fn.Body == nil {
+			continue
+		}
+		found := false
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			switch fun := call.Fun.(type) {
+			case *ast.SelectorExpr:
+				if isSelector(fun, "testgo", "Main") || isSelector(fun, "testgo", "Run") {
+					found = true
+				}
+			case *ast.Ident:
+				if f.Name.Name == "testgo" && (fun.Name == "Main" || fun.Name == "Run") {
+					found = true
+				}
+			}
+			return !found
+		})
+		if found {
+			return true
+		}
+	}
+	return false
+}
+
 // TestEveryTempDirectoryATestMakesIsOneTheSweepKnows is the other half of the
 // leak: a directory made with os.MkdirTemp in the shared temp directory under a
 // name no prefix covers is never reclaimed by anything when its test binary is
-// killed. main_test.go and tests/crosspackage_agreement_test.go each built the
+// killed. main_test.go and tests/refs/crosspackage_agreement_test.go each built the
 // CLI into one of those and never removed it even on success; 252 of them, 863
 // MB, were on the audit machine.
 //
