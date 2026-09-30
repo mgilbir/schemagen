@@ -3,10 +3,8 @@
 package testpkg
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"math"
 )
 
 // DefaultedString - A string with a default, referenced from several positions.
@@ -691,7 +689,7 @@ func (m MultiTypedDefault) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(m._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(m._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -702,8 +700,8 @@ func (m MultiTypedDefault) Validate() error {
 		return fmt.Errorf("type: null is not allowed")
 	}
 	switch _tv := _v.(type) {
-	case float64:
-		if _tv != math.Trunc(_tv) || math.IsInf(_tv, 0) {
+	case json.Number:
+		if !jsonIsInteger(_tv, false) {
 			return fmt.Errorf("type: expected integer, got number")
 		}
 		return nil
@@ -2294,34 +2292,7 @@ func (a AnnotationReachPositions) Validate() error {
 			}
 			if _branchMatches {
 				if _raw, _ok := a._jsonRawProps["dfltCondOneOf"]; _ok {
-					_jt := "unknown"
-					_b := bytes.TrimSpace(_raw)
-					if len(_b) > 0 {
-						switch _b[0] {
-						case '"':
-							_jt = "string"
-						case '{':
-							_jt = "object"
-						case '[':
-							_jt = "array"
-						case 't', 'f':
-							_jt = "boolean"
-						case 'n':
-							_jt = "null"
-						default:
-							_jt = "number"
-							_isInt := true
-							for _, _c := range _b {
-								if _c == '.' || _c == 'e' || _c == 'E' {
-									_isInt = false
-									break
-								}
-							}
-							if _isInt {
-								_jt = "integer"
-							}
-						}
-					}
+					_jt := jsonRawKind(_raw, false)
 					if _jt != "string" {
 						_branchMatches = false
 					}
@@ -2329,34 +2300,7 @@ func (a AnnotationReachPositions) Validate() error {
 			}
 			if _branchMatches {
 				if _raw, _ok := a._jsonRawProps["pickA"]; _ok {
-					_jt := "unknown"
-					_b := bytes.TrimSpace(_raw)
-					if len(_b) > 0 {
-						switch _b[0] {
-						case '"':
-							_jt = "string"
-						case '{':
-							_jt = "object"
-						case '[':
-							_jt = "array"
-						case 't', 'f':
-							_jt = "boolean"
-						case 'n':
-							_jt = "null"
-						default:
-							_jt = "number"
-							_isInt := true
-							for _, _c := range _b {
-								if _c == '.' || _c == 'e' || _c == 'E' {
-									_isInt = false
-									break
-								}
-							}
-							if _isInt {
-								_jt = "integer"
-							}
-						}
-					}
+					_jt := jsonRawKind(_raw, false)
 					if _jt != "integer" {
 						_branchMatches = false
 					}
@@ -2373,34 +2317,7 @@ func (a AnnotationReachPositions) Validate() error {
 			}
 			if _branchMatches {
 				if _raw, _ok := a._jsonRawProps["dfltCondOneOf"]; _ok {
-					_jt := "unknown"
-					_b := bytes.TrimSpace(_raw)
-					if len(_b) > 0 {
-						switch _b[0] {
-						case '"':
-							_jt = "string"
-						case '{':
-							_jt = "object"
-						case '[':
-							_jt = "array"
-						case 't', 'f':
-							_jt = "boolean"
-						case 'n':
-							_jt = "null"
-						default:
-							_jt = "number"
-							_isInt := true
-							for _, _c := range _b {
-								if _c == '.' || _c == 'e' || _c == 'E' {
-									_isInt = false
-									break
-								}
-							}
-							if _isInt {
-								_jt = "integer"
-							}
-						}
-					}
+					_jt := jsonRawKind(_raw, false)
 					if _jt != "string" {
 						_branchMatches = false
 					}
@@ -2408,34 +2325,7 @@ func (a AnnotationReachPositions) Validate() error {
 			}
 			if _branchMatches {
 				if _raw, _ok := a._jsonRawProps["pickB"]; _ok {
-					_jt := "unknown"
-					_b := bytes.TrimSpace(_raw)
-					if len(_b) > 0 {
-						switch _b[0] {
-						case '"':
-							_jt = "string"
-						case '{':
-							_jt = "object"
-						case '[':
-							_jt = "array"
-						case 't', 'f':
-							_jt = "boolean"
-						case 'n':
-							_jt = "null"
-						default:
-							_jt = "number"
-							_isInt := true
-							for _, _c := range _b {
-								if _c == '.' || _c == 'e' || _c == 'E' {
-									_isInt = false
-									break
-								}
-							}
-							if _isInt {
-								_jt = "integer"
-							}
-						}
-					}
+					_jt := jsonRawKind(_raw, false)
 					if _jt != "integer" {
 						_branchMatches = false
 					}
@@ -2459,34 +2349,7 @@ func (a AnnotationReachPositions) Validate() error {
 			_branchMatches := true
 			if _branchMatches {
 				if _raw, _ok := a._jsonRawProps["dfltCondAnyOf"]; _ok {
-					_jt := "unknown"
-					_b := bytes.TrimSpace(_raw)
-					if len(_b) > 0 {
-						switch _b[0] {
-						case '"':
-							_jt = "string"
-						case '{':
-							_jt = "object"
-						case '[':
-							_jt = "array"
-						case 't', 'f':
-							_jt = "boolean"
-						case 'n':
-							_jt = "null"
-						default:
-							_jt = "number"
-							_isInt := true
-							for _, _c := range _b {
-								if _c == '.' || _c == 'e' || _c == 'E' {
-									_isInt = false
-									break
-								}
-							}
-							if _isInt {
-								_jt = "integer"
-							}
-						}
-					}
+					_jt := jsonRawKind(_raw, false)
 					if _jt != "string" {
 						_branchMatches = false
 					}
@@ -2500,34 +2363,7 @@ func (a AnnotationReachPositions) Validate() error {
 			_branchMatches := true
 			if _branchMatches {
 				if _raw, _ok := a._jsonRawProps["annCondAnyOf"]; _ok {
-					_jt := "unknown"
-					_b := bytes.TrimSpace(_raw)
-					if len(_b) > 0 {
-						switch _b[0] {
-						case '"':
-							_jt = "string"
-						case '{':
-							_jt = "object"
-						case '[':
-							_jt = "array"
-						case 't', 'f':
-							_jt = "boolean"
-						case 'n':
-							_jt = "null"
-						default:
-							_jt = "number"
-							_isInt := true
-							for _, _c := range _b {
-								if _c == '.' || _c == 'e' || _c == 'E' {
-									_isInt = false
-									break
-								}
-							}
-							if _isInt {
-								_jt = "integer"
-							}
-						}
-					}
+					_jt := jsonRawKind(_raw, false)
 					if _jt != "string" {
 						_branchMatches = false
 					}

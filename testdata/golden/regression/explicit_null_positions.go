@@ -5,7 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"unicode/utf8"
 )
 
@@ -1912,8 +1911,7 @@ func (e ExplicitNullPositions) Validate() error {
 			}
 		}
 		if _idx == 1 {
-			_cv, _cvOk := _elem.(float64)
-			if !_cvOk || _cv != math.Trunc(_cv) {
+			if !jsonIsInteger(_elem, false) {
 				return fmt.Errorf("tuple: items[%d]: expected integer, got %T", _idx, _elem)
 			}
 		}

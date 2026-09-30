@@ -1,4 +1,4 @@
-.PHONY: guards unicode-tables build test lint lint-alignment clean install fmt vet golden download-test-suite test-suite-drift download-metaschemas test-external test-determinism fuzz fuzz-seeds cogen bench-cyclonedx validate-seeds
+.PHONY: guards unicode-tables build test lint lint-alignment clean install fmt vet golden download-test-suite test-suite-drift download-metaschemas test-external test-determinism grid-numbers fuzz fuzz-seeds cogen bench-cyclonedx validate-seeds
 
 BINARY := schemagen
 MODULE := github.com/mgilbir/schemagen
@@ -263,6 +263,17 @@ test-external: download-test-suite download-metaschemas
 # CI runs it; see the determinism job in .github/workflows/ci.yml.
 test-determinism: download-test-suite
 	SCHEMAGEN_DETERMINISM_FULL=1 go test . ./tests/determinism -run 'TestCLIOutputIsDeterministicAcrossProcesses|TestGenerationIsDeterministic|TestGeneratedCodeReadsNoMapOrder' -v -count=1 -timeout 60m
+
+# The whole number verdict grid (tests/number_verdict_grid_test.go): every
+# numeric keyword at every position under every number-holding configuration,
+# each verdict held to the frozen oracle in testdata/number_oracle. `go test`
+# runs a fixed sample of its cells -- every keyword, every position and every
+# configuration at least once -- because the whole of it is some 1800
+# generated packages to compile. This runs all of them; the nightly external
+# workflow runs it, and it is the thing to run before merging a change to how
+# a number is read, compared or decoded.
+grid-numbers:
+	SCHEMAGEN_NUMBER_GRID_FULL=1 go test ./tests/numbers -run '^TestNumberVerdictGrid$$' -v -count=1 -timeout 30m
 
 # Fuzzing has no natural end: `go test -fuzz` keeps mutating inputs until it
 # finds a crash or something kills it, so a run without -fuzztime never returns

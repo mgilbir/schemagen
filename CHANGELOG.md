@@ -62,6 +62,21 @@
   from (`RetrievalURI`) and is based on it; one decoded by the caller is given
   a base URI under the `schemagen-document` scheme. `FileResolver` takes
   several confinement roots (`WithFileResolverRoots`).
+- A number enum whose members a `float64` cannot hold apart, or cannot hold at
+  all — `{"enum":[9007199254740992,9007199254740993]}`, or a lone
+  `9007199254740993` — is a `json.Number`-based type under every
+  configuration, as it already was under `--exact-numbers`. As a `float64` it
+  either did not compile (the two members were one duplicate `case`) or could
+  never admit the document that wrote the member.
+- `--big-int` refuses an integer an exponent would expand past ten thousand
+  zeros (`1e1000000000`), rather than building it; a value written out in full
+  is read whatever its length.
+- `ValidationRule.IntegerCompare` and `ValidationRule.ExactCompare` are
+  replaced by `NumOperand`, which names the Go type a numeric rule's instance
+  is held as; `ValidationRule.RawElements`, `ContainsDef.ExactNumbers` and
+  `ContainsDef.RawElements` are gone, the comparisons they chose between being
+  identity's. Messages from a check that reads a raw member print the literal
+  the document wrote (`value 1.50 ...`) rather than its `float64`.
 
 ### Fixed
 
@@ -80,6 +95,58 @@
   randomised order put last, so the same value could compare differently from
   run to run. Of members sharing a name, the one with the greatest key now
   counts, in the identity and in the tree.
+- Every numeric keyword is decided on the number as a mathematical value, in
+  every position and configuration, through one exact decimal reading of the
+  literal. Four readings disagreed before: a `float64` quotient against a 1e-9
+  tolerance (`{"multipleOf":1}` accepted `1.0000000001` and `1e-10`),
+  `math.Mod` in an `if`/`then` branch (`0.3` was no multiple of `0.1`), the
+  runtime evaluator's `float64` bounds and exact `float64` quotient, and a
+  `float64` conversion of every integer array element and union branch
+  (`[9007199254740993]` passed `{"items":{"type":"integer","maximum":
+  9007199254740992}}` while the same bound on a property refused it). `1.0` is
+  an integer at every position from draft 6 on — the object-level
+  `oneOf`/`anyOf` and non-object checks read the token and matched no integer
+  branch — and still not under draft 3 and 4. A value a check reads from the
+  document's own bytes -- the runtime evaluator, an `if`/`then` branch, a type
+  union over a held member -- keeps every number's literal, so `1e400` is a
+  number rather than a decode error, a bound past the reach of `float64` is
+  compared on its digits, and the evaluator's and a conditional's `const` and
+  `enum` are decided exactly: read as `float64`s on both sides, the const
+  `9007199254740993` admitted `9007199254740992`. A branch's `const` or `enum`
+  over a member read from the document is decided by identity rather than by
+  its bytes, so `{"k":1.0}` matches a `const` of `1`. A number whose exponent
+  is past 2^40 has an identity of its own value rather than of its spelling:
+  `1e2000000000000` and `10e1999999999999` are one number to `const`, `enum`
+  and `uniqueItems`.
+- `--big-int` reads a literal exactly. It decoded through a 64-bit
+  `big.Float` — `{"y":12345678901234567891.5}` was accepted as the integer
+  `12345678901234567892`, and `1e100` became a different integer — and compared
+  through a 256-bit one, so a `maximum` of `1e99` admitted `10^99+1` and
+  `multipleOf: 7` admitted `10^99`.
+- Under `--exact-numbers` a `"number"` alias with an `anyOf` or `oneOf` did
+  not compile (`float64(n)` on a `json.Number`), and a `const` check named the
+  const in its message through `float64`.
+- `allOf` branches' `multipleOf` divisors combine into their exact least
+  common multiple: `0.3` and `0.2` combine to `0.6`, where the first used to
+  be kept and the second dropped. A divisor spelled with an exponent past
+  5000 (`1` followed by six thousand zeros and `e-6000`) is combined too; it
+  used to be the one dropped.
+- The runtime evaluator's bounds and `multipleOf` arms, and the node fields
+  they read, are compiled in only where a schema states those keywords, as
+  its equality arms already were; what a package keeps of the exact-number
+  core is settled declaration by declaration by the helper pruning.
+- Generation reads a numeric keyword's literal in time linear in its length.
+  A schema with `multipleOf` and `maximum` literals hundreds of thousands of
+  digits long took over a minute to generate.
+- Numeric checks that read a value of a type they did not expect now read it:
+  an `unevaluatedProperties` `{"type":"integer"}` refused `1.0`; a wrapper for
+  a schema stating bounds and no type passed `1e400` over as a non-number; a
+  `not` branch counted a value its numeric keyword does not apply to as not
+  matching, so `{"not":{"anyOf":[{"type":"string","minimum":5}]}}` admitted
+  every string; and the check that counts an item a `contains` matched as
+  evaluated for `unevaluatedItems` read no `enum`, exclusive bound or
+  `multipleOf` in it — the generated package did not compile where that was
+  all the `contains` said, and ignored it beside a `minimum` or `maximum`.
 - Every JSON Schema pattern is matched by one engine, compiled once, and a
   match the engine cannot decide is an error rather than a "no". A `contains`
   whose sub-schema had a `pattern` compiled it with Go's RE2 on every element,

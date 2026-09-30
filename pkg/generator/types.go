@@ -983,9 +983,15 @@ func (d *StructDef) ConditionalNeedsUTF8() bool {
 // ObjectPropertyCheck describes a JSON property constraint used to match an
 // object-level oneOf branch. Checks only apply when the property is present.
 type ObjectPropertyCheck struct {
-	JSONName      string
-	JSONType      string
-	AllowedValues []string // JSON-encoded enum/const values
+	JSONName string
+	JSONType string
+	// AllowedValues are the canonical JSON texts of an enum's members or a
+	// const, which the raw member matches by identity: {"k":1.0} is the const
+	// 1. See jsonMatchesConstRaw.
+	AllowedValues []string
+	// StrictInteger reads "integer" off the member's token, as draft 3 and
+	// draft 4 do; every later draft reads the value, under which 1.0 is one.
+	StrictInteger bool
 }
 
 // PatternPropertyDef describes a patternProperties entry on a struct.
@@ -1096,6 +1102,15 @@ type UnevaluatedPropertiesDef struct {
 	ValueDecoder      string            // ValueType's in-place decode, as PatternPropertyDef.Decoder is
 	ValueIsNull       bool              // true when the sub-schema is {"type":"null"}, which no Go type expresses -- see buildUnevaluatedPropertiesDef
 	ConditionalEvals  []ConditionalEval // runtime-conditional evaluation branches (if/then/else, dependentSchemas, anyOf, oneOf)
+	// ValueJSONType is "integer" or "number" when each unevaluated value is a
+	// number to the sub-schema, which is then judged on the member's raw
+	// literal rather than decoded into ValueType; empty otherwise. See
+	// buildUnevaluatedPropertiesDef.
+	ValueJSONType string
+	// ValueTypeStated says the sub-schema states that type itself. A type
+	// inferred from its keywords alone -- {"minimum":5} is a number's keyword
+	// -- refuses nothing: a string satisfies every numeric keyword.
+	ValueTypeStated bool
 }
 
 // HasConditionalEvals returns true if there are conditional evaluation branches.
@@ -1382,65 +1397,23 @@ type ValidationRule struct {
 	// that forbids a property. See Generator.hasNilState.
 	FieldNilable bool
 
-	// IntegerCompare is set on a numeric rule whose instance is held as an
-	// int64 and whose bound names an integer int64 holds exactly. The check is
-	// then made in int64 rather than by converting the value to float64 first.
+	// NumOperand says what Go type the instance of a numeric rule -- minimum,
+	// maximum, both exclusive bounds, multipleOf, and a numeric const -- is held
+	// as, which is what the emitted check is written for. See NumOperandKind.
 	//
-	// The conversion is not a formality above 2^53, which is where consecutive
-	// integers stop having distinct float64s. {"type":"integer","minimum":
-	// 9223372036854775807} compared as float64 admits 9223372036854775806, and
-	// {"exclusiveMaximum": -9007199254740992} refuses -9007199254740993: in each
-	// case the value and the bound arrive as one float64 and the comparison has
-	// nothing left to tell them apart. int64 holds both operands exactly, so
-	// asking it is not an optimisation -- it is the only way to get the answer.
-	//
-	// It is false wherever either half of that is untrue: a "number" instance is
-	// a float64 and has no int64 reading, and a bound of 1.5 is not an integer.
-	// The emitted code is unchanged there.
-	IntegerCompare bool
-
-	// ExactCompare is IntegerCompare's counterpart for the other JSON numeric
-	// type: it is set on a numeric rule whose instance is held as the
-	// json.Number Config.ExactNumbers types a "number" as, and the check is
-	// then made on the literal through jsonNumberCmp rather than by converting
-	// the value to float64 first.
-	//
-	// It is not an alternative reading of the same value, it is the only one
-	// available. json.Number is a string underneath, so float64(x) does not
-	// compile at all -- which is the useful half of this: a numeric position
-	// this flag failed to reach is a build failure rather than a check that
-	// quietly went on comparing through float64. And where it does reach, the
-	// comparison is exact for the same reason the value is kept: a bound of
-	// 0.1 and a bound of 0.1000000000000000055511151231257827 are one float64
-	// and two different numbers.
-	//
-	// Set from the Go type rather than from the schema, because that is what
-	// the several places building a numeric rule -- a property, an array
-	// element, a map value, an alias's own underlying -- all have in common.
-	// False under the default configuration, where no position is a
-	// json.Number and every emitted check is what it was.
-	ExactCompare bool
+	// It is set from the Go type rather than from the schema, because that is
+	// what the several places building a numeric rule -- a property, an array
+	// element, a map value, an alias's own underlying, a union branch -- all
+	// have in common; see markNumberRules. Every kind is exact, so a rule no
+	// place marks is not a wrong check, only a slower one: the zero value is
+	// NumOperandAny, which reads the number whatever it is held as.
+	NumOperand NumOperandKind
 
 	// ExactValue is the number a "const" rule names, as the schema wrote it.
-	//
-	// Value holds that same const as the JSON text the general check compares,
-	// which constJSONValue produced by folding the number through float64 --
-	// deliberately, because the other side of that comparison is a float64 too.
-	// A position holding the number exactly compares against neither, so it
-	// needs the literal, and the literal is not recoverable from the folded
-	// text: {"const":1.0000000000000000000000000000001} arrives at the check as
-	// "1". Empty for a const that is not a number.
+	// The numeric checks compare against it, by value, so 1.0 satisfies a const
+	// of 1 in any representation. Empty for a const that is not a number, which
+	// Value -- the const's canonical JSON text -- decides instead.
 	ExactValue string
-
-	// RawElements is set on a uniqueItems rule whose elements are held as
-	// json.RawMessage -- the untyped element under Config.RawUntyped -- so
-	// the emitted check compares each element's canonical JSON text rather
-	// than the bytes json.Marshal writes back unchanged. The keyword is
-	// defined over JSON values, under which 1 and 1.0 are one element; the
-	// `any` element gets that reduction from the decode, and the raw one has
-	// to be given it. See markRawElementRules. False under the default
-	// configuration, where no element is a RawMessage.
-	RawElements bool
 
 	// Identifier reads the identity of what a uniqueItems rule compares -- one
 	// element -- as a jsonIdentify[T] expression; KeepIDs says the elements are
@@ -1449,7 +1422,42 @@ type ValidationRule struct {
 	// identityplan.go.
 	Identifier string
 	KeepIDs    bool
+
+	// StrictInteger is set on a "ppType" rule under draft 3 and draft 4, which
+	// read "integer" off the token -- 1.0 is a number there and not an integer
+	// -- where every later draft reads the value. The rule judges the raw
+	// literal, so either reading is available to it; see jsonRawKind.
+	StrictInteger bool
 }
+
+// NumOperandKind is the Go type a numeric rule's instance is held as, and so
+// which form of the exact comparison its check is written in. Every form reads
+// the number as the decimal it stands for in JSON -- see jsonNumberOf in the
+// emitted core -- so the kind decides how fast a check is and never what it
+// answers. That is the property the four used to lack: a float64 quotient
+// compared against a tolerance, math.Mod, a float64 bound against an int64
+// element and a comparison of the literal all answered differently for one
+// document, and which one a keyword met depended on where it sat.
+type NumOperandKind int
+
+const (
+	// NumOperandAny is a value of any other Go type -- an `any`, a named type,
+	// a raw message -- read through jsonNumberOf. A value that turns out not
+	// to be a number satisfies the keyword, which is what the keyword says.
+	NumOperandAny NumOperandKind = iota
+	// NumOperandInt64 is an int64. A bound int64 holds is compared in int64;
+	// any other -- 1.5, 1e19 -- goes through the core, which is what keeps
+	// {"type":"integer","maximum":1e19} from being compared through a float64.
+	NumOperandInt64
+	// NumOperandFloat64 is a float64, judged as the number it marshals to. A
+	// bound whose literal is the shortest spelling of its own float64 is
+	// compared in float64, which gives that same answer (see
+	// NumberRoundTripsFloat64); any other goes through the core.
+	NumOperandFloat64
+	// NumOperandJSONNumber is the json.Number Config.ExactNumbers holds a
+	// "number" as, compared on its literal.
+	NumOperandJSONNumber
+)
 
 func (d *StructDef) TypeName() string { return d.Name }
 func (d *StructDef) typeDef()         {}
@@ -1929,6 +1937,26 @@ func (d *EnumDef) IsNumberBase() bool {
 	return ok && pt.Name == GoNumberTypeName
 }
 
+// enumMembersHeldByFloat64 reports whether a float64-based const enum can hold
+// and tell apart every member: each member's literal is the shortest spelling
+// of its own float64 (see NumberRoundTripsFloat64), and no two members share
+// one. A float64 switch over such members decides exactly what an exact
+// comparison would, because a float64 is judged as the number it marshals to.
+func enumMembersHeldByFloat64(members []any) bool {
+	seen := make(map[float64]bool, len(members))
+	for _, v := range members {
+		if !NumberRoundTripsFloat64(v) {
+			return false
+		}
+		f, ok := numFloat(v)
+		if !ok || seen[f] {
+			return false
+		}
+		seen[f] = true
+	}
+	return true
+}
+
 func (d *EnumDef) TypeName() string { return d.Name }
 func (d *EnumDef) typeDef()         {}
 
@@ -1962,6 +1990,12 @@ type TupleItemDef struct {
 	// Node is TypeName's schema compiled for the evaluator, which judges the
 	// element as it is held. See ElementNode.
 	Node *ElementNode
+
+	// StrictInteger is set under draft 3 and draft 4, which read "integer" off
+	// the token rather than the value. It decides only for an element held as
+	// its literal; a float64 element has no token left, and is read by value
+	// under every draft. See jsonIsInteger.
+	StrictInteger bool
 }
 
 // tupleHasHeld reports whether any position of a tuple is decoded in place.
@@ -2342,6 +2376,11 @@ type InferredAliasDef struct {
 	ValidateAs       string
 	NeedsNullCheck   bool
 
+	// StrictInteger reads "integer" off an element's token, as draft 3 and
+	// draft 4 do, where an element held as its literal still has one. See
+	// TupleItemDef.StrictInteger.
+	StrictInteger bool
+
 	// StrictReadWrite says the file was generated under Config.StrictReadWrite.
 	// See TupleItemDef.StrictReadWrite.
 	StrictReadWrite bool
@@ -2388,10 +2427,14 @@ type NestedItemsDef struct {
 
 // ContainsDef describes a contains constraint on an array.
 type ContainsDef struct {
-	IsFalse   bool            // contains: false — no element can ever match
-	IsTrue    bool            // contains: true — every element matches
-	ConstJSON string          // JSON-encoded const value for exact matching (e.g., "5")
-	EnumJSON  []string        // JSON-encoded enum values for multi-value matching
+	IsFalse bool // contains: false — no element can ever match
+	IsTrue  bool // contains: true — every element matches
+	// ConstJSON and EnumJSON are the canonical JSON texts of a const, or of an
+	// enum's members, which an element matches by identity, read off the
+	// element as it is held (see jsonMatchesConstAt), so 1.0 matches a const of
+	// 1 in an element of any Go type.
+	ConstJSON string
+	EnumJSON  []string
 	Checks    []ContainsCheck // per-element validation checks
 	// TypeName is the generated type standing for a matching element: an
 	// element matches when it decodes into it and its Validate passes. Checks
@@ -2406,25 +2449,6 @@ type ContainsDef struct {
 	// "no element matches the contains schema" for a document the schema
 	// permits.
 	StrictReadWrite bool
-	// ExactNumbers says the file was generated under Config.ExactNumbers, which
-	// decides how a numeric check below reads an element.
-	//
-	// The checks are made on the element re-marshalled and read back, which is
-	// what lets one loop judge an element of any Go type. Read back into a
-	// float64 that reading is where the exactness goes: an element held as its
-	// literal is rounded on the way into the comparison, so a contains counting
-	// the elements at or above a bound could not tell one from its neighbour --
-	// and an element past float64's range, which this flag admits, would not be
-	// read as a number at all.
-	ExactNumbers bool
-	// RawElements says the elements this counts over are json.RawMessage --
-	// the untyped element under Config.RawUntyped -- so a const or enum
-	// match is decided by _jsonCanonical on both sides rather than by the
-	// marshalled bytes. ConstJSON and EnumJSON then hold the literals with
-	// every digit rather than folded through float64, so the reduction has
-	// the digits to reduce. See markRawElementContains.
-	RawElements bool
-
 	// Node is TypeName's schema compiled for the evaluator, which judges each
 	// element as it is held. See ElementNode.
 	Node *ElementNode
@@ -2510,6 +2534,34 @@ func (d *InferredAliasDef) HasItemValidation() bool {
 // HasContainsValidation returns true if the InferredAliasDef has contains validation.
 func (d *InferredAliasDef) HasContainsValidation() bool {
 	return containsCanReject(d.Contains, d.MinContains, d.MaxContains)
+}
+
+// JudgesLiteral reports whether the wrapper keeps the document's bytes for
+// Validate to judge: a number, whose keywords are about the digits a float64
+// rounds away, and an array, whose elements are float64s once decoded into
+// []any. See the inferred_alias template.
+func (d *InferredAliasDef) JudgesLiteral() bool {
+	return d.JudgesNumber() || d.ItemsAreAny()
+}
+
+// ItemsAreAny reports an inferred array held as []any, which is the shape
+// every inferred array with element checks is given, and the one whose
+// elements Validate re-reads from the document's bytes.
+func (d *InferredAliasDef) ItemsAreAny() bool {
+	if d.InferredJSONType != "array" {
+		return false
+	}
+	at, ok := d.InferredGoType.(*ArrayType)
+	if !ok {
+		return false
+	}
+	prim, ok := at.ItemType.(*PrimitiveType)
+	return ok && prim.Name == "any"
+}
+
+// JudgesNumber is JudgesLiteral for the scalar arm: the value is a number.
+func (d *InferredAliasDef) JudgesNumber() bool {
+	return d.InferredJSONType == "number" || d.InferredJSONType == "integer"
 }
 
 func (d *InferredAliasDef) TypeName() string { return d.Name }
@@ -2621,6 +2673,9 @@ type NotSchemaDef struct {
 	// HasIdentity says a check comparing values can reach this wrapper, whose
 	// MarshalJSON then has a jsonIdentity beside it. See identityplan.go.
 	HasIdentity bool
+	// StrictInteger reads "integer" off the value's token, as draft 3 and
+	// draft 4 do -- and draft 3's disallow is what the branches come from.
+	StrictInteger bool
 }
 
 type NotSchemaBranch struct {
@@ -2650,6 +2705,11 @@ type NotPropertyBranch struct {
 type DynamicCheck struct {
 	Kind  string // "type", "const", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minLength", "maxLength", "pattern"
 	Value any
+	// Strict is set on a "type":"integer" check under draft 3 and draft 4,
+	// which read an integer off the token -- 1.0 is not one there. The value
+	// is decoded keeping every number as its literal, so the token is still
+	// there to read. See Generator.markDynamicStrictness.
+	Strict bool
 }
 
 // DynamicSchemaDef represents a root schema that constrains values through
@@ -2793,6 +2853,11 @@ type TypeOnlySchemaDef struct {
 	// HasIdentity says a check comparing values can reach this wrapper, whose
 	// MarshalJSON then has a jsonIdentity beside it. See identityplan.go.
 	HasIdentity bool
+
+	// StrictInteger reads "integer" off the value's token, as draft 3 and
+	// draft 4 do; the value is decoded keeping every number as its literal, so
+	// the token is there to read. Every later draft reads the value.
+	StrictInteger bool
 }
 
 type TypeSchemaBranch struct {

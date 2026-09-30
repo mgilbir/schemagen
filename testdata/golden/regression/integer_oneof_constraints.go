@@ -44,7 +44,7 @@ func (r Root) Validate() error {
 		oneOfCount := 0
 		{
 			variantValid := true
-			if float64(r) < 10 {
+			if r < 10 {
 				variantValid = false
 			}
 			if variantValid {
@@ -53,7 +53,7 @@ func (r Root) Validate() error {
 		}
 		{
 			variantValid := true
-			if float64(r) > 5 {
+			if r > 5 {
 				variantValid = false
 			}
 			if variantValid {

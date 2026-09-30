@@ -5,7 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 )
 
 type TypedV4 string
@@ -803,8 +802,7 @@ func (t TypedFormatPositions) Validate() error {
 			}
 		}
 		if _idx == 1 {
-			_cv, _cvOk := _elem.(float64)
-			if !_cvOk || _cv != math.Trunc(_cv) {
+			if !jsonIsInteger(_elem, false) {
 				return fmt.Errorf("tuple: items[%d]: expected integer, got %T", _idx, _elem)
 			}
 		}

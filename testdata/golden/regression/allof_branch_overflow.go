@@ -3,10 +3,8 @@
 package testpkg
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"math"
 	"unicode/utf8"
 )
 
@@ -395,35 +393,7 @@ func (a AllOfBranchOverflowAdjacent) Validate() error {
 				return fmt.Errorf("patternProperties: key %s: %w", _schemagenQuote(_key), _ppErr)
 			} else if _ppMatched {
 				{
-					_trim := bytes.TrimSpace(_member)
-					var jt string
-					if len(_trim) == 0 {
-						jt = "unknown"
-					} else {
-						switch _trim[0] {
-						case '"':
-							jt = "string"
-						case '{':
-							jt = "object"
-						case '[':
-							jt = "array"
-						case 't', 'f':
-							jt = "boolean"
-						case 'n':
-							jt = "null"
-						default:
-							jt = "number"
-							// Draft 6 onward reads the value: 1.0 is an integer, so
-							// the number is parsed rather than scanned. Every arm
-							// below that accepts "number" also accepts "integer", so
-							// widening this classification narrows nothing.
-							var _ppNum float64
-							if json.Unmarshal(_trim, &_ppNum) == nil &&
-								!math.IsInf(_ppNum, 0) && _ppNum == math.Trunc(_ppNum) {
-								jt = "integer"
-							}
-						}
-					}
+					jt := jsonRawKind(_member, false)
 					if jt != "integer" {
 						return fmt.Errorf("patternProperties %s: key %s value must be integer", "^x", _schemagenQuote(_key))
 					}
@@ -2311,7 +2281,7 @@ func (a AllOfBranchOverflowOwnAdditional) Validate() error {
 				continue
 			}
 			if _err := func() error {
-				if float64(_e0) < 5 {
+				if _e0 < 5 {
 					return jsonElemErrorf("[%q]: value %v is less than minimum 5", _k0, _e0)
 				}
 				return nil

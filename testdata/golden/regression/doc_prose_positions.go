@@ -3,7 +3,6 @@
 package testpkg
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"unicode/utf8"
@@ -661,34 +660,7 @@ func (p ProseViaAnyOf) Validate() error {
 			_branchMatches := true
 			if _branchMatches {
 				if _raw, _ok := p._jsonRawProps["x"]; _ok {
-					_jt := "unknown"
-					_b := bytes.TrimSpace(_raw)
-					if len(_b) > 0 {
-						switch _b[0] {
-						case '"':
-							_jt = "string"
-						case '{':
-							_jt = "object"
-						case '[':
-							_jt = "array"
-						case 't', 'f':
-							_jt = "boolean"
-						case 'n':
-							_jt = "null"
-						default:
-							_jt = "number"
-							_isInt := true
-							for _, _c := range _b {
-								if _c == '.' || _c == 'e' || _c == 'E' {
-									_isInt = false
-									break
-								}
-							}
-							if _isInt {
-								_jt = "integer"
-							}
-						}
-					}
+					_jt := jsonRawKind(_raw, false)
 					if _jt != "string" {
 						_branchMatches = false
 					}
@@ -702,34 +674,7 @@ func (p ProseViaAnyOf) Validate() error {
 			_branchMatches := true
 			if _branchMatches {
 				if _raw, _ok := p._jsonRawProps["y"]; _ok {
-					_jt := "unknown"
-					_b := bytes.TrimSpace(_raw)
-					if len(_b) > 0 {
-						switch _b[0] {
-						case '"':
-							_jt = "string"
-						case '{':
-							_jt = "object"
-						case '[':
-							_jt = "array"
-						case 't', 'f':
-							_jt = "boolean"
-						case 'n':
-							_jt = "null"
-						default:
-							_jt = "number"
-							_isInt := true
-							for _, _c := range _b {
-								if _c == '.' || _c == 'e' || _c == 'E' {
-									_isInt = false
-									break
-								}
-							}
-							if _isInt {
-								_jt = "integer"
-							}
-						}
-					}
+					_jt := jsonRawKind(_raw, false)
 					if _jt != "string" {
 						_branchMatches = false
 					}

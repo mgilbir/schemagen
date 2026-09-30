@@ -590,21 +590,25 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 	if s.DivisibleBy != nil && s.MultipleOf != nil && *s.DivisibleBy != *s.MultipleOf {
 		return "", false
 	}
+	// The numeric keywords are carried as the literals the schema wrote, which
+	// the evaluator compares through the exact core against the instance's own
+	// literal. A float64 here gave two numbers one reading wherever they differ
+	// past the 53rd bit.
 	if s.MultipleOf != nil {
-		add(fmt.Sprintf("MultipleOf: _floatPtr(%s),", numGoFloatLiteral(*s.MultipleOf)))
+		add(fmt.Sprintf("MultipleOf: _strPtr(%q),", JSONNumberLiteral(*s.MultipleOf)))
 	}
 	minimum, maximum, exclusiveMin, exclusiveMax := numericBounds(s)
 	if minimum != nil {
-		add(fmt.Sprintf("Minimum: _floatPtr(%s),", numGoFloatLiteral(*minimum)))
+		add(fmt.Sprintf("Minimum: _strPtr(%q),", JSONNumberLiteral(*minimum)))
 	}
 	if maximum != nil {
-		add(fmt.Sprintf("Maximum: _floatPtr(%s),", numGoFloatLiteral(*maximum)))
+		add(fmt.Sprintf("Maximum: _strPtr(%q),", JSONNumberLiteral(*maximum)))
 	}
 	if exclusiveMin != nil {
-		add(fmt.Sprintf("ExclusiveMinimum: _floatPtr(%s),", numGoFloatLiteral(*exclusiveMin)))
+		add(fmt.Sprintf("ExclusiveMinimum: _strPtr(%q),", JSONNumberLiteral(*exclusiveMin)))
 	}
 	if exclusiveMax != nil {
-		add(fmt.Sprintf("ExclusiveMaximum: _floatPtr(%s),", numGoFloatLiteral(*exclusiveMax)))
+		add(fmt.Sprintf("ExclusiveMaximum: _strPtr(%q),", JSONNumberLiteral(*exclusiveMax)))
 	}
 
 	if s.MinLength != nil {
@@ -655,6 +659,16 @@ func (b *nodeBuilder) literal(s *schema.Schema, indent int) (string, bool) {
 	}
 	if s.UniqueItems != nil && *s.UniqueItems {
 		add("UniqueItems: true,")
+	}
+	// Draft 3 and draft 4 read "integer" off the token. Written only where the
+	// node names the type, so every other node is the literal it always was.
+	if b.g != nil && len(s.Type) > 0 && b.g.requiresStrictIntegerToken(s) {
+		for _, t := range s.Type {
+			if t == "integer" {
+				add("StrictInteger: true,")
+				break
+			}
+		}
 	}
 
 	// prefixItems, or the pre-2020 tuple form of items.

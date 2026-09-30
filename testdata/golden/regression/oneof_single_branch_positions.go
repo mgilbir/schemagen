@@ -70,10 +70,12 @@ func (o OneOfSingleBranchPositionsConstBranch) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(o._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -254,10 +256,12 @@ func (o OneOfSingleBranchPositionsListItem) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(o._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -334,10 +338,12 @@ func (o OneOfSingleBranchPositionsMapValue) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(o._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -566,10 +572,12 @@ func (o OneOfSingleBranchPositionsTwoBranch) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(o._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -810,7 +818,7 @@ func (o *OneOfSingleBranchPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) err
 					// The branch's own constraints decide the match too: decoding
 					// into the variant's Go type is not on its own a match.
 					oneofOK := true
-					if float64(candidate) < 5 {
+					if jsonNumberBelow(json.RawMessage(_d.raw(_ov)), "5") {
 						oneofOK = false
 					}
 					if oneofOK {

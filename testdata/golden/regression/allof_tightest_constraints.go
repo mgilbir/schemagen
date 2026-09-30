@@ -42,8 +42,6 @@ func (a AllOfTightestConstraints) Validate() error {
 	if a < 10 {
 		return jsonValueErrorf("%v is less than minimum 10", a)
 	}
-	// Exact: both operands are int64, so divisibility is a remainder rather
-	// than a float64 quotient compared against a tolerance.
 	if a%6 != 0 {
 		return jsonValueErrorf("%v is not a multiple of 6", a)
 	}

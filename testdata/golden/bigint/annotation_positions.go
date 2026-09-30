@@ -5,9 +5,7 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"math/big"
-	"strings"
 	"unicode/utf8"
 )
 
@@ -83,41 +81,28 @@ func (a *AnnBigInt) UnmarshalJSON(data []byte) error {
 	}
 	// Try float with zero fractional part only for float-notation numbers (e.g., 1.0, 1e2).
 	_s := _n.String()
-	if strings.ContainsAny(_s, ".eE") {
-		// Read exactly rather than through float64: see jsonIntegerFromLiteral.
-		// The round-trip check this replaces asked float64 whether it had lost
-		// anything, which is the one question it cannot answer -- 2^53+1 comes
-		// back as 2^53 and round-trips perfectly.
-		if _i64, _iOK := jsonIntegerFromLiteral(_s); _iOK {
-			a._int64 = _i64
-			a._isBigInt = false
-			a._bigInt = nil
-			return nil
-		}
-	}
-	// Try big.Int for values that overflow int64.
-	_bi := new(big.Int)
-	// Handle float-format bignums (e.g., 1e100).
-	if strings.ContainsAny(_s, ".eE") {
-		_bf := new(big.Float)
-		if _, _ok := _bf.SetString(_s); _ok {
-			if _bf.IsInt() {
-				_bf.Int(_bi)
-				a._bigInt = _bi
-				a._isBigInt = true
-				a._int64 = 0
-				return nil
-			}
-		}
-		return fmt.Errorf("value %s is not an integer", _s)
-	}
-	if _, _ok := _bi.SetString(_s, 10); _ok {
-		a._bigInt = _bi
-		a._isBigInt = true
-		a._int64 = 0
+	// Everything else is read exactly, from the literal's digits: an int64
+	// where one holds it (1.0, 1e2), a big.Int where none does. The big.Float of
+	// 64 bits this replaces was not arbitrary precision -- it read
+	// 12345678901234567891.5 as the integer 12345678901234567892, and 1e100 as
+	// a different integer from 10^100. See jsonBigIntFromLiteral.
+	if _i64, _iOK := jsonIntegerFromLiteral(_s); _iOK {
+		a._int64 = _i64
+		a._isBigInt = false
+		a._bigInt = nil
 		return nil
 	}
-	return fmt.Errorf("value %s is not a valid integer", _s)
+	_bi, _isInt, _tooLarge := jsonBigIntFromLiteral(_s)
+	if _tooLarge {
+		return fmt.Errorf("value %s is an integer with more digits than this type builds from an exponent", _schemagenClipText(_s))
+	}
+	if !_isInt {
+		return fmt.Errorf("value %s is not an integer", _schemagenClipText(_s))
+	}
+	a._bigInt = _bi
+	a._isBigInt = true
+	a._int64 = 0
+	return nil
 }
 func (a AnnBigInt) MarshalJSON() ([]byte, error) {
 	if a._isBigInt && a._bigInt != nil {
@@ -141,13 +126,13 @@ func (a AnnBigInt) String() string { return a.BigInt().String() }
 
 // Validate checks AnnBigInt against its JSON Schema constraints.
 func (a AnnBigInt) Validate() error {
-	{
-		_val := new(big.Float).SetPrec(256).SetInt(a.BigInt())
-		_limit := new(big.Float).SetPrec(256)
-		_limit.SetString("0")
-		if _val.Cmp(_limit) < 0 {
-			return jsonValueErrorf("%s is less than minimum 0", a.BigInt().String())
-		}
+	// The value as the decimal it is, which the numeric keywords are decided on
+	// through the exact core. The 256-bit big.Float this replaces admitted
+	// 10^99+1 under a maximum of 10^99 and called 10^99 a multiple of 7.
+	_num := json.Number(a.String())
+	_ = _num
+	if jsonNumberBelow(_num, "0") {
+		return jsonValueErrorf("%s is less than minimum 0", _num)
 	}
 	return nil
 }
@@ -213,7 +198,7 @@ var AnnDynamicSchema = _schemaNode{
 			Type:      []string{"string"},
 		},
 		_schemaNode{
-			Minimum: _floatPtr(5),
+			Minimum: _strPtr("5"),
 			Type:    []string{"integer"},
 		},
 	},
@@ -228,10 +213,12 @@ func (a AnnDynamic) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(a._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -319,6 +306,7 @@ func (a *AnnInferred) UnmarshalJSON(data []byte) error {
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &a._value); _err == nil {
 		a._isRaw = false
+		a._raw = append(a._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -363,10 +351,25 @@ func (a AnnInferred) String() string {
 // Validate checks AnnInferred against its JSON Schema constraints.
 func (a AnnInferred) Validate() error {
 	if a._isRaw {
-		return nil // Constraints don't apply to non-matching types.
+		// Constraints don't apply to non-matching types -- but a number is not
+		// one. 1e400 is a number no float64 holds, so the typed decode refused
+		// it and it was kept here as bytes; every numeric keyword still applies
+		// to it, and is read from those bytes below. It used to be passed over
+		// as though it were a string.
+		if _, _isNum := jsonRawNumber(a._raw); !_isNum {
+			return nil
+		}
 	}
-	if float64(a._value) < 3 {
-		return jsonValueErrorf("%v is less than minimum 3", a._value)
+	// The number as the document wrote it, where the value was decoded from
+	// one; see UnmarshalJSON. A value assembled in Go is judged as the number
+	// it marshals to.
+	_num, _numText := any(a._value), fmt.Sprint(a._value)
+	if len(a._raw) > 0 {
+		_num, _numText = json.RawMessage(a._raw), string(a._raw)
+	}
+	_, _ = _num, _numText
+	if jsonNumberBelow(_num, "3") {
+		return jsonValueErrorf("%s is less than minimum 3", _numText)
 	}
 	return nil
 }
@@ -431,7 +434,7 @@ func (a AnnNot) Validate() error {
 	}
 	// Decode raw JSON to determine the value's type.
 	var _v any
-	if _err := json.Unmarshal(a._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(a._raw, &_v); _err != nil {
 		return fmt.Errorf("not: cannot decode value: %w", _err)
 	}
 	if _, _sOk := _v.(string); _sOk {
@@ -581,10 +584,12 @@ func (a AnnRuntime) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(a._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -804,7 +809,7 @@ func (a AnnTypeOnly) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(a._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(a._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -815,8 +820,8 @@ func (a AnnTypeOnly) Validate() error {
 		return fmt.Errorf("type: null is not allowed")
 	}
 	switch _tv := _v.(type) {
-	case float64:
-		if _tv != math.Trunc(_tv) || math.IsInf(_tv, 0) {
+	case json.Number:
+		if !jsonIsInteger(_tv, false) {
 			return fmt.Errorf("type: expected integer, got number")
 		}
 		return nil
@@ -892,41 +897,28 @@ func (d *DepBigInt) UnmarshalJSON(data []byte) error {
 	}
 	// Try float with zero fractional part only for float-notation numbers (e.g., 1.0, 1e2).
 	_s := _n.String()
-	if strings.ContainsAny(_s, ".eE") {
-		// Read exactly rather than through float64: see jsonIntegerFromLiteral.
-		// The round-trip check this replaces asked float64 whether it had lost
-		// anything, which is the one question it cannot answer -- 2^53+1 comes
-		// back as 2^53 and round-trips perfectly.
-		if _i64, _iOK := jsonIntegerFromLiteral(_s); _iOK {
-			d._int64 = _i64
-			d._isBigInt = false
-			d._bigInt = nil
-			return nil
-		}
-	}
-	// Try big.Int for values that overflow int64.
-	_bi := new(big.Int)
-	// Handle float-format bignums (e.g., 1e100).
-	if strings.ContainsAny(_s, ".eE") {
-		_bf := new(big.Float)
-		if _, _ok := _bf.SetString(_s); _ok {
-			if _bf.IsInt() {
-				_bf.Int(_bi)
-				d._bigInt = _bi
-				d._isBigInt = true
-				d._int64 = 0
-				return nil
-			}
-		}
-		return fmt.Errorf("value %s is not an integer", _s)
-	}
-	if _, _ok := _bi.SetString(_s, 10); _ok {
-		d._bigInt = _bi
-		d._isBigInt = true
-		d._int64 = 0
+	// Everything else is read exactly, from the literal's digits: an int64
+	// where one holds it (1.0, 1e2), a big.Int where none does. The big.Float of
+	// 64 bits this replaces was not arbitrary precision -- it read
+	// 12345678901234567891.5 as the integer 12345678901234567892, and 1e100 as
+	// a different integer from 10^100. See jsonBigIntFromLiteral.
+	if _i64, _iOK := jsonIntegerFromLiteral(_s); _iOK {
+		d._int64 = _i64
+		d._isBigInt = false
+		d._bigInt = nil
 		return nil
 	}
-	return fmt.Errorf("value %s is not a valid integer", _s)
+	_bi, _isInt, _tooLarge := jsonBigIntFromLiteral(_s)
+	if _tooLarge {
+		return fmt.Errorf("value %s is an integer with more digits than this type builds from an exponent", _schemagenClipText(_s))
+	}
+	if !_isInt {
+		return fmt.Errorf("value %s is not an integer", _schemagenClipText(_s))
+	}
+	d._bigInt = _bi
+	d._isBigInt = true
+	d._int64 = 0
+	return nil
 }
 func (d DepBigInt) MarshalJSON() ([]byte, error) {
 	if d._isBigInt && d._bigInt != nil {
@@ -950,13 +942,13 @@ func (d DepBigInt) String() string { return d.BigInt().String() }
 
 // Validate checks DepBigInt against its JSON Schema constraints.
 func (d DepBigInt) Validate() error {
-	{
-		_val := new(big.Float).SetPrec(256).SetInt(d.BigInt())
-		_limit := new(big.Float).SetPrec(256)
-		_limit.SetString("0")
-		if _val.Cmp(_limit) < 0 {
-			return jsonValueErrorf("%s is less than minimum 0", d.BigInt().String())
-		}
+	// The value as the decimal it is, which the numeric keywords are decided on
+	// through the exact core. The 256-bit big.Float this replaces admitted
+	// 10^99+1 under a maximum of 10^99 and called 10^99 a multiple of 7.
+	_num := json.Number(d.String())
+	_ = _num
+	if jsonNumberBelow(_num, "0") {
+		return jsonValueErrorf("%s is less than minimum 0", _num)
 	}
 	return nil
 }
@@ -1014,7 +1006,7 @@ func (d DepDynamic) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(d._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(d._raw, &_v); _err != nil {
 		return fmt.Errorf("cannot decode value: %w", _err)
 	}
 	{
@@ -1022,7 +1014,7 @@ func (d DepDynamic) Validate() error {
 		if _dynIsString(_v) && _dynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) >= 2 }) {
 			_matches++
 		}
-		if _dynIsInteger(_v) && _dynNumOK(_v, func(_n float64) bool { return _n >= 5.0 }) {
+		if jsonIsInteger(_v, false) && !jsonNumberBelow(_v, "5") {
 			_matches++
 		}
 		if _matches != 1 {
@@ -1090,6 +1082,7 @@ func (d *DepInferred) UnmarshalJSON(data []byte) error {
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &d._value); _err == nil {
 		d._isRaw = false
+		d._raw = append(d._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -1134,10 +1127,25 @@ func (d DepInferred) String() string {
 // Validate checks DepInferred against its JSON Schema constraints.
 func (d DepInferred) Validate() error {
 	if d._isRaw {
-		return nil // Constraints don't apply to non-matching types.
+		// Constraints don't apply to non-matching types -- but a number is not
+		// one. 1e400 is a number no float64 holds, so the typed decode refused
+		// it and it was kept here as bytes; every numeric keyword still applies
+		// to it, and is read from those bytes below. It used to be passed over
+		// as though it were a string.
+		if _, _isNum := jsonRawNumber(d._raw); !_isNum {
+			return nil
+		}
 	}
-	if float64(d._value) < 3 {
-		return jsonValueErrorf("%v is less than minimum 3", d._value)
+	// The number as the document wrote it, where the value was decoded from
+	// one; see UnmarshalJSON. A value assembled in Go is judged as the number
+	// it marshals to.
+	_num, _numText := any(d._value), fmt.Sprint(d._value)
+	if len(d._raw) > 0 {
+		_num, _numText = json.RawMessage(d._raw), string(d._raw)
+	}
+	_, _ = _num, _numText
+	if jsonNumberBelow(_num, "3") {
+		return jsonValueErrorf("%s is less than minimum 3", _numText)
 	}
 	return nil
 }
@@ -1194,7 +1202,7 @@ func (d DepNot) Validate() error {
 	}
 	// Decode raw JSON to determine the value's type.
 	var _v any
-	if _err := json.Unmarshal(d._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(d._raw, &_v); _err != nil {
 		return fmt.Errorf("not: cannot decode value: %w", _err)
 	}
 	if _, _sOk := _v.(string); _sOk {
@@ -1328,10 +1336,12 @@ func (d DepRuntime) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(d._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -1534,7 +1544,7 @@ func (d DepTypeOnly) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(d._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(d._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -1545,8 +1555,8 @@ func (d DepTypeOnly) Validate() error {
 		return fmt.Errorf("type: null is not allowed")
 	}
 	switch _tv := _v.(type) {
-	case float64:
-		if _tv != math.Trunc(_tv) || math.IsInf(_tv, 0) {
+	case json.Number:
+		if !jsonIsInteger(_tv, false) {
 			return fmt.Errorf("type: expected integer, got number")
 		}
 		return nil
@@ -1616,41 +1626,28 @@ func (p *PlainBigInt) UnmarshalJSON(data []byte) error {
 	}
 	// Try float with zero fractional part only for float-notation numbers (e.g., 1.0, 1e2).
 	_s := _n.String()
-	if strings.ContainsAny(_s, ".eE") {
-		// Read exactly rather than through float64: see jsonIntegerFromLiteral.
-		// The round-trip check this replaces asked float64 whether it had lost
-		// anything, which is the one question it cannot answer -- 2^53+1 comes
-		// back as 2^53 and round-trips perfectly.
-		if _i64, _iOK := jsonIntegerFromLiteral(_s); _iOK {
-			p._int64 = _i64
-			p._isBigInt = false
-			p._bigInt = nil
-			return nil
-		}
-	}
-	// Try big.Int for values that overflow int64.
-	_bi := new(big.Int)
-	// Handle float-format bignums (e.g., 1e100).
-	if strings.ContainsAny(_s, ".eE") {
-		_bf := new(big.Float)
-		if _, _ok := _bf.SetString(_s); _ok {
-			if _bf.IsInt() {
-				_bf.Int(_bi)
-				p._bigInt = _bi
-				p._isBigInt = true
-				p._int64 = 0
-				return nil
-			}
-		}
-		return fmt.Errorf("value %s is not an integer", _s)
-	}
-	if _, _ok := _bi.SetString(_s, 10); _ok {
-		p._bigInt = _bi
-		p._isBigInt = true
-		p._int64 = 0
+	// Everything else is read exactly, from the literal's digits: an int64
+	// where one holds it (1.0, 1e2), a big.Int where none does. The big.Float of
+	// 64 bits this replaces was not arbitrary precision -- it read
+	// 12345678901234567891.5 as the integer 12345678901234567892, and 1e100 as
+	// a different integer from 10^100. See jsonBigIntFromLiteral.
+	if _i64, _iOK := jsonIntegerFromLiteral(_s); _iOK {
+		p._int64 = _i64
+		p._isBigInt = false
+		p._bigInt = nil
 		return nil
 	}
-	return fmt.Errorf("value %s is not a valid integer", _s)
+	_bi, _isInt, _tooLarge := jsonBigIntFromLiteral(_s)
+	if _tooLarge {
+		return fmt.Errorf("value %s is an integer with more digits than this type builds from an exponent", _schemagenClipText(_s))
+	}
+	if !_isInt {
+		return fmt.Errorf("value %s is not an integer", _schemagenClipText(_s))
+	}
+	p._bigInt = _bi
+	p._isBigInt = true
+	p._int64 = 0
+	return nil
 }
 func (p PlainBigInt) MarshalJSON() ([]byte, error) {
 	if p._isBigInt && p._bigInt != nil {
@@ -1674,13 +1671,13 @@ func (p PlainBigInt) String() string { return p.BigInt().String() }
 
 // Validate checks PlainBigInt against its JSON Schema constraints.
 func (p PlainBigInt) Validate() error {
-	{
-		_val := new(big.Float).SetPrec(256).SetInt(p.BigInt())
-		_limit := new(big.Float).SetPrec(256)
-		_limit.SetString("0")
-		if _val.Cmp(_limit) < 0 {
-			return jsonValueErrorf("%s is less than minimum 0", p.BigInt().String())
-		}
+	// The value as the decimal it is, which the numeric keywords are decided on
+	// through the exact core. The 256-bit big.Float this replaces admitted
+	// 10^99+1 under a maximum of 10^99 and called 10^99 a multiple of 7.
+	_num := json.Number(p.String())
+	_ = _num
+	if jsonNumberBelow(_num, "0") {
+		return jsonValueErrorf("%s is less than minimum 0", _num)
 	}
 	return nil
 }
@@ -1735,7 +1732,7 @@ func (p PlainDynamic) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(p._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(p._raw, &_v); _err != nil {
 		return fmt.Errorf("cannot decode value: %w", _err)
 	}
 	{
@@ -1743,7 +1740,7 @@ func (p PlainDynamic) Validate() error {
 		if _dynIsString(_v) && _dynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) >= 2 }) {
 			_matches++
 		}
-		if _dynIsInteger(_v) && _dynNumOK(_v, func(_n float64) bool { return _n >= 5.0 }) {
+		if jsonIsInteger(_v, false) && !jsonNumberBelow(_v, "5") {
 			_matches++
 		}
 		if _matches != 1 {
@@ -1805,6 +1802,7 @@ func (p *PlainInferred) UnmarshalJSON(data []byte) error {
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &p._value); _err == nil {
 		p._isRaw = false
+		p._raw = append(p._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -1849,10 +1847,25 @@ func (p PlainInferred) String() string {
 // Validate checks PlainInferred against its JSON Schema constraints.
 func (p PlainInferred) Validate() error {
 	if p._isRaw {
-		return nil // Constraints don't apply to non-matching types.
+		// Constraints don't apply to non-matching types -- but a number is not
+		// one. 1e400 is a number no float64 holds, so the typed decode refused
+		// it and it was kept here as bytes; every numeric keyword still applies
+		// to it, and is read from those bytes below. It used to be passed over
+		// as though it were a string.
+		if _, _isNum := jsonRawNumber(p._raw); !_isNum {
+			return nil
+		}
 	}
-	if float64(p._value) < 3 {
-		return jsonValueErrorf("%v is less than minimum 3", p._value)
+	// The number as the document wrote it, where the value was decoded from
+	// one; see UnmarshalJSON. A value assembled in Go is judged as the number
+	// it marshals to.
+	_num, _numText := any(p._value), fmt.Sprint(p._value)
+	if len(p._raw) > 0 {
+		_num, _numText = json.RawMessage(p._raw), string(p._raw)
+	}
+	_, _ = _num, _numText
+	if jsonNumberBelow(_num, "3") {
+		return jsonValueErrorf("%s is less than minimum 3", _numText)
 	}
 	return nil
 }
@@ -1906,7 +1919,7 @@ func (p PlainNot) Validate() error {
 	}
 	// Decode raw JSON to determine the value's type.
 	var _v any
-	if _err := json.Unmarshal(p._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(p._raw, &_v); _err != nil {
 		return fmt.Errorf("not: cannot decode value: %w", _err)
 	}
 	if _, _sOk := _v.(string); _sOk {
@@ -1980,10 +1993,12 @@ func (p PlainRuntime) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(p._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -2180,7 +2195,7 @@ func (p PlainTypeOnly) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(p._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(p._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -2191,8 +2206,8 @@ func (p PlainTypeOnly) Validate() error {
 		return fmt.Errorf("type: null is not allowed")
 	}
 	switch _tv := _v.(type) {
-	case float64:
-		if _tv != math.Trunc(_tv) || math.IsInf(_tv, 0) {
+	case json.Number:
+		if !jsonIsInteger(_tv, false) {
 			return fmt.Errorf("type: expected integer, got number")
 		}
 		return nil

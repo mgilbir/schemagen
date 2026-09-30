@@ -83,41 +83,28 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 		return fmt.Errorf("value %s is not a valid integer", _s)
 	}
 	{{- end}}
-	if strings.ContainsAny(_s, ".eE") {
-		// Read exactly rather than through float64: see jsonIntegerFromLiteral.
-		// The round-trip check this replaces asked float64 whether it had lost
-		// anything, which is the one question it cannot answer -- 2^53+1 comes
-		// back as 2^53 and round-trips perfectly.
-		if _i64, _iOK := jsonIntegerFromLiteral(_s); _iOK {
-			{{$recv}}._int64 = _i64
-			{{$recv}}._isBigInt = false
-			{{$recv}}._bigInt = nil
-			return nil
-		}
-	}
-	// Try big.Int for values that overflow int64.
-	_bi := new(big.Int)
-	// Handle float-format bignums (e.g., 1e100).
-	if strings.ContainsAny(_s, ".eE") {
-		_bf := new(big.Float)
-		if _, _ok := _bf.SetString(_s); _ok {
-			if _bf.IsInt() {
-				_bf.Int(_bi)
-				{{$recv}}._bigInt = _bi
-				{{$recv}}._isBigInt = true
-				{{$recv}}._int64 = 0
-				return nil
-			}
-		}
-		return fmt.Errorf("value %s is not an integer", _s)
-	}
-	if _, _ok := _bi.SetString(_s, 10); _ok {
-		{{$recv}}._bigInt = _bi
-		{{$recv}}._isBigInt = true
-		{{$recv}}._int64 = 0
+	// Everything else is read exactly, from the literal's digits: an int64
+	// where one holds it (1.0, 1e2), a big.Int where none does. The big.Float of
+	// 64 bits this replaces was not arbitrary precision -- it read
+	// 12345678901234567891.5 as the integer 12345678901234567892, and 1e100 as
+	// a different integer from 10^100. See jsonBigIntFromLiteral.
+	if _i64, _iOK := jsonIntegerFromLiteral(_s); _iOK {
+		{{$recv}}._int64 = _i64
+		{{$recv}}._isBigInt = false
+		{{$recv}}._bigInt = nil
 		return nil
 	}
-	return fmt.Errorf("value %s is not a valid integer", _s)
+	_bi, _isInt, _tooLarge := jsonBigIntFromLiteral(_s)
+	if _tooLarge {
+		return fmt.Errorf("value %s is an integer with more digits than this type builds from an exponent", _schemagenClipText(_s))
+	}
+	if !_isInt {
+		return fmt.Errorf("value %s is not an integer", _schemagenClipText(_s))
+	}
+	{{$recv}}._bigInt = _bi
+	{{$recv}}._isBigInt = true
+	{{$recv}}._int64 = 0
+	return nil
 }
 {{- end}}
 
@@ -191,56 +178,37 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		return nil
 	}
 	{{- end}}
+	{{- if or .Validations .AnyOfVariants .OneOfVariants}}
+	// The value as the decimal it is, which the numeric keywords are decided on
+	// through the exact core. The 256-bit big.Float this replaces admitted
+	// 10^99+1 under a maximum of 10^99 and called 10^99 a multiple of 7.
+	_num := json.Number({{$recv}}.String())
+	_ = _num
+	{{- end}}
 	{{- range .Validations}}
 	{{- if eq .RuleType "minimum"}}
-	{
-		_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())
-		_limit := new(big.Float).SetPrec(256)
-		_limit.SetString("{{goStringLiteral .Value}}")
-		if _val.Cmp(_limit) < 0 {
-			return jsonValueErrorf("%s is less than minimum {{fmtText .Value}}", {{$recv}}.BigInt().String())
-		}
+	if {{numViolated . "_num"}} {
+		return jsonValueErrorf("%s is less than minimum {{fmtText .Value}}", _num)
 	}
 	{{- end}}
 	{{- if eq .RuleType "maximum"}}
-	{
-		_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())
-		_limit := new(big.Float).SetPrec(256)
-		_limit.SetString("{{goStringLiteral .Value}}")
-		if _val.Cmp(_limit) > 0 {
-			return jsonValueErrorf("%s exceeds maximum {{fmtText .Value}}", {{$recv}}.BigInt().String())
-		}
+	if {{numViolated . "_num"}} {
+		return jsonValueErrorf("%s exceeds maximum {{fmtText .Value}}", _num)
 	}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMinimum"}}
-	{
-		_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())
-		_limit := new(big.Float).SetPrec(256)
-		_limit.SetString("{{goStringLiteral .Value}}")
-		if _val.Cmp(_limit) <= 0 {
-			return jsonValueErrorf("%s must be greater than {{fmtText .Value}}", {{$recv}}.BigInt().String())
-		}
+	if {{numViolated . "_num"}} {
+		return jsonValueErrorf("%s must be greater than {{fmtText .Value}}", _num)
 	}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMaximum"}}
-	{
-		_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())
-		_limit := new(big.Float).SetPrec(256)
-		_limit.SetString("{{goStringLiteral .Value}}")
-		if _val.Cmp(_limit) >= 0 {
-			return jsonValueErrorf("%s must be less than {{fmtText .Value}}", {{$recv}}.BigInt().String())
-		}
+	if {{numViolated . "_num"}} {
+		return jsonValueErrorf("%s must be less than {{fmtText .Value}}", _num)
 	}
 	{{- end}}
 	{{- if eq .RuleType "multipleOf"}}
-	{
-		_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())
-		_divisor := new(big.Float).SetPrec(256)
-		_divisor.SetString("{{goStringLiteral .Value}}")
-		_quotient := new(big.Float).SetPrec(256).Quo(_val, _divisor)
-		if !_quotient.IsInt() {
-			return jsonValueErrorf("%s is not a multiple of {{fmtText .Value}}", {{$recv}}.BigInt().String())
-		}
+	if {{numViolated . "_num"}} {
+		return jsonValueErrorf("%s is not a multiple of {{fmtText .Value}}", _num)
 	}
 	{{- end}}
 	{{- end}}
@@ -304,46 +272,8 @@ value at all.
 // branch matches nothing.
 variantValid = false
 {{- end}}
-{{- if eq .RuleType "minimum"}}
-{
-	_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())
-	_limit := new(big.Float).SetPrec(256)
-	_limit.SetString("{{goStringLiteral .Value}}")
-	if _val.Cmp(_limit) < 0 { variantValid = false }
-}
-{{- end}}
-{{- if eq .RuleType "maximum"}}
-{
-	_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())
-	_limit := new(big.Float).SetPrec(256)
-	_limit.SetString("{{goStringLiteral .Value}}")
-	if _val.Cmp(_limit) > 0 { variantValid = false }
-}
-{{- end}}
-{{- if eq .RuleType "exclusiveMinimum"}}
-{
-	_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())
-	_limit := new(big.Float).SetPrec(256)
-	_limit.SetString("{{goStringLiteral .Value}}")
-	if _val.Cmp(_limit) <= 0 { variantValid = false }
-}
-{{- end}}
-{{- if eq .RuleType "exclusiveMaximum"}}
-{
-	_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())
-	_limit := new(big.Float).SetPrec(256)
-	_limit.SetString("{{goStringLiteral .Value}}")
-	if _val.Cmp(_limit) >= 0 { variantValid = false }
-}
-{{- end}}
-{{- if eq .RuleType "multipleOf"}}
-{
-	_val := new(big.Float).SetPrec(256).SetInt({{$recv}}.BigInt())
-	_divisor := new(big.Float).SetPrec(256)
-	_divisor.SetString("{{goStringLiteral .Value}}")
-	_quotient := new(big.Float).SetPrec(256).Quo(_val, _divisor)
-	if !_quotient.IsInt() { variantValid = false }
-}
+{{- if or (eq .RuleType "minimum") (eq .RuleType "maximum") (eq .RuleType "exclusiveMinimum") (eq .RuleType "exclusiveMaximum") (eq .RuleType "multipleOf")}}
+if {{numViolated . "_num"}} { variantValid = false }
 {{- end}}
 {{- end}}
 {{- end}}

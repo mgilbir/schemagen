@@ -349,43 +349,13 @@ func ({{$recv}} *{{$struct.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error
 							oneofOK = false
 						}
 						{{- end}}
-						{{- if eq .RuleType "minimum"}}
-						{{- if .ExactCompare}}
-						if {{numOperand . "candidate"}} < {{numBound .}} { oneofOK = false }
-						{{- else}}
-						if float64(candidate) < {{countExpr .Value}} { oneofOK = false }
-						{{- end}}
-						{{- end}}
-						{{- if eq .RuleType "maximum"}}
-						{{- if .ExactCompare}}
-						if {{numOperand . "candidate"}} > {{numBound .}} { oneofOK = false }
-						{{- else}}
-						if float64(candidate) > {{countExpr .Value}} { oneofOK = false }
-						{{- end}}
-						{{- end}}
-						{{- if eq .RuleType "exclusiveMinimum"}}
-						{{- if .ExactCompare}}
-						if {{numOperand . "candidate"}} <= {{numBound .}} { oneofOK = false }
-						{{- else}}
-						if float64(candidate) <= {{countExpr .Value}} { oneofOK = false }
-						{{- end}}
-						{{- end}}
-						{{- if eq .RuleType "exclusiveMaximum"}}
-						{{- if .ExactCompare}}
-						if {{numOperand . "candidate"}} >= {{numBound .}} { oneofOK = false }
-						{{- else}}
-						if float64(candidate) >= {{countExpr .Value}} { oneofOK = false }
-						{{- end}}
-						{{- end}}
-						{{- if eq .RuleType "multipleOf"}}
-						{{- if .ExactCompare}}
-						if !{{exactMultipleOf . "candidate"}} { oneofOK = false }
-						{{- else}}
-						{
-							_q := float64(candidate) / {{numLit .Value}}
-							if math.Abs(_q - math.Round(_q)) > 1e-9 { oneofOK = false }
-						}
-						{{- end}}
+						{{- /* The numeric keywords are judged on the document's own
+						       literal, which is what selects the branch: the
+						       candidate may be a float64 that has already rounded
+						       it. The rules carry no Go type for this reason; see
+						       oneOfVariantChecks. */}}
+						{{- if or (eq .RuleType "minimum") (eq .RuleType "maximum") (eq .RuleType "exclusiveMinimum") (eq .RuleType "exclusiveMaximum") (eq .RuleType "multipleOf")}}
+						if {{numViolated . "json.RawMessage(_d.raw(_ov))"}} { oneofOK = false }
 						{{- end}}
 						{{- if eq .RuleType "minItems"}}
 						if len(candidate) < {{countExpr .Value}} { oneofOK = false }

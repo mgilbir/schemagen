@@ -48,17 +48,17 @@ func (c Coordinate) Validate() error {
 	for _idx, _elem := range c {
 		_ = _elem
 		if _idx == 0 {
-			if _, _cvOk := _elem.(float64); !_cvOk {
+			if !jsonIsNumber(_elem) {
 				return fmt.Errorf("items[%d]: expected number, got %T", _idx, _elem)
 			}
 		}
 		if _idx == 1 {
-			if _, _cvOk := _elem.(float64); !_cvOk {
+			if !jsonIsNumber(_elem) {
 				return fmt.Errorf("items[%d]: expected number, got %T", _idx, _elem)
 			}
 		}
 		if _idx == 2 {
-			if _, _cvOk := _elem.(float64); !_cvOk {
+			if !jsonIsNumber(_elem) {
 				return fmt.Errorf("items[%d]: expected number, got %T", _idx, _elem)
 			}
 		}

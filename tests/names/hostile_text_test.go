@@ -668,10 +668,11 @@ func requireCleanRefusal(t *testing.T, cfg, pos string, h hostileText, err error
 	}
 }
 
-// allowedImports is every package generated code may import.
+// allowedImports is every package generated code may import. math/bits is
+// the exact-number core's: multipleOf is decided by 128-bit remainders.
 var allowedImports = map[string]bool{
 	"bytes": true, "encoding/base64": true, "encoding/json": true, "errors": true, "fmt": true,
-	"math": true, "math/big": true, "net/mail": true, "net/netip": true, "net/url": true,
+	"math": true, "math/big": true, "math/bits": true, "net/mail": true, "net/netip": true, "net/url": true,
 	"reflect": true, "regexp": true, "sort": true, "strconv": true, "strings": true, "time": true,
 	"unicode": true, "unicode/utf8": true,
 	// The identity block: seeded hashes, and the lock and pointer a document

@@ -48,8 +48,16 @@ import (
 {{- if .Helpers.Number}}
 {{template "number_helpers"}}
 {{- end}}
+{{- /* The exact-number core is one block, written in sections; what of it a
+       package keeps is the declaration pruning's to settle. */}}
 {{- if .Helpers.NumberCompare}}
+{{template "number_reader_helpers"}}
+{{template "number_value_helpers" .Helpers}}
 {{template "number_compare_helpers"}}
+{{template "number_integer_helpers" .Helpers}}
+{{template "number_multipleof_helpers"}}
+{{template "number_bigint_helpers"}}
+{{template "number_decode_helpers"}}
 {{- end}}
 {{- if .Helpers.DateTime}}
 {{template "datetime_helpers"}}

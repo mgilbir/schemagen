@@ -3,7 +3,6 @@
 package testpkg
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"unicode/utf8"
@@ -472,7 +471,7 @@ func (f ForbiddingSubschemaSpellingsAnyOfOneFalse) Validate() error {
 		return fmt.Errorf("type: null is not allowed")
 	}
 	switch _tv := _v.(type) {
-	case float64:
+	case json.Number:
 		_ = _tv
 		return fmt.Errorf("type: number is not allowed")
 	case string:
@@ -562,6 +561,7 @@ func (f *ForbiddingSubschemaSpellingsInferredNotItems) UnmarshalJSON(data []byte
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &f._value); _err == nil {
 		f._isRaw = false
+		f._raw = append(f._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -608,6 +608,20 @@ func (f ForbiddingSubschemaSpellingsInferredNotItems) Validate() error {
 	if f._isRaw {
 		return nil // Constraints don't apply to non-matching types.
 	}
+	// The elements as the document wrote them, where the value was decoded
+	// from one: decoded into []any they are float64s, which round the digits
+	// the element keywords are about. Read again here keeping every number as
+	// its literal; a value assembled in Go is judged as it stands.
+	_items := f._value
+	if len(f._raw) > 0 {
+		var _decoded any
+		if jsonDecodeNumbers(f._raw, &_decoded) == nil {
+			if _arr, _ok := _decoded.([]any); _ok {
+				_items = _arr
+			}
+		}
+	}
+	_ = _items
 	// Item-level validation for inferred array.
 	if len(f._value) > 0 {
 		return fmt.Errorf("items: no items are allowed (got %d)", len(f._value))
@@ -633,6 +647,7 @@ func (f *ForbiddingSubschemaSpellingsInferredNotSlot) UnmarshalJSON(data []byte)
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &f._value); _err == nil {
 		f._isRaw = false
+		f._raw = append(f._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -679,6 +694,20 @@ func (f ForbiddingSubschemaSpellingsInferredNotSlot) Validate() error {
 	if f._isRaw {
 		return nil // Constraints don't apply to non-matching types.
 	}
+	// The elements as the document wrote them, where the value was decoded
+	// from one: decoded into []any they are float64s, which round the digits
+	// the element keywords are about. Read again here keeping every number as
+	// its literal; a value assembled in Go is judged as it stands.
+	_items := f._value
+	if len(f._raw) > 0 {
+		var _decoded any
+		if jsonDecodeNumbers(f._raw, &_decoded) == nil {
+			if _arr, _ok := _decoded.([]any); _ok {
+				_items = _arr
+			}
+		}
+	}
+	_ = _items
 	// Item-level validation for inferred array.
 	{
 		if len(f._value) > 0 {
@@ -706,6 +735,7 @@ func (f *ForbiddingSubschemaSpellingsInferredNotTail) UnmarshalJSON(data []byte)
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &f._value); _err == nil {
 		f._isRaw = false
+		f._raw = append(f._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -752,6 +782,20 @@ func (f ForbiddingSubschemaSpellingsInferredNotTail) Validate() error {
 	if f._isRaw {
 		return nil // Constraints don't apply to non-matching types.
 	}
+	// The elements as the document wrote them, where the value was decoded
+	// from one: decoded into []any they are float64s, which round the digits
+	// the element keywords are about. Read again here keeping every number as
+	// its literal; a value assembled in Go is judged as it stands.
+	_items := f._value
+	if len(f._raw) > 0 {
+		var _decoded any
+		if jsonDecodeNumbers(f._raw, &_decoded) == nil {
+			if _arr, _ok := _decoded.([]any); _ok {
+				_items = _arr
+			}
+		}
+	}
+	_ = _items
 	// Item-level validation for inferred array.
 	{
 	}
@@ -831,6 +875,7 @@ func (f *ForbiddingSubschemaSpellingsInferredOneOfItems) UnmarshalJSON(data []by
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &f._value); _err == nil {
 		f._isRaw = false
+		f._raw = append(f._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -877,6 +922,20 @@ func (f ForbiddingSubschemaSpellingsInferredOneOfItems) Validate() error {
 	if f._isRaw {
 		return nil // Constraints don't apply to non-matching types.
 	}
+	// The elements as the document wrote them, where the value was decoded
+	// from one: decoded into []any they are float64s, which round the digits
+	// the element keywords are about. Read again here keeping every number as
+	// its literal; a value assembled in Go is judged as it stands.
+	_items := f._value
+	if len(f._raw) > 0 {
+		var _decoded any
+		if jsonDecodeNumbers(f._raw, &_decoded) == nil {
+			if _arr, _ok := _decoded.([]any); _ok {
+				_items = _arr
+			}
+		}
+	}
+	_ = _items
 	// Item-level validation for inferred array.
 	if len(f._value) > 0 {
 		return fmt.Errorf("items: no items are allowed (got %d)", len(f._value))
@@ -902,6 +961,7 @@ func (f *ForbiddingSubschemaSpellingsInferredOneOfTail) UnmarshalJSON(data []byt
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &f._value); _err == nil {
 		f._isRaw = false
+		f._raw = append(f._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -948,6 +1008,20 @@ func (f ForbiddingSubschemaSpellingsInferredOneOfTail) Validate() error {
 	if f._isRaw {
 		return nil // Constraints don't apply to non-matching types.
 	}
+	// The elements as the document wrote them, where the value was decoded
+	// from one: decoded into []any they are float64s, which round the digits
+	// the element keywords are about. Read again here keeping every number as
+	// its literal; a value assembled in Go is judged as it stands.
+	_items := f._value
+	if len(f._raw) > 0 {
+		var _decoded any
+		if jsonDecodeNumbers(f._raw, &_decoded) == nil {
+			if _arr, _ok := _decoded.([]any); _ok {
+				_items = _arr
+			}
+		}
+	}
+	_ = _items
 	// Item-level validation for inferred array.
 	{
 	}
@@ -2055,10 +2129,12 @@ func (f ForbiddingSubschemaSpellingsNotEnumBranch) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(f._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -2130,10 +2206,12 @@ func (f ForbiddingSubschemaSpellingsNotFalse) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(f._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -2331,10 +2409,12 @@ func (f ForbiddingSubschemaSpellingsNotShallowEnum) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(f._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -2409,10 +2489,12 @@ func (f ForbiddingSubschemaSpellingsNotTypedConst) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(f._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -2752,36 +2834,7 @@ func (f ForbiddingSubschemaSpellingsNullableInlineNames) Validate() error {
 		_nonObj := f._rawNonObject
 		_ = _nonObj
 		{
-			_trim := bytes.TrimSpace(_nonObj)
-			var jt string
-			if len(_trim) == 0 {
-				jt = "unknown"
-			} else {
-				switch _trim[0] {
-				case '"':
-					jt = "string"
-				case '{':
-					jt = "object"
-				case '[':
-					jt = "array"
-				case 't', 'f':
-					jt = "boolean"
-				case 'n':
-					jt = "null"
-				default:
-					jt = "number"
-					isInt := true
-					for _, _ch := range _trim {
-						if _ch == '.' || _ch == 'e' || _ch == 'E' {
-							isInt = false
-							break
-						}
-					}
-					if isInt {
-						jt = "integer"
-					}
-				}
-			}
+			jt := jsonRawKind(_nonObj, false)
 			_ppTypeOK := false
 			if jt == "object" {
 				_ppTypeOK = true
@@ -3240,10 +3293,12 @@ func (f ForbiddingSubschemaSpellingsOneOfOneFalse) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(f._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -3643,10 +3698,12 @@ func (f ForbiddingSubschemaSpellingsUnionBranchRequired) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(f._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -5195,7 +5252,7 @@ func (f ForbiddingSubschemaSpellings) Validate() error {
 				_cKind, _cText := jsonKindAt(&_cArr[_ci])
 				_ = _cText
 				_cMatch := true
-				if _, _cOK := jsonFloatOf(_cKind, _cText); !_cOK {
+				if _cKind != jsonIDNumberKind {
 					_cMatch = false
 				}
 				if _cMatch {

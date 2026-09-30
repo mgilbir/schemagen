@@ -5,7 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"unicode/utf8"
 )
 
@@ -620,17 +619,14 @@ func (i ItemConstraints) Validate() error {
 		}
 	}
 	for _i0, _e0 := range i.Counts {
-		if float64(_e0) < 3 {
+		if _e0 < 3 {
 			return fmt.Errorf("counts[%d]: value %v is less than minimum 3", _i0, _e0)
 		}
-		if float64(_e0) > 99 {
+		if _e0 > 99 {
 			return fmt.Errorf("counts[%d]: value %v exceeds maximum 99", _i0, _e0)
 		}
-		{
-			_q := float64(_e0) / 3
-			if math.Abs(_q-math.Round(_q)) > 1e-9 {
-				return fmt.Errorf("counts[%d]: value %v is not a multiple of 3", _i0, _e0)
-			}
+		if _e0%3 != 0 {
+			return fmt.Errorf("counts[%d]: value %v is not a multiple of 3", _i0, _e0)
 		}
 	}
 	for _i0, _e0 := range i.Grid {
@@ -638,7 +634,7 @@ func (i ItemConstraints) Validate() error {
 			return fmt.Errorf("grid[%d]: has %d items, maximum is 3", _i0, len(_e0))
 		}
 		for _i1, _e1 := range _e0 {
-			if float64(_e1) < 1 {
+			if _e1 < 1 {
 				return fmt.Errorf("grid[%d][%d]: value %v is less than minimum 1", _i0, _i1, _e1)
 			}
 		}

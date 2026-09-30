@@ -422,8 +422,8 @@ var _etTimestamp = _schemaNode{
 var _etEventRecordItem2 = _schemaNode{
 	Properties: []_schemaMember{
 		{Key: "code", Node: _schemaNode{
-			Maximum: _floatPtr(599),
-			Minimum: _floatPtr(100),
+			Maximum: _strPtr("599"),
+			Minimum: _strPtr("100"),
 			Type:    []string{"integer"},
 		}},
 		{Key: "level", Node: _schemaNode{

@@ -26,6 +26,7 @@ func (a *AtLeastFive) UnmarshalJSON(data []byte) error {
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &a._value); _err == nil {
 		a._isRaw = false
+		a._raw = append(a._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -70,10 +71,25 @@ func (a AtLeastFive) String() string {
 // Validate checks AtLeastFive against its JSON Schema constraints.
 func (a AtLeastFive) Validate() error {
 	if a._isRaw {
-		return nil // Constraints don't apply to non-matching types.
+		// Constraints don't apply to non-matching types -- but a number is not
+		// one. 1e400 is a number no float64 holds, so the typed decode refused
+		// it and it was kept here as bytes; every numeric keyword still applies
+		// to it, and is read from those bytes below. It used to be passed over
+		// as though it were a string.
+		if _, _isNum := jsonRawNumber(a._raw); !_isNum {
+			return nil
+		}
 	}
-	if float64(a._value) < 5 {
-		return jsonValueErrorf("%v is less than minimum 5", a._value)
+	// The number as the document wrote it, where the value was decoded from
+	// one; see UnmarshalJSON. A value assembled in Go is judged as the number
+	// it marshals to.
+	_num, _numText := any(a._value), fmt.Sprint(a._value)
+	if len(a._raw) > 0 {
+		_num, _numText = json.RawMessage(a._raw), string(a._raw)
+	}
+	_, _ = _num, _numText
+	if jsonNumberBelow(_num, "5") {
+		return jsonValueErrorf("%s is less than minimum 5", _numText)
 	}
 	return nil
 }
@@ -96,6 +112,7 @@ func (i *InlineUntypedPositionsArr) UnmarshalJSON(data []byte) error {
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &i._value); _err == nil {
 		i._isRaw = false
+		i._raw = append(i._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -142,6 +159,20 @@ func (i InlineUntypedPositionsArr) Validate() error {
 	if i._isRaw {
 		return nil // Constraints don't apply to non-matching types.
 	}
+	// The elements as the document wrote them, where the value was decoded
+	// from one: decoded into []any they are float64s, which round the digits
+	// the element keywords are about. Read again here keeping every number as
+	// its literal; a value assembled in Go is judged as it stands.
+	_items := i._value
+	if len(i._raw) > 0 {
+		var _decoded any
+		if jsonDecodeNumbers(i._raw, &_decoded) == nil {
+			if _arr, _ok := _decoded.([]any); _ok {
+				_items = _arr
+			}
+		}
+	}
+	_ = _items
 	if len(i._value) < 2 {
 		return jsonValueErrorf("has %d items, minimum is 2", len(i._value))
 	}
@@ -166,6 +197,7 @@ func (i *InlineUntypedPositionsNullableMapValue) UnmarshalJSON(data []byte) erro
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &i._value); _err == nil {
 		i._isRaw = false
+		i._raw = append(i._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -210,10 +242,25 @@ func (i InlineUntypedPositionsNullableMapValue) String() string {
 // Validate checks InlineUntypedPositionsNullableMapValue against its JSON Schema constraints.
 func (i InlineUntypedPositionsNullableMapValue) Validate() error {
 	if i._isRaw {
-		return nil // Constraints don't apply to non-matching types.
+		// Constraints don't apply to non-matching types -- but a number is not
+		// one. 1e400 is a number no float64 holds, so the typed decode refused
+		// it and it was kept here as bytes; every numeric keyword still applies
+		// to it, and is read from those bytes below. It used to be passed over
+		// as though it were a string.
+		if _, _isNum := jsonRawNumber(i._raw); !_isNum {
+			return nil
+		}
 	}
-	if float64(i._value) < 5 {
-		return jsonValueErrorf("%v is less than minimum 5", i._value)
+	// The number as the document wrote it, where the value was decoded from
+	// one; see UnmarshalJSON. A value assembled in Go is judged as the number
+	// it marshals to.
+	_num, _numText := any(i._value), fmt.Sprint(i._value)
+	if len(i._raw) > 0 {
+		_num, _numText = json.RawMessage(i._raw), string(i._raw)
+	}
+	_, _ = _num, _numText
+	if jsonNumberBelow(_num, "5") {
+		return jsonValueErrorf("%s is less than minimum 5", _numText)
 	}
 	return nil
 }
@@ -236,6 +283,7 @@ func (i *InlineUntypedPositionsNum) UnmarshalJSON(data []byte) error {
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &i._value); _err == nil {
 		i._isRaw = false
+		i._raw = append(i._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -280,10 +328,25 @@ func (i InlineUntypedPositionsNum) String() string {
 // Validate checks InlineUntypedPositionsNum against its JSON Schema constraints.
 func (i InlineUntypedPositionsNum) Validate() error {
 	if i._isRaw {
-		return nil // Constraints don't apply to non-matching types.
+		// Constraints don't apply to non-matching types -- but a number is not
+		// one. 1e400 is a number no float64 holds, so the typed decode refused
+		// it and it was kept here as bytes; every numeric keyword still applies
+		// to it, and is read from those bytes below. It used to be passed over
+		// as though it were a string.
+		if _, _isNum := jsonRawNumber(i._raw); !_isNum {
+			return nil
+		}
 	}
-	if float64(i._value) < 5 {
-		return jsonValueErrorf("%v is less than minimum 5", i._value)
+	// The number as the document wrote it, where the value was decoded from
+	// one; see UnmarshalJSON. A value assembled in Go is judged as the number
+	// it marshals to.
+	_num, _numText := any(i._value), fmt.Sprint(i._value)
+	if len(i._raw) > 0 {
+		_num, _numText = json.RawMessage(i._raw), string(i._raw)
+	}
+	_, _ = _num, _numText
+	if jsonNumberBelow(_num, "5") {
+		return jsonValueErrorf("%s is less than minimum 5", _numText)
 	}
 	return nil
 }
@@ -306,6 +369,7 @@ func (i *InlineUntypedPositionsNumItemsItem) UnmarshalJSON(data []byte) error {
 	// Try typed unmarshal first.
 	if _err := json.Unmarshal(data, &i._value); _err == nil {
 		i._isRaw = false
+		i._raw = append(i._raw[:0], data...)
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -350,10 +414,25 @@ func (i InlineUntypedPositionsNumItemsItem) String() string {
 // Validate checks InlineUntypedPositionsNumItemsItem against its JSON Schema constraints.
 func (i InlineUntypedPositionsNumItemsItem) Validate() error {
 	if i._isRaw {
-		return nil // Constraints don't apply to non-matching types.
+		// Constraints don't apply to non-matching types -- but a number is not
+		// one. 1e400 is a number no float64 holds, so the typed decode refused
+		// it and it was kept here as bytes; every numeric keyword still applies
+		// to it, and is read from those bytes below. It used to be passed over
+		// as though it were a string.
+		if _, _isNum := jsonRawNumber(i._raw); !_isNum {
+			return nil
+		}
 	}
-	if float64(i._value) < 5 {
-		return jsonValueErrorf("%v is less than minimum 5", i._value)
+	// The number as the document wrote it, where the value was decoded from
+	// one; see UnmarshalJSON. A value assembled in Go is judged as the number
+	// it marshals to.
+	_num, _numText := any(i._value), fmt.Sprint(i._value)
+	if len(i._raw) > 0 {
+		_num, _numText = json.RawMessage(i._raw), string(i._raw)
+	}
+	_, _ = _num, _numText
+	if jsonNumberBelow(_num, "5") {
+		return jsonValueErrorf("%s is less than minimum 5", _numText)
 	}
 	return nil
 }
@@ -839,7 +918,7 @@ func (i InlineUntypedPositionsSlotItem0) String() string { return string(i._raw)
 
 // InlineUntypedPositionsSlotItem0Schema is the schema InlineUntypedPositionsSlotItem0 validates against.
 var InlineUntypedPositionsSlotItem0Schema = _schemaNode{
-	Minimum: _floatPtr(5),
+	Minimum: _strPtr("5"),
 }
 
 // Validate checks InlineUntypedPositionsSlotItem0 against its JSON Schema constraints.
@@ -851,10 +930,12 @@ func (i InlineUntypedPositionsSlotItem0) Validate() error {
 		return nil
 	}
 	// Read one level at a time (see jsonLazy), as the evaluator asks for each
-	// level. Decoded whole, the value was an any the evaluator's checks that
-	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
-	// every level of a document; read off a document, what one level computes is
-	// kept there for the next (see jsonLazy.jsonDocID).
+	// level, with every number the literal the document wrote, which the
+	// evaluator judges exactly. Decoded whole, the value was an any the
+	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
+	// the identity of afresh at every level of a document; read off a document,
+	// what one level computes is kept there for the next (see
+	// jsonLazy.jsonDocID).
 	_v, _err := jsonReadLazily(i._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
@@ -1369,7 +1450,7 @@ func (i InlineUntypedPositions) Validate() error {
 // _etInlineUntypedPositionsSlotItem0 is the schema of InlineUntypedPositionsSlotItem0, compiled for judging an element held as
 // decoded JSON against it.
 var _etInlineUntypedPositionsSlotItem0 = _schemaNode{
-	Minimum: _floatPtr(5),
+	Minimum: _strPtr("5"),
 }
 
 // SchemagenJSONTree returns i as encoding/json decodes the JSON its

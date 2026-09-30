@@ -51,6 +51,15 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	if _err := json.Unmarshal(data, &{{$recv}}._value); _err == nil {
 	{{- end}}
 		{{$recv}}._isRaw = false
+		{{- if .JudgesLiteral}}
+		{{- /* The document's bytes are kept beside the decoded value, and are
+		       what Validate judges: the value is a float64, or holds float64s,
+		       and the numeric keywords are about the digits a float64 rounds
+		       away. Nothing reads them but Validate -- the marshaller and the
+		       accessors go by _isRaw -- and a value assembled in Go, which has
+		       none, is judged from _value as before. */}}
+		{{$recv}}._raw = append({{$recv}}._raw[:0], data...)
+		{{- end}}
 		return nil
 	}
 	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
@@ -122,17 +131,65 @@ func ({{$recv}} {{.Name}}) String() string {
 
 // Validate checks {{.Name}} against its JSON Schema constraints.
 func ({{$recv}} {{.Name}}) Validate() error {
+	{{- if .JudgesNumber}}
+	if {{$recv}}._isRaw {
+		// Constraints don't apply to non-matching types -- but a number is not
+		// one. 1e400 is a number no float64 holds, so the typed decode refused
+		// it and it was kept here as bytes; every numeric keyword still applies
+		// to it, and is read from those bytes below. It used to be passed over
+		// as though it were a string.
+		if _, _isNum := jsonRawNumber({{$recv}}._raw); !_isNum {
+			return nil
+		}
+	}
+	{{- else}}
 	if {{$recv}}._isRaw {
 		return nil // Constraints don't apply to non-matching types.
 	}
+	{{- end}}
+	{{- if .JudgesNumber}}
+	// The number as the document wrote it, where the value was decoded from
+	// one; see UnmarshalJSON. A value assembled in Go is judged as the number
+	// it marshals to.
+	_num, _numText := any({{$recv}}._value), fmt.Sprint({{$recv}}._value)
+	if len({{$recv}}._raw) > 0 {
+		_num, _numText = json.RawMessage({{$recv}}._raw), string({{$recv}}._raw)
+	}
+	_, _ = _num, _numText
+	{{- end}}
+	{{- if .ItemsAreAny}}
+	// The elements as the document wrote them, where the value was decoded
+	// from one: decoded into []any they are float64s, which round the digits
+	// the element keywords are about. Read again here keeping every number as
+	// its literal; a value assembled in Go is judged as it stands.
+	_items := {{$recv}}._value
+	if len({{$recv}}._raw) > 0 {
+		var _decoded any
+		if jsonDecodeNumbers({{$recv}}._raw, &_decoded) == nil {
+			if _arr, _ok := _decoded.([]any); _ok {
+				_items = _arr
+			}
+		}
+	}
+	_ = _items
+	{{- end}}
 	{{- if .ValidateAs}}
 	// Returned as it stands: the type this delegates to answers for the very same
 	// value, so there is no step of path between the two and nothing to put in
 	// front of its message. Wrapping it also lost what the message had recorded
 	// about how a container must join it. See issue #279.
+	{{- if .JudgesNumber}}
+	// Not for a number kept as bytes: _value never held it.
+	if !{{$recv}}._isRaw {
+		if _err := ({{.ValidateAs}}({{$recv}}._value)).Validate(); _err != nil {
+			return _err
+		}
+	}
+	{{- else}}
 	if _err := ({{.ValidateAs}}({{$recv}}._value)).Validate(); _err != nil {
 		return _err
 	}
+	{{- end}}
 	{{- end}}
 	{{- range .Validations}}
 	{{- if eq .RuleType "minLength"}}
@@ -145,63 +202,33 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		return jsonValueErrorf("length %d exceeds maximum {{fmtText .Value}}", utf8.RuneCountInString(string({{$recv}}._value)))
 	}
 	{{- end}}
+	{{- /* The numeric keywords judge _num, the literal the document wrote.
+	       Every numeric rule here reads its instance through the exact core;
+	       see clearNumberOperands. */}}
 	{{- if eq .RuleType "minimum"}}
-	{{- if .ExactCompare}}
-	if {{numOperand . (printf "%s._value" $recv)}} < {{numBound .}} {
-		return jsonValueErrorf("%v is less than minimum {{numBoundMsg .}}", {{$recv}}._value)
+	if {{numViolated . "_num"}} {
+		return jsonValueErrorf("%s is less than minimum {{fmtText .Value}}", _numText)
 	}
-	{{- else}}
-	if float64({{$recv}}._value) < {{countExpr .Value}} {
-		return jsonValueErrorf("%v is less than minimum {{fmtText .Value}}", {{$recv}}._value)
-	}
-	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "maximum"}}
-	{{- if .ExactCompare}}
-	if {{numOperand . (printf "%s._value" $recv)}} > {{numBound .}} {
-		return jsonValueErrorf("%v exceeds maximum {{numBoundMsg .}}", {{$recv}}._value)
+	if {{numViolated . "_num"}} {
+		return jsonValueErrorf("%s exceeds maximum {{fmtText .Value}}", _numText)
 	}
-	{{- else}}
-	if float64({{$recv}}._value) > {{countExpr .Value}} {
-		return jsonValueErrorf("%v exceeds maximum {{fmtText .Value}}", {{$recv}}._value)
-	}
-	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMinimum"}}
-	{{- if .ExactCompare}}
-	if {{numOperand . (printf "%s._value" $recv)}} <= {{numBound .}} {
-		return jsonValueErrorf("%v must be greater than {{numBoundMsg .}}", {{$recv}}._value)
+	if {{numViolated . "_num"}} {
+		return jsonValueErrorf("%s must be greater than {{fmtText .Value}}", _numText)
 	}
-	{{- else}}
-	if float64({{$recv}}._value) <= {{countExpr .Value}} {
-		return jsonValueErrorf("%v must be greater than {{fmtText .Value}}", {{$recv}}._value)
-	}
-	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMaximum"}}
-	{{- if .ExactCompare}}
-	if {{numOperand . (printf "%s._value" $recv)}} >= {{numBound .}} {
-		return jsonValueErrorf("%v must be less than {{numBoundMsg .}}", {{$recv}}._value)
+	if {{numViolated . "_num"}} {
+		return jsonValueErrorf("%s must be less than {{fmtText .Value}}", _numText)
 	}
-	{{- else}}
-	if float64({{$recv}}._value) >= {{countExpr .Value}} {
-		return jsonValueErrorf("%v must be less than {{fmtText .Value}}", {{$recv}}._value)
-	}
-	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "multipleOf"}}
-	{{- if .ExactCompare}}
-	if !{{exactMultipleOf . (printf "%s._value" $recv)}} {
-		return jsonValueErrorf("%v is not a multiple of {{numBoundMsg .}}", {{$recv}}._value)
+	if {{numViolated . "_num"}} {
+		return jsonValueErrorf("%s is not a multiple of {{fmtText .Value}}", _numText)
 	}
-	{{- else}}
-	{
-		_q := float64({{$recv}}._value) / {{numLit .Value}}
-		if math.Abs(_q - math.Round(_q)) > 1e-9 {
-			return jsonValueErrorf("%v is not a multiple of {{fmtText .Value}}", {{$recv}}._value)
-		}
-	}
-	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "pattern"}}
 	if _matched, _mErr := {{patternVar .Value}}.matches(string({{$recv}}._value)); _mErr != nil {
@@ -246,13 +273,17 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- if eq .RuleType "uniqueItems"}}
 	{
 		{{- /* Compared by identity; see the struct form in validation.go.tmpl.
-		       The wrapper's own value is reached by no check above it, so there
-		       is nothing kept to read back. */}}
-		_ids, _i, _err := jsonIDsOf({{$recv}}._value, nil, jsonIdentifyAt[any])
+		       Over the elements as the document wrote them where there are any
+		       (_items keeps every number's literal), so 9007199254740992 and
+		       9007199254740993 are two elements even where the wrapper holds
+		       one float64 for both. The wrapper's own value is reached by no
+		       check above it, so there is nothing kept to read back. */}}
+		_uqArr := {{if $.ItemsAreAny}}_items{{else}}{{$recv}}._value{{end}}
+		_ids, _i, _err := jsonIDsOf(_uqArr, nil, jsonIdentifyAt[any])
 		if _err != nil {
-			return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", _i, jsonMarshalError(&{{$recv}}._value[_i], _err))
+			return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", _i, jsonMarshalError(&_uqArr[_i], _err))
 		}
-		if _i := jsonFirstDuplicate({{$recv}}._value, _ids, jsonIdentifyAt[any]); _i >= 0 {
+		if _i := jsonFirstDuplicate(_uqArr, _ids, jsonIdentifyAt[any]); _i >= 0 {
 			return jsonValueErrorf("items are not unique (duplicate at index %d)", _i)
 		}
 	}
@@ -277,43 +308,8 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			{{- if eq .RuleType "maxLength"}}
 			if utf8.RuneCountInString(string({{$recv}}._value)) > {{countExpr .Value}} { _variantValid = false }
 			{{- end}}
-			{{- if eq .RuleType "minimum"}}
-			{{- if .ExactCompare}}
-			if {{numOperand . (printf "%s._value" $recv)}} < {{numBound .}} { _variantValid = false }
-			{{- else}}
-			if float64({{$recv}}._value) < {{countExpr .Value}} { _variantValid = false }
-			{{- end}}
-			{{- end}}
-			{{- if eq .RuleType "maximum"}}
-			{{- if .ExactCompare}}
-			if {{numOperand . (printf "%s._value" $recv)}} > {{numBound .}} { _variantValid = false }
-			{{- else}}
-			if float64({{$recv}}._value) > {{countExpr .Value}} { _variantValid = false }
-			{{- end}}
-			{{- end}}
-			{{- if eq .RuleType "exclusiveMinimum"}}
-			{{- if .ExactCompare}}
-			if {{numOperand . (printf "%s._value" $recv)}} <= {{numBound .}} { _variantValid = false }
-			{{- else}}
-			if float64({{$recv}}._value) <= {{countExpr .Value}} { _variantValid = false }
-			{{- end}}
-			{{- end}}
-			{{- if eq .RuleType "exclusiveMaximum"}}
-			{{- if .ExactCompare}}
-			if {{numOperand . (printf "%s._value" $recv)}} >= {{numBound .}} { _variantValid = false }
-			{{- else}}
-			if float64({{$recv}}._value) >= {{countExpr .Value}} { _variantValid = false }
-			{{- end}}
-			{{- end}}
-			{{- if eq .RuleType "multipleOf"}}
-			{{- if .ExactCompare}}
-			if !{{exactMultipleOf . (printf "%s._value" $recv)}} { _variantValid = false }
-			{{- else}}
-			{
-				_q := float64({{$recv}}._value) / {{numLit .Value}}
-				if math.Abs(_q - math.Round(_q)) > 1e-9 { _variantValid = false }
-			}
-			{{- end}}
+			{{- if or (eq .RuleType "minimum") (eq .RuleType "maximum") (eq .RuleType "exclusiveMinimum") (eq .RuleType "exclusiveMaximum") (eq .RuleType "multipleOf")}}
+			if {{numViolated . "_num"}} { _variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "pattern"}}
 			if _matched, _mErr := {{patternVar .Value}}.matches(string({{$recv}}._value)); _mErr != nil {
@@ -358,43 +354,8 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			{{- if eq .RuleType "maxLength"}}
 			if utf8.RuneCountInString(string({{$recv}}._value)) > {{countExpr .Value}} { _variantValid = false }
 			{{- end}}
-			{{- if eq .RuleType "minimum"}}
-			{{- if .ExactCompare}}
-			if {{numOperand . (printf "%s._value" $recv)}} < {{numBound .}} { _variantValid = false }
-			{{- else}}
-			if float64({{$recv}}._value) < {{countExpr .Value}} { _variantValid = false }
-			{{- end}}
-			{{- end}}
-			{{- if eq .RuleType "maximum"}}
-			{{- if .ExactCompare}}
-			if {{numOperand . (printf "%s._value" $recv)}} > {{numBound .}} { _variantValid = false }
-			{{- else}}
-			if float64({{$recv}}._value) > {{countExpr .Value}} { _variantValid = false }
-			{{- end}}
-			{{- end}}
-			{{- if eq .RuleType "exclusiveMinimum"}}
-			{{- if .ExactCompare}}
-			if {{numOperand . (printf "%s._value" $recv)}} <= {{numBound .}} { _variantValid = false }
-			{{- else}}
-			if float64({{$recv}}._value) <= {{countExpr .Value}} { _variantValid = false }
-			{{- end}}
-			{{- end}}
-			{{- if eq .RuleType "exclusiveMaximum"}}
-			{{- if .ExactCompare}}
-			if {{numOperand . (printf "%s._value" $recv)}} >= {{numBound .}} { _variantValid = false }
-			{{- else}}
-			if float64({{$recv}}._value) >= {{countExpr .Value}} { _variantValid = false }
-			{{- end}}
-			{{- end}}
-			{{- if eq .RuleType "multipleOf"}}
-			{{- if .ExactCompare}}
-			if !{{exactMultipleOf . (printf "%s._value" $recv)}} { _variantValid = false }
-			{{- else}}
-			{
-				_q := float64({{$recv}}._value) / {{numLit .Value}}
-				if math.Abs(_q - math.Round(_q)) > 1e-9 { _variantValid = false }
-			}
-			{{- end}}
+			{{- if or (eq .RuleType "minimum") (eq .RuleType "maximum") (eq .RuleType "exclusiveMinimum") (eq .RuleType "exclusiveMaximum") (eq .RuleType "multipleOf")}}
+			if {{numViolated . "_num"}} { _variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "pattern"}}
 			if _matched, _mErr := {{patternVar .Value}}.matches(string({{$recv}}._value)); _mErr != nil {
@@ -427,15 +388,18 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		return fmt.Errorf("items: no items are allowed (got %d)", len({{$recv}}._value))
 	}
 	{{- end}}
+	{{- /* Every element check below reads _items, the elements as the document
+	       wrote them, and asks whether an element is a number through the
+	       exact core rather than by asserting float64 -- which is what a decode
+	       into []any makes of a number, and what _items does not. */}}
 	{{- if .ItemsType}}
-	for _i, _elem := range {{$recv}}._value {
+	for _i, _elem := range _items {
 		{{- if eq .ItemsType "integer"}}
-		_f, _fOk := _elem.(float64)
-		if !_fOk || _f != math.Trunc(_f) {
+		if !jsonIsInteger(_elem, {{if $.StrictInteger}}true{{else}}false{{end}}) {
 			return fmt.Errorf("items[%d]: expected integer, got %T", _i, _elem)
 		}
 		{{- else if eq .ItemsType "number"}}
-		if _, _fOk := _elem.(float64); !_fOk {
+		if !jsonIsNumber(_elem) {
 			return fmt.Errorf("items[%d]: expected number, got %T", _i, _elem)
 		}
 		{{- else if eq .ItemsType "string"}}
@@ -464,8 +428,9 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- if .ItemsNode}}
 	{{- /* Each element judged as it is held, by the items schema compiled for
 	       the evaluator (see ElementNode), rather than marshalled and decoded
-	       into the items type. */}}
-	for _i, _elem := range {{$recv}}._value {
+	       into the items type -- as the document wrote it, where it did
+	       (see _items). */}}
+	for _i, _elem := range _items {
 		_tv, _tvErr := jsonTreeView(_elem)
 		if _tvErr != nil {
 			return fmt.Errorf("items[%d]: %w", _i, jsonMarshalError(&_elem, _tvErr))
@@ -475,7 +440,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		}
 	}
 	{{- else if .ItemsTypeName}}
-	for _i, _elem := range {{$recv}}._value {
+	for _i, _elem := range _items {
 		_raw, _mErr := json.Marshal(_elem)
 		if _mErr != nil {
 			return fmt.Errorf("items[%d]: %w", _i, _mErr)
@@ -490,18 +455,15 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- if .ItemsChecks}}
-	for _i, _elem := range {{$recv}}._value {
+	for _i, _elem := range _items {
 		{{- range .ItemsChecks}}
 		{{- if eq .CheckType "type"}}
 		{{- if eq .Value "integer"}}
-		{
-			_f, _fOk := _elem.(float64)
-			if !_fOk || _f != math.Trunc(_f) {
-				return fmt.Errorf("items[%d]: expected integer, got %T", _i, _elem)
-			}
+		if !jsonIsInteger(_elem, {{if $.StrictInteger}}true{{else}}false{{end}}) {
+			return fmt.Errorf("items[%d]: expected integer, got %T", _i, _elem)
 		}
 		{{- else if eq .Value "number"}}
-		if _, _fOk := _elem.(float64); !_fOk {
+		if !jsonIsNumber(_elem) {
 			return fmt.Errorf("items[%d]: expected number, got %T", _i, _elem)
 		}
 		{{- else if eq .Value "string"}}
@@ -526,34 +488,31 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		}
 		{{- end}}
 		{{- else if eq .CheckType "minimum"}}
-		if _f, _fOk := _elem.(float64); _fOk && _f < {{countExpr .Value}} {
+		if {{numAnyViolated .CheckType .Value "_elem"}} {
 			return fmt.Errorf("items[%d]: %v is less than minimum {{fmtText .Value}}", _i, _elem)
 		}
 		{{- else if eq .CheckType "maximum"}}
-		if _f, _fOk := _elem.(float64); _fOk && _f > {{countExpr .Value}} {
+		if {{numAnyViolated .CheckType .Value "_elem"}} {
 			return fmt.Errorf("items[%d]: %v exceeds maximum {{fmtText .Value}}", _i, _elem)
 		}
 		{{- else if eq .CheckType "exclusiveMinimum"}}
-		if _f, _fOk := _elem.(float64); _fOk && _f <= {{countExpr .Value}} {
+		if {{numAnyViolated .CheckType .Value "_elem"}} {
 			return fmt.Errorf("items[%d]: %v must be greater than {{fmtText .Value}}", _i, _elem)
 		}
 		{{- else if eq .CheckType "exclusiveMaximum"}}
-		if _f, _fOk := _elem.(float64); _fOk && _f >= {{countExpr .Value}} {
+		if {{numAnyViolated .CheckType .Value "_elem"}} {
 			return fmt.Errorf("items[%d]: %v must be less than {{fmtText .Value}}", _i, _elem)
 		}
 		{{- else if eq .CheckType "multipleOf"}}
-		if _f, _fOk := _elem.(float64); _fOk {
-			_q := _f / {{numLit .Value}}
-			if math.Abs(_q - math.Round(_q)) > 1e-9 {
-				return fmt.Errorf("items[%d]: %v is not a multiple of {{fmtText .Value}}", _i, _elem)
-			}
+		if {{numAnyViolated .CheckType .Value "_elem"}} {
+			return fmt.Errorf("items[%d]: %v is not a multiple of {{fmtText .Value}}", _i, _elem)
 		}
 		{{- end}}
 		{{- end}}
 	}
 	{{- end}}
 	{{- if .ItemsNested}}
-	for _i, _elem := range {{$recv}}._value {
+	for _i, _elem := range _items {
 		_nested, _nestedOk := _elem.([]any)
 		if !_nestedOk {
 			continue
@@ -561,12 +520,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		{{- /* maporder: not a map: ranges a slice, _nested is asserted to []any above. */}}
 		for _j, _nestedElem := range _nested {
 			{{- if eq .ItemsNested.ItemsType "integer"}}
-			_f, _fOk := _nestedElem.(float64)
-			if !_fOk || _f != math.Trunc(_f) {
+			if !jsonIsInteger(_nestedElem, {{if $.StrictInteger}}true{{else}}false{{end}}) {
 				return fmt.Errorf("items[%d][%d]: expected integer, got %T", _i, _j, _nestedElem)
 			}
 			{{- else if eq .ItemsNested.ItemsType "number"}}
-			if _, _fOk := _nestedElem.(float64); !_fOk {
+			if !jsonIsNumber(_nestedElem) {
 				return fmt.Errorf("items[%d][%d]: expected number, got %T", _i, _j, _nestedElem)
 			}
 			{{- else if eq .ItemsNested.ItemsType "string"}}
@@ -601,15 +559,14 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			return fmt.Errorf("items[{{$idx}}]: value is not allowed (schema is false)")
 		}
 		{{- else if $item.JSONType}}
-		if len({{$recv}}._value) > {{$idx}} {
-			_tElem := {{$recv}}._value[{{$idx}}]
+		if len(_items) > {{$idx}} {
+			_tElem := _items[{{$idx}}]
 			{{- if eq $item.JSONType "integer"}}
-			_f, _fOk := _tElem.(float64)
-			if !_fOk || _f != math.Trunc(_f) {
+			if !jsonIsInteger(_tElem, {{if $.StrictInteger}}true{{else}}false{{end}}) {
 				return fmt.Errorf("items[{{$idx}}]: expected integer, got %T", _tElem)
 			}
 			{{- else if eq $item.JSONType "number"}}
-			if _, _fOk := _tElem.(float64); !_fOk {
+			if !jsonIsNumber(_tElem) {
 				return fmt.Errorf("items[{{$idx}}]: expected number, got %T", _tElem)
 			}
 			{{- else if eq $item.JSONType "string"}}
@@ -646,8 +603,8 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			}
 		}
 		{{- else if $item.TypeName}}
-		if len({{$recv}}._value) > {{$idx}} {
-			_raw, _mErr := json.Marshal({{$recv}}._value[{{$idx}}])
+		if len(_items) > {{$idx}} {
+			_raw, _mErr := json.Marshal(_items[{{$idx}}])
 			if _mErr != nil {
 				return fmt.Errorf("items[{{$idx}}]: %w", _mErr)
 			}
@@ -686,8 +643,8 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{"prefixItems":[...],"items":{"type":"object","required":["a"]}} accepted a
 	trailing {} -- the element half of issue #166, one position along.
 	*/}}
-	for _i := {{len .TupleItems}}; _i < len({{$recv}}._value); _i++ {
-		_raw, _mErr := json.Marshal({{$recv}}._value[_i])
+	for _i := {{len .TupleItems}}; _i < len(_items); _i++ {
+		_raw, _mErr := json.Marshal(_items[_i])
 		if _mErr != nil {
 			return fmt.Errorf("additionalItems[%d]: %w", _i, _mErr)
 		}
@@ -701,15 +658,14 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- if .AdditionalItemsType}}
-	for _i := {{len .TupleItems}}; _i < len({{$recv}}._value); _i++ {
-		_elem := {{$recv}}._value[_i]
+	for _i := {{len .TupleItems}}; _i < len(_items); _i++ {
+		_elem := _items[_i]
 		{{- if eq .AdditionalItemsType "integer"}}
-		_f, _fOk := _elem.(float64)
-		if !_fOk || _f != math.Trunc(_f) {
+		if !jsonIsInteger(_elem, {{if .StrictInteger}}true{{else}}false{{end}}) {
 			return fmt.Errorf("additionalItems[%d]: expected integer, got %T", _i, _elem)
 		}
 		{{- else if eq .AdditionalItemsType "number"}}
-		if _, _fOk := _elem.(float64); !_fOk {
+		if !jsonIsNumber(_elem) {
 			return fmt.Errorf("additionalItems[%d]: expected number, got %T", _i, _elem)
 		}
 		{{- else if eq .AdditionalItemsType "string"}}
@@ -737,12 +693,12 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- end}}
 	{{- end}}
 	{{- if .HasContainsValidation}}
-	{{- template "contains_check" (mkContainsCtx (printf "%s._value" $recv) "contains" .Contains .MinContains .MaxContains)}}
+	{{- template "contains_check" (mkContainsCtx "_items" "contains" .Contains .MinContains .MaxContains)}}
 	{{- end}}
 	{{- if .HasUnevaluatedItems}}
 	// unevaluatedItems validation
 	{
-		arr := {{$recv}}._value
+		arr := _items
 		if arr != nil {
 			evaluatedCount := {{.UnevaluatedItems.EvaluatedCount}}
 			allEvaluated := {{if .UnevaluatedItems.AllEvaluated}}true{{else}}false{{end}}
@@ -871,6 +827,21 @@ func ({{$recv}} {{.Name}}) Validate() error {
 						_evaluatedByContains = true
 					}
 				}
+				{{- else if .Contains.EnumJSON}}
+				{{- /* An enum `contains` evaluates the items it matches, as a const
+				       one does, compared by identity as the cardinality check
+				       compares it. This arm was missing, so no item counted as
+				       evaluated by it and unevaluatedItems refused them. */}}
+				{
+					_cOK, _cErr := jsonMatchesConstAt(&_uiElem, jsonConstOf(false,
+						{{- range .Contains.EnumJSON}}
+						{{printf "%q" .}},
+						{{- end}}
+					))
+					if _cErr == nil && _cOK {
+						_evaluatedByContains = true
+					}
+				}
 				{{- else if .Contains.Node}}
 				{{- /* The same test the cardinality check makes, asked of one item,
 				       as it is held; see ElementNode. */}}
@@ -912,17 +883,12 @@ func ({{$recv}} {{.Name}}) Validate() error {
 					{{- range .Contains.Checks}}
 					{{- if eq .CheckType "type"}}
 					{{- if eq .Value "integer"}}
-					if _cMatch {
-						_cf, _cfOk := _uiElem.(float64)
-						if !_cfOk || _cf != math.Trunc(_cf) {
-							_cMatch = false
-						}
+					if _cMatch && !jsonIsInteger(_uiElem, false) {
+						_cMatch = false
 					}
 					{{- else if eq .Value "number"}}
-					if _cMatch {
-						if _, _cfOk := _uiElem.(float64); !_cfOk {
-							_cMatch = false
-						}
+					if _cMatch && !jsonIsNumber(_uiElem) {
+						_cMatch = false
 					}
 					{{- else if eq .Value "string"}}
 					if _cMatch {
@@ -955,19 +921,14 @@ func ({{$recv}} {{.Name}}) Validate() error {
 						}
 					}
 					{{- end}}
-					{{- else if eq .CheckType "minimum"}}
-					{{- /* A numeric bound says nothing about a value that is not a
-					       number, which therefore satisfies it. */}}
-					if _cMatch {
-						if _cf, _cfOk := _uiElem.(float64); _cfOk && _cf < {{countExpr .Value}} {
-							_cMatch = false
-						}
-					}
-					{{- else if eq .CheckType "maximum"}}
-					if _cMatch {
-						if _cf, _cfOk := _uiElem.(float64); _cfOk && _cf > {{countExpr .Value}} {
-							_cMatch = false
-						}
+					{{- else if or (eq .CheckType "minimum") (eq .CheckType "maximum") (eq .CheckType "exclusiveMinimum") (eq .CheckType "exclusiveMaximum") (eq .CheckType "multipleOf")}}
+					{{- /* A numeric keyword says nothing about a value that is not a
+					       number, which therefore satisfies it; the helper answers
+					       false for one. The exclusive bounds and multipleOf had no
+					       arm here, so an item contains refused on one of them was
+					       still counted as evaluated. */}}
+					if _cMatch && {{numAnyViolated .CheckType .Value "_uiElem"}} {
+						_cMatch = false
 					}
 					{{- else if eq .CheckType "pattern"}}
 					{{- /* A string only: a pattern says nothing about any other
@@ -1001,8 +962,12 @@ func ({{$recv}} {{.Name}}) Validate() error {
 					if _, ok := _uiElem.(string); !ok {
 						return fmt.Errorf("unevaluatedItems[%d]: must be a string", _ui)
 					}
+					{{- else if eq .UnevaluatedItems.ValueType "integer"}}
+					if !jsonIsInteger(_uiElem, false) {
+						return fmt.Errorf("unevaluatedItems[%d]: must be an integer", _ui)
+					}
 					{{- else if eq .UnevaluatedItems.ValueType "number"}}
-					if _, ok := _uiElem.(float64); !ok {
+					if !jsonIsNumber(_uiElem) {
 						return fmt.Errorf("unevaluatedItems[%d]: must be a number", _ui)
 					}
 					{{- else if eq .UnevaluatedItems.ValueType "boolean"}}
@@ -1027,15 +992,13 @@ func ({{$recv}} {{.Name}}) Validate() error {
 						return fmt.Errorf("unevaluatedItems[%d]: must be a string", _ui)
 					}
 					{{- else if eq .UnevaluatedItems.ValueType "integer"}}
-					_uiNum, _uiNumOk := _uiElem.(float64)
-					if !_uiNumOk {
-						return fmt.Errorf("unevaluatedItems[%d]: must be an integer", _ui)
-					}
-					if _uiNum != float64(int64(_uiNum)) {
+					{{- /* float64(int64(x)) is not an integer test past 2^63, where
+					       the conversion is undefined. */}}
+					if !jsonIsInteger(_uiElem, false) {
 						return fmt.Errorf("unevaluatedItems[%d]: must be an integer", _ui)
 					}
 					{{- else if eq .UnevaluatedItems.ValueType "number"}}
-					if _, ok := _uiElem.(float64); !ok {
+					if !jsonIsNumber(_uiElem) {
 						return fmt.Errorf("unevaluatedItems[%d]: must be a number", _ui)
 					}
 					{{- else if eq .UnevaluatedItems.ValueType "boolean"}}

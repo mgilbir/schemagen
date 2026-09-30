@@ -325,47 +325,32 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		return jsonValueErrorf("length %d exceeds maximum {{fmtText .Value}}", utf8.RuneCountInString(string({{$recv}})))
 	}
 	{{- end}}
+	{{- /* The numeric keywords, written for the Go type the alias holds its
+	       number as; see numViolatedFunc. */}}
 	{{- if eq .RuleType "minimum"}}
-	if {{numOperand . $recv}} < {{numBound .}} {
+	if {{numViolated . $recv}} {
 		return jsonValueErrorf("%v is less than minimum {{numBoundMsg .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "maximum"}}
-	if {{numOperand . $recv}} > {{numBound .}} {
+	if {{numViolated . $recv}} {
 		return jsonValueErrorf("%v exceeds maximum {{numBoundMsg .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMinimum"}}
-	if {{numOperand . $recv}} <= {{numBound .}} {
+	if {{numViolated . $recv}} {
 		return jsonValueErrorf("%v must be greater than {{numBoundMsg .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMaximum"}}
-	if {{numOperand . $recv}} >= {{numBound .}} {
+	if {{numViolated . $recv}} {
 		return jsonValueErrorf("%v must be less than {{numBoundMsg .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "multipleOf"}}
-	{{- if .ExactCompare}}
-	// Exact: the two decimals are lined up and one integer divided by the
-	// other, rather than a float64 quotient compared against a tolerance.
-	if !{{exactMultipleOf . $recv}} {
+	if {{numViolated . $recv}} {
 		return jsonValueErrorf("%v is not a multiple of {{numBoundMsg .}}", {{$recv}})
 	}
-	{{- else if .IntegerCompare}}
-	// Exact: both operands are int64, so divisibility is a remainder rather
-	// than a float64 quotient compared against a tolerance.
-	if {{$recv}} % {{numBound .}} != 0 {
-		return jsonValueErrorf("%v is not a multiple of {{numBoundMsg .}}", {{$recv}})
-	}
-	{{- else}}
-	{
-		_quot := float64({{$recv}}) / {{numBound .}}
-		if math.Abs(_quot - math.Round(_quot)) > 1e-9 {
-			return jsonValueErrorf("%v is not a multiple of {{numBoundMsg .}}", {{$recv}})
-		}
-	}
-	{{- end}}
 	{{- end}}
 	{{- if eq .RuleType "pattern"}}
 	if _matched, _mErr := {{patternVar .Value}}.matches(string({{$recv}})); _mErr != nil {
@@ -436,23 +421,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			{{- if eq .RuleType "maxLength"}}
 			if utf8.RuneCountInString(string({{$recv}})) > {{countExpr .Value}} { variantValid = false }
 			{{- end}}
-			{{- if eq .RuleType "minimum"}}
-			if float64({{$recv}}) < {{countExpr .Value}} { variantValid = false }
-			{{- end}}
-			{{- if eq .RuleType "maximum"}}
-			if float64({{$recv}}) > {{countExpr .Value}} { variantValid = false }
-			{{- end}}
-			{{- if eq .RuleType "exclusiveMinimum"}}
-			if float64({{$recv}}) <= {{countExpr .Value}} { variantValid = false }
-			{{- end}}
-			{{- if eq .RuleType "exclusiveMaximum"}}
-			if float64({{$recv}}) >= {{countExpr .Value}} { variantValid = false }
-			{{- end}}
-			{{- if eq .RuleType "multipleOf"}}
-			{
-				_quot := float64({{$recv}}) / {{numLit .Value}}
-				if math.Abs(_quot - math.Round(_quot)) > 1e-9 { variantValid = false }
-			}
+			{{- /* Written for the alias's own Go type, as its Validations are:
+			       float64(recv) did not compile over a json.Number, and
+			       compared an int64 through a float64. */}}
+			{{- if or (eq .RuleType "minimum") (eq .RuleType "maximum") (eq .RuleType "exclusiveMinimum") (eq .RuleType "exclusiveMaximum") (eq .RuleType "multipleOf")}}
+			if {{numViolated . $recv}} { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "pattern"}}
 			if _matched, _mErr := {{patternVar .Value}}.matches(string({{$recv}})); _mErr != nil {
@@ -497,23 +470,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			{{- if eq .RuleType "maxLength"}}
 			if utf8.RuneCountInString(string({{$recv}})) > {{countExpr .Value}} { variantValid = false }
 			{{- end}}
-			{{- if eq .RuleType "minimum"}}
-			if float64({{$recv}}) < {{countExpr .Value}} { variantValid = false }
-			{{- end}}
-			{{- if eq .RuleType "maximum"}}
-			if float64({{$recv}}) > {{countExpr .Value}} { variantValid = false }
-			{{- end}}
-			{{- if eq .RuleType "exclusiveMinimum"}}
-			if float64({{$recv}}) <= {{countExpr .Value}} { variantValid = false }
-			{{- end}}
-			{{- if eq .RuleType "exclusiveMaximum"}}
-			if float64({{$recv}}) >= {{countExpr .Value}} { variantValid = false }
-			{{- end}}
-			{{- if eq .RuleType "multipleOf"}}
-			{
-				_quot := float64({{$recv}}) / {{numLit .Value}}
-				if math.Abs(_quot - math.Round(_quot)) > 1e-9 { variantValid = false }
-			}
+			{{- /* Written for the alias's own Go type, as its Validations are:
+			       float64(recv) did not compile over a json.Number, and
+			       compared an int64 through a float64. */}}
+			{{- if or (eq .RuleType "minimum") (eq .RuleType "maximum") (eq .RuleType "exclusiveMinimum") (eq .RuleType "exclusiveMaximum") (eq .RuleType "multipleOf")}}
+			if {{numViolated . $recv}} { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "pattern"}}
 			if _matched, _mErr := {{patternVar .Value}}.matches(string({{$recv}})); _mErr != nil {

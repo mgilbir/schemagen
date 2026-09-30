@@ -5,7 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 )
 
 type NullableV4String string
@@ -73,7 +72,7 @@ func (n NullableV4) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(n._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -110,7 +109,7 @@ func (n NullableV4) Validate() error {
 		return nil
 	}
 	switch _tv := _v.(type) {
-	case float64:
+	case json.Number:
 		_ = _tv
 		return fmt.Errorf("type: number is not allowed")
 	case string:
@@ -195,7 +194,7 @@ func (c ChainInner) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(c._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(c._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -232,7 +231,7 @@ func (c ChainInner) Validate() error {
 		return nil
 	}
 	switch _tv := _v.(type) {
-	case float64:
+	case json.Number:
 		_ = _tv
 		return fmt.Errorf("type: number is not allowed")
 	case string:
@@ -317,7 +316,7 @@ func (c ChainOuter) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(c._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(c._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -354,7 +353,7 @@ func (c ChainOuter) Validate() error {
 		return nil
 	}
 	switch _tv := _v.(type) {
-	case float64:
+	case json.Number:
 		_ = _tv
 		return fmt.Errorf("type: number is not allowed")
 	case string:
@@ -441,7 +440,7 @@ func (n NullableFormatPositionsBranchOption0) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(n._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -478,7 +477,7 @@ func (n NullableFormatPositionsBranchOption0) Validate() error {
 		return nil
 	}
 	switch _tv := _v.(type) {
-	case float64:
+	case json.Number:
 		_ = _tv
 		return fmt.Errorf("type: number is not allowed")
 	case string:
@@ -565,7 +564,7 @@ func (n NullableFormatPositionsBucketsPattern0) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(n._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -602,7 +601,7 @@ func (n NullableFormatPositionsBucketsPattern0) Validate() error {
 		return nil
 	}
 	switch _tv := _v.(type) {
-	case float64:
+	case json.Number:
 		_ = _tv
 		return fmt.Errorf("type: number is not allowed")
 	case string:
@@ -873,7 +872,7 @@ func (n NullableFormatPositionsInline) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(n._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -910,7 +909,7 @@ func (n NullableFormatPositionsInline) Validate() error {
 		return nil
 	}
 	switch _tv := _v.(type) {
-	case float64:
+	case json.Number:
 		_ = _tv
 		return fmt.Errorf("type: number is not allowed")
 	case string:
@@ -997,7 +996,7 @@ func (n NullableFormatPositionsListItem) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(n._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -1034,7 +1033,7 @@ func (n NullableFormatPositionsListItem) Validate() error {
 		return nil
 	}
 	switch _tv := _v.(type) {
-	case float64:
+	case json.Number:
 		_ = _tv
 		return fmt.Errorf("type: number is not allowed")
 	case string:
@@ -1121,7 +1120,7 @@ func (n NullableFormatPositionsMail) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(n._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -1158,7 +1157,7 @@ func (n NullableFormatPositionsMail) Validate() error {
 		return nil
 	}
 	switch _tv := _v.(type) {
-	case float64:
+	case json.Number:
 		_ = _tv
 		return fmt.Errorf("type: number is not allowed")
 	case string:
@@ -1245,7 +1244,7 @@ func (n NullableFormatPositionsMapValue) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(n._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -1282,7 +1281,7 @@ func (n NullableFormatPositionsMapValue) Validate() error {
 		return nil
 	}
 	switch _tv := _v.(type) {
-	case float64:
+	case json.Number:
 		_ = _tv
 		return fmt.Errorf("type: number is not allowed")
 	case string:
@@ -1369,7 +1368,7 @@ func (n NullableFormatPositionsStamp) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(n._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -1406,7 +1405,7 @@ func (n NullableFormatPositionsStamp) Validate() error {
 		return nil
 	}
 	switch _tv := _v.(type) {
-	case float64:
+	case json.Number:
 		_ = _tv
 		return fmt.Errorf("type: number is not allowed")
 	case string:
@@ -1493,7 +1492,7 @@ func (n NullableFormatPositionsWrapped) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(n._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -1530,7 +1529,7 @@ func (n NullableFormatPositionsWrapped) Validate() error {
 		return nil
 	}
 	switch _tv := _v.(type) {
-	case float64:
+	case json.Number:
 		_ = _tv
 		return fmt.Errorf("type: number is not allowed")
 	case string:
@@ -1626,7 +1625,7 @@ func (n NullableFormatPositionsTupleItem0) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(n._raw, &_v); _err != nil {
 		return fmt.Errorf("type: cannot decode value: %w", _err)
 	}
 	_typeBranchValid := false
@@ -1663,7 +1662,7 @@ func (n NullableFormatPositionsTupleItem0) Validate() error {
 		return nil
 	}
 	switch _tv := _v.(type) {
-	case float64:
+	case json.Number:
 		_ = _tv
 		return fmt.Errorf("type: number is not allowed")
 	case string:
@@ -2353,8 +2352,7 @@ func (n NullableFormatPositions) Validate() error {
 			}
 		}
 		if _idx == 1 {
-			_cv, _cvOk := _elem.(float64)
-			if !_cvOk || _cv != math.Trunc(_cv) {
+			if !jsonIsInteger(_elem, false) {
 				return fmt.Errorf("tuple: items[%d]: expected integer, got %T", _idx, _elem)
 			}
 		}

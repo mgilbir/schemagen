@@ -3,7 +3,6 @@
 package testpkg
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 )
@@ -548,34 +547,7 @@ func (d DiaryField) Validate() error {
 			}
 			if _branchMatches {
 				if _raw, _ok := d._jsonRawProps["choices"]; _ok {
-					_jt := "unknown"
-					_b := bytes.TrimSpace(_raw)
-					if len(_b) > 0 {
-						switch _b[0] {
-						case '"':
-							_jt = "string"
-						case '{':
-							_jt = "object"
-						case '[':
-							_jt = "array"
-						case 't', 'f':
-							_jt = "boolean"
-						case 'n':
-							_jt = "null"
-						default:
-							_jt = "number"
-							_isInt := true
-							for _, _c := range _b {
-								if _c == '.' || _c == 'e' || _c == 'E' {
-									_isInt = false
-									break
-								}
-							}
-							if _isInt {
-								_jt = "integer"
-							}
-						}
-					}
+					_jt := jsonRawKind(_raw, false)
 					if _jt != "array" {
 						_branchMatches = false
 					}
@@ -583,34 +555,7 @@ func (d DiaryField) Validate() error {
 			}
 			if _branchMatches {
 				if _raw, _ok := d._jsonRawProps["default"]; _ok {
-					_jt := "unknown"
-					_b := bytes.TrimSpace(_raw)
-					if len(_b) > 0 {
-						switch _b[0] {
-						case '"':
-							_jt = "string"
-						case '{':
-							_jt = "object"
-						case '[':
-							_jt = "array"
-						case 't', 'f':
-							_jt = "boolean"
-						case 'n':
-							_jt = "null"
-						default:
-							_jt = "number"
-							_isInt := true
-							for _, _c := range _b {
-								if _c == '.' || _c == 'e' || _c == 'E' {
-									_isInt = false
-									break
-								}
-							}
-							if _isInt {
-								_jt = "integer"
-							}
-						}
-					}
+					_jt := jsonRawKind(_raw, false)
 					if _jt != "string" {
 						_branchMatches = false
 					}
@@ -619,12 +564,10 @@ func (d DiaryField) Validate() error {
 			if _branchMatches {
 				if _raw, _ok := d._jsonRawProps["type"]; _ok {
 					if _branchMatches {
-						_valueMatches := false
-						switch string(bytes.TrimSpace(_raw)) {
-						case "\"select\"":
-							_valueMatches = true
-						}
-						if !_valueMatches {
+						_valueMatches, _valueErr := jsonMatchesConstRaw(_raw, jsonConstOf(false,
+							"\"select\"",
+						))
+						if _valueErr != nil || !_valueMatches {
 							_branchMatches = false
 						}
 					}
@@ -633,12 +576,10 @@ func (d DiaryField) Validate() error {
 			if _branchMatches {
 				if _raw, _ok := d._jsonRawProps["widget"]; _ok {
 					if _branchMatches {
-						_valueMatches := false
-						switch string(bytes.TrimSpace(_raw)) {
-						case "\"slider\"":
-							_valueMatches = true
-						}
-						if !_valueMatches {
+						_valueMatches, _valueErr := jsonMatchesConstRaw(_raw, jsonConstOf(false,
+							"\"slider\"",
+						))
+						if _valueErr != nil || !_valueMatches {
 							_branchMatches = false
 						}
 					}
@@ -652,34 +593,7 @@ func (d DiaryField) Validate() error {
 			_branchMatches := true
 			if _branchMatches {
 				if _raw, _ok := d._jsonRawProps["default"]; _ok {
-					_jt := "unknown"
-					_b := bytes.TrimSpace(_raw)
-					if len(_b) > 0 {
-						switch _b[0] {
-						case '"':
-							_jt = "string"
-						case '{':
-							_jt = "object"
-						case '[':
-							_jt = "array"
-						case 't', 'f':
-							_jt = "boolean"
-						case 'n':
-							_jt = "null"
-						default:
-							_jt = "number"
-							_isInt := true
-							for _, _c := range _b {
-								if _c == '.' || _c == 'e' || _c == 'E' {
-									_isInt = false
-									break
-								}
-							}
-							if _isInt {
-								_jt = "integer"
-							}
-						}
-					}
+					_jt := jsonRawKind(_raw, false)
 					if _jt != "number" && _jt != "integer" {
 						_branchMatches = false
 					}
@@ -687,34 +601,7 @@ func (d DiaryField) Validate() error {
 			}
 			if _branchMatches {
 				if _raw, _ok := d._jsonRawProps["max"]; _ok {
-					_jt := "unknown"
-					_b := bytes.TrimSpace(_raw)
-					if len(_b) > 0 {
-						switch _b[0] {
-						case '"':
-							_jt = "string"
-						case '{':
-							_jt = "object"
-						case '[':
-							_jt = "array"
-						case 't', 'f':
-							_jt = "boolean"
-						case 'n':
-							_jt = "null"
-						default:
-							_jt = "number"
-							_isInt := true
-							for _, _c := range _b {
-								if _c == '.' || _c == 'e' || _c == 'E' {
-									_isInt = false
-									break
-								}
-							}
-							if _isInt {
-								_jt = "integer"
-							}
-						}
-					}
+					_jt := jsonRawKind(_raw, false)
 					if _jt != "number" && _jt != "integer" {
 						_branchMatches = false
 					}
@@ -722,34 +609,7 @@ func (d DiaryField) Validate() error {
 			}
 			if _branchMatches {
 				if _raw, _ok := d._jsonRawProps["min"]; _ok {
-					_jt := "unknown"
-					_b := bytes.TrimSpace(_raw)
-					if len(_b) > 0 {
-						switch _b[0] {
-						case '"':
-							_jt = "string"
-						case '{':
-							_jt = "object"
-						case '[':
-							_jt = "array"
-						case 't', 'f':
-							_jt = "boolean"
-						case 'n':
-							_jt = "null"
-						default:
-							_jt = "number"
-							_isInt := true
-							for _, _c := range _b {
-								if _c == '.' || _c == 'e' || _c == 'E' {
-									_isInt = false
-									break
-								}
-							}
-							if _isInt {
-								_jt = "integer"
-							}
-						}
-					}
+					_jt := jsonRawKind(_raw, false)
 					if _jt != "number" && _jt != "integer" {
 						_branchMatches = false
 					}
@@ -758,12 +618,10 @@ func (d DiaryField) Validate() error {
 			if _branchMatches {
 				if _raw, _ok := d._jsonRawProps["type"]; _ok {
 					if _branchMatches {
-						_valueMatches := false
-						switch string(bytes.TrimSpace(_raw)) {
-						case "\"number\"":
-							_valueMatches = true
-						}
-						if !_valueMatches {
+						_valueMatches, _valueErr := jsonMatchesConstRaw(_raw, jsonConstOf(false,
+							"\"number\"",
+						))
+						if _valueErr != nil || !_valueMatches {
 							_branchMatches = false
 						}
 					}
@@ -772,14 +630,11 @@ func (d DiaryField) Validate() error {
 			if _branchMatches {
 				if _raw, _ok := d._jsonRawProps["widget"]; _ok {
 					if _branchMatches {
-						_valueMatches := false
-						switch string(bytes.TrimSpace(_raw)) {
-						case "\"slider\"":
-							_valueMatches = true
-						case "\"hours\"":
-							_valueMatches = true
-						}
-						if !_valueMatches {
+						_valueMatches, _valueErr := jsonMatchesConstRaw(_raw, jsonConstOf(false,
+							"\"slider\"",
+							"\"hours\"",
+						))
+						if _valueErr != nil || !_valueMatches {
 							_branchMatches = false
 						}
 					}

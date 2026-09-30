@@ -5,7 +5,6 @@ package testpkg
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 )
 
 // BareV4 accepts any JSON value. Constraints apply only when the value is string.
@@ -1633,8 +1632,7 @@ func (u UntypedFormatPositions) Validate() error {
 			}
 		}
 		if _idx == 1 {
-			_cv, _cvOk := _elem.(float64)
-			if !_cvOk || _cv != math.Trunc(_cv) {
+			if !jsonIsInteger(_elem, false) {
 				return fmt.Errorf("tuple: items[%d]: expected integer, got %T", _idx, _elem)
 			}
 		}

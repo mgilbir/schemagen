@@ -57,11 +57,11 @@ func (u UntypedIfThen) Validate() error {
 		return nil
 	}
 	var _v any
-	if _err := json.Unmarshal(u._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers(u._raw, &_v); _err != nil {
 		return fmt.Errorf("cannot decode value: %w", _err)
 	}
-	if _dynNumOK(_v, func(_n float64) bool { return _n < 0.0 }) {
-		if !(_dynNumOK(_v, func(_n float64) bool { return _n >= -10.0 })) {
+	if !jsonNumberAtLeast(_v, "0") {
+		if !(!jsonNumberBelow(_v, "-10")) {
 			return fmt.Errorf("then: value does not satisfy the then schema")
 		}
 	} else {

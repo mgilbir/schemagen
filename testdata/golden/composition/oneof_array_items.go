@@ -3,7 +3,6 @@
 package testpkg
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 )
@@ -613,12 +612,10 @@ func (c CanvasShapesItem) Validate() error {
 			if _branchMatches {
 				if _raw, _ok := c._jsonRawProps["kind"]; _ok {
 					if _branchMatches {
-						_valueMatches := false
-						switch string(bytes.TrimSpace(_raw)) {
-						case "\"circle\"":
-							_valueMatches = true
-						}
-						if !_valueMatches {
+						_valueMatches, _valueErr := jsonMatchesConstRaw(_raw, jsonConstOf(false,
+							"\"circle\"",
+						))
+						if _valueErr != nil || !_valueMatches {
 							_branchMatches = false
 						}
 					}
@@ -626,34 +623,7 @@ func (c CanvasShapesItem) Validate() error {
 			}
 			if _branchMatches {
 				if _raw, _ok := c._jsonRawProps["radius"]; _ok {
-					_jt := "unknown"
-					_b := bytes.TrimSpace(_raw)
-					if len(_b) > 0 {
-						switch _b[0] {
-						case '"':
-							_jt = "string"
-						case '{':
-							_jt = "object"
-						case '[':
-							_jt = "array"
-						case 't', 'f':
-							_jt = "boolean"
-						case 'n':
-							_jt = "null"
-						default:
-							_jt = "number"
-							_isInt := true
-							for _, _c := range _b {
-								if _c == '.' || _c == 'e' || _c == 'E' {
-									_isInt = false
-									break
-								}
-							}
-							if _isInt {
-								_jt = "integer"
-							}
-						}
-					}
+					_jt := jsonRawKind(_raw, false)
 					if _jt != "number" && _jt != "integer" {
 						_branchMatches = false
 					}
@@ -676,34 +646,7 @@ func (c CanvasShapesItem) Validate() error {
 			}
 			if _branchMatches {
 				if _raw, _ok := c._jsonRawProps["height"]; _ok {
-					_jt := "unknown"
-					_b := bytes.TrimSpace(_raw)
-					if len(_b) > 0 {
-						switch _b[0] {
-						case '"':
-							_jt = "string"
-						case '{':
-							_jt = "object"
-						case '[':
-							_jt = "array"
-						case 't', 'f':
-							_jt = "boolean"
-						case 'n':
-							_jt = "null"
-						default:
-							_jt = "number"
-							_isInt := true
-							for _, _c := range _b {
-								if _c == '.' || _c == 'e' || _c == 'E' {
-									_isInt = false
-									break
-								}
-							}
-							if _isInt {
-								_jt = "integer"
-							}
-						}
-					}
+					_jt := jsonRawKind(_raw, false)
 					if _jt != "number" && _jt != "integer" {
 						_branchMatches = false
 					}
@@ -712,12 +655,10 @@ func (c CanvasShapesItem) Validate() error {
 			if _branchMatches {
 				if _raw, _ok := c._jsonRawProps["kind"]; _ok {
 					if _branchMatches {
-						_valueMatches := false
-						switch string(bytes.TrimSpace(_raw)) {
-						case "\"rectangle\"":
-							_valueMatches = true
-						}
-						if !_valueMatches {
+						_valueMatches, _valueErr := jsonMatchesConstRaw(_raw, jsonConstOf(false,
+							"\"rectangle\"",
+						))
+						if _valueErr != nil || !_valueMatches {
 							_branchMatches = false
 						}
 					}
@@ -725,34 +666,7 @@ func (c CanvasShapesItem) Validate() error {
 			}
 			if _branchMatches {
 				if _raw, _ok := c._jsonRawProps["width"]; _ok {
-					_jt := "unknown"
-					_b := bytes.TrimSpace(_raw)
-					if len(_b) > 0 {
-						switch _b[0] {
-						case '"':
-							_jt = "string"
-						case '{':
-							_jt = "object"
-						case '[':
-							_jt = "array"
-						case 't', 'f':
-							_jt = "boolean"
-						case 'n':
-							_jt = "null"
-						default:
-							_jt = "number"
-							_isInt := true
-							for _, _c := range _b {
-								if _c == '.' || _c == 'e' || _c == 'E' {
-									_isInt = false
-									break
-								}
-							}
-							if _isInt {
-								_jt = "integer"
-							}
-						}
-					}
+					_jt := jsonRawKind(_raw, false)
 					if _jt != "number" && _jt != "integer" {
 						_branchMatches = false
 					}

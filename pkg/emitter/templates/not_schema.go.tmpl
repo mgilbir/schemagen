@@ -27,17 +27,19 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	return fmt.Errorf("not: value is forbidden (not schema matches all values)")
 	{{- else if or .NotTypes .NotBranches}}
 	// Decode raw JSON to determine the value's type.
+	{{- /* Every number is kept as the literal the document wrote, which the
+	       checks below read through the exact core. See jsonDecodeNumbers. */}}
 	var _v any
-	if _err := json.Unmarshal({{$recv}}._raw, &_v); _err != nil {
+	if _err := jsonDecodeNumbers({{$recv}}._raw, &_v); _err != nil {
 		return fmt.Errorf("not: cannot decode value: %w", _err)
 	}
 	{{- range .NotTypes}}
 	{{- if eq . "integer"}}
-	if _f, _fOk := _v.(float64); _fOk && _f == math.Trunc(_f) && !math.IsInf(_f, 0) {
+	if jsonIsInteger(_v, {{if $.StrictInteger}}true{{else}}false{{end}}) {
 		return fmt.Errorf("not: value must not be integer")
 	}
 	{{- else if eq . "number"}}
-	if _, _fOk := _v.(float64); _fOk {
+	if jsonIsNumber(_v) {
 		return fmt.Errorf("not: value must not be number")
 	}
 	{{- else if eq . "string"}}
@@ -67,11 +69,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		_branchMatches := true
 		{{- range $branch.Types}}
 		{{- if eq . "integer"}}
-		if _f, _fOk := _v.(float64); !_fOk || _f != math.Trunc(_f) || math.IsInf(_f, 0) {
+		if !jsonIsInteger(_v, {{if $.StrictInteger}}true{{else}}false{{end}}) {
 			_branchMatches = false
 		}
 		{{- else if eq . "number"}}
-		if _, _fOk := _v.(float64); !_fOk {
+		if !jsonIsNumber(_v) {
 			_branchMatches = false
 		}
 		{{- else if eq . "string"}}
@@ -108,10 +110,9 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				_branchMatches = false
 			} else {
 				{{- if eq .JSONType "integer"}}
-				_f, _fOk := _propVal.(float64)
-				if !_fOk || _f != math.Trunc(_f) || math.IsInf(_f, 0) { _branchMatches = false }
+				if !jsonIsInteger(_propVal, {{if $.StrictInteger}}true{{else}}false{{end}}) { _branchMatches = false }
 				{{- else if eq .JSONType "number"}}
-				if _, _fOk := _propVal.(float64); !_fOk { _branchMatches = false }
+				if !jsonIsNumber(_propVal) { _branchMatches = false }
 				{{- else if eq .JSONType "string"}}
 				if _, _sOk := _propVal.(string); !_sOk { _branchMatches = false }
 				{{- else if eq .JSONType "boolean"}}
@@ -129,29 +130,19 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		{{- end}}
 		{{- range $branch.Validations}}
 		if _branchMatches {
+			{{- /* A keyword about one JSON type is satisfied by a value of any
+			       other, so a value it does not apply to leaves the branch
+			       matching: the branch's own "type" is what refuses it, above.
+			       These arms used to count such a value as a non-match, which
+			       made {"not":{"anyOf":[{"type":"string","minimum":5}]}} admit
+			       every string. The numeric keywords read the number through
+			       the exact core, which answers false for a non-number. */}}
 			{{- if or (eq .RuleType "minimum") (eq .RuleType "maximum") (eq .RuleType "exclusiveMinimum") (eq .RuleType "exclusiveMaximum") (eq .RuleType "multipleOf")}}
-			_num, _numOk := _v.(float64)
-			if !_numOk {
+			if {{numViolated . "_v"}} {
 				_branchMatches = false
-			} else {
-				{{- if eq .RuleType "minimum"}}
-				if _num < {{countExpr .Value}} { _branchMatches = false }
-				{{- else if eq .RuleType "maximum"}}
-				if _num > {{countExpr .Value}} { _branchMatches = false }
-				{{- else if eq .RuleType "exclusiveMinimum"}}
-				if _num <= {{countExpr .Value}} { _branchMatches = false }
-				{{- else if eq .RuleType "exclusiveMaximum"}}
-				if _num >= {{countExpr .Value}} { _branchMatches = false }
-				{{- else if eq .RuleType "multipleOf"}}
-				_q := _num / {{numLit .Value}}
-				if math.Abs(_q - math.Round(_q)) > 1e-9 { _branchMatches = false }
-				{{- end}}
 			}
 			{{- else if or (eq .RuleType "minLength") (eq .RuleType "maxLength") (eq .RuleType "pattern")}}
-			_s, _sOk := _v.(string)
-			if !_sOk {
-				_branchMatches = false
-			} else {
+			if _s, _sOk := _v.(string); _sOk {
 				{{- if eq .RuleType "minLength"}}
 				if utf8.RuneCountInString(_s) < {{countExpr .Value}} { _branchMatches = false }
 				{{- else if eq .RuleType "maxLength"}}
@@ -166,10 +157,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				{{- end}}
 			}
 			{{- else if or (eq .RuleType "minItems") (eq .RuleType "maxItems")}}
-			_arr, _arrOk := _v.([]any)
-			if !_arrOk {
-				_branchMatches = false
-			} else {
+			if _arr, _arrOk := _v.([]any); _arrOk {
 				{{- if eq .RuleType "minItems"}}
 				if len(_arr) < {{countExpr .Value}} { _branchMatches = false }
 				{{- else if eq .RuleType "maxItems"}}

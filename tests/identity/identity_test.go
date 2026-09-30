@@ -276,19 +276,36 @@ func TestALazyValueIsReadAsDecoded(t *testing.T) {
 	// caller's buffer let go of.
 	d.keep(sp)
 	d.finish(nil)
-	var v any
+	var v, vExact any
 	if err := json.Unmarshal(doc, &v); err != nil {
 		t.Fatal(err)
 	}
-	l := jsonLazy{d, sp}
+	dec := json.NewDecoder(strings.NewReader(string(doc)))
+	dec.UseNumber()
+	if err := dec.Decode(&vExact); err != nil {
+		t.Fatal(err)
+	}
+	l := jsonLazy{d, sp, false}
+	lExact := jsonLazy{d, sp, true}
 	for round := 0; round < 2; round++ {
-		// The second round reads what the first kept on the document.
+		// The second round reads what the first kept on the document -- two
+		// caches, one per reading of its numbers.
 		got, err := l.jsonIdentity(nil)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if got != refID(t, v) {
 			t.Errorf("round %d: a lazily read value is not what encoding/json decodes it into", round)
+		}
+		gotExact, err := lExact.jsonIdentity(nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gotExact != refID(t, vExact) {
+			t.Errorf("round %d: an exact lazily read value is not what encoding/json decodes it into with UseNumber", round)
+		}
+		if gotExact == got {
+			t.Errorf("round %d: 12345678901234567890 read exactly and as a float64 are one identity; the document is not telling the readings apart", round)
 		}
 	}
 	a := l.jsonLevel().(map[string]any)["a"].(jsonLazy).jsonLevel().([]any)
@@ -330,8 +347,10 @@ func TestADecodedValueIsReadAsTheWalkerReadsIt(t *testing.T) {
 		}
 		d.keep(sp)
 		d.finish(nil)
-		lazy := jsonLazy{d, sp}
-		for name, v := range map[string]any{"whole": whole, "exact": exact, "lazy": lazy, "levelled": jsonTop(lazy)} {
+		lazy := jsonLazy{d, sp, false}
+		lazyExact := jsonLazy{d, sp, true}
+		for name, v := range map[string]any{"whole": whole, "exact": exact, "lazy": lazy, "levelled": jsonTop(lazy),
+			"lazy exact": lazyExact, "levelled exact": jsonTop(lazyExact)} {
 			got, err := jsonIDJSON(v)
 			if err != nil {
 				t.Fatalf("%s %s: %v", doc, name, err)
@@ -354,9 +373,11 @@ func TestADecodedValueIsReadAsTheWalkerReadsIt(t *testing.T) {
 			if !jsonTreeEqual(tree, wantTree) || !jsonTreeEqual(wantTree, tree) {
 				t.Errorf("%s %s: tree %v is not the walker's %v", doc, name, tree, wantTree)
 			}
-			// Read as a float64, as the evaluator reads a decoded value, but for
-			// the value decoded with its numbers exact.
-			if ok, err := jsonMatchesJSON(v, jsonConstOf(name != "exact", doc)); err != nil || !ok {
+			// Read as a float64 where the value was decoded that way, and exactly
+			// where its numbers are the literals -- the value decoded with
+			// UseNumber, and a lazy value read exactly, which is how the
+			// evaluator reads one.
+			if ok, err := jsonMatchesJSON(v, jsonConstOf(!strings.Contains(name, "exact"), doc)); err != nil || !ok {
 				t.Errorf("%s %s: not a match for its own text (%v)", doc, name, err)
 			}
 		}

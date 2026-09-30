@@ -3,7 +3,6 @@
 package testpkg
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"unicode/utf8"
@@ -458,36 +457,7 @@ func (p PresentNullPositionsNullableObject) Validate() error {
 		_nonObj := p._rawNonObject
 		_ = _nonObj
 		{
-			_trim := bytes.TrimSpace(_nonObj)
-			var jt string
-			if len(_trim) == 0 {
-				jt = "unknown"
-			} else {
-				switch _trim[0] {
-				case '"':
-					jt = "string"
-				case '{':
-					jt = "object"
-				case '[':
-					jt = "array"
-				case 't', 'f':
-					jt = "boolean"
-				case 'n':
-					jt = "null"
-				default:
-					jt = "number"
-					isInt := true
-					for _, _ch := range _trim {
-						if _ch == '.' || _ch == 'e' || _ch == 'E' {
-							isInt = false
-							break
-						}
-					}
-					if isInt {
-						jt = "integer"
-					}
-				}
-			}
+			jt := jsonRawKind(_nonObj, false)
 			_ppTypeOK := false
 			if jt == "object" {
 				_ppTypeOK = true

@@ -40,6 +40,18 @@ type HelperSet struct {
 	AnnotationsFormats []string
 	AnnotationsContent bool
 
+	// AnnotationsBounds and AnnotationsMultipleOf add the evaluator's bounds and
+	// multipleOf arms, and the node fields they read, only where some node sets
+	// one of those fields, as AnnotationsEquality does for const, enum and
+	// uniqueItems. Each arm is code inside the evaluator, which the pruning of
+	// declarations cannot take out. The field is declared with its arm, so a
+	// node that sets a field whose arm was left out does not compile: a miss is
+	// loud, never a check silently skipped. "integer" has no such field to hang
+	// a compile error on -- a type name is a string -- so the integrality arm is
+	// not conditional.
+	AnnotationsBounds     bool
+	AnnotationsMultipleOf bool
+
 	// AnnotationsDynamic adds the two things a schema needs when it cannot be
 	// written as one finite tree: a node that refers to another node, so a
 	// schema that contains itself can be expressed at all, and the stack of
@@ -54,13 +66,22 @@ type HelperSet struct {
 	Integer            bool // jsonInteger and the shape-preserving converters
 
 	// Number is jsonNumber, the shadow a "number" held exactly is decoded
-	// through, and NumberCompare the exact decimal comparisons its keywords are
-	// enforced by. Two flags rather than one because they arrive apart: a
-	// schema that types a property "number" and states no numeric keyword needs
-	// the shadow and no comparison, and a file that carries only the checks --
-	// a $defs alias validated from another document of a shared-types run --
-	// needs the comparison and no shadow.
-	Number        bool
+	// through. It arrives apart from the core below: a schema that types a
+	// property "number" and states no numeric keyword needs the shadow and none
+	// of the arithmetic, and a file that carries only checks -- a $defs alias
+	// validated from another document of a shared-types run -- needs the
+	// arithmetic and no shadow.
+	Number bool
+
+	// NumberCompare is the exact-number core: every numeric keyword, "integer",
+	// and the literal-keeping decode (jsonDecodeNumbers) are decided through
+	// it. It is one block. It is code in the user's package, and what a
+	// package carries of it is settled per declaration by the helper pruning
+	// (see Roots): a package whose only numeric question is "is this member an
+	// integer" keeps that reading and none of the modular arithmetic or the
+	// --big-int reader. The block has no field or arm another block's
+	// rendering depends on, so splitting it further would decide nothing the
+	// pruning does not.
 	NumberCompare bool
 
 	// DateTime is jsonDateTime, the shadow an asserted `format: date-time` is
@@ -219,6 +240,8 @@ func (h *HelperSet) Merge(other HelperSet) {
 	h.AnnotationsDynamic = h.AnnotationsDynamic || other.AnnotationsDynamic
 	h.AnnotationsFormats = mergeSortedUnique(h.AnnotationsFormats, other.AnnotationsFormats)
 	h.AnnotationsContent = h.AnnotationsContent || other.AnnotationsContent
+	h.AnnotationsBounds = h.AnnotationsBounds || other.AnnotationsBounds
+	h.AnnotationsMultipleOf = h.AnnotationsMultipleOf || other.AnnotationsMultipleOf
 	h.Integer = h.Integer || other.Integer
 	h.Number = h.Number || other.Number
 	h.NumberCompare = h.NumberCompare || other.NumberCompare
@@ -305,6 +328,22 @@ func (h *HelperSet) CloseOverCalls() {
 	}
 	if h.Integer || h.Number || h.DateTime || h.IPAddr || h.NullCheck || h.DecodePath || h.Annotations {
 		h.PathJoin = true
+	}
+	// A const judged against an untyped value -- by _dynConstOK, and by the
+	// evaluator's equality -- is decided by JSON equality, which is the
+	// canonical block's.
+	if h.DynamicConst || h.AnnotationsEquality {
+		h.Canonical = true
+	}
+	// The exact-number core, for the blocks that read numbers without a
+	// generated file naming it: the runtime evaluator (its type, bounds and
+	// multipleOf arms), the JSON-equality reduction and the identities under it
+	// (a number's canonical reading), and the in-place decoder, whose held
+	// values a check reads with every number as the literal the document
+	// wrote (jsonHeld, jsonDecodeNumbers). What of the core each keeps is the
+	// pruning's to settle.
+	if h.Annotations || h.Canonical || h.Decode || h.DynamicConst {
+		h.NumberCompare = true
 	}
 	// Every block below writes a string taken from the document into a
 	// message -- a format checker the value it refused, a walker the key it
@@ -440,6 +479,23 @@ func HelpersReferencedBy(src string) HelperSet {
 		if nodeFieldEquality.MatchString(src) {
 			set.AnnotationsEquality = true
 		}
+		// The bounds and multipleOf arms, and the node fields they read, are
+		// compiled in on the same signal: each is the one part of the
+		// evaluator reaching its piece of the exact-number core. A field
+		// matched where no node set it only adds an arm; one missed is a field
+		// the node struct does not declare, which does not compile.
+		//
+		// Neither pattern starts with a literal, so the regexp engine walks
+		// every byte of the file; each is asked only when a substring every
+		// match contains is present ("imum:" is in both "Minimum:" and
+		// "Maximum:"), which leaves the answer as it was and skips the walk
+		// for the files that state no bound.
+		if strings.Contains(src, "imum:") && nodeFieldBounds.MatchString(src) {
+			set.AnnotationsBounds = true
+		}
+		if strings.Contains(src, "MultipleOf:") && nodeFieldMultipleOf.MatchString(src) {
+			set.AnnotationsMultipleOf = true
+		}
 		// The recursive and dynamic arms are read the same way, off the three
 		// fields only a file needing them can carry: a node pointing at another
 		// node, a reference the dynamic scope resolves, and the frame a schema
@@ -487,9 +543,8 @@ func HelpersReferencedBy(src string) HelperSet {
 	if strings.Contains(src, "jsonNumber") {
 		set.Number = true
 	}
-	if strings.Contains(src, "jsonNumberCmp(") || strings.Contains(src, "jsonNumberIsMultipleOf(") {
-		set.NumberCompare = true
-	}
+	// The exact-number core, by any name it declares that the file uses: read
+	// off the identifiers below, with the identity blocks.
 	// The date-time shadow, read the same way and taking the same bargain as the
 	// number one: a file holding a container of them names jsonIntegerSlice as
 	// well and so takes the integer block too, which is one jsonInteger nobody
@@ -507,7 +562,7 @@ func HelpersReferencedBy(src string) HelperSet {
 	// reduction itself and the list initialiser that applies it at package
 	// initialisation -- and the second appears in a file whose enum type is
 	// declared elsewhere, so both are matched.
-	if strings.Contains(src, "_jsonCanonical(") || strings.Contains(src, "_jsonCanonicalTexts(") {
+	if strings.Contains(src, "_jsonCanonical(") || strings.Contains(src, "_jsonCanonicalTexts(") || strings.Contains(src, "_jsonCanonicalNumber(") {
 		set.Canonical = true
 	}
 	// The identity blocks. A file naming anything a block declares takes the
@@ -523,6 +578,12 @@ func HelpersReferencedBy(src string) HelperSet {
 				b.set(&set)
 				break
 			}
+		}
+	}
+	for _, d := range numberCoreDecls {
+		if ids[d] {
+			set.NumberCompare = true
+			break
 		}
 	}
 	// jsonNullRule and checkJSONNullsAt come as one block, and the walker's name
@@ -570,6 +631,8 @@ var (
 	nodeFieldRef               = regexp.MustCompile(`\bRef:\s+&_`)
 	nodeFieldDynamic           = regexp.MustCompile(`\bDynamic(Ref|Anchors):\s`)
 	nodeFieldEquality          = regexp.MustCompile(`\bConst:\s+_strPtr\(|\bEnum:\s+\[\]string\{|\bUniqueItems:\s+true\b`)
+	nodeFieldBounds            = regexp.MustCompile(`\b(Exclusive)?(Minimum|Maximum):\s+_strPtr\(`)
+	nodeFieldMultipleOf        = regexp.MustCompile(`\bMultipleOf:\s+_strPtr\(`)
 	accessFieldPattern         = regexp.MustCompile(`\bKind:\s+_accessPattern|\bExceptPatterns:\s`)
 )
 
@@ -593,7 +656,7 @@ var identityBlocks = []identityBlock{
 		"jsonID", "jsonIDSeeds", "jsonIDNullKind", "jsonIDTrueKind", "jsonIDFalseKind", "jsonIDStringKind",
 		"jsonIDNumberKind", "jsonIDLiteralKind", "jsonIDArrayKind", "jsonIDObjectKind", "jsonIDMemberKind",
 		"jsonIDMix", "jsonPutUint64", "jsonIDOfKind", "jsonIDBool", "jsonIDText", "jsonIDBytes", "jsonIDString",
-		"jsonIDNumber", "jsonNumberDigits", "jsonAppendDigits", "jsonIDInt", "jsonIDUint", "jsonIDFloat",
+		"jsonIDNumber", "jsonIDExponentLimit", "jsonNumberDigits", "jsonAppendDigits", "jsonIDInt", "jsonIDUint", "jsonIDFloat",
 		"jsonIDNumberLiteral", "jsonIsNumberLiteral", "jsonIDArray", "jsonIDMemberOf", "jsonIDObjectOf", "jsonKeyMayShare", "jsonIDShared", "jsonIDSharedMember", "jsonIDKeep", "jsonIDIn", "jsonValidString",
 		"jsonIDRaw", "jsonIDRawMessage", "jsonIDRawAsDecoded", "jsonIDReadAll", "jsonIDReader", "jsonIDMaxDepth",
 		"jsonIDMember", "jsonIDMembers", "jsonIDKeyAgain"),
@@ -630,6 +693,29 @@ func IdentityBlockDecls() map[string][]string {
 		out[b.template] = append([]string(nil), b.decls...)
 	}
 	return out
+}
+
+// numberCoreDecls is every name the exact-number core declares at the top
+// level of the package. A generated file naming any of them takes the core;
+// every name is listed, not only the ones generated code names today, so a
+// template that starts naming one directly takes the core with no change
+// here, and the emitter's tests hold the list to what the template declares.
+var numberCoreDecls = []string{
+	"jsonDecimal", "jsonExponentDigits", "jsonNumberParts", "jsonRawNumber",
+	"jsonDecimalCmp", "jsonDecimalOrder", "jsonNumberCmp", "jsonNumberOrder",
+	"jsonNumberBelow", "jsonNumberAbove", "jsonNumberAtMost", "jsonNumberAtLeast", "jsonNumberEqual",
+	"jsonNumberIsMultipleOf", "jsonDecimalIsMultipleOf", "jsonDigitsModUint", "jsonDigitsModBig",
+	"jsonPowModUint", "jsonPow10", "jsonNumberNotMultipleOf", "jsonFloatIsMultipleOf", "jsonFloatPow10",
+	"jsonDecimalIsIntegral", "jsonDecimalIsIntegerToken", "jsonIsInteger", "jsonHoldsLiteral", "jsonRawKind",
+	"jsonNumberOf", "jsonIsNumber",
+	"jsonBigIntExponentLimit", "jsonBigIntFromLiteral", "jsonDigitsToBig",
+	"jsonDecodeNumbers",
+}
+
+// NumberCoreDecls returns the names the exact-number core declares, for the
+// emitter's test that holds the list to the template.
+func NumberCoreDecls() []string {
+	return append([]string(nil), numberCoreDecls...)
 }
 
 // anyIdentity reports whether any identity block is set.

@@ -2,6 +2,7 @@ package schema
 
 import (
 	"encoding/json"
+	"math/big"
 	"sort"
 	"strconv"
 	"strings"
@@ -38,9 +39,9 @@ import (
 // json.Number or Number, []any or map[string]any. The numeric Go kinds are
 // accepted too, for a schema assembled in Go rather than parsed.
 //
-// False is the answer for anything else -- a Go type no decode produces -- and
-// for a number whose exponent will not fit in an int64. Both leave the caller
-// to fall back on whatever it did before rather than inventing an answer.
+// False is the answer for anything else -- a Go type no decode produces, or a
+// Number that is not a JSON number -- which leaves the caller to fall back on
+// whatever it did before rather than inventing an answer.
 func CanonicalJSON(v any) (string, bool) {
 	var b strings.Builder
 	if !appendCanonicalJSON(&b, v) {
@@ -140,9 +141,8 @@ func canonicalNumberOf(v any) (Number, bool) {
 	return "", false
 }
 
-// numberParts splits a JSON number literal into the sign, the significant
-// digits and the power of ten the last of those digits stands for: the value is
-// (neg ? -1 : 1) * digits * 10^scale.
+// decimal is a JSON number literal read as the exact decimal it names: the
+// value is (neg ? -1 : 1) * digits * 10^scale.
 //
 // Both ends of the digit run are trimmed, and that is what makes this a
 // canonical form rather than a reading. Leading zeros carry no value at all;
@@ -151,19 +151,43 @@ func canonicalNumberOf(v any) (Number, bool) {
 // 0e100 -- has no digits left, and its sign goes with them, because JSON Schema
 // has no -0 distinct from 0.
 //
-// The exponent is parsed rather than clamped. A clamp would put two genuinely
-// different numbers on the same canonical text and so make a const accept a
-// value it forbids, which is the defect this whole file exists to close; a
-// literal whose exponent will not fit in an int64 is refused instead, and the
-// caller falls back.
-func (n Number) numberParts() (neg bool, digits string, scale int64, ok bool) {
+// It is the generator's copy of jsonNumberParts, the reader the generated code
+// decides every numeric keyword through; the generated code is standalone and
+// cannot import this one. tests/canonical_agreement_test.go holds the two to
+// one answer.
+type decimal struct {
+	digits string
+	// scale is the power of ten, when the exponent the literal wrote has at
+	// most decimalExponentDigits digits; bigScale holds it past that.
+	scale    int64
+	bigScale *big.Int
+	neg      bool
+}
+
+// decimalExponentDigits is the widest exponent, in digits, held in an int64.
+// The arithmetic on a scale adds and subtracts digit counts, which no literal
+// in memory can make large enough to carry an int64 of fifteen digits past its
+// range.
+const decimalExponentDigits = 15
+
+// numberParts reads the literal as a decimal, and reports whether it is a JSON
+// number at all.
+//
+// The exponent is read whatever its size. It used to be refused past 2^40 and
+// the literal kept as written, which put 1e2000000000000 and 10e1999999999999
+// -- one number -- on two canonical texts. A clamp would have been worse, two
+// numbers on one text, and a const accepting a value it forbids; holding the
+// scale as a big.Int is neither, and costs arithmetic on a number as long as
+// the exponent the document wrote.
+func (n Number) numberParts() (decimal, bool) {
 	s := string(n)
+	var d decimal
 	if s == "" {
-		return false, "", 0, true
+		return d, true
 	}
 	i := 0
-	if i < len(s) && (s[i] == '-' || s[i] == '+') {
-		neg = s[i] == '-'
+	if s[0] == '-' || s[0] == '+' {
+		d.neg = s[0] == '-'
 		i++
 	}
 	start := i
@@ -181,41 +205,45 @@ func (n Number) numberParts() (neg bool, digits string, scale int64, ok bool) {
 		fracPart = s[start:i]
 	}
 	if intPart == "" && fracPart == "" {
-		return false, "", 0, false
+		return decimal{}, false
 	}
-	exp := int64(0)
+	var exp int64
+	var bigExp *big.Int
 	if i < len(s) && (s[i] == 'e' || s[i] == 'E') {
 		i++
-		start = i
+		eNeg := false
 		if i < len(s) && (s[i] == '+' || s[i] == '-') {
+			eNeg = s[i] == '-'
 			i++
 		}
-		digitsStart := i
+		start = i
 		for i < len(s) && s[i] >= '0' && s[i] <= '9' {
 			i++
 		}
-		if digitsStart == i {
-			return false, "", 0, false
+		if start == i {
+			return decimal{}, false
 		}
-		e, err := strconv.ParseInt(s[start:i], 10, 64)
-		if err != nil {
-			return false, "", 0, false
+		eDigits := strings.TrimLeft(s[start:i], "0")
+		if eDigits == "" {
+			eDigits = "0"
 		}
-		// Bounded well below the int64 range so that the scale arithmetic
-		// below -- subtracting the fraction's length, then walking upwards
-		// once per trailing zero, then adding the digit count back -- cannot
-		// wrap. A literal past this is refused rather than clamped, for the
-		// reason the doc comment gives.
-		if e > canonicalExponentLimit || e < -canonicalExponentLimit {
-			return false, "", 0, false
+		if len(eDigits) <= decimalExponentDigits {
+			exp, _ = strconv.ParseInt(eDigits, 10, 64)
+			if eNeg {
+				exp = -exp
+			}
+		} else {
+			bigExp, _ = new(big.Int).SetString(eDigits, 10)
+			if eNeg {
+				bigExp.Neg(bigExp)
+			}
 		}
-		exp = e
 	}
 	if i != len(s) {
-		return false, "", 0, false
+		return decimal{}, false
 	}
-	digits = intPart + fracPart
-	scale = exp - int64(len(fracPart))
+	digits := intPart + fracPart
+	scale := -int64(len(fracPart))
 	for len(digits) > 0 && digits[0] == '0' {
 		digits = digits[1:]
 	}
@@ -224,15 +252,127 @@ func (n Number) numberParts() (neg bool, digits string, scale int64, ok bool) {
 		scale++
 	}
 	if digits == "" {
-		return false, "", 0, true
+		return decimal{}, true
 	}
-	return neg, digits, scale, true
+	d.digits = digits
+	if bigExp != nil {
+		d.bigScale = bigExp.Add(bigExp, big.NewInt(scale))
+	} else {
+		d.scale = exp + scale
+	}
+	return d, true
 }
 
-// canonicalExponentLimit bounds the exponent a literal may state. It is far
-// past anything a document means -- float64 stops at 308 -- and far short of
-// where the scale arithmetic in numberParts could wrap an int64.
-const canonicalExponentLimit = 1 << 40
+// Decimal reads the number as digits*10^scale, with digits free of leading
+// and trailing zeros -- 1.50, 15e-1 and 0.15e1 all answer "15", -1 -- and
+// reports whether it could: false for a literal that is not a JSON number, and
+// for one whose exponent is too wide for an int64 to carry the scale. Zero
+// answers no digits. It reads the literal once, in time linear in its length,
+// which is what a question about a divisor's or bound's shape wants before it
+// builds a big.Rat, whose parse is quadratic in the digits.
+func (n Number) Decimal() (digits string, scale int64, neg, ok bool) {
+	d, ok := n.numberParts()
+	if !ok || d.bigScale != nil {
+		return "", 0, false, false
+	}
+	return d.digits, d.scale, d.neg, true
+}
+
+// scaleBig is the scale as a big.Int.
+func (d decimal) scaleBig() *big.Int {
+	if d.bigScale != nil {
+		return new(big.Int).Set(d.bigScale)
+	}
+	return big.NewInt(d.scale)
+}
+
+// Compare compares two numbers by value, answering -1, 0 or 1, and reports
+// whether both are JSON numbers. It reads the digits and never a float64, so it
+// is exact for every literal the grammar allows, whatever its exponent.
+func (n Number) Compare(other Number) (int, bool) {
+	a, okA := n.numberParts()
+	b, okB := other.numberParts()
+	if !okA || !okB {
+		return 0, false
+	}
+	switch {
+	case a.digits == "" && b.digits == "":
+		return 0, true
+	case a.digits == "":
+		if b.neg {
+			return 1, true
+		}
+		return -1, true
+	case b.digits == "":
+		if a.neg {
+			return -1, true
+		}
+		return 1, true
+	}
+	if a.neg != b.neg {
+		if a.neg {
+			return -1, true
+		}
+		return 1, true
+	}
+	c := 0
+	if a.bigScale == nil && b.bigScale == nil {
+		aLead := a.scale + int64(len(a.digits))
+		bLead := b.scale + int64(len(b.digits))
+		switch {
+		case aLead < bLead:
+			c = -1
+		case aLead > bLead:
+			c = 1
+		}
+	} else {
+		aLead := a.scaleBig()
+		aLead.Add(aLead, big.NewInt(int64(len(a.digits))))
+		bLead := b.scaleBig()
+		bLead.Add(bLead, big.NewInt(int64(len(b.digits))))
+		c = aLead.Cmp(bLead)
+	}
+	if c == 0 {
+		for k := 0; k < len(a.digits) || k < len(b.digits); k++ {
+			x, y := byte('0'), byte('0')
+			if k < len(a.digits) {
+				x = a.digits[k]
+			}
+			if k < len(b.digits) {
+				y = b.digits[k]
+			}
+			if x != y {
+				if x < y {
+					c = -1
+				} else {
+					c = 1
+				}
+				break
+			}
+		}
+	}
+	if a.neg {
+		c = -c
+	}
+	return c, true
+}
+
+// IsInteger reports whether the number has a zero fractional part, and
+// whether it is a JSON number at all. 1.0, 1e2 and 1e99999999999999999999 are
+// integers; 1.5 and 1e-1 are not.
+func (n Number) IsInteger() (bool, bool) {
+	d, ok := n.numberParts()
+	if !ok {
+		return false, false
+	}
+	if d.digits == "" {
+		return true, true
+	}
+	if d.bigScale != nil {
+		return d.bigScale.Sign() >= 0, true
+	}
+	return d.scale >= 0, true
+}
 
 // canonicalPlainFormLimit and canonicalSmallFormLimit are where the canonical
 // text stops writing a number out in full and starts using an exponent.
@@ -255,22 +395,43 @@ const (
 // 1, 1.0, 1e0 and 0.1e1 all answer "1"; 1.50 and 1.5 both answer "1.5"; every
 // spelling of zero answers "0".
 func (n Number) CanonicalText() (string, bool) {
-	neg, digits, scale, ok := n.numberParts()
+	d, ok := n.numberParts()
 	if !ok {
 		return "", false
 	}
+	digits := d.digits
 	if digits == "" {
 		return "0", true
 	}
 	k := int64(len(digits))
-	// The decimal point sits after this many of the digits, counting from the
-	// left; a value at or below zero means the number starts with "0.".
-	point := scale + k
-
 	var b strings.Builder
-	if neg {
+	if d.neg {
 		b.WriteByte('-')
 	}
+	if d.bigScale != nil {
+		// An exponent that took a big.Int to hold puts the decimal point
+		// further from the digits than a literal that fits in memory can bring
+		// back into the plain forms, so the text is the exponent form, written
+		// from the big.Int.
+		e := new(big.Int).Add(d.bigScale, big.NewInt(k-1))
+		b.WriteString(digits[:1])
+		if k > 1 {
+			b.WriteByte('.')
+			b.WriteString(digits[1:])
+		}
+		if e.Sign() >= 0 {
+			b.WriteString("e+")
+		} else {
+			b.WriteString("e-")
+			e.Neg(e)
+		}
+		b.WriteString(e.String())
+		return b.String(), true
+	}
+	// The decimal point sits after this many of the digits, counting from the
+	// left; a value at or below zero means the number starts with "0.".
+	point := d.scale + k
+
 	switch {
 	case k <= point && point <= canonicalPlainFormLimit:
 		b.WriteString(digits)

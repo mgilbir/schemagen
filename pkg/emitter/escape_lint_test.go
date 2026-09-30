@@ -98,13 +98,10 @@ var codeFuncs = map[string]string{
 	"stringList":          "strconv-quoted feature names",
 	"validationFeatures":  "strconv-quoted feature names",
 	"accessRules":         "a composite literal of strconv-quoted names and patterns",
-	"numBound":            "a Go number literal from generator.GoNumberLiteral",
 	"numLit":              "a Go number literal; refuses anything else",
 	"countExpr":           "a count bound's int as a decimal or a fixed min/max expression over it (CountBound.GoExpr); anything else goes through numLit",
-	"dynNum":              "a Go float literal",
-	"numOperand":          "a comparison built from a code expression and a quoted literal",
-	"exactMultipleOf":     "a call built from a code expression and a quoted literal",
-	"exactConstViolated":  "a call built from a code expression and a quoted literal",
+	"numViolated":         "a condition built from a code expression, strconv-quoted literals and Go number literals the generator rendered",
+	"numAnyViolated":      "a condition built from a code expression, strconv-quoted literals and Go number literals the generator rendered",
 	"validationValue":     "a field access built from minted identifiers",
 	"validationNonNil":    "a nil test built from minted identifiers",
 	"validationStringSet": "an emptiness test built from minted identifiers",
@@ -455,8 +452,37 @@ func TestTemplateActionsEscapeSchemaText(t *testing.T) {
 	if len(problems) > 0 {
 		t.Errorf("%d template actions write unescaped values:\n%s", len(problems), strings.Join(problems, "\n"))
 	}
-	if counts[goCode] == 0 || counts[goLineComment] == 0 || counts[goString] == 0 || counts[goFormatString] == 0 || counts[goRawString] == 0 {
+	if counts[goCode] == 0 || counts[goLineComment] == 0 || counts[goFormatString] == 0 || counts[goRawString] == 0 {
 		t.Errorf("the analysis found no action in some context (%v); it has stopped seeing the templates", counts)
+	}
+	// No template writes schema text into an interpreted string literal any
+	// more -- the last one was the big-int bound handed to big.Float.SetString,
+	// which the exact number core replaced -- so the real templates cannot show
+	// that the analysis still recognises the context. A probe does, and shows
+	// the lint still refuses an unescaped value written there.
+	if counts[goString] == 0 {
+		probe, err := template.Must(tmpl.Clone()).New("lint_probe_string").Parse(`x := "{{goStringLiteral .A}}{{.B}}"`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pan, err := gocontext.Analyze(probe)
+		if err != nil {
+			t.Fatal(err)
+		}
+		plt := &lintTemplate{name: "lint_probe_string", tree: probe.Lookup("lint_probe_string").Tree, bindings: map[string][]*parse.PipeNode{}}
+		seen, refused := 0, 0
+		for _, site := range pan.Sites {
+			if site.Template != "lint_probe_string" || site.Context != goString {
+				continue
+			}
+			seen++
+			if plt.safe(site.Node.Pipe, site.Context, map[string]bool{}) == "" {
+				refused++
+			}
+		}
+		if seen != 2 || refused != 1 {
+			t.Errorf("the probe's string literal holds two actions, one escaped and one not; the analysis saw %d in a %s and refused %d", seen, goString, refused)
+		}
 	}
 	t.Logf("actions by context: %v", counts)
 }
