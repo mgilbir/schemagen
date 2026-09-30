@@ -1,0 +1,340 @@
+package format
+
+import (
+	"fmt"
+	"net/mail"
+	"net/netip"
+	"strings"
+	"unicode"
+	"unicode/utf8"
+
+	"golang.org/x/net/idna"
+)
+
+// schemagenIDNAProfile is the lookup profile every hostname check goes through.
+//
+// MapForLookup is what makes the four Unicode label separators, case folding and
+// the compatibility mappings work, and it is the difference between accepting
+// and refusing a name like "παράδειγμα｡com" that the suite marks valid.
+// VerifyDNSLength gives the 253-octet and 63-octet limits over the A-label form,
+// which is where IDNA states them.
+var schemagenIDNAProfile = idna.New(
+	idna.MapForLookup(),
+	idna.BidiRule(),
+	idna.ValidateLabels(true),
+	idna.StrictDomainName(true),
+	idna.CheckHyphens(true),
+	idna.CheckJoiners(true),
+	idna.VerifyDNSLength(true),
+)
+
+// schemagenLabelSeparator reports whether r is one of the four code points
+// UTS-46 treats as a label separator.
+func schemagenLabelSeparator(r rune) bool {
+	return r == '.' || r == 0x3002 || r == 0xFF0E || r == 0xFF61
+}
+
+// schemagenContextO applies RFC 5892 appendix A.3-A.9 to one U-label.
+//
+// Each rule is stated over the characters around the code point rather than over
+// a property table, which is why the standard library is enough: the scripts
+// involved -- Greek, Hebrew, Hiragana, Katakana, Han -- are all in unicode.
+func schemagenContextO(label string) error {
+	r := []rune(label)
+	hasKanaOrHan := false
+	arabicIndic, extendedArabicIndic := false, false
+	for i, c := range r {
+		switch {
+		case c == 0x00B7: // A.3 MIDDLE DOT: between two 'l' and nothing else.
+			if i == 0 || i == len(r)-1 || r[i-1] != 'l' || r[i+1] != 'l' {
+				return fmt.Errorf("MIDDLE DOT must sit between two 'l' characters")
+			}
+		case c == 0x0375: // A.4 GREEK LOWER NUMERAL SIGN: followed by Greek.
+			if i == len(r)-1 || !unicode.Is(unicode.Greek, r[i+1]) {
+				return fmt.Errorf("GREEK KERAIA must be followed by a Greek character")
+			}
+		case c == 0x05F3 || c == 0x05F4: // A.5, A.6 GERESH and GERSHAYIM: preceded by Hebrew.
+			if i == 0 || !unicode.Is(unicode.Hebrew, r[i-1]) {
+				return fmt.Errorf("HEBREW GERESH or GERSHAYIM must be preceded by a Hebrew character")
+			}
+		case c >= 0x0660 && c <= 0x0669: // A.8
+			arabicIndic = true
+		case c >= 0x06F0 && c <= 0x06F9: // A.9
+			extendedArabicIndic = true
+		}
+		if unicode.Is(unicode.Hiragana, c) || unicode.Is(unicode.Katakana, c) || unicode.Is(unicode.Han, c) {
+			hasKanaOrHan = true
+		}
+	}
+	// A.7 KATAKANA MIDDLE DOT: the label must carry a Hiragana, Katakana or Han
+	// character somewhere. Checked after the loop because the witness may follow
+	// the dot.
+	if strings.ContainsRune(label, 0x30FB) && !hasKanaOrHan {
+		return fmt.Errorf("KATAKANA MIDDLE DOT needs a Hiragana, Katakana or Han character in the same label")
+	}
+	if arabicIndic && extendedArabicIndic {
+		return fmt.Errorf("a label may not mix ARABIC-INDIC and EXTENDED ARABIC-INDIC digits")
+	}
+	return nil
+}
+
+// schemagenDisallowedException refuses the RFC 5892 section 2.6 exceptions whose
+// derived property is DISALLOWED.
+//
+// They are exceptions precisely because no derived property computes them: RFC
+// 5892 enumerates all ten by hand, so there is nothing to generate and the list
+// cannot grow without a new RFC. UTS-46 lookup processing marks every one of
+// them valid in its mapping table, which is a documented divergence from
+// IDNA2008 rather than a gap in idna, so a name built from them survives
+// ToASCII unchanged and has to be refused here.
+//
+// Only the DISALLOWED members belong here. The same section also lists six
+// PVALID exceptions -- U+00DF, U+03C2, U+06FD, U+06FE, U+0F0B, U+3007 -- and the
+// CONTEXTO ones schemagenContextO judges by their surroundings. Refusing either
+// group would turn a missing check into a false rejection of a name IDNA2008
+// allows.
+func schemagenDisallowedException(label string) error {
+	for _, c := range label {
+		switch c {
+		case 0x0640, // ARABIC TATWEEL
+			0x07FA, // NKO LAJANYALAN
+			0x302E, // HANGUL SINGLE DOT TONE MARK
+			0x302F, // HANGUL DOUBLE DOT TONE MARK
+			0x3031, // VERTICAL KANA REPEAT MARK
+			0x3032, // VERTICAL KANA REPEAT WITH VOICED SOUND MARK
+			0x3033, // VERTICAL KANA REPEAT MARK UPPER HALF
+			0x3034, // VERTICAL KANA REPEAT WITH VOICED SOUND MARK UPPER HALF
+			0x3035, // VERTICAL KANA REPEAT MARK LOWER HALF
+			0x303B: // VERTICAL IDEOGRAPHIC ITERATION MARK
+			return fmt.Errorf("U+%04X is DISALLOWED by RFC 5892", c)
+		}
+	}
+	return nil
+}
+
+// schemagenPVALIDException reports whether c is one of the RFC 5892 section 2.6
+// exceptions the derivation gives a value other than DISALLOWED.
+//
+// Six are PVALID outright and five are CONTEXTO, which schemagenContextO judges
+// by their surroundings. Both groups have to be named here because none of them
+// is a letter, a mark or a digit, so the LetterDigits rule below would refuse
+// them -- and every one appears in a name the official suite marks valid:
+// "ßς་〇", "l·l", "α͵β", "א׳ב", "א״ב", "・ぁ".
+func schemagenPVALIDException(c rune) bool {
+	switch c {
+	case 0x00DF, 0x03C2, 0x06FD, 0x06FE, 0x0F0B, 0x3007: // PVALID
+		return true
+	case 0x00B7, 0x0375, 0x05F3, 0x05F4, 0x30FB: // CONTEXTO
+		return true
+	}
+	return false
+}
+
+// schemagenDisallowedCodePoint applies RFC 5892's LetterDigits rule to one
+// U-label: a code point that is not a letter, a mark or a decimal digit falls
+// through the derivation to DISALLOWED.
+//
+// It is the half of the derivation that decides the general case, where
+// schemagenDisallowedException handles only the ten hand-written exceptions. It
+// matters because an A-label is ASCII and LDH-valid whatever it encodes, so
+// nothing upstream looks at what comes out: "xn--7a" decodes to "¡", which is
+// punctuation and DISALLOWED, and idna passes both the A-label and the decoded
+// form without complaint. UTS-46 is a mapping-and-compatibility layer, not the
+// IDNA2008 derivation, and this is where the two differ.
+//
+// Only the two clear-cut arms of the derivation are implemented -- the ASCII
+// hyphen, which is PVALID by the LDH rule, and the join controls, which are
+// CONTEXTJ and are idna's CheckJoiners to judge. The rest of RFC 5892 (Unstable,
+// IgnorableProperties, IgnorableBlocks, OldHangulJamo) only ever narrows this
+// set further, so leaving it out under-rejects rather than refusing a name
+// IDNA2008 allows.
+func schemagenDisallowedCodePoint(label string) error {
+	for _, c := range label {
+		switch {
+		case unicode.In(c, unicode.Ll, unicode.Lu, unicode.Lo, unicode.Lm, unicode.Lt, unicode.Mn, unicode.Mc, unicode.Nd):
+		case c == '-': // RFC 5892's LDH rule
+		case c == 0x200C || c == 0x200D: // ZERO WIDTH NON-JOINER and JOINER: CONTEXTJ
+		case schemagenPVALIDException(c):
+		default:
+			return fmt.Errorf("U+%04X is DISALLOWED by RFC 5892", c)
+		}
+	}
+	return nil
+}
+
+// schemagenIsALabel reports whether a label carries the ACE prefix, which RFC
+// 5890 section 2.3.2.1 matches case-insensitively.
+func schemagenIsALabel(label string) bool {
+	return len(label) >= 4 && (label[0]|0x20) == 'x' && (label[1]|0x20) == 'n' && label[2] == '-' && label[3] == '-'
+}
+
+// schemagenAllASCII reports whether every rune of s is ASCII.
+func schemagenAllASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= utf8.RuneSelf {
+			return false
+		}
+	}
+	return true
+}
+
+// schemagenCheckIDNA is the shared body of both hostname checks: the IDNA
+// processing, then the IDNA2008 rules idna does not apply over each decoded
+// label.
+func schemagenCheckIDNA(v string) error {
+	if v == "" {
+		return fmt.Errorf("empty")
+	}
+	// A trailing separator is the DNS root label, which a hostname does not
+	// carry. idna's lookup profile tolerates it, and the suite does not.
+	if last, _ := utf8.DecodeLastRuneInString(v); schemagenLabelSeparator(last) {
+		return fmt.Errorf("trailing label separator")
+	}
+	if _, err := schemagenIDNAProfile.ToASCII(v); err != nil {
+		return err
+	}
+	// Every rule below is applied to the decoded form, so an "xn--" A-label is
+	// judged by what it encodes rather than by its ASCII spelling.
+	u, err := schemagenIDNAProfile.ToUnicode(v)
+	if err != nil {
+		return err
+	}
+	labels := strings.FieldsFunc(u, schemagenLabelSeparator)
+	// RFC 5890 section 2.3.2.1: an A-label is the ACE form of a U-label, and a
+	// U-label has at least one non-ASCII character. "xn--example-" decodes to
+	// "example", which is a perfectly good LDH label and no U-label at all -- so
+	// the string is not an A-label and its "xn--" prefix is a lie. idna answers
+	// only that the decoding worked, and re-encodes it as plain "example",
+	// silently accepting a name it did not receive.
+	if orig := strings.FieldsFunc(v, schemagenLabelSeparator); len(orig) == len(labels) {
+		for i, label := range orig {
+			if schemagenIsALabel(label) && schemagenAllASCII(labels[i]) {
+				return fmt.Errorf("A-label %q decodes to %q, which has no non-ASCII character", label, labels[i])
+			}
+		}
+	}
+	for _, label := range labels {
+		if err := schemagenDisallowedException(label); err != nil {
+			return err
+		}
+		if err := schemagenDisallowedCodePoint(label); err != nil {
+			return err
+		}
+		if err := schemagenContextO(label); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// schemagenFormatHostname checks an RFC 1123 hostname: ASCII, and then --
+// for an "xn--" label only -- everything IDNA has to say about it, since an
+// A-label is an IDN in disguise and is the half a character class cannot judge.
+//
+// The gate on the ACE prefix is what keeps the two grammars apart. RFC 1123
+// permits a hyphen anywhere but the first and last character of a label, while
+// RFC 5891 section 4.2.3.1 additionally forbids one in the 3rd and 4th position
+// -- and that is an IDNA rule about A-labels, not a hostname rule. Running the
+// IDNA pass over every label applied it to plain names too, so "ab--cd.example"
+// and "a--b.com" were refused; the official suite marks both valid and marks
+// "XN--aa---o47jg78q", whose decoded U-label "aa--點看" breaks the same rule,
+// invalid. Rejecting a conforming name is the one failure this generator treats
+// as worse than a missing check, and this was one.
+func schemagenFormatHostname(v string) error {
+	bad := func() error { return fmt.Errorf("%s is not a valid hostname", _schemagenQuote(v)) }
+	if v == "" || len(v) > 253 {
+		return bad()
+	}
+	aLabel := false
+	for _, label := range strings.Split(v, ".") {
+		if label == "" || len(label) > 63 {
+			return bad()
+		}
+		if label[0] == '-' || label[len(label)-1] == '-' {
+			return bad()
+		}
+		for i := 0; i < len(label); i++ {
+			c := label[i]
+			switch {
+			case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9', c == '-':
+			default:
+				return bad()
+			}
+		}
+		if schemagenIsALabel(label) {
+			aLabel = true
+		}
+	}
+	if !aLabel {
+		// Pure LDH and no ACE prefix: the loop above is the whole of RFC 1123,
+		// and everything the IDNA pass would add is either the same rule again
+		// (the character set, the two length limits) or a rule about labels this
+		// name does not have (bidi, joiners, hyphen position).
+		return nil
+	}
+	if err := schemagenCheckIDNA(v); err != nil {
+		return fmt.Errorf("%s is not a valid hostname: %w", _schemagenQuote(v), _schemagenClipErr(err))
+	}
+	return nil
+}
+
+// schemagenFormatIDNHostname checks an internationalized hostname.
+func schemagenFormatIDNHostname(v string) error {
+	if v == "" || utf8.RuneCountInString(v) > 253 {
+		return fmt.Errorf("%s is not a valid internationalized hostname", _schemagenQuote(v))
+	}
+	if err := schemagenCheckIDNA(v); err != nil {
+		return fmt.Errorf("%s is not a valid internationalized hostname: %w", _schemagenQuote(v), _schemagenClipErr(err))
+	}
+	return nil
+}
+
+// schemagenFormatEmail checks an addr-spec whose domain is a hostname.
+func schemagenFormatEmail(v string) error {
+	if err := schemagenCheckEmail(v, schemagenFormatHostname); err != nil {
+		return fmt.Errorf("%s is not a valid email address", _schemagenQuote(v))
+	}
+	return nil
+}
+
+// schemagenFormatIDNEmail is schemagenFormatEmail with an internationalized
+// domain.
+func schemagenFormatIDNEmail(v string) error {
+	if err := schemagenCheckEmail(v, schemagenFormatIDNHostname); err != nil {
+		return fmt.Errorf("%s is not a valid email address", _schemagenQuote(v))
+	}
+	return nil
+}
+
+func schemagenCheckEmail(v string, checkDomain func(string) error) error {
+	bad := fmt.Errorf("invalid")
+	at := strings.LastIndexByte(v, '@')
+	if at <= 0 || at == len(v)-1 {
+		return bad
+	}
+	local, domain := v[:at], v[at+1:]
+	if strings.HasPrefix(domain, "[") && strings.HasSuffix(domain, "]") {
+		lit := strings.TrimPrefix(domain[1:len(domain)-1], "IPv6:")
+		if _, err := netip.ParseAddr(lit); err != nil {
+			return bad
+		}
+	} else if err := checkDomain(domain); err != nil {
+		return bad
+	}
+	// The local part is judged by net/mail rather than re-implemented here --
+	// the quoted form admits spaces, consecutive dots and an "@", none of which
+	// a character class distinguishes from the unquoted form's spelling of the
+	// same. It is paired with a domain net/mail is certain to accept, since the
+	// domain has already been judged above and may be a literal or a U-label
+	// that net/mail refuses.
+	addr, err := mail.ParseAddress(local + "@example.com")
+	if err != nil {
+		return bad
+	}
+	// ParseAddress also accepts a display-name mailbox -- `"A B" <a@b>` -- which
+	// is not the bare addr-spec `format: email` names.
+	if addr.Name != "" {
+		return bad
+	}
+	return nil
+}
