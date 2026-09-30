@@ -1,4 +1,11 @@
-{{define "content_helpers"}}
+package runtime
+
+import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+)
+
 // schemagenContentString applies the content vocabulary to a string instance:
 // the encoding names how to turn it into bytes, and the media type what those
 // bytes have to parse as. Either may be empty, meaning the schema stated no such
@@ -33,4 +40,3 @@ func schemagenContentString(value, encoding, mediaType string) error {
 	}
 	return nil
 }
-{{- end}}

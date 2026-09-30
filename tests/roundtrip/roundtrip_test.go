@@ -10038,6 +10038,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+
+	rt "github.com/mgilbir/schemagen/runtime"
 )
 
 func main() {
@@ -10050,7 +10052,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "%%s is not JSON: %%v\n", doc, err)
 			os.Exit(1)
 		}
-		byEvaluator := _evalNode(&%s, raw).ok
+		byEvaluator := rt.EvalNode(&%s, raw).OK()
 
 		byType := true
 		var typed %s
@@ -10084,7 +10086,7 @@ func main() {
 				PackageName: "testpkg",
 				OmitEmpty:   true,
 			})
-			for _, decl := range []string{"type " + tc.typeName + " ", tc.node + " _schemaNode"} {
+			for _, decl := range []string{"type " + tc.typeName + " ", tc.node + " = rt.Node{"} {
 				if !strings.Contains(string(generated), decl) {
 					t.Fatalf("generated code for %s declares no %q, so this test would be measuring something else:\n%s",
 						tc.fixture, decl, generated)

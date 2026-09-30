@@ -1,20 +1,52 @@
-{{define "annotation_helpers"}}
-{{- /*
-	$ev and $sc keep the dynamic scope out of a package that has no use for it.
-	The evaluator threads a stack of schema resources through every recursive
-	call, and a package whose schemas name no $dynamicRef or $recursiveRef would
-	be carrying a parameter nothing ever reads. With the arms off, $ev is
-	_evalNode and $sc is empty and the emitted evaluator is what it always was;
-	with them on, the recursion goes through _evalNodeIn and _evalNode becomes
-	the entry point that starts it with an empty scope -- so the callers outside
-	this block, in annotation_schema and validation, are the same either way.
-*/ -}}
-{{- $ev := "_evalNode" -}}
-{{- $sc := "" -}}
-{{- if .AnnotationsDynamic -}}
-{{- $ev = "_evalNodeIn" -}}
-{{- $sc = ", _scope" -}}
-{{- end -}}
+package runtime
+
+import (
+	"sort"
+	"strconv"
+
+	"github.com/mgilbir/schemagen/runtime/internal/format"
+)
+
+// The helpers below evaluate JSON Schema constraints against a value decoded
+// into `any`, for schemas that declare no type of their own. The value is
+// decoded by jsonDecodeNumbers, so a number is the json.Number the document
+// wrote; one built in Go may be any Go number type. Either way a number is read
+// through the exact core (see jsonNumberOf), and a numeric keyword is decided
+// there -- a float64 read here once called 0.3 no multiple of 0.1 and admitted
+// 9007199254740993 under a maximum of 9007199254740992.
+func _dynIsString(v any) bool { _, ok := v.(string); return ok }
+
+func _dynIsBool(v any) bool { _, ok := v.(bool); return ok }
+
+func _dynIsObject(v any) bool { _, ok := v.(map[string]any); return ok }
+
+func _dynIsArray(v any) bool { _, ok := v.([]any); return ok }
+
+// _dynStrOK applies a string constraint, vacuously true for non-strings.
+func _dynStrOK(v any, ok func(string) bool) bool {
+	s, isStr := v.(string)
+	if !isStr {
+		return true
+	}
+	return ok(s)
+}
+
+// _dynConstOK reports whether a decoded JSON value equals a constant, which is
+// passed already encoded. Both are compared by identity (see jsonID), exactly:
+// v is read with every number the literal the document wrote (see jsonHeld),
+// and so is the const -- read as float64s, the const 9007199254740993 admitted
+// 9007199254740992. Number spelling, string escaping and object key order are
+// settled the same way for each, and the comparison then differs only where the
+// values do. It used to re-encode the value to compare the text.
+//
+// v is always a decoded document -- each caller decodes it, or reads it lazily,
+// immediately before -- so it is read as decoded JSON (see jsonIDJSON), which
+// never fails on one.
+func _dynConstOK(v any, want string) bool {
+	ok, err := jsonMatchesJSON(v, jsonConstOf(false, want))
+	return err == nil && ok
+}
+
 // The types below evaluate JSON Schema at runtime, against a value decoded into
 // `any`.
 //
@@ -32,7 +64,9 @@
 // else keeps the static checks, or is refused outright rather than evaluated
 // with a keyword silently ignored.
 
-// A node is declared in three runs rather than by vocabulary: everything held
+// Node is one JSON Schema compiled to data, for EvalNode to interpret. Generated
+// code declares them as package-level values. A node is declared in three runs
+// rather than by vocabulary: everything held
 // through a pointer, then everything held in a slice, then the one flag. The
 // vocabulary grouping is kept inside each run, so a keyword is still beside its
 // neighbours -- it just appears in whichever of the two runs its Go type puts it
@@ -47,82 +81,63 @@
 // behind it are two words the scan has to cross to reach anything written after
 // them. Putting the slices last means it crosses them once, at the end, and the
 // flag after those is not scanned at all.
-type _schemaNode struct {
+type Node struct {
 	Boolean *bool // a bare true/false schema
-{{- if .AnnotationsEquality}}
 
 	// Const, Enum and UniqueItems compare values as JSON, which is the one part
 	// of the evaluator that needs the identity of a value (see jsonIDJSON); a
 	// package whose nodes state none of the three carries neither the fields
 	// nor the arms that read them.
 	Const *string // JSON encoding of the const value
-{{- end}}
-{{- /* The numeric fields are declared on the same terms: each arm that reads
-       one is code inside the evaluator, which pruning cannot take out, and a
-       node that sets a field its arm was left out for is a compile error,
-       never a check silently skipped. */}}
-{{- if or .AnnotationsMultipleOf .AnnotationsBounds}}
 
 	// The numeric keywords, each as the literal the schema wrote. They are
 	// judged through the exact core against the instance's own literal, which
 	// jsonDecodeNumbers keeps; a float64 here gave 9007199254740993 and
 	// 9007199254740992 one reading, and 0.3 no multiple of 0.1.
-{{- end}}
-{{- if .AnnotationsMultipleOf}}
-	MultipleOf *string
-{{- end}}
-{{- if .AnnotationsBounds}}
+	MultipleOf       *string
 	Minimum          *string
 	Maximum          *string
 	ExclusiveMinimum *string
 	ExclusiveMaximum *string
-{{- end}}
 
 	MinLength *int
 	MaxLength *int
-{{- if .AnnotationsPattern}}
 
 	// Pattern is one of the package's compiled patterns, shared with every
 	// other check that states the same one.
-	Pattern *_schemagenRegexp
-{{- end}}
-{{- if .AnnotationsFormats}}
+	Pattern *Pattern
 
 	// Format is set only where the schema's own dialect asserts "format" and
 	// this generator has a check for the name; on a dialect that annotates it,
 	// and for a format nothing here judges, the node carries no field, because
 	// there is nothing to judge rather than something skipped.
 	Format *string
-{{- end}}
-{{- if .AnnotationsContent}}
 
 	// The content vocabulary, on the one dialect that asserts it. Set under the
 	// same rule as Format: present only where a check is going to be made.
 	ContentEncoding  *string
 	ContentMediaType *string
-{{- end}}
 
-	Items       *_schemaNode // items as a single schema: applies past the tuple
-	Contains    *_schemaNode
+	Items       *Node // items as a single schema: applies past the tuple
+	Contains    *Node
 	MinContains *int
 	MaxContains *int
 	MinItems    *int
 	MaxItems    *int
 
-	AdditionalProperties *_schemaNode
-	PropertyNames        *_schemaNode
+	AdditionalProperties *Node
+	PropertyNames        *Node
 	MinProperties        *int
 	MaxProperties        *int
 
-	Not *_schemaNode
+	Not *Node
 
-	If   *_schemaNode
-	Then *_schemaNode
-	Else *_schemaNode
+	If   *Node
+	Then *Node
+	Else *Node
 
-	UnevaluatedItems      *_schemaNode
-	UnevaluatedProperties *_schemaNode
-{{- if .AnnotationsDynamic}}
+	UnevaluatedItems      *Node
+	UnevaluatedProperties *Node
 
 	// Ref evaluates another node in place of this one, and is how a schema that
 	// contains itself is expressed: an object whose additionalProperties are
@@ -130,33 +145,27 @@ type _schemaNode struct {
 	// composite literals. Go refuses a cycle between package-level variable
 	// initialisers, so the nodes taking part in one are declared empty and
 	// assigned in init().
-	Ref *_schemaNode
+	Ref *Node
 
 	// DynamicRef is a $dynamicRef or $recursiveRef, and is another conjunct like
 	// AllOf: the drafts that define these keywords are the drafts where a
 	// reference applies beside its siblings rather than replacing them.
-	DynamicRef *_dynamicRef
-{{- end}}
+	DynamicRef *DynamicRef
 
 	Type []string // the JSON types the value may have; empty means any
-{{- if .AnnotationsEquality}}
 	Enum []string // JSON encodings of the permitted values
-{{- end}}
 
-	PrefixItems []_schemaNode // tuple positions (prefixItems, or draft-2019 tuple-form items)
+	PrefixItems []Node // tuple positions (prefixItems, or draft-2019 tuple-form items)
 
-	Properties        []_schemaMember // by property name
-{{- if .AnnotationsPattern}}
-	PatternProperties []_schemaPatternMember // by ECMA-262 pattern over the key
-{{- end}}
+	Properties        []Member        // by property name
+	PatternProperties []PatternMember // by ECMA-262 pattern over the key
 	Required          []string
-	DependentRequired []_schemaDependency
-	DependentSchemas  []_schemaMember
+	DependentRequired []Dependency
+	DependentSchemas  []Member
 
-	AllOf []_schemaNode
-	AnyOf []_schemaNode
-	OneOf []_schemaNode
-{{- if .AnnotationsDynamic}}
+	AllOf []Node
+	AnyOf []Node
+	OneOf []Node
 
 	// DynamicAnchors marks this node as *entering* a schema resource and lists
 	// what that resource contributes to the dynamic scope while it is being
@@ -165,21 +174,17 @@ type _schemaNode struct {
 	// hangs off the node the reference landed on. Only the anchors some
 	// reference in this schema searches for are listed; an anchor nothing looks
 	// up changes no answer.
-	DynamicAnchors []_schemaAnchor
-{{- end}}
-{{- if .AnnotationsEquality}}
+	DynamicAnchors []Anchor
 
 	UniqueItems bool
-{{- end}}
 
 	// StrictInteger reads "integer" off the instance's token, as draft 3 and
 	// draft 4 do: 1.0 is a number there and not an integer. Every later draft
 	// reads the value.
 	StrictInteger bool
 }
-{{- if .AnnotationsDynamic}}
 
-// _schemaAnchor is one $dynamicAnchor -- or one $recursiveAnchor, which is filed
+// Anchor is one $dynamicAnchor -- or one $recursiveAnchor, which is filed
 // under the empty name, a name no $dynamicAnchor may have -- that a schema
 // resource publishes while it is on the dynamic scope.
 //
@@ -188,12 +193,12 @@ type _schemaNode struct {
 // itself cannot be written as a composite literal. Where a reference entered a
 // resource part-way, the anchor and the node differ and the generator writes the
 // node out instead, so this spelling always means the same thing.
-type _schemaAnchor struct {
-	Node *_schemaNode
+type Anchor struct {
+	Node *Node
 	Name string
 }
 
-// _dynamicRef is a reference whose target is decided by the path taken to it
+// DynamicRef is a reference whose target is decided by the path taken to it
 // rather than by where it is written.
 //
 // The scope is searched from the outermost resource inwards, so the same keyword
@@ -201,8 +206,8 @@ type _schemaAnchor struct {
 // and why no amount of reading the schema settles it in advance. Fallback is
 // where it points when the path entered no resource publishing the anchor, which
 // is what a plain $ref would have meant.
-type _dynamicRef struct {
-	Fallback *_schemaNode
+type DynamicRef struct {
+	Fallback *Node
 	Anchor   string
 }
 
@@ -231,35 +236,32 @@ func _dynResolveRef(r *_dynamicRef, scope []_schemaFrame) *_schemaNode {
 	}
 	return r.Fallback
 }
-{{- end}}
 
-// _schemaMember is one entry of a keyword whose argument is an object mapping a
+// Member is one entry of a keyword whose argument is an object mapping a
 // name or a pattern to a schema. A slice rather than a map so the order the
 // generator emitted is the order they are checked, and a failure names the same
 // member every run.
-type _schemaMember struct {
+type Member struct {
 	Key  string
-	Node _schemaNode
+	Node Node
 }
-{{- if .AnnotationsPattern}}
 
-// _schemaPatternMember is one entry of patternProperties: the compiled pattern
+// PatternMember is one entry of patternProperties: the compiled pattern
 // a key is matched against, and the schema a matching member's value is held
 // to.
-type _schemaPatternMember struct {
-	Pattern *_schemagenRegexp
-	Node    _schemaNode
+type PatternMember struct {
+	Pattern *Pattern
+	Node    Node
 }
-{{- end}}
 
-// _schemaDependency is one entry of dependentRequired: when Key is present,
+// Dependency is one entry of dependentRequired: when Key is present,
 // every name in Keys must be too.
-type _schemaDependency struct {
+type Dependency struct {
 	Key  string
 	Keys []string
 }
 
-// _evalResult is one node's verdict, the reason it failed, and the annotations
+// EvalResult is one node's verdict, the reason it failed, and the annotations
 // it produced: the item indices and the property names it evaluated.
 //
 // The two sets are what unevaluatedItems and unevaluatedProperties read. They
@@ -270,7 +272,7 @@ type _schemaDependency struct {
 // Declared pointer-carrying members first and flags last, as every struct in
 // this file is: a bool between two maps costs seven bytes of padding and drags
 // the collector's scan across both.
-type _evalResult struct {
+type EvalResult struct {
 	evaluated      map[int]bool
 	evaluatedProps map[string]bool
 	// undecided is set when the verdict could not be reached: a pattern the
@@ -294,14 +296,14 @@ type _evalResult struct {
 	reasonIsAStep bool
 }
 
-// _evalWhy is the reason an evaluation failed: the sentence the node that
+// EvalWhy is the reason an evaluation failed: the sentence the node that
 // refused said about its value, and the steps into the value each node above it
 // took to get there. It is written out once, when a Validate answers with it
 // (see String). Joined as each node added its step, the reason was copied once
 // per level -- a refusal at the bottom of a document nested thousands deep cost
 // the depth squared in strings.
-type _evalWhy struct {
-	below *_evalWhy
+type EvalWhy struct {
+	below *EvalWhy
 	step  string
 	text  string
 }
@@ -326,11 +328,11 @@ func _newEval(ok bool) _evalResult {
 }
 
 func (r *_evalResult) absorb(other _evalResult) {
-	{{- /* maporder: fills a set; the same members end up in it in any order. */}}
+	// maporder: fills a set; the same members end up in it in any order.
 	for i := range other.evaluated {
 		r.evaluated[i] = true
 	}
-	{{- /* maporder: fills a set; the same members end up in it in any order. */}}
+	// maporder: fills a set; the same members end up in it in any order.
 	for k := range other.evaluatedProps {
 		r.evaluatedProps[k] = true
 	}
@@ -379,7 +381,6 @@ func (r *_evalResult) failAs(child _evalResult) _evalResult {
 	r.undecided = child.undecided
 	return *r
 }
-{{- if or .AnnotationsPattern .AnnotationsEquality}}
 
 // undecide ends this node with no verdict: err is a match the engine gave no
 // answer for, or a value a comparison could not read as JSON. See
@@ -391,7 +392,6 @@ func (r *_evalResult) undecide(err error) _evalResult {
 	r.undecided = err
 	return *r
 }
-{{- end}}
 
 // _evalUndecidedError is the error an undecided evaluation is answered with:
 // the path-qualified reason as its message, and the engine's error underneath,
@@ -435,7 +435,6 @@ func _evalError(r _evalResult) error {
 // _evalNode reports whether v satisfies n, together with the item annotations
 // produced. Annotations from a subschema count only when that subschema
 // matched: a failed anyOf branch contributes nothing.
-{{- if .AnnotationsDynamic}}
 //
 // Nothing has been entered when validation starts, so the dynamic scope starts
 // empty.
@@ -443,8 +442,7 @@ func _evalNode(n *_schemaNode, v any) _evalResult { return _evalNodeIn(n, v, nil
 
 // _evalNodeIn is _evalNode carrying the schema resources entered on the way
 // here, which is what a $dynamicRef is resolved against.
-{{- end}}
-func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFrame{{end}}) _evalResult {
+func _evalNodeIn(n *_schemaNode, v any, _scope []_schemaFrame) _evalResult {
 	if n == nil {
 		return _newEval(true)
 	}
@@ -454,9 +452,8 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 	if l, ok := v.(interface{ jsonLevel() any }); ok {
 		v = l.jsonLevel()
 	}
-{{- if .AnnotationsDynamic}}
 	if n.Ref != nil {
-		return {{$ev}}(n.Ref, v{{$sc}})
+		return _evalNodeIn(n.Ref, v, _scope)
 	}
 	if len(n.DynamicAnchors) > 0 {
 		// This node enters a schema resource, so the resource is in scope for as
@@ -467,7 +464,6 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 		// otherwise write their frames over each other's.
 		_scope = append(_scope[:len(_scope):len(_scope)], _schemaFrame{node: n, anchors: n.DynamicAnchors})
 	}
-{{- end}}
 	res := _newEval(true)
 	if n.Boolean != nil {
 		if *n.Boolean {
@@ -479,10 +475,6 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 	if len(n.Type) > 0 && !_dynTypeMatchesAny(n.Type, v, n.StrictInteger) {
 		return res.fail("value is not of type " + _dynJoin(n.Type))
 	}
-{{- if .AnnotationsEquality}}
-	{{- /* The value is read exactly -- every number the literal the document
-	       wrote (see jsonHeld) -- so the const is too: read as float64s, the
-	       const 9007199254740993 admitted 9007199254740992. */}}
 	if n.Const != nil {
 		ok, err := jsonMatchesJSON(v, jsonConstOf(false, *n.Const))
 		if err != nil {
@@ -501,16 +493,12 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 			return res.fail("value is not one of the permitted values")
 		}
 	}
-{{- end}}
 
 	// The numeric keywords, through the exact core: each helper answers false
 	// for a value that is not a number, which every one of them is satisfied by.
-{{- if .AnnotationsMultipleOf}}
 	if n.MultipleOf != nil && jsonNumberNotMultipleOf(v, *n.MultipleOf) {
 		return res.fail("value is not a multiple of the required factor")
 	}
-{{- end}}
-{{- if .AnnotationsBounds}}
 	if n.Minimum != nil && jsonNumberBelow(v, *n.Minimum) {
 		return res.fail("value is below the minimum")
 	}
@@ -523,7 +511,6 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 	if n.ExclusiveMaximum != nil && jsonNumberAtLeast(v, *n.ExclusiveMaximum) {
 		return res.fail("value is not below the exclusive maximum")
 	}
-{{- end}}
 
 	if n.MinLength != nil && !_dynStrOK(v, func(s string) bool { return _dynRuneLen(s) >= *n.MinLength }) {
 		return res.fail("string is shorter than the minimum length")
@@ -531,7 +518,6 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 	if n.MaxLength != nil && !_dynStrOK(v, func(s string) bool { return _dynRuneLen(s) <= *n.MaxLength }) {
 		return res.fail("string is longer than the maximum length")
 	}
-{{- if .AnnotationsPattern}}
 	if s, isString := v.(string); isString && n.Pattern != nil {
 		matched, err := n.Pattern.matches(s)
 		if err != nil {
@@ -541,8 +527,6 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 			return res.fail("string does not match the required pattern")
 		}
 	}
-{{- end}}
-{{- if .AnnotationsFormats}}
 	// _dynStrOK, so a non-string passes: "format" is defined over strings and
 	// says nothing about a number, an object or a null. That is the same reading
 	// every other position takes -- a format check is built against a value the
@@ -551,14 +535,11 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 	if n.Format != nil && !_dynStrOK(v, func(s string) bool { return _dynFormatOK(*n.Format, s) }) {
 		return res.fail("string does not satisfy the required format")
 	}
-{{- end}}
-{{- if .AnnotationsContent}}
 	if (n.ContentEncoding != nil || n.ContentMediaType != nil) && !_dynStrOK(v, func(s string) bool {
 		return schemagenContentString(s, _dynStrOr(n.ContentEncoding), _dynStrOr(n.ContentMediaType)) == nil
 	}) {
 		return res.fail("string does not satisfy the content vocabulary")
 	}
-{{- end}}
 
 	arr, isArray := v.([]any)
 	// Read once, up here, because unevaluatedProperties needs the object again
@@ -572,7 +553,6 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 		if n.MaxItems != nil && len(arr) > *n.MaxItems {
 			return res.fail("array has more items than the maximum")
 		}
-{{- if .AnnotationsEquality}}
 		if n.UniqueItems {
 			dup, err := jsonFirstDuplicateJSON(arr)
 			if err != nil {
@@ -582,17 +562,15 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 				return res.fail("array items are not unique")
 			}
 		}
-{{- end}}
 	}
 
 	// Tuple positions, then items for the remainder.
 	if isArray && len(n.PrefixItems) > 0 {
-		for i, sub := range n.PrefixItems {
+		for i := range n.PrefixItems {
 			if i >= len(arr) {
 				break
 			}
-			sub := sub
-			r := {{$ev}}(&sub, arr[i]{{$sc}})
+			r := _evalNodeIn(&n.PrefixItems[i], arr[i], _scope)
 			if !r.ok {
 				return res.failAs(r)
 			}
@@ -601,7 +579,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 	}
 	if isArray && n.Items != nil {
 		for i := len(n.PrefixItems); i < len(arr); i++ {
-			r := {{$ev}}(n.Items, arr[i]{{$sc}})
+			r := _evalNodeIn(n.Items, arr[i], _scope)
 			if !r.ok {
 				return res.failAs(r)
 			}
@@ -613,7 +591,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 	if isArray && n.Contains != nil {
 		count := 0
 		for i, elem := range arr {
-			r := {{$ev}}(n.Contains, elem{{$sc}})
+			r := _evalNodeIn(n.Contains, elem, _scope)
 			if r.undecided != nil {
 				// An element that may or may not match makes the count unknown.
 				return res.failAs(r)
@@ -649,19 +627,19 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 		}
 		if n.PropertyNames != nil {
 			for _, key := range _dynSortedKeys(obj) {
-				r := {{$ev}}(n.PropertyNames, key{{$sc}})
+				r := _evalNodeIn(n.PropertyNames, key, _scope)
 				if !r.ok {
 					return res.failAtChild("property name "+_schemagenClipText(key), r)
 				}
 			}
 		}
 		for i := range n.Properties {
-			member := n.Properties[i]
+			member := &n.Properties[i]
 			value, present := obj[member.Key]
 			if !present {
 				continue
 			}
-			r := {{$ev}}(&member.Node, value{{$sc}})
+			r := _evalNodeIn(&member.Node, value, _scope)
 			if !r.ok {
 				return res.failAtChild("property "+member.Key, r)
 			}
@@ -671,12 +649,11 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 			// why r is not absorbed.
 			res.evaluatedProps[member.Key] = true
 		}
-{{- if .AnnotationsPattern}}
 		// Every member whose key a pattern matches is held to that pattern's
 		// schema, whether or not "properties" declares it too: the two
 		// keywords apply side by side.
 		for i := range n.PatternProperties {
-			member := n.PatternProperties[i]
+			member := &n.PatternProperties[i]
 			for _, key := range _dynSortedKeys(obj) {
 				matched, err := member.Pattern.matches(key)
 				if err != nil {
@@ -685,20 +662,18 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 				if !matched {
 					continue
 				}
-				r := {{$ev}}(&member.Node, obj[key]{{$sc}})
+				r := _evalNodeIn(&member.Node, obj[key], _scope)
 				if !r.ok {
 					return res.failAtChild("property "+_schemagenClipText(key), r)
 				}
 				res.evaluatedProps[key] = true
 			}
 		}
-{{- end}}
 		if n.AdditionalProperties != nil {
 			for _, key := range _dynSortedKeys(obj) {
 				if _dynMemberNamed(n.Properties, key) {
 					continue
 				}
-{{- if .AnnotationsPattern}}
 				matched, err := _dynMemberMatches(n.PatternProperties, key)
 				if err != nil {
 					return res.failAtChild("property "+_schemagenClipText(key), _evalResult{undecided: err, why: &_evalWhy{text: err.Error()}})
@@ -706,8 +681,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 				if matched {
 					continue
 				}
-{{- end}}
-				r := {{$ev}}(n.AdditionalProperties, obj[key]{{$sc}})
+				r := _evalNodeIn(n.AdditionalProperties, obj[key], _scope)
 				if !r.ok {
 					return res.failAtChild("property "+_schemagenClipText(key), r)
 				}
@@ -725,11 +699,11 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 			}
 		}
 		for i := range n.DependentSchemas {
-			member := n.DependentSchemas[i]
+			member := &n.DependentSchemas[i]
 			if _, present := obj[member.Key]; !present {
 				continue
 			}
-			r := {{$ev}}(&member.Node, v{{$sc}})
+			r := _evalNodeIn(&member.Node, v, _scope)
 			if !r.ok {
 				return res.failAtChild("dependent schema for "+member.Key, r)
 			}
@@ -738,23 +712,20 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 	}
 
 	// In-place applicators contribute their annotations to this node.
-{{- if .AnnotationsDynamic}}
 	// A $dynamicRef is one of them, and is resolved here rather than earlier
 	// because the scope it is resolved against is the one this node has just
 	// joined: a resource whose own root carries the reference publishes its
 	// anchors to it, which is what "$recursiveRef with no $recursiveAnchor in
 	// the outer schema resource" turns on.
 	if n.DynamicRef != nil {
-		r := {{$ev}}(_dynResolveRef(n.DynamicRef, _scope), v{{$sc}})
+		r := _evalNodeIn(_dynResolveRef(n.DynamicRef, _scope), v, _scope)
 		if !r.ok {
 			return res.failAs(r)
 		}
 		res.absorb(r)
 	}
-{{- end}}
 	for i := range n.AllOf {
-		sub := n.AllOf[i]
-		r := {{$ev}}(&sub, v{{$sc}})
+		r := _evalNodeIn(&n.AllOf[i], v, _scope)
 		if !r.ok {
 			return res.failAs(r)
 		}
@@ -763,8 +734,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 	if len(n.AnyOf) > 0 {
 		any := false
 		for i := range n.AnyOf {
-			sub := n.AnyOf[i]
-			r := {{$ev}}(&sub, v{{$sc}})
+			r := _evalNodeIn(&n.AnyOf[i], v, _scope)
 			if r.undecided != nil {
 				// A branch with no verdict is not a branch that failed: the
 				// others cannot be read without it.
@@ -783,8 +753,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 		matches := 0
 		var matched _evalResult
 		for i := range n.OneOf {
-			sub := n.OneOf[i]
-			r := {{$ev}}(&sub, v{{$sc}})
+			r := _evalNodeIn(&n.OneOf[i], v, _scope)
 			if r.undecided != nil {
 				return res.failAs(r)
 			}
@@ -801,7 +770,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 	// "not" contributes no annotations: a subschema that must fail evaluates
 	// nothing, and one that succeeds is a failure of this node.
 	if n.Not != nil {
-		r := {{$ev}}(n.Not, v{{$sc}})
+		r := _evalNodeIn(n.Not, v, _scope)
 		if r.undecided != nil {
 			// Inverting no answer is still no answer.
 			return res.failAs(r)
@@ -818,7 +787,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 	// value at fault (issue #281), and only this site knows which of "then" and
 	// "else" was the one that ran.
 	if n.If != nil {
-		r := {{$ev}}(n.If, v{{$sc}})
+		r := _evalNodeIn(n.If, v, _scope)
 		if r.undecided != nil {
 			// With no verdict on the condition there is no telling which
 			// consequence applies.
@@ -827,14 +796,14 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 		if r.ok {
 			res.absorb(r)
 			if n.Then != nil {
-				tr := {{$ev}}(n.Then, v{{$sc}})
+				tr := _evalNodeIn(n.Then, v, _scope)
 				if !tr.ok {
 					return res.failAtChild("then", tr)
 				}
 				res.absorb(tr)
 			}
 		} else if n.Else != nil {
-			er := {{$ev}}(n.Else, v{{$sc}})
+			er := _evalNodeIn(n.Else, v, _scope)
 			if !er.ok {
 				return res.failAtChild("else", er)
 			}
@@ -852,7 +821,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 			if res.evaluated[i] {
 				continue
 			}
-			r := {{$ev}}(n.UnevaluatedItems, arr[i]{{$sc}})
+			r := _evalNodeIn(n.UnevaluatedItems, arr[i], _scope)
 			if !r.ok {
 				return res.failAs(r)
 			}
@@ -873,7 +842,7 @@ func {{$ev}}(n *_schemaNode, v any{{if .AnnotationsDynamic}}, _scope []_schemaFr
 			if res.evaluatedProps[key] {
 				continue
 			}
-			r := {{$ev}}(n.UnevaluatedProperties, obj[key]{{$sc}})
+			r := _evalNodeIn(n.UnevaluatedProperties, obj[key], _scope)
 			if !r.ok {
 				return res.failAtChild("unevaluated property "+_schemagenClipText(key), r)
 			}
@@ -958,7 +927,6 @@ func _dynJoin(parts []string) string {
 }
 
 func _dynItoa(i int) string { return strconv.Itoa(i) }
-{{- if .AnnotationsPattern}}
 
 // _dynMemberMatches reports whether any patternProperties member's pattern
 // matches key. The error is a match with no answer; see
@@ -975,36 +943,68 @@ func _dynMemberMatches(members []_schemaPatternMember, key string) (bool, error)
 	}
 	return false, nil
 }
-{{- end}}
-{{- if .AnnotationsFormats}}
 
 // _dynFormatOK applies a "format" assertion, dispatching to the same helper
 // every other position in this package calls for the same format name.
 //
-// There is one arm per format the compiled schemas actually name, rather than
-// one per format schemagen can check. A switch over all of them would name the
-// four hostname helpers whatever the schemas said, and those live in the block
-// that needs golang.org/x/net/idna -- so a package asserting nothing but
-// `format: date` would acquire that dependency for an arm it never reaches.
+// There is one arm per format schemagen can check, keyed by the name the
+// generator writes into a node. The two draft 3 spellings are the generator's
+// own names for those formats (pkg/generator.Draft3TimeFormat and
+// Draft3ColorFormat), which the runtime cannot import; the runtime tests hold
+// them together.
 //
 // A name with no arm returns true. It cannot occur: the node carries a format
-// only where FormatCheckableOnString admitted it, and a format admitted there
-// and missing here is a build failure at the call rather than a silent pass.
+// only where FormatCheckableOnString admitted it, and the generator's
+// FormatHelperName names a checker for each of those, so a format admitted
+// there and missing here is caught by the test that ties the two tables.
 // The default exists because Go requires the function to return.
-func _dynFormatOK(format, s string) bool {
-	switch format {
-{{- range .AnnotationsFormats}}
-{{- $fn := formatHelperName . true}}
-{{- if $fn}}
-	case {{printf "%q" .}}:
-		return {{$fn}}(s) == nil
-{{- end}}
-{{- end}}
+func _dynFormatOK(name, s string) bool {
+	switch name {
+	case "date":
+		return format.Date(s) == nil
+	case "time":
+		return format.Time(s) == nil
+	case "time (draft 3)":
+		return format.Draft3Time(s) == nil
+	case "color (draft 3)":
+		return format.Draft3Color(s) == nil
+	case "date-time":
+		return format.DateTime(s) == nil
+	case "duration":
+		return format.Duration(s) == nil
+	case "email":
+		return format.Email(s) == nil
+	case "idn-email":
+		return format.IDNEmail(s) == nil
+	case "hostname":
+		return format.Hostname(s) == nil
+	case "idn-hostname":
+		return format.IDNHostname(s) == nil
+	case "uri":
+		return format.URI(s) == nil
+	case "iri":
+		return format.IRI(s) == nil
+	case "uri-reference":
+		return format.URIReference(s) == nil
+	case "iri-reference":
+		return format.IRIReference(s) == nil
+	case "uri-template":
+		return format.URITemplate(s) == nil
+	case "uuid":
+		return format.UUID(s) == nil
+	case "json-pointer":
+		return format.JSONPointer(s) == nil
+	case "relative-json-pointer":
+		return format.RelativeJSONPointer(s) == nil
+	case "regex":
+		return format.Regex(s) == nil
+	case "ipv4":
+		return format.IPv4(s) == nil
+	case "ipv6":
+		return format.IPv6(s) == nil
 	}
 	return true
 }
-{{- end}}
-{{- if .AnnotationsContent}}
 
 // _dynStrOr reads an optional node field as a string, with "" meaning the schema
 // stated no such keyword. schemagenContentString takes "" for either argument
@@ -1016,5 +1016,3 @@ func _dynStrOr(p *string) string {
 	}
 	return *p
 }
-{{- end}}
-{{- end}}

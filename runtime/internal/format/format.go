@@ -1,29 +1,19 @@
-{{/*
-format_helpers emits one function per "format" this generator asserts.
+// Package format holds the "format" checkers: each takes the string a document
+// holds and returns nil, or an error saying what is wrong with it. None exempts
+// the empty string. It is internal to the runtime module, which exports the
+// checkers generated code calls (rt.FormatDate and the rest) as thin wrappers.
+package format
 
-They are shared functions rather than inline checks because the same assertion
-is needed from three places -- a struct field, a named alias over its own value,
-and the wrapper a format with no declared "type" resolves to -- and for a long
-time each place carried its own copy. The copies drifted, which is how a format
-came to be asserted behind a $ref and not inline, and how a check written for
-netip.Addr came to be emitted against a *string. One definition cannot drift
-from itself.
+import (
+	"fmt"
+	"net/netip"
+	"net/url"
+	"strings"
+	"time"
 
-The checks answer to the official test suite's optional/format corpus, which is
-the only statement of what these strings mean that is not this repository's own
-opinion. Where a check is deliberately weaker than the corpus, the function says
-so and names what it does not do; those are under-enforcement, which accepts
-what should be refused, rather than the reverse.
-
-No check exempts the empty string. That exemption used to be everywhere, on the
-grounds that the three positions had to agree with each other -- but they agree
-now by construction, and "" is not an email address, a hostname, a UUID or a
-duration. It remains acceptable to the checks where it genuinely is one: "" is a
-valid URI reference, a valid URI template, a valid regular expression and the
-JSON Pointer that selects the whole document, and each of those functions still
-returns nil for it on its own terms rather than by exemption.
-*/}}
-{{define "format_helpers"}}
+	ecma262 "github.com/mgilbir/goecma262"
+	ecmaflags "github.com/mgilbir/goecma262/flags"
+)
 
 // schemagenASCIIDigits reports whether s is a run of exactly n ASCII digits.
 // The date and time grammars are defined over ASCII, and Go's date parser is
@@ -733,4 +723,3 @@ func schemagenDraft3CSSNumber(s string) bool {
 	}
 	return true
 }
-{{- end}}

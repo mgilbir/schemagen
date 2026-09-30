@@ -66,12 +66,14 @@ jobs:
           go-version: ${{ matrix.go-version }}
           cache: true
 
-      # Generated code imports the ECMA-262 regexp package and x/net/idna,
-      # which only generated code reaches; see ci.yml. Pulled up front so a
+      # Generated code imports the runtime module, which carries the ECMA-262
+      # regexp package and x/net/idna; see ci.yml. Pulled up front so a
       # network problem fails here, plainly, rather than as a wave of
       # compile failures attributed to schemas.
       - name: download dependencies
-        run: go mod download
+        run: |
+          go mod download
+          cd runtime && go mod download
 
       # The run needs disk as well as time: its build cache goes under TMPDIR,
       # and the test refuses to start below 8 GiB free on that volume

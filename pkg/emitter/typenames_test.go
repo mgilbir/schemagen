@@ -129,6 +129,7 @@ var typeNameEmissionSites = map[string]emissionSite{
 	"enum.go.tmpl | .Name":                   {Kind: nameLocalDecl, Why: "the enum this template is declaring"},
 	"inferred_alias.go.tmpl | .Name":         {Kind: nameLocalDecl, Why: "the wrapper this template is declaring"},
 	"raw_holder.go.tmpl | .Name":             {Kind: nameLocalDecl, Why: "the raw-JSON wrapper whose methods this template declares"},
+	"generated_marker.go.tmpl | .Name":       {Kind: nameLocalDecl, Why: "the type whose SchemagenGenerated marker this template declares, beside its UnmarshalJSON"},
 	"encode.go.tmpl | .WrapperName":          {Kind: nameLocalDecl, Why: "a oneOf variant wrapper, minted and declared by this package"},
 	"encode.go.tmpl | $v.WrapperName":        {Kind: nameLocalDecl, Why: "a oneOf variant wrapper, minted and declared by this package"},
 	"encode.go.tmpl | .Name":                 {Kind: nameLocalDecl, Why: "the struct whose appendJSON this template declares, zeroed for the null record"},

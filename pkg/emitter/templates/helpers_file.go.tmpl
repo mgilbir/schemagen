@@ -9,95 +9,27 @@ import (
 {{- end}}
 )
 {{- end}}
-{{- if .Helpers.PathJoin}}
-{{template "pathjoin_helpers"}}
-{{- end}}
-{{- if .Helpers.Quote}}
-{{template "quote_helper"}}
-{{- end}}
 {{- if .Helpers.Patterns}}
-{{template "pattern_helpers" .Helpers}}
+
+// This file needs the runtime module github.com/mgilbir/schemagen/runtime at API
+// level 1 or newer. If the compiler reports rt.API1 undefined, the release the
+// build resolved is older than the schemagen that generated this file: update it
+// with go get github.com/mgilbir/schemagen/runtime@latest.
+var _ rt.API1
+
+// The regular expressions this package's schemas name -- a "pattern", a
+// "patternProperties" key, a "propertyNames" pattern -- each compiled once,
+// when the package is initialised, with the ECMA-262 engine and the "u" flag
+// JSON Schema calls for. Every check in this package that matches a pattern goes
+// through one of these variables; nothing compiles a pattern where it is used.
+//
+// The first argument is the text the schema wrote, which is what a message
+// quotes, and the second the text the engine is given. They differ only for a
+// pattern that escapes punctuation the "u" flag does not let it escape; see
+// schemagen's README.
+var (
+{{- range .Helpers.Patterns}}
+	{{patternVar .}} = rt.CompilePattern({{printf "%q" .}}, {{patternEngineSource .}})
 {{- end}}
-{{- if .Helpers.Undecided}}
-{{template "undecided_helper"}}
-{{- end}}
-{{- if .Helpers.DecodePath}}
-{{template "decodepath_helpers"}}
-{{- end}}
-{{- if .Helpers.Decode}}
-{{template "decode_helpers" .Helpers}}
-{{- end}}
-{{- if .Helpers.Dynamic}}
-{{template "dyn_helpers"}}
-{{- end}}
-{{- if .Helpers.DynamicConst}}
-{{template "dyn_const_helper"}}
-{{- end}}
-{{- if .Helpers.Annotations}}
-{{template "annotation_helpers" .Helpers}}
-{{- end}}
-{{- if .Helpers.OneOf}}
-{{template "oneof_helpers"}}
-{{- end}}
-{{- if .Helpers.OneOfDiscriminator}}
-{{template "oneof_discriminator_helper"}}
-{{- end}}
-{{- if .Helpers.Integer}}
-{{template "integer_helpers"}}
-{{- end}}
-{{- if .Helpers.Number}}
-{{template "number_helpers"}}
-{{- end}}
-{{- /* The exact-number core is one block, written in sections; what of it a
-       package keeps is the declaration pruning's to settle. */}}
-{{- if .Helpers.NumberCompare}}
-{{template "number_reader_helpers"}}
-{{template "number_value_helpers" .Helpers}}
-{{template "number_compare_helpers"}}
-{{template "number_integer_helpers" .Helpers}}
-{{template "number_multipleof_helpers"}}
-{{template "number_bigint_helpers"}}
-{{template "number_decode_helpers"}}
-{{- end}}
-{{- if .Helpers.DateTime}}
-{{template "datetime_helpers"}}
-{{- end}}
-{{- if .Helpers.IPAddr}}
-{{template "ipaddr_helpers"}}
-{{- end}}
-{{- if .Helpers.Canonical}}
-{{template "canonical_helpers"}}
-{{- end}}
-{{- if .Helpers.IdentityCore}}
-{{template "identity_core_helpers" .Helpers}}
-{{- end}}
-{{- if .Helpers.IdentityConst}}
-{{template "identity_const_helpers" .Helpers}}
-{{- end}}
-{{- if .Helpers.IdentityAny}}
-{{template "identity_any_helpers" .Helpers}}
-{{- end}}
-{{- if .Helpers.IdentityLazy}}
-{{template "identity_lazy_helpers" .Helpers}}
-{{- end}}
-{{- if .Helpers.IdentityValue}}
-{{template "identity_value_helpers" .Helpers}}
-{{- end}}
-{{- if .Helpers.IdentityKind}}
-{{template "identity_kind_helpers" .Helpers}}
-{{- end}}
-{{- if .Helpers.NullCheck}}
-{{template "nullcheck_helpers"}}
-{{- end}}
-{{- if .Helpers.Format}}
-{{template "format_helpers"}}
-{{- end}}
-{{- if .Helpers.FormatHostname}}
-{{template "format_hostname_helpers"}}
-{{- end}}
-{{- if .Helpers.Content}}
-{{template "content_helpers"}}
-{{- end}}
-{{- if .Helpers.Access}}
-{{template "access_helpers" .Helpers}}
+)
 {{- end}}

@@ -37,7 +37,6 @@ var declaredNameActions = map[string]string{
 	"{{$allowedVar}}":          "EnumDef.AllowedVar, claimed where the raw enum is built",
 	"{{.AccessorName}}":        "a fixed accessor per inferred JSON type (Float64, StringValue, ...), a method of a type with no fields",
 	"{{.TypeCheckName}}":       "a fixed predicate per inferred JSON type (IsNumber, IsString, ...), a method of a type with no fields",
-	"{{$ev}}":                  "the evaluator function's fixed name, chosen in the template between two reserved helpers",
 }
 
 // declaredNameToken returns the identifier a Go declaration line declares, and

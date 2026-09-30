@@ -746,10 +746,10 @@ func TestGenerateValidationHybridEmitsCapability(t *testing.T) {
 	if !strings.Contains(src, `const SchemagenValidationMode = "hybrid"`) {
 		t.Errorf("generated code missing hybrid validation mode, got:\n%s", src)
 	}
-	if !strings.Contains(src, `func SchemagenValidationCapability() validationruntime.Capability`) {
+	if !strings.Contains(src, `func SchemagenValidationCapability() rt.Capability`) {
 		t.Errorf("generated code missing runtime capability helper, got:\n%s", src)
 	}
-	if !strings.Contains(src, `validationruntime.Feature("unevaluatedItems")`) {
+	if !strings.Contains(src, `rt.Feature("unevaluatedItems")`) {
 		t.Errorf("generated code missing unevaluatedItems runtime feature, got:\n%s", src)
 	}
 }
@@ -788,7 +788,7 @@ func TestGenerateValidationRuntimeEmitsCapability(t *testing.T) {
 	if !strings.Contains(src, `const SchemagenValidationMode = "runtime"`) {
 		t.Errorf("generated code missing runtime validation mode, got:\n%s", src)
 	}
-	if !strings.Contains(src, `func SchemagenValidationCapability() validationruntime.Capability`) {
+	if !strings.Contains(src, `func SchemagenValidationCapability() rt.Capability`) {
 		t.Errorf("generated code missing runtime capability helper, got:\n%s", src)
 	}
 }
@@ -905,18 +905,16 @@ func TestGenerateMultipleSchemasMatchesSingleRuns(t *testing.T) {
 }
 
 // TestGenerateMultipleSchemasSharingHelpersCompiles is a regression for shared
-// helper functions being emitted into every file that needed them: two schemas
-// in one package then declared the same package-level function twice and the
-// generated package did not compile. The helpers now live in one file per
-// destination package.
+// package-level declarations being emitted into every file that needed them: two
+// schemas in one package then declared the same one twice and the generated
+// package did not compile. What a package declares for itself is its compiled
+// patterns, and they live in one file per destination package. Two of the three
+// schemas name the same pattern, which is the collision.
 func TestGenerateMultipleSchemasSharingHelpersCompiles(t *testing.T) {
 	dir := t.TempDir()
-	// Three schemas with overlapping helper needs: a struct-level oneOf (needs
-	// oneofHasRequiredFields), and two untyped applicator schemas (need the
-	// _dyn* predicates), one of which also forces math into its own file.
 	sources := map[string]string{
-		"a.json": `{"title":"A","type":"object","properties":{"p":{"oneOf":[{"type":"string"},{"type":"integer"}]}}}`,
-		"b.json": `{"title":"B","oneOf":[{"type":"integer"},{"minimum":2}]}`,
+		"a.json": `{"title":"A","type":"object","properties":{"p":{"oneOf":[{"type":"string","pattern":"^a+$"},{"type":"integer"}]}}}`,
+		"b.json": `{"title":"B","oneOf":[{"type":"integer"},{"type":"string","pattern":"^a+$"}]}`,
 		"c.json": `{"title":"C","oneOf":[{"multipleOf":3},{"maximum":1}]}`,
 	}
 	var args []string
@@ -953,12 +951,15 @@ func TestGenerateMultipleSchemasSharingHelpersCompiles(t *testing.T) {
 		if err != nil {
 			t.Fatalf("reading %s: %v", e.Name(), err)
 		}
-		if bytes.Contains(body, []byte("func _dynIsString(")) || bytes.Contains(body, []byte("func jsonNumberOf(")) || bytes.Contains(body, []byte("func oneofHasRequiredFields(")) {
+		if bytes.Contains(body, []byte("rt.CompilePattern(")) {
 			helperFiles++
 		}
 	}
 	if helperFiles != 1 {
-		t.Fatalf("%d files declare shared helpers, want exactly 1", helperFiles)
+		t.Fatalf("%d files declare compiled patterns, want exactly 1", helperFiles)
+	}
+	if buildOut, err := buildGenerated(t, outDir, "example.com/gen"); err != nil {
+		t.Errorf("generated package does not compile: %v\n%s", err, buildOut)
 	}
 }
 

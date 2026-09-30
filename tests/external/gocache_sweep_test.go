@@ -19,10 +19,11 @@ import (
 //
 // It is written for what it makes the generator emit, not for what it says: a
 // root object with a Validate() method, string, numeric, array and object
-// constraints, a pattern, and an asserted `format: email`. The format block is
-// what puts the ECMA-262 engine and x/net/idna in the helper file, so the
-// module carries the same external requirements as the ones the corpus
-// produces and is compiled the same way rather than being a cheap stand-in.
+// constraints, a pattern, and an asserted `format: email`. The generated code
+// imports the runtime module, which carries the ECMA-262 engine and
+// x/net/idna, so the module has the same external requirements as the ones the
+// corpus produces and is compiled the same way rather than being a cheap
+// stand-in.
 const workDirFixtureSchema = `{
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "type": "object",
@@ -91,14 +92,27 @@ func buildRealWorkDir(t *testing.T, dir string) string {
 			t.Fatalf("the fixture work directory has no %s (%v); it is not a module the harness would have written", name, err)
 		}
 	}
-	helpers, err := os.ReadFile(filepath.Join(dir, "schemagen_helpers.go"))
-	if err != nil {
-		t.Fatalf("read helpers: %v", err)
+	// What makes the module expensive is the runtime it imports, and the engine
+	// and idna that runtime imports in turn. The generated code names the
+	// runtime; the runtime's own go.mod names the other two.
+	if !strings.Contains(main, `"github.com/mgilbir/schemagen/runtime"`) {
+		t.Fatalf("the fixture module does not import the runtime, so it is cheaper to build than the ones the corpus produces and is not the thing being spared")
 	}
-	for _, dep := range []string{"goecma262", "golang.org/x/net/idna"} {
-		if !strings.Contains(string(helpers), dep) {
-			t.Fatalf("the fixture module does not import %s, so it is cheaper to build than the ones the corpus produces and is not the thing being spared", dep)
+	rtDir, err := testgo.RuntimeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	rtMod, err := os.ReadFile(filepath.Join(rtDir, "go.mod"))
+	if err != nil {
+		t.Fatalf("read the runtime's go.mod: %v", err)
+	}
+	for _, dep := range []string{"goecma262", "golang.org/x/net"} {
+		if !strings.Contains(string(rtMod), dep) {
+			t.Fatalf("the runtime module does not require %s, so the fixture is cheaper to build than the ones the corpus produces and is not the thing being spared", dep)
 		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "schemagen_helpers.go")); err != nil {
+		t.Fatalf("read helpers: %v", err)
 	}
 
 	fixture := filepath.Join(dir, "fixture.json")

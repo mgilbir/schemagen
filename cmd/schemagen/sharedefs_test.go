@@ -121,7 +121,9 @@ func main() {
 `, importPath, body.String())
 
 	writeFile(t, filepath.Join(dir, "main.go"), driver)
-	writeFile(t, filepath.Join(dir, "go.mod"), "module example.com/m\n\ngo 1.23\n")
+	if err := testgo.WriteModule(dir, "example.com/m"); err != nil {
+		t.Fatal(err)
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()

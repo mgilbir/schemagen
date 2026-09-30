@@ -1,0 +1,250 @@
+const AccessItems = _accessItems
+const AccessOther = _accessOther
+const AccessPattern = _accessPattern
+const AccessProperty = _accessProperty
+const AccessTuple = _accessTuple
+const FeatureCrossDraftRef Feature = "cross-draft $ref"
+const FeatureCustomVocabulary Feature = "custom vocabulary"
+const FeatureDynamicRef Feature = "$dynamicRef"
+const FeatureRecursiveRef Feature = "$recursiveRef"
+const FeatureUnevaluatedItems Feature = "unevaluatedItems"
+const FeatureUnevaluatedProps Feature = "unevaluatedProperties"
+const IDArrayKind = jsonIDArrayKind
+const IDFalseKind = jsonIDFalseKind
+const IDNullKind = jsonIDNullKind
+const IDNumberKind = jsonIDNumberKind
+const IDObjectKind = jsonIDObjectKind
+const IDStringKind = jsonIDStringKind
+const IDTrueKind = jsonIDTrueKind
+func (*DateTime) SchemagenGenerated()
+func (*IPv4Addr) SchemagenGenerated()
+func (*IPv6Addr) SchemagenGenerated()
+func (*Integer) SchemagenGenerated()
+func (*Number) SchemagenGenerated()
+func (c *Const) IsWrittenAs(t any) bool
+func (c Capability) Check() error
+func (d *Doc) BeginTrial()
+func (d *Doc) CopyOf(sp Span) json.RawMessage
+func (d *Doc) EndTrial()
+func (d *Doc) Finish(err error) error
+func (d *Doc) First(sp Span) byte
+func (d *Doc) IsNull(sp Span) bool
+func (d *Doc) Iter(sp Span) Iter
+func (d *Doc) Keep(sp Span) json.RawMessage
+func (d *Doc) Raw(sp Span) []byte
+func (d *Doc) Refuse(err error)
+func (d *Doc) Refused() bool
+func (e *ReadOnlyRefusal) Error() string
+func (e PathError) Error() string
+func (e PathError) JSONPathSeparator() string
+func (e PathError) Unwrap() error
+func (it *Iter) Elem() (Span, bool)
+func (it *Iter) Member() (string, Span, bool)
+func (j *DateTime) UnmarshalJSON(data []byte) error
+func (j *IPv4Addr) UnmarshalJSON(data []byte) error
+func (j *IPv6Addr) UnmarshalJSON(data []byte) error
+func (j *Integer) UnmarshalJSON(data []byte) error
+func (j *Number) UnmarshalJSON(data []byte) error
+func (l Lazy) Level() any
+func (m *Validation) Pop() any
+func (m *Validation) Push(t any)
+func (m *Validation) Reading() bool
+func (o *IDObj) Computed(key string, id ID)
+func (o *IDObj) Deferred(key string, idx int)
+func (o *IDObj) Del(key string)
+func (o *IDObj) Held(key string, raw []byte)
+func (o *IDObj) Nulled(key string)
+func (o *IDObj) Of(member IDMemberFunc, m *Validation) (ID, error)
+func (o *IDObj) StripWriteOnly(rules []AccessRule, member IDMemberFunc, m *Validation) error
+func (o *IDObj) Value(key string, member IDMemberFunc, m *Validation) (any, bool, bool, error)
+func (o *IDObject) Add(key string, val ID)
+func (o *IDObject) ID() ID
+func (o *Obj) Deferred(key string, idx int)
+func (o *Obj) Del(key string)
+func (o *Obj) Encoded(key string, val []byte)
+func (o *Obj) Held(key string, raw []byte)
+func (o *Obj) MemberBytes(key string, member MemberEnc) ([]byte, bool, error)
+func (o *Obj) StripWriteOnly(rules []AccessRule, member MemberEnc) error
+func (o *Obj) Write(b []byte, member MemberEnc) ([]byte, error)
+func (p *Pattern) Matches(s string) (bool, error)
+func (p *Pattern) MatchesValue(v any, undecided *error) bool
+func (r EvalResult) OK() bool
+func (r EvalResult) Reason() string
+func (r EvalResult) Undecided() error
+func AccessRefuseReadOnly(d *Doc, sp Span, rules []AccessRule) error
+func AccessStripTree(t any, rules []AccessRule) (any, error)
+func AccessStripWriteOnly(data []byte, rules []AccessRule) ([]byte, error)
+func AppendLeaf[T any](v T, b []byte) ([]byte, error)
+func AtJSON[T any](p *T, d *Doc, sp Span) error
+func Attempt(d *Doc, f func() error) error
+func BigIntFromLiteral(s string) (_v *big.Int, isInt bool, tooLarge bool)
+func BoolPtr(b bool) *bool
+func Canonical(data []byte) (string, error)
+func CheckNullsAt(d *Doc, sp Span, rule *NullRule) error
+func ClipText(s string) string
+func CompilePattern(pattern, source string) *Pattern
+func ConstOf(floats bool, texts ...string) *Const
+func ContentString(value, encoding, mediaType string) error
+func DecimalIsIntegral(s string) bool
+func DecodeHeld[T any](doc *Doc, raw []byte, p *T, dec At[T]) error
+func DecodeIgnoringReadOnly(data []byte, dst any) error
+func DecodeItems(elem func([]byte) error) func([]byte) error
+func DecodeLazy[T any](l Lazy, p *T, dec At[T]) error
+func DecodeMap[M ~map[string]V, V any](p *M, d *Doc, sp Span, elem At[V]) error
+func DecodeNumbers(data []byte, v *any) error
+func DecodePtr[P ~*T, T any](p *P, d *Doc, sp Span, inner At[T]) error
+func DecodeRefusal(err error) error
+func DecodeSlice[S ~[]E, E any](p *S, d *Doc, sp Span, elem At[E]) error
+func DecodeValue[T any](data []byte) error
+func DecodeValues(elem func([]byte) error) func([]byte) error
+func DynConstOK(v any, want string) bool
+func DynIsArray(v any) bool
+func DynIsBool(v any) bool
+func DynIsObject(v any) bool
+func DynIsString(v any) bool
+func DynStrOK(v any, ok func(string) bool) bool
+func ElemErrorf(format string, args ...any) error
+func ElemPathf(err error, segFormat string, args ...any) error
+func ElemWrapf(err error, prefix string) error
+func EncMap[M ~map[string]V, V any](v M, b []byte, enc Enc[V]) ([]byte, error)
+func EncPtr[P ~*E, E any](v P, b []byte, enc Enc[E]) ([]byte, error)
+func EncSlice[S ~[]E, E any](v S, b []byte, enc Enc[E]) ([]byte, error)
+func EvalError(r EvalResult) error
+func EvalNode(n *Node, v any) EvalResult
+func FirstDuplicate[S ~[]E, E any](s S, ids []ID, f Identify[E]) int
+func FloatIsMultipleOf(f float64, m string, mDigits int64, mFrac int) bool
+func FormatDate(v string) error
+func FormatDateTime(v string) error
+func FormatDraft3Color(v string) error
+func FormatDraft3Time(v string) error
+func FormatDuration(v string) error
+func FormatEmail(v string) error
+func FormatHostname(v string) error
+func FormatIDNEmail(v string) error
+func FormatIDNHostname(v string) error
+func FormatIPv4(v string) error
+func FormatIPv4Addr(a netip.Addr) error
+func FormatIPv6(v string) error
+func FormatIPv6Addr(a netip.Addr) error
+func FormatIRI(v string) error
+func FormatIRIReference(v string) error
+func FormatJSONPointer(v string) error
+func FormatRegex(v string) error
+func FormatRelativeJSONPointer(v string) error
+func FormatTime(v string) error
+func FormatURI(v string) error
+func FormatURIReference(v string) error
+func FormatURITemplate(v string) error
+func FormatUUID(v string) error
+func Held(doc *Doc, raw []byte) (any, error)
+func IDAny(v any, m *Validation) (ID, error)
+func IDMap[M ~map[string]V, V any](mp M, m *Validation, f Identify[V]) (ID, error)
+func IDNull(m *Validation) (ID, error)
+func IDNumberIn(n json.Number, m *Validation) (ID, error)
+func IDPtr[P ~*E, E any](p P, m *Validation, f Identify[E]) (ID, error)
+func IDRawIn(b []byte, m *Validation) (ID, error)
+func IDSliceKept[S ~[]E, E any](s S, m *Validation, f Identify[E]) (ID, error)
+func IDSlice[S ~[]E, E any](s S, m *Validation, f Identify[E]) (ID, error)
+func IDsOf[S ~[]E, E any](s S, m *Validation, f Identify[E]) ([]ID, int, error)
+func IdentifyAt[T any](p *T, m *Validation) (ID, error)
+func IntPtr(i int) *int
+func IntegerFromLiteral(s string) (int64, bool)
+func IntegerMap[E any, T any](m map[string]E, f func(E) T) map[string]T
+func IntegerPtr[E any, T any](p *E, f func(E) T) *T
+func IntegerSlice[E any, T any](s []E, f func(E) T) []T
+func IsEmpty[T any](v T) bool
+func IsInteger(v any, strict bool) bool
+func IsNullDocument(data []byte) bool
+func IsNumber(v any) bool
+func IsReadOnlyRefusal(err error) bool
+func IsZero[T any](v T) bool
+func KeyText(key string) string
+func KindAny(v any) (byte, string)
+func KindAt[T any](p *T) (byte, string)
+func KindError[T any](d *Doc, sp Span) error
+func LazyItemsOr[S ~[]any](p *S, d *Doc, sp Span, dec At[S]) error
+func LeafOmitEmpty[T any](v T) ([]byte, bool, error)
+func LeafOmitZero[T any](v T) ([]byte, bool, error)
+func MarshalError[T any](p *T, err error) error
+func MarshalText[T any](p *T) string
+func MarshalerErrFor(err error, ptr any, viaPointer bool) error
+func MatchesConstAt[T any](p *T, c *Const) (bool, error)
+func MatchesConstRaw(b []byte, c *Const) (bool, error)
+func MatchesConst[T any](p *T, f Identify[T], c *Const) (bool, error)
+func NewIDObj(m *Validation) IDObj
+func NewIDObject(m *Validation) IDObject
+func NewTreeValidation() *Validation
+func NodePtr(n Node) *Node
+func NumberAbove(v any, b string) bool
+func NumberAtLeast(v any, b string) bool
+func NumberAtMost(v any, b string) bool
+func NumberBelow(v any, b string) bool
+func NumberCmp(a json.Number, b string) int
+func NumberEqual(v any, b string) bool
+func NumberIsMultipleOf(v json.Number, m string) bool
+func NumberNotMultipleOf(v any, m string) bool
+func NumberOf(v any) (string, bool)
+func OmitEmptyAt[T any](p *T) bool
+func OmitZeroAt[T any](p *T) bool
+func OneOfDiscriminatorValue(d *Doc, sp Span, prop string) (string, error)
+func OneOfHasRequiredFields(d *Doc, sp Span, fields ...string) bool
+func OpenDoc(data []byte) (*Doc, Span, error)
+func Pathf(err error, segFormat string, args ...any) error
+func ProbeLeaf[T any](p *T, d *Doc, sp Span, probe func([]byte) error) error
+func ProbeMap[V any](p *map[string]V, d *Doc, sp Span, elem At[V]) error
+func ProbeSlice[E any](p *[]E, d *Doc, sp Span, elem At[E]) error
+func Quote(s string) string
+func RawKind(b []byte, strict bool) string
+func RawNumber(b []byte) (string, bool)
+func ReadLazily(raw []byte) (any, error)
+func SortedKeys[M ~map[string]V, V any](m M) []string
+func StepErrorf(format string, args ...any) error
+func StrPtr(s string) *string
+func Top(v any) any
+func TreeOf[T any](p *T, f Identify[T]) (any, error)
+func TreeRaw(b []byte, floats bool) (any, error)
+func TreeView(v any) (any, error)
+func TreeWritten(a, b any) bool
+func TypeErrorFor(d *Doc, sp Span, ptr any) error
+func Undecided(err error) bool
+func ValueErrorf(format string, args ...any) error
+func ValueWrapf(err error, prefix string) error
+func Wrapf(err error, prefix string) error
+type API1 struct{}
+type AccessRule struct { Path []AccessStep ReadOnly bool WriteOnly bool }
+type AccessStep struct { // Pattern is an _accessPattern step's key test, one of the package's // compiled patterns. Pattern *Pattern Name string // Except and ExceptPatterns are what an _accessOther step steps past: the // members the same schema object declares by name and by pattern, which are // exactly the ones additionalProperties and unevaluatedProperties do not // reach. Except []string ExceptPatterns []*Pattern Kind int Index int }
+type Anchor struct { Node *Node Name string }
+type At[T any] func(*T, *Doc, Span) error
+type Capability struct { Mode string RuntimeFeatures []Feature Unsupported []Feature ResourceCount int RequiresRuntime bool }
+type Const struct { // contains filtered or unexported fields }
+type DateTime time.Time
+type Dependency struct { Key string Keys []string }
+type Doc struct { // contains filtered or unexported fields }
+type DynamicRef struct { Fallback *Node Anchor string }
+type Enc[T any] func(T, []byte) ([]byte, error)
+type EvalResult struct { // contains filtered or unexported fields }
+type EvalWhy struct { // contains filtered or unexported fields }
+type Feature string
+type ID struct { // contains filtered or unexported fields }
+type IDArray struct { // contains filtered or unexported fields }
+type IDMemberFunc func(idx int, key string, m *Validation) (ID, error)
+type IDObj struct { // contains filtered or unexported fields }
+type IDObject struct { // contains filtered or unexported fields }
+type IPv4Addr netip.Addr
+type IPv6Addr netip.Addr
+type Identify[T any] func(*T, *Validation) (ID, error)
+type Integer int64
+type Iter struct { // contains filtered or unexported fields }
+type Lazy struct { // contains filtered or unexported fields }
+type Member struct { Key string Node Node }
+type MemberEnc func(idx int, key string, b []byte) ([]byte, error)
+type Node struct { Boolean *bool // a bare true/false schema // Const, Enum and UniqueItems compare values as JSON, which is the one part // of the evaluator that needs the identity of a value (see jsonIDJSON); a // package whose nodes state none of the three carries neither the fields // nor the arms that read them. Const *string // JSON encoding of the const value // The numeric keywords, each as the literal the schema wrote. They are // judged through the exact core against the instance's own literal, which // jsonDecodeNumbers keeps; a float64 here gave 9007199254740993 and // 9007199254740992 one reading, and 0.3 no multiple of 0.1. MultipleOf *string Minimum *string Maximum *string ExclusiveMinimum *string ExclusiveMaximum *string MinLength *int MaxLength *int // Pattern is one of the package's compiled patterns, shared with every // other check that states the same one. Pattern *Pattern // Format is set only where the schema's own dialect asserts "format" and // this generator has a check for the name; on a dialect that annotates it, // and for a format nothing here judges, the node carries no field, because // there is nothing to judge rather than something skipped. Format *string // The content vocabulary, on the one dialect that asserts it. Set under the // same rule as Format: present only where a check is going to be made. ContentEncoding *string ContentMediaType *string Items *Node // items as a single schema: applies past the tuple Contains *Node MinContains *int MaxContains *int MinItems *int MaxItems *int AdditionalProperties *Node PropertyNames *Node MinProperties *int MaxProperties *int Not *Node If *Node Then *Node Else *Node UnevaluatedItems *Node UnevaluatedProperties *Node // Ref evaluates another node in place of this one, and is how a schema that // contains itself is expressed: an object whose additionalProperties are // objects of the same shape is a cycle, and a cycle is not a tree of // composite literals. Go refuses a cycle between package-level variable // initialisers, so the nodes taking part in one are declared empty and // assigned in init(). Ref *Node // DynamicRef is a $dynamicRef or $recursiveRef, and is another conjunct like // AllOf: the drafts that define these keywords are the drafts where a // reference applies beside its siblings rather than replacing them. DynamicRef *DynamicRef Type []string // the JSON types the value may have; empty means any Enum []string // JSON encodings of the permitted values PrefixItems []Node // tuple positions (prefixItems, or draft-2019 tuple-form items) Properties []Member // by property name PatternProperties []PatternMember // by ECMA-262 pattern over the key Required []string DependentRequired []Dependency DependentSchemas []Member AllOf []Node AnyOf []Node OneOf []Node // DynamicAnchors marks this node as *entering* a schema resource and lists // what that resource contributes to the dynamic scope while it is being // evaluated. Entering is not the same as being the resource's root: a // reference into the middle of a resource enters it too, and the frame then // hangs off the node the reference landed on. Only the anchors some // reference in this schema searches for are listed; an anchor nothing looks // up changes no answer. DynamicAnchors []Anchor UniqueItems bool // StrictInteger reads "integer" off the instance's token, as draft 3 and // draft 4 do: 1.0 is a number there and not an integer. Every later draft // reads the value. StrictInteger bool }
+type NullRule struct { Elem *NullRule Reject bool IsMap bool }
+type Number json.Number
+type Obj struct { // contains filtered or unexported fields }
+type PathError struct { // contains filtered or unexported fields }
+type Pattern struct { // contains filtered or unexported fields }
+type PatternMember struct { Pattern *Pattern Node Node }
+type ReadOnlyRefusal struct { Path string }
+type Span struct { // contains filtered or unexported fields }
+type Validation struct { // contains filtered or unexported fields }

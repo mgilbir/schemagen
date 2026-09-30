@@ -131,14 +131,14 @@ type State struct {
 // formatFuncs are the fmt-style functions the templates call, and which
 // argument of each is the format.
 var formatFuncs = map[string]int8{
-	"Errorf":          0,
-	"Sprintf":         0,
-	"jsonValueErrorf": 0,
-	"jsonElemErrorf":  0,
-	"jsonStepErrorf":  0,
-	"oneofErrf":       0,
-	"jsonPathf":       1,
-	"jsonElemPathf":   1,
+	"Errorf":      0,
+	"Sprintf":     0,
+	"ValueErrorf": 0,
+	"ElemErrorf":  0,
+	"StepErrorf":  0,
+	"oneofErrf":   0,
+	"Pathf":       1,
+	"ElemPathf":   1,
 }
 
 // maxIdent bounds the identifier the model remembers; no name in formatFuncs
@@ -330,10 +330,10 @@ func formatCallee(a *parse.ActionNode) (int8, bool) {
 	}
 	switch name {
 	case "$errf", "pathErrf":
-		// fmt.Errorf or jsonElemErrorf.
+		// fmt.Errorf or rt.ElemErrorf.
 		return 0, true
 	case "$joinf", "pathJoin":
-		// jsonPathf or jsonElemPathf.
+		// rt.Pathf or rt.ElemPathf.
 		return 1, true
 	}
 	return 0, false

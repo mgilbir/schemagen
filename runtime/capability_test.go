@@ -1,4 +1,4 @@
-package validationruntime
+package runtime
 
 import (
 	"strings"

@@ -1,4 +1,4 @@
-.PHONY: guards unicode-tables build test lint lint-alignment clean install fmt vet golden download-test-suite test-suite-drift download-metaschemas test-external test-determinism grid-numbers fuzz fuzz-seeds cogen bench-cyclonedx validate-seeds
+.PHONY: guards unicode-tables build test test-runtime lint lint-alignment clean install fmt vet golden download-test-suite test-suite-drift download-metaschemas test-external test-determinism grid-numbers fuzz fuzz-seeds cogen bench-cyclonedx validate-seeds
 
 BINARY := schemagen
 MODULE := github.com/mgilbir/schemagen
@@ -43,9 +43,16 @@ install:
 
 test:
 	go test ./... -v -count=1
+	cd runtime && go test ./... -v -count=1
 
 test-short:
 	go test ./... -short -count=1
+	cd runtime && go test ./... -short -count=1
+
+# The runtime module is a module of its own, so the root `go test ./...` does
+# not reach it. This is the target CI runs for it.
+test-runtime:
+	cd runtime && go vet ./... && go test ./... -count=1
 
 # Regenerates the goldens, and reports every one it changed with a diffstat and
 # the changed lines. A run that changed any golden fails, so the change cannot
@@ -77,9 +84,11 @@ golden:
 
 fmt:
 	go fmt ./...
+	cd runtime && go fmt ./...
 
 vet:
 	go vet ./...
+	cd runtime && go vet ./...
 
 lint: fmt vet
 

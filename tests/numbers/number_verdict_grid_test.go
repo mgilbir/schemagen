@@ -865,9 +865,9 @@ func runGridConfig(t *testing.T, cfg gridConfig, cells []gridCell) map[string]st
 	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(mainGo), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// The cogen module layout, which stubs pkg/validationruntime for the
-	// packages --validation runtime makes import it.
-	if err := writeCogenGoMod(dir, true); err != nil {
+	// The cogen module layout: the runtime module every generated package
+	// imports, replaced onto this checkout.
+	if err := writeCogenGoMod(dir); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)

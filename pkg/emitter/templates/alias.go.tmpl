@@ -40,7 +40,7 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	*{{$recv}} = _zero
 	{{- if .NeedsNullCheck}}
 	if string(data) == "null" {
-		return jsonValueErrorf("null is not allowed")
+		return rt.ValueErrorf("null is not allowed")
 	}
 	{{- end}}
 	{{- with .NullCheck}}
@@ -49,16 +49,16 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	       []string turns [null] into [""] and reports nothing. A container
 	       alias decodes in place (see alias_decode_at) and makes this check
 	       there; this arm is for a shape that reaches it here all the same. */}}
-	if _d, _sp, _err := jsonOpenDoc(data); _err != nil {
-		return jsonDecodeRefusal(_err)
-	} else if _err := checkJSONNullsAt(_d, _sp, {{template "nullrule" .}}); _err != nil {
+	if _d, _sp, _err := rt.OpenDoc(data); _err != nil {
+		return rt.DecodeRefusal(_err)
+	} else if _err := rt.CheckNullsAt(_d, _sp, {{template "nullrule" .}}); _err != nil {
 		return _err
 	}
 	{{- end}}
 	{{- if .UnmarshalAs}}
 	var _target {{.UnmarshalAs}}
 	if _err := json.Unmarshal(data, &_target); _err != nil {
-		return jsonDecodeRefusal(_err)
+		return rt.DecodeRefusal(_err)
 	}
 	*{{$recv}} = {{.Name}}(_target)
 	return nil
@@ -82,7 +82,7 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	{{- end}}
 	var _iv {{goType .LeafDecode.ShadowType}}
 	if _err := json.Unmarshal(data, &_iv); _err != nil {
-		return jsonDecodeRefusal(_err)
+		return rt.DecodeRefusal(_err)
 	}
 	*{{$recv}} = {{.LeafDecode.Convert}}
 	return nil
@@ -90,27 +90,27 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	// Use json.Number to accept 1.0 as a valid integer (zero fractional part).
 	// Reject JSON strings (e.g., "1") — json.Number would accept them since it is a string type.
 	if len(data) > 0 && data[0] == '"' {
-		return jsonValueErrorf("expected integer, got string")
+		return rt.ValueErrorf("expected integer, got string")
 	}
 	var _n json.Number
 	if _err := json.Unmarshal(data, &_n); _err != nil {
-		return jsonDecodeRefusal(_err)
+		return rt.DecodeRefusal(_err)
 	}
 	if _i, _iErr := _n.Int64(); _iErr == nil {
 		*{{$recv}} = {{.Name}}(_i)
 		return nil
 	}
 	{{- if .StrictInteger}}
-	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
+	return rt.ValueErrorf("value %s cannot be held as an integer", _n.String())
 	{{- end}}
 	// Float notation with nothing after the point (1.0, 1e2), read exactly.
-	// See jsonIntegerFromLiteral: float64 holds 2^63 and 2^63-1 as one number,
+	// See rt.IntegerFromLiteral: float64 holds 2^63 and 2^63-1 as one number,
 	// so it cannot be asked whether a literal is an int64.
-	if _i, _iOK := jsonIntegerFromLiteral(_n.String()); _iOK {
+	if _i, _iOK := rt.IntegerFromLiteral(_n.String()); _iOK {
 		*{{$recv}} = {{.Name}}(_i)
 		return nil
 	}
-	return jsonValueErrorf("value %s cannot be held as an integer", _n.String())
+	return rt.ValueErrorf("value %s cannot be held as an integer", _n.String())
 	{{- else}}
 	{{- /* The refusal is read for the schema's words before it leaves. What
 	       encoding/json writes here names the shadow: `cannot unmarshal object
@@ -118,15 +118,16 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	       inside this function, qualified by whichever package the caller
 	       generated into. Issue #282. */}}
 	type Alias {{.Name}}
-	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)({{$recv}})))
+	return rt.DecodeRefusal(json.Unmarshal(data, (*Alias)({{$recv}})))
 	{{- end}}
 }
+{{template "generated_marker" .}}
 {{- end}}
 
 {{/*
 alias_decode_at is the decode of an alias whose value is a struct, a raw-JSON
 wrapper, a slice or a map: in place, over a span of one indexed document, like
-every type that can hold another of this package's types (see jsonDoc and
+every type that can hold another of this package's types (see rt.Doc and
 decodeplan.go). The arms are alias_unmarshal's, in its order, and refuse in its
 words; the decode under them is composed rather than handed to encoding/json.
 */}}
@@ -136,7 +137,7 @@ words; the decode under them is composed rather than handed to encoding/json.
 {{- /* encoding/json decodes the whole value, and the one arm of the alias's
        own is its null. decodeJSONAt below says so over a span; handed the
        document itself, there is nothing to index -- json.Unmarshal checks the
-       bytes and refuses what is not JSON in the words jsonOpenDoc would -- so
+       bytes and refuses what is not JSON in the words rt.OpenDoc would -- so
        the entry decodes without opening one, and costs what it did before
        the in-place decode. */}}
 
@@ -144,23 +145,25 @@ words; the decode under them is composed rather than handed to encoding/json.
 func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	var _zero {{.Name}}
 	*{{$recv}} = _zero
-	if jsonIsNullDocument(data) {
-		return jsonValueErrorf("null is not allowed")
+	if rt.IsNullDocument(data) {
+		return rt.ValueErrorf("null is not allowed")
 	}
 	type Alias {{.Name}}
-	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)({{$recv}})))
+	return rt.DecodeRefusal(json.Unmarshal(data, (*Alias)({{$recv}})))
 }
+{{template "generated_marker" .}}
 {{- else}}
 
 // UnmarshalJSON replaces {{$recv}} with the value the document holds. See
 // decodeJSONAt.
 func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
-	_d, _sp, _err := jsonOpenDoc(data)
+	_d, _sp, _err := rt.OpenDoc(data)
 	if _err != nil {
-		return jsonDecodeRefusal(_err)
+		return rt.DecodeRefusal(_err)
 	}
-	return _d.finish({{$recv}}.decodeJSONAt(_d, _sp))
+	return _d.Finish({{$recv}}.decodeJSONAt(_d, _sp))
 }
+{{template "generated_marker" .}}
 {{- end}}
 
 // decodeJSONAt decodes the value at _sp into {{$recv}}, in place. The value is
@@ -168,26 +171,26 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 // own rather than over the one {{$recv}} held, which a copy of the value made
 // earlier still shares, and a map loses the members an earlier document gave
 // it.
-func ({{$recv}} *{{.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+func ({{$recv}} *{{.Name}}) decodeJSONAt(_d *rt.Doc, _sp rt.Span) error {
 	var _zero {{.Name}}
 	*{{$recv}} = _zero
 	{{- if .NeedsNullCheck}}
-	if _d.isNull(_sp) {
-		return jsonValueErrorf("null is not allowed")
+	if _d.IsNull(_sp) {
+		return rt.ValueErrorf("null is not allowed")
 	}
 	{{- end}}
 	{{- with .NullCheck}}
 	{{- /* The elements this container holds. The check above answers for the
 	       container itself; a null *inside* one is erased by the decode below --
 	       []string turns [null] into [""] and reports nothing. */}}
-	if _err := checkJSONNullsAt(_d, _sp, {{template "nullrule" .}}); _err != nil {
+	if _err := rt.CheckNullsAt(_d, _sp, {{template "nullrule" .}}); _err != nil {
 		return _err
 	}
 	{{- end}}
 	{{- if .UnmarshalAs}}
 	var _target {{.UnmarshalAs}}
 	if _err := {{.UnmarshalAsDecoder}}(&_target, _d, _sp); _err != nil {
-		return jsonDecodeRefusal(_err)
+		return rt.DecodeRefusal(_err)
 	}
 	*{{$recv}} = {{.Name}}(_target)
 	return nil
@@ -210,8 +213,8 @@ func ({{$recv}} *{{.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	// ["2020-01-02t03:04:05z"] outright.
 	{{- end}}
 	var _iv {{goType .LeafDecode.ShadowType}}
-	if _err := jsonAtJSON(&_iv, _d, _sp); _err != nil {
-		return jsonDecodeRefusal(_err)
+	if _err := rt.AtJSON(&_iv, _d, _sp); _err != nil {
+		return rt.DecodeRefusal(_err)
 	}
 	*{{$recv}} = {{.LeafDecode.Convert}}
 	return nil
@@ -219,15 +222,15 @@ func ({{$recv}} *{{.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	{{- /* The refusal is read for the schema's words before it leaves, as it is
 	       where the alias decodes through encoding/json. Issue #282. */}}
 	{{- if .UnderlyingDecoder}}
-	return jsonDecodeRefusal({{.UnderlyingDecoder}}({{$recv}}, _d, _sp))
+	return rt.DecodeRefusal({{.UnderlyingDecoder}}({{$recv}}, _d, _sp))
 	{{- else}}
 	{{- /* Nothing under the value decodes in place, so encoding/json decodes it
 	       whole, into a type that has none of this one's methods. */}}
 	type Alias {{.Name}}
 	{{- if .LazyItems}}
-	return jsonDecodeRefusal(jsonLazyItemsOr[Alias]((*Alias)({{$recv}}), _d, _sp, jsonAtJSON[Alias]))
+	return rt.DecodeRefusal(rt.LazyItemsOr[Alias]((*Alias)({{$recv}}), _d, _sp, rt.AtJSON[Alias]))
 	{{- else}}
-	return jsonDecodeRefusal(jsonAtJSON[Alias]((*Alias)({{$recv}}), _d, _sp))
+	return rt.DecodeRefusal(rt.AtJSON[Alias]((*Alias)({{$recv}}), _d, _sp))
 	{{- end}}
 	{{- end}}
 	{{- else}}
@@ -242,14 +245,14 @@ func ({{$recv}} *{{.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
 	       whole, into a type that has none of this one's methods. A value of
 	       the wrong kind is refused first, under this type's own name, which is
 	       the one encoding/json named when it decoded into this type directly. */}}
-	if _err := jsonKindError[{{.Name}}](_d, _sp); _err != nil {
+	if _err := rt.KindError[{{.Name}}](_d, _sp); _err != nil {
 		return _err
 	}
 	type Alias {{.Name}}
 	{{- if .LazyItems}}
-	return jsonLazyItemsOr[Alias]((*Alias)({{$recv}}), _d, _sp, jsonAtJSON[Alias])
+	return rt.LazyItemsOr[Alias]((*Alias)({{$recv}}), _d, _sp, rt.AtJSON[Alias])
 	{{- else}}
-	return jsonAtJSON[Alias]((*Alias)({{$recv}}), _d, _sp)
+	return rt.AtJSON[Alias]((*Alias)({{$recv}}), _d, _sp)
 	{{- end}}
 	{{- end}}
 	{{- end}}
@@ -300,8 +303,8 @@ dropped there rather than emitted as a check that cannot fail.
 func ({{$recv}} {{.Name}}) Validate() error { return {{$recv}}.validateIn(nil) }
 
 // validateIn is Validate, sharing _vc with the values below it: the element
-// identities a uniqueItems check keeps. See jsonValidation.
-func ({{$recv}} {{.Name}}) validateIn(_vc *jsonValidation) error {
+// identities a uniqueItems check keeps. See rt.Validation.
+func ({{$recv}} {{.Name}}) validateIn(_vc *rt.Validation) error {
 {{- else}}
 func ({{$recv}} {{.Name}}) Validate() error {
 {{- end}}
@@ -317,46 +320,46 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- range .Validations}}
 	{{- if eq .RuleType "minLength"}}
 	if utf8.RuneCountInString(string({{$recv}})) < {{countExpr .Value}} {
-		return jsonValueErrorf("length %d is less than minimum {{fmtText .Value}}", utf8.RuneCountInString(string({{$recv}})))
+		return rt.ValueErrorf("length %d is less than minimum {{fmtText .Value}}", utf8.RuneCountInString(string({{$recv}})))
 	}
 	{{- end}}
 	{{- if eq .RuleType "maxLength"}}
 	if utf8.RuneCountInString(string({{$recv}})) > {{countExpr .Value}} {
-		return jsonValueErrorf("length %d exceeds maximum {{fmtText .Value}}", utf8.RuneCountInString(string({{$recv}})))
+		return rt.ValueErrorf("length %d exceeds maximum {{fmtText .Value}}", utf8.RuneCountInString(string({{$recv}})))
 	}
 	{{- end}}
 	{{- /* The numeric keywords, written for the Go type the alias holds its
 	       number as; see numViolatedFunc. */}}
 	{{- if eq .RuleType "minimum"}}
 	if {{numViolated . $recv}} {
-		return jsonValueErrorf("%v is less than minimum {{numBoundMsg .}}", {{$recv}})
+		return rt.ValueErrorf("%v is less than minimum {{numBoundMsg .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "maximum"}}
 	if {{numViolated . $recv}} {
-		return jsonValueErrorf("%v exceeds maximum {{numBoundMsg .}}", {{$recv}})
+		return rt.ValueErrorf("%v exceeds maximum {{numBoundMsg .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMinimum"}}
 	if {{numViolated . $recv}} {
-		return jsonValueErrorf("%v must be greater than {{numBoundMsg .}}", {{$recv}})
+		return rt.ValueErrorf("%v must be greater than {{numBoundMsg .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "exclusiveMaximum"}}
 	if {{numViolated . $recv}} {
-		return jsonValueErrorf("%v must be less than {{numBoundMsg .}}", {{$recv}})
+		return rt.ValueErrorf("%v must be less than {{numBoundMsg .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "multipleOf"}}
 	if {{numViolated . $recv}} {
-		return jsonValueErrorf("%v is not a multiple of {{numBoundMsg .}}", {{$recv}})
+		return rt.ValueErrorf("%v is not a multiple of {{numBoundMsg .}}", {{$recv}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "pattern"}}
-	if _matched, _mErr := {{patternVar .Value}}.matches(string({{$recv}})); _mErr != nil {
-		return jsonValueErrorf("%w", _mErr)
+	if _matched, _mErr := {{patternVar .Value}}.Matches(string({{$recv}})); _mErr != nil {
+		return rt.ValueErrorf("%w", _mErr)
 	} else if !_matched {
-		return jsonValueErrorf("%s does not match pattern %s", _schemagenQuote(string({{$recv}})), {{printf "%q" .Value}})
+		return rt.ValueErrorf("%s does not match pattern %s", rt.Quote(string({{$recv}})), {{printf "%q" .Value}})
 	}
 	{{- end}}
 	{{- if eq .RuleType "format"}}
@@ -370,12 +373,12 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- end}}
 	{{- if eq .RuleType "minItems"}}
 	if len({{$recv}}) < {{countExpr .Value}} {
-		return jsonValueErrorf("has %d items, minimum is {{fmtText .Value}}", len({{$recv}}))
+		return rt.ValueErrorf("has %d items, minimum is {{fmtText .Value}}", len({{$recv}}))
 	}
 	{{- end}}
 	{{- if eq .RuleType "maxItems"}}
 	if len({{$recv}}) > {{countExpr .Value}} {
-		return jsonValueErrorf("has %d items, maximum is {{fmtText .Value}}", len({{$recv}}))
+		return rt.ValueErrorf("has %d items, maximum is {{fmtText .Value}}", len({{$recv}}))
 	}
 	{{- end}}
 	{{- if eq .RuleType "uniqueItems"}}
@@ -383,15 +386,15 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		{{- /* Compared by identity; see the struct form in validation.go.tmpl. */}}
 		{{- if .KeepIDs}}
 		if _vc == nil {
-			_vc = &jsonValidation{}
+			_vc = &rt.Validation{}
 		}
 		{{- end}}
-		_ids, _at, _err := jsonIDsOf({{$recv}}, {{if .KeepIDs}}_vc{{else}}nil{{end}}, {{.Identifier}})
+		_ids, _at, _err := rt.IDsOf({{$recv}}, {{if .KeepIDs}}_vc{{else}}nil{{end}}, {{.Identifier}})
 		if _err != nil {
-			return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", _at, jsonMarshalError(&{{$recv}}[_at], _err))
+			return rt.ValueErrorf("uniqueItems check: marshal error at index %d: %w", _at, rt.MarshalError(&{{$recv}}[_at], _err))
 		}
-		if _at := jsonFirstDuplicate({{$recv}}, _ids, {{.Identifier}}); _at >= 0 {
-			return jsonValueErrorf("items are not unique (duplicate at index %d)", _at)
+		if _at := rt.FirstDuplicate({{$recv}}, _ids, {{.Identifier}}); _at >= 0 {
+			return rt.ValueErrorf("items are not unique (duplicate at index %d)", _at)
 		}
 	}
 	{{- end}}
@@ -428,10 +431,10 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			if {{numViolated . $recv}} { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "pattern"}}
-			if _matched, _mErr := {{patternVar .Value}}.matches(string({{$recv}})); _mErr != nil {
+			if _matched, _mErr := {{patternVar .Value}}.Matches(string({{$recv}})); _mErr != nil {
 				// A variant with no verdict leaves the count of matching
 				// variants unknown.
-				return jsonValueErrorf("%w", _mErr)
+				return rt.ValueErrorf("%w", _mErr)
 			} else if !_matched {
 				variantValid = false
 			}
@@ -447,7 +450,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		}
 		{{- end}}
 		if !anyOfValid {
-			return jsonValueErrorf("value does not match any anyOf variant")
+			return rt.ValueErrorf("value does not match any anyOf variant")
 		}
 	}
 	{{- end}}
@@ -477,10 +480,10 @@ func ({{$recv}} {{.Name}}) Validate() error {
 			if {{numViolated . $recv}} { variantValid = false }
 			{{- end}}
 			{{- if eq .RuleType "pattern"}}
-			if _matched, _mErr := {{patternVar .Value}}.matches(string({{$recv}})); _mErr != nil {
+			if _matched, _mErr := {{patternVar .Value}}.Matches(string({{$recv}})); _mErr != nil {
 				// A variant with no verdict leaves the count of matching
 				// variants unknown.
-				return jsonValueErrorf("%w", _mErr)
+				return rt.ValueErrorf("%w", _mErr)
 			} else if !_matched {
 				variantValid = false
 			}
@@ -496,7 +499,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		}
 		{{- end}}
 		if oneOfCount != 1 {
-			return jsonValueErrorf("value matches %d oneOf variants, expected exactly 1", oneOfCount)
+			return rt.ValueErrorf("value matches %d oneOf variants, expected exactly 1", oneOfCount)
 		}
 	}
 	{{- end}}

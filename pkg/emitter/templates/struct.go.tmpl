@@ -34,7 +34,7 @@ type {{.Name}} struct {
 // which are never written back out. The two key lists in UnmarshalJSON and
 // MarshalJSON answer for the members themselves, which is what a Go field can
 // carry; these are paths down to a member of a value the generated code keeps as
-// raw JSON, where there is no field and no nested decode. See _accessRule.
+// raw JSON, where there is no field and no nested decode. See rt.AccessRule.
 var {{.AccessRulesVar}} = {{accessRules .AccessRules}}
 {{- end}}
 {{- range .OneOfs}}

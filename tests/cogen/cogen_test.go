@@ -76,9 +76,6 @@ type coResult struct {
 	// exercises a different code path" from an assumption into a count the run
 	// prints.
 	distinct bool
-	// needsRuntime says the emitted code imports pkg/validationruntime, so the
-	// throwaway module needs a replace pointing at this checkout to resolve it.
-	needsRuntime bool
 }
 
 // coFailure is one thing that went wrong, in a form the shrinker can match
@@ -969,15 +966,6 @@ func coRunCase(cc *coConfig, doc *coDoc, muts []coMutation) (coResult, error) {
 		base, baseErr := coGenerate(schemaJSON, coBaseConfig)
 		res.distinct = baseErr != nil || base != code
 	}
-	// A schema needing the runtime validation package imports it, and the
-	// throwaway module has to be told where that lives. This became reachable
-	// the moment the grammar grew unevaluatedProperties: analyzeValidationCapability
-	// sets RequiresRuntime for it, so under hybrid and runtime the emitted code
-	// imports pkg/validationruntime -- which is exactly when hybrid and runtime
-	// stop being byte-identical to static and start earning their place in the
-	// matrix. writeCogenGoMod resolves the import with a replace onto this
-	// checkout; needsRuntimePkg decides whether to bother.
-	res.needsRuntime = strings.Contains(code, "pkg/validationruntime")
 	rootType := extractRootTypeNameFromCode(code)
 	if rootType == "" {
 		return res, fmt.Errorf("no root type in generated code")
@@ -1007,7 +995,7 @@ func coRunCase(cc *coConfig, doc *coDoc, muts []coMutation) (coResult, error) {
 	if err := os.WriteFile(filepath.Join(dir, "cases.json"), cases, 0o644); err != nil {
 		return res, fmt.Errorf("write cases: %w", err)
 	}
-	if err := writeCogenGoMod(dir, res.needsRuntime); err != nil {
+	if err := writeCogenGoMod(dir); err != nil {
 		return res, err
 	}
 

@@ -6,7 +6,8 @@ There is one arm, and it dispatches to the shared helper for the format. Every
 position that asserts a format comes through here -- a struct field, an alias
 over its own value, and the wrapper a format with no declared "type" resolves
 to -- so the three cannot disagree about what a format means, which they did for
-as long as each carried a copy of the checks. See format_helpers.
+as long as each carried a copy of the checks. See the runtime module's
+format.go.
 
 .Expr  a Go expression of type string
 .Path  the path to name the value under, or empty where the value is the whole
@@ -26,7 +27,7 @@ if _err := {{$fn}}({{$v}}); _err != nil {
 	{{- if $path}}
 	return {{pathErrf $path}}("{{$path}}: %w", {{if .Args}}{{.Args}}, {{end}}_err)
 	{{- else}}
-	return jsonValueErrorf("%w", _err)
+	return rt.ValueErrorf("%w", _err)
 	{{- end}}
 }
 {{- end}}

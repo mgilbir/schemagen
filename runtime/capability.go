@@ -1,17 +1,20 @@
-// Package validationruntime holds the types that generated validators embed to
-// describe their own validation completeness.
-//
-// Generated code calls SchemagenValidationCapability() to report which JSON
-// Schema behaviors a schema uses that static Go checks cannot fully express, so
-// a caller needing strict spec compliance can detect the gap. The package does
-// not perform validation itself — generated validators are self-contained.
-package validationruntime
+package runtime
 
 import "fmt"
+
+// The types generated validators embed to describe their own validation
+// completeness. A package generated under --validation hybrid or runtime, whose
+// schemas use a behavior static Go checks cannot fully express, declares
+// SchemagenValidationCapability() returning a Capability, so that a caller
+// needing strict spec compliance can detect the gap. Nothing here performs
+// validation itself.
 
 // Feature identifies a schema behavior that may require runtime validation state.
 type Feature string
 
+// The features a generated file can record in its capability: the schema
+// behaviours that may need runtime state to be judged completely, or that the
+// generator cannot judge at all (Unsupported).
 const (
 	FeatureDynamicRef       Feature = "$dynamicRef"
 	FeatureRecursiveRef     Feature = "$recursiveRef"
@@ -24,10 +27,10 @@ const (
 // Capability describes the validation completeness of generated code.
 type Capability struct {
 	Mode            string
-	RequiresRuntime bool
 	RuntimeFeatures []Feature
 	Unsupported     []Feature
 	ResourceCount   int
+	RequiresRuntime bool
 }
 
 // Check reports unsupported features. It intentionally does not reject runtime

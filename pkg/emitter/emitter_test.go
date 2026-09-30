@@ -2,6 +2,10 @@ package emitter
 
 import (
 	"context"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -402,9 +406,11 @@ func TestEmitEmptyFile(t *testing.T) {
 		t.Errorf("expected 'package empty', got:\n%s", src)
 	}
 
-	// Should not have import block
-	if strings.Contains(src, "import") {
-		t.Errorf("expected no import block for empty file, got:\n%s", src)
+	// The runtime module is all a file imports when it has nothing else to
+	// name: every generated file declares the API level it needs of it.
+	if strings.Count(src, "import") != 1 || !strings.Contains(src, `rt "github.com/mgilbir/schemagen/runtime"`) ||
+		!strings.Contains(src, "var _ rt.API1") {
+		t.Errorf("expected an empty file to import the runtime and nothing else, and to declare its API level, got:\n%s", src)
 	}
 
 	t.Logf("Output:\n%s", src)
@@ -415,9 +421,6 @@ func TestEmitValidationCapabilityForHybridRuntimeFeatures(t *testing.T) {
 
 	f := &generator.File{
 		PackageName: "model",
-		Imports: []generator.Import{
-			{Path: "github.com/mgilbir/schemagen/pkg/validationruntime"},
-		},
 		ValidationCapability: generator.ValidationCapability{
 			Mode:            generator.ValidationModeHybrid,
 			RequiresRuntime: true,
@@ -433,16 +436,21 @@ func TestEmitValidationCapabilityForHybridRuntimeFeatures(t *testing.T) {
 
 	src := string(out)
 	for _, want := range []string{
-		`"github.com/mgilbir/schemagen/pkg/validationruntime"`,
+		`rt "github.com/mgilbir/schemagen/runtime"`,
 		`const SchemagenValidationMode = "hybrid"`,
 		`func SchemagenValidationRuntimeFeatures() []string`,
-		`func SchemagenValidationCapability() validationruntime.Capability`,
-		`RuntimeFeatures: []validationruntime.Feature{validationruntime.Feature("$dynamicRef")}`,
+		`func SchemagenValidationCapability() rt.Capability`,
+		`RuntimeFeatures: []rt.Feature{rt.Feature("$dynamicRef")}`,
 		`ResourceCount:   2`,
 	} {
 		if !containsNormalized(src, want) {
 			t.Errorf("expected generated validation capability snippet %q, got:\n%s", want, src)
 		}
+	}
+	// Generated code never imports schemagen itself: the capability metadata is
+	// the runtime module's, which requires the engine and idna and nothing else.
+	if strings.Contains(src, "github.com/mgilbir/schemagen/pkg/") || strings.Contains(src, "cobra") {
+		t.Errorf("a generated file imports the schemagen module, got:\n%s", src)
 	}
 }
 
@@ -488,7 +496,7 @@ func TestEmitNotSchemaBranchesWithSimpleValidations(t *testing.T) {
 		// Read through the exact core, which answers false for a value that is
 		// not a number -- so a non-number leaves the branch matching, as the
 		// keyword says it must.
-		`if jsonNumberBelow(_v, "10")`,
+		`if rt.NumberBelow(_v, "10")`,
 		`utf8.RuneCountInString(_s) < 3`,
 		`return fmt.Errorf("not: value matches forbidden branch`,
 	} {
@@ -600,7 +608,7 @@ func TestGeneratedPatternValidationAcceptsEscapedClassIdentity(t *testing.T) {
 	}
 	// The schema's text is what a message quotes, and the \xHH spelling is what
 	// the engine compiles.
-	if !strings.Contains(string(helperSrc), `_schemagenCompilePattern("^[A-Za-z0-9_\\-\\.\\:]+$", "^[A-Za-z0-9_\\x2d\\.\\x3a]+$")`) {
+	if !strings.Contains(string(helperSrc), `rt.CompilePattern("^[A-Za-z0-9_\\-\\.\\:]+$", "^[A-Za-z0-9_\\x2d\\.\\x3a]+$")`) {
 		t.Fatalf("expected the pattern compiled from its escaped spelling in the helper file, got:\n%s", helperSrc)
 	}
 	if err := os.WriteFile(filepath.Join(tmp, "schemagen_helpers.go"), helperSrc, 0o644); err != nil {
@@ -627,7 +635,9 @@ func main() {
 	if err := os.WriteFile(filepath.Join(tmp, "main.go"), []byte(mainSrc), 0o644); err != nil {
 		t.Fatalf("write main.go: %v", err)
 	}
-	writeEngineModule(t, tmp, "patternrepro")
+	if err := testgo.WriteModule(tmp, "patternrepro"); err != nil {
+		t.Fatal(err)
+	}
 
 	cmd := testgo.Command(context.Background(), tmp, "run", ".")
 	output, err := cmd.CombinedOutput()
@@ -636,39 +646,6 @@ func main() {
 	}
 	if programOutput(output) != "ok" {
 		t.Fatalf("output = %q, want ok", programOutput(output))
-	}
-}
-
-// writeEngineModule writes a go.mod requiring the ECMA-262 engine at the
-// version this repository's own go.mod names, and this repository's go.sum
-// beside it, so a throwaway module builds offline against exactly the engine
-// generation compiled the patterns with. Read from go.mod rather than written
-// out here, so that moving the dependency cannot leave a test on the old one.
-func writeEngineModule(t *testing.T, dir, module string) {
-	t.Helper()
-	mod, err := os.ReadFile(filepath.Join("..", "..", "go.mod"))
-	if err != nil {
-		t.Fatalf("read go.mod: %v", err)
-	}
-	version := ""
-	for _, line := range strings.Split(string(mod), "\n") {
-		if f := strings.Fields(line); len(f) >= 2 && f[0] == "github.com/mgilbir/goecma262" {
-			version = f[1]
-		}
-	}
-	if version == "" {
-		t.Fatal("go.mod does not require github.com/mgilbir/goecma262")
-	}
-	goMod := "module " + module + "\n\ngo 1.23\n\nrequire github.com/mgilbir/goecma262 " + version + "\n"
-	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte(goMod), 0o644); err != nil {
-		t.Fatalf("write go.mod: %v", err)
-	}
-	sum, err := os.ReadFile(filepath.Join("..", "..", "go.sum"))
-	if err != nil {
-		t.Fatalf("read go.sum: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "go.sum"), sum, 0o644); err != nil {
-		t.Fatalf("write go.sum: %v", err)
 	}
 }
 
@@ -785,10 +762,10 @@ func TestEmitBigIntAliasOneOfVariants(t *testing.T) {
 	// the value's decimal through the exact core -- not through float64, and
 	// not through a big.Float, whose fixed precision loses past it.
 	for _, want := range []string{
-		`jsonNumberBelow(_num, "10")`,
-		`jsonNumberAbove(_num, "5")`,
-		`jsonNumberNotMultipleOf(_num, "3")`,
-		`jsonNumberAtMost(_num, "100")`,
+		`rt.NumberBelow(_num, "10")`,
+		`rt.NumberAbove(_num, "5")`,
+		`rt.NumberNotMultipleOf(_num, "3")`,
+		`rt.NumberAtMost(_num, "100")`,
 	} {
 		if !strings.Contains(src, want) {
 			t.Fatalf("big-int Validate is missing the branch bound %q:\n%s", want, src)
@@ -857,7 +834,7 @@ func TestEmitOneOfUnionValidateDispatch(t *testing.T) {
 		"case *Envelope_Payload:",
 		"if _oneOfSel.Payload != nil {",
 		"if err := _oneOfSel.Payload.Validate(); err != nil {",
-		`return jsonPathf(err, "body")`,
+		`return rt.Pathf(err, "body")`,
 	} {
 		if !strings.Contains(src, want) {
 			t.Fatalf("Envelope.Validate is missing %q:\n%s", want, src)
@@ -940,7 +917,7 @@ func oneOfNarrowingFile(secondFullyChecked bool) *generator.File {
 							Validatable:    true,
 							// What the generator's decode plan writes for a
 							// pointer to a struct that decodes in place.
-							Decoder: "func(_p **Payload, _d *jsonDoc, _s jsonSpan) error { return jsonDecodePtr(_p, _d, _s, (*Payload).decodeJSONAt) }",
+							Decoder: "func(_p **Payload, _d *rt.Doc, _s rt.Span) error { return rt.DecodePtr(_p, _d, _s, (*Payload).decodeJSONAt) }",
 						},
 						{
 							WrapperName:    "Envelope_Any",
@@ -949,7 +926,7 @@ func oneOfNarrowingFile(secondFullyChecked bool) *generator.File {
 							Type:           &generator.PrimitiveType{Name: "any"},
 							RequiredFields: []string{"x", "y"},
 							FullyChecked:   secondFullyChecked,
-							Decoder:        "jsonAtJSON[any]",
+							Decoder:        "rt.AtJSON[any]",
 						},
 					},
 				}},
@@ -1207,26 +1184,16 @@ func TestFormatHelperNamesCoverCheckableFormats(t *testing.T) {
 	}
 }
 
-// TestFormatHelpersAreDefinedForEveryName renders the helper block once and
-// checks that every function formatHelperNameFunc can emit a call to is
-// actually declared in it.
+// TestFormatHelpersAreDefinedForEveryName checks that every function
+// formatHelperNameFunc can emit a call to is declared, exported, in the runtime
+// module.
 //
-// The call and the declaration are in different templates, and nothing else
-// connects them: a renamed helper would emit a call to a function that does not
+// The call and the declaration are in different modules, and nothing else
+// connects them: a renamed checker would emit a call to a function that does not
 // exist, and the failure would surface as a compile error in whatever someone
 // generated next rather than here.
 func TestFormatHelpersAreDefinedForEveryName(t *testing.T) {
-	e, err := New()
-	if err != nil {
-		t.Fatalf("New() error: %v", err)
-	}
-	// Both blocks: the hostname checks live in their own, so that a package
-	// naming no hostname does not import x/net/idna.
-	src, ok, err := e.EmitHelpers("testpkg", generator.HelperSet{Format: true, FormatHostname: true})
-	if err != nil || !ok {
-		t.Fatalf("EmitHelpers() error: %v (ok=%v)", err, ok)
-	}
-	body := string(src)
+	declared := runtimeExportedFuncs(t)
 	checked := 0
 	for _, format := range append(append([]string{}, allFormatKeywords...), allInternalFormatNames...) {
 		for _, stringBacked := range []bool{true, false} {
@@ -1244,8 +1211,13 @@ func TestFormatHelpersAreDefinedForEveryName(t *testing.T) {
 				continue
 			}
 			checked++
-			if !strings.Contains(body, "func "+name+"(") {
-				t.Errorf("format %q (stringBacked=%v) emits a call to %s, which the helper block does not declare", format, stringBacked, name)
+			bare, qualified := strings.CutPrefix(name, generator.RuntimeAlias+".")
+			if !qualified {
+				t.Errorf("format %q (stringBacked=%v) emits a call to %s, which is not spelled as a call into the runtime package", format, stringBacked, name)
+				continue
+			}
+			if !declared[bare] {
+				t.Errorf("format %q (stringBacked=%v) emits a call to %s, which the runtime module does not declare", format, stringBacked, name)
 			}
 		}
 	}
@@ -1254,87 +1226,79 @@ func TestFormatHelpersAreDefinedForEveryName(t *testing.T) {
 	}
 }
 
-// TestHostnameHelpersAreConfinedToSchemasThatNeedThem pins the one thing the
-// helper-set split exists for: a package whose schemas name no hostname does not
-// import golang.org/x/net/idna.
-//
-// Generated code putting a dependency on its caller is a real imposition, and
-// the two hostname checks are the only ones that need one. Nothing else would
-// notice if the split collapsed -- the code would compile and the tests would
-// pass -- so this is the only thing standing between "a schema with a date-time
-// in it" and "every consumer of that schema now depends on x/net and x/text".
-func TestHostnameHelpersAreConfinedToSchemasThatNeedThem(t *testing.T) {
-	e, err := New()
+// TestRuntimeFormatDispatcherHasAnArmForEveryCheckableFormat holds the runtime
+// evaluator's format dispatcher to the generator's list. The evaluator reads a
+// format from a node as a string and dispatches on it inside the runtime module;
+// a format the generator admits but the dispatcher has no arm for passes every
+// document, silently, and only at positions the evaluator judges.
+func TestRuntimeFormatDispatcherHasAnArmForEveryCheckableFormat(t *testing.T) {
+	dir, err := testgo.RuntimeDir()
 	if err != nil {
-		t.Fatalf("New() error: %v", err)
+		t.Fatal(err)
 	}
-
-	general, _, err := e.EmitHelpers("testpkg", generator.HelperSet{Format: true})
+	f, err := parser.ParseFile(token.NewFileSet(), filepath.Join(dir, "evaluator.go"), nil, 0)
 	if err != nil {
-		t.Fatalf("EmitHelpers(Format) error: %v", err)
+		t.Fatal(err)
 	}
-	if strings.Contains(string(general), "golang.org/x/net/idna") {
-		t.Errorf("the general format block imports x/net/idna:\n%s", general)
+	arms := map[string]bool{}
+	for _, d := range f.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Recv != nil || fn.Name.Name != "_dynFormatOK" {
+			continue
+		}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			if cc, ok := n.(*ast.CaseClause); ok {
+				for _, e := range cc.List {
+					if lit, ok := e.(*ast.BasicLit); ok {
+						if s, err := strconv.Unquote(lit.Value); err == nil {
+							arms[s] = true
+						}
+					}
+				}
+			}
+			return true
+		})
 	}
-	if strings.Contains(string(general), "func schemagenFormatHostname(") {
-		t.Errorf("the general format block declares the hostname check")
+	if len(arms) == 0 {
+		t.Fatal("found no arms in _dynFormatOK; the scan is not reading the dispatcher")
 	}
-
-	withHostname, _, err := e.EmitHelpers("testpkg", generator.HelperSet{Format: true, FormatHostname: true})
-	if err != nil {
-		t.Fatalf("EmitHelpers(Format+FormatHostname) error: %v", err)
-	}
-	if !strings.Contains(string(withHostname), "golang.org/x/net/idna") {
-		t.Errorf("the hostname block does not import x/net/idna:\n%s", withHostname)
-	}
-	if !strings.Contains(string(withHostname), "func schemagenFormatHostname(") {
-		t.Errorf("the hostname block does not declare the hostname check")
+	for _, format := range append(append([]string{}, allFormatKeywords...), allInternalFormatNames...) {
+		if generator.FormatCheckableOnString(format) && !arms[format] {
+			t.Errorf("format %q is checkable, but the runtime's _dynFormatOK has no arm for it", format)
+		}
+		if !generator.FormatCheckableOnString(format) && arms[format] {
+			t.Errorf("format %q is not checkable, but the runtime's _dynFormatOK has an arm for it", format)
+		}
 	}
 }
 
-// TestFormatHelperSetTracksTheFormatsUsed checks the other half of the split:
-// which block a file needs is read from what the file calls, and `email` counts
-// as a hostname because an address's domain is judged by that check.
-//
-// It emits the file first and asks HelpersReferencedBy about the result, which
-// is what the CLI does. Asking an IR walk instead is what shipped a call to a
-// function nothing declared.
-func TestFormatHelperSetTracksTheFormatsUsed(t *testing.T) {
-	e, err := New()
+// runtimeExportedFuncs is the name of every exported top-level function the
+// runtime module declares, read from its source.
+func runtimeExportedFuncs(t *testing.T) map[string]bool {
+	t.Helper()
+	dir, err := testgo.RuntimeDir()
 	if err != nil {
-		t.Fatalf("New() error: %v", err)
+		t.Fatal(err)
 	}
-	for _, tc := range []struct {
-		format            string
-		wantFmt, wantHost bool
-	}{
-		{"uuid", true, false},
-		{"date", true, false},
-		{"ipv4", true, false},
-		{"hostname", true, true},
-		{"idn-hostname", true, true},
-		{"email", true, true},
-		{"idn-email", true, true},
-	} {
-		f := &generator.File{PackageName: "testpkg", TypeDefs: []generator.TypeDef{
-			&generator.AliasDef{
-				Name:       "X",
-				Underlying: &generator.PrimitiveType{Name: "string"},
-				Validations: []generator.ValidationRule{
-					{RuleType: "format", Value: tc.format, StringBacked: true},
-				},
-			},
-		}}
-		src, err := e.Emit(f)
-		if err != nil {
-			t.Fatalf("format %q: Emit() error: %v", tc.format, err)
-		}
-		set := generator.HelpersReferencedBy(string(src))
-		if set.Format != tc.wantFmt || set.FormatHostname != tc.wantHost {
-			t.Errorf("format %q: got Format=%v FormatHostname=%v, want %v/%v\n%s",
-				tc.format, set.Format, set.FormatHostname, tc.wantFmt, tc.wantHost, src)
+	fset := token.NewFileSet()
+	pkgs, err := parser.ParseDir(fset, dir, func(fi fs.FileInfo) bool { return !strings.HasSuffix(fi.Name(), "_test.go") }, 0)
+	if err != nil {
+		t.Fatalf("parsing the runtime module: %v", err)
+	}
+	out := map[string]bool{}
+	for _, pkg := range pkgs {
+		for _, f := range pkg.Files {
+			for _, d := range f.Decls {
+				if fn, ok := d.(*ast.FuncDecl); ok && fn.Recv == nil && fn.Name.IsExported() {
+					out[fn.Name.Name] = true
+				}
+			}
 		}
 	}
+	if len(out) < 50 {
+		t.Fatalf("found only %d exported functions in %s; the scan is not reading the runtime module", len(out), dir)
+	}
+	return out
 }
 
 // TestEmitDropsAnImportTheFileNeverNames pins the last line of defence against
@@ -1417,12 +1381,12 @@ func TestEmitKeepsAnImportOnlyAQualifierNames(t *testing.T) {
 // the only check here that sees the defect class the import pass exists for: an
 // unused import is a hard compile error, and every assertion above about the
 // *text* of an import block would pass just as happily on a file that cannot
-// build. The IRs it is given name stdlib packages only, so the module needs no
-// requirements and the build is a fraction of a second.
+// build. The IRs it is given name stdlib packages only, so what the module needs
+// is the runtime module every generated file imports (see testgo.WriteModule).
 func assertCompiles(t *testing.T, src string) {
 	t.Helper()
 	tmp := t.TempDir()
-	if err := os.WriteFile(filepath.Join(tmp, "go.mod"), []byte("module emitted\n\ngo 1.23\n"), 0o644); err != nil {
+	if err := testgo.WriteModule(tmp, "emitted"); err != nil {
 		t.Fatalf("write go.mod: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(tmp, "types.go"), []byte(src), 0o644); err != nil {

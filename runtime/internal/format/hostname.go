@@ -1,34 +1,15 @@
-{{/*
-format_hostname_helpers emits the two hostname checks and the email checks that
-depend on them.
+package format
 
-They are a block of their own because they are the only format checks that need
-a dependency: golang.org/x/net/idna, which is the canonical Go implementation of
-IDNA2008 with the UTS-46 compatibility processing. A package whose schemas name
-no hostname, email or idn-* format does not emit this block and does not import
-it, on the same terms as the ECMA-262 engine `pattern` already pulls in.
+import (
+	"fmt"
+	"net/mail"
+	"net/netip"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
-What idna answers that hand-written code cannot: punycode, so an "xn--" A-label
-is decoded and judged rather than accepted on sight; the IDNA2008 derived
-properties; the bidi rule of RFC 5893, which decides whether a right-to-left
-label is well formed; and the ContextJ rules for ZERO WIDTH JOINER and
-NON-JOINER. The previous check was an ASCII character class, which refused every
-internationalized name outright -- 22 documents the official suite marks valid.
-
-What it does not answer, and what schemagenContextO adds: the ContextO rules of
-RFC 5892 appendix A.3 through A.9. idna implements ContextJ (its CheckJoiners
-option) and has no ContextO at all, so MIDDLE DOT, GREEK KERAIA, HEBREW
-GERESH/GERSHAYIM, KATAKANA MIDDLE DOT and the ARABIC-INDIC digit rule are
-applied here. They are rules over Unicode scripts rather than a table, so the
-standard library's script ranges express them exactly.
-
-What neither answers, and what schemagenDisallowedException adds: the RFC 5892
-section 2.6 exceptions whose derived property is DISALLOWED. UTS-46 lookup
-processing deliberately diverges from IDNA2008 there, marking all ten of them
-valid in its mapping table, so idna passes them through untouched. The list is
-closed and short, so it is written out rather than derived from a table.
-*/}}
-{{define "format_hostname_helpers"}}
+	"golang.org/x/net/idna"
+)
 
 // schemagenIDNAProfile is the lookup profile every hostname check goes through.
 //
@@ -357,4 +338,3 @@ func schemagenCheckEmail(v string, checkDomain func(string) error) error {
 	}
 	return nil
 }
-{{- end}}

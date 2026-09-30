@@ -271,33 +271,6 @@ func TestRuntimeSchemaDefNamesHoistedNodesAfterTheirType(t *testing.T) {
 	}
 }
 
-// TestHelpersReferencedByReadsTheDynamicArms covers the flag that decides
-// whether the helper file declares _schemaAnchor, _dynamicRef, _schemaFrame and
-// the scope-carrying evaluator at all.
-//
-// All three spellings are checked separately because each can appear without the
-// others -- a recursive schema with no dynamic reference in it names only the
-// first -- and a missed one is a file naming a type the helpers do not declare,
-// which does not compile.
-func TestHelpersReferencedByReadsTheDynamicArms(t *testing.T) {
-	for _, tt := range []struct {
-		name string
-		src  string
-		want bool
-	}{
-		{"node reference", `var X = _schemaNode{Ref: &_rtXNode1}`, true},
-		{"dynamic reference", `var X = _schemaNode{DynamicRef: &_dynamicRef{Anchor: "a"}}`, true},
-		{"resource frame", `var X = _schemaNode{DynamicAnchors: []_schemaAnchor{{Name: "a"}}}`, true},
-		{"neither", `var X = _schemaNode{Type: []string{"string"}}`, false},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := HelpersReferencedBy(tt.src).AnnotationsDynamic; got != tt.want {
-				t.Errorf("AnnotationsDynamic = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
 // TestDynamicScopeDecidesTheTarget is the narrowing that keeps issue #160's fix
 // from claiming every schema that mentions these two keywords.
 //

@@ -101,12 +101,14 @@ if [ "${#schemas[@]}" -eq 0 ]; then
 	exit 1
 fi
 
-# The versions of the modules generated code imports are this repository's own,
-# read from its go.mod rather than written out here: the go.sum copied below is
-# the repository's, and a version named only in this file went stale once
-# already, leaving the corpus built against an engine nothing else used.
+# The versions of the modules generated code builds against are the runtime
+# module's own, read from runtime/go.mod rather than written out here: generated
+# code imports the runtime and nothing else, so the runtime's requirements are
+# the whole graph. The go.sum copied below is the runtime's, and a version named
+# only in this file went stale once already, leaving the corpus built against an
+# engine nothing else used.
 modversion() {
-	(cd "$repo" && go list -m -f '{{.Version}}' "$1")
+	(cd "$repo/runtime" && go list -m -f '{{.Version}}' "$1")
 }
 ecma_version=$(modversion github.com/mgilbir/goecma262) || exit 1
 xnet_version=$(modversion golang.org/x/net) || exit 1
@@ -120,9 +122,11 @@ for entry in "${CONFIGS[@]}"; do
 
 	dir="$workdir/$name"
 	mkdir -p "$dir"
-	# The generated code imports the ECMA-262 regexp engine, x/net/idna, and --
-	# under the runtime and hybrid validation modes -- this repository's own
-	# validationruntime package.
+	# The generated code imports the runtime module, replaced onto this
+	# checkout's ./runtime so the corpus builds against the runtime being
+	# changed; the engine and x/net/idna are the runtime's own requirements and
+	# are listed so the module builds offline. It never imports the main module,
+	# which is why nothing here requires it.
 	cat >"$dir/go.mod" <<EOF
 module alignlint
 
@@ -130,15 +134,15 @@ go 1.23.0
 
 require (
 	github.com/mgilbir/goecma262 $ecma_version
-	github.com/mgilbir/schemagen v0.0.0
+	github.com/mgilbir/schemagen/runtime v0.0.0
 	golang.org/x/net $xnet_version
 )
 
 require golang.org/x/text $xtext_version // indirect
 
-replace github.com/mgilbir/schemagen => $repo
+replace github.com/mgilbir/schemagen/runtime => $repo/runtime
 EOF
-	cp "$repo/go.sum" "$dir/go.sum"
+	cp "$repo/runtime/go.sum" "$dir/go.sum"
 
 	emitted=0
 	i=0
@@ -184,6 +188,21 @@ EOF
 	sed 's/^/  /' "$findings"
 	status=1
 done
+
+# The runtime module's own types. They used to be generated into every package
+# and were measured with the corpus; they are source now, and this is what still
+# measures them. Test files are left out: a table's unkeyed literals fix its
+# field order.
+runtime_findings="$workdir/runtime-findings.txt"
+(cd "$repo/runtime" && "$analyzer" -test=false ./... >"$runtime_findings" 2>&1)
+runtime_count=$(wc -l <"$runtime_findings")
+if [ "$runtime_count" -eq 0 ]; then
+	printf '%-20s ok\n' "runtime module:"
+else
+	printf '%-20s %d findings\n' "runtime module:" "$runtime_count"
+	sed 's/^/  /' "$runtime_findings"
+	status=1
+fi
 
 if [ "$status" -ne 0 ]; then
 	echo

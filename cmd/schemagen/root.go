@@ -273,6 +273,9 @@ func newGenerateCmd() *cobra.Command {
 				warnUnusedFieldMap(cmd.ErrOrStderr(), fieldMap, appliedByFile, processedFiles)
 				fieldNames.warnUnusedConfigFieldNames(cmd.ErrOrStderr())
 				rootNames.warnUnused(cmd.ErrOrStderr())
+				// Last, and once: what the generated code needs of the module
+				// that holds it. A run that produced nothing has no such need.
+				printRuntimeHint(cmd.ErrOrStderr())
 			}()
 
 			// Reject input sets where two schemas map to the same output file

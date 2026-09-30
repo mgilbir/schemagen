@@ -28,18 +28,18 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- else if or .NotTypes .NotBranches}}
 	// Decode raw JSON to determine the value's type.
 	{{- /* Every number is kept as the literal the document wrote, which the
-	       checks below read through the exact core. See jsonDecodeNumbers. */}}
+	       checks below read through the exact core. See rt.DecodeNumbers. */}}
 	var _v any
-	if _err := jsonDecodeNumbers({{$recv}}._raw, &_v); _err != nil {
+	if _err := rt.DecodeNumbers({{$recv}}._raw, &_v); _err != nil {
 		return fmt.Errorf("not: cannot decode value: %w", _err)
 	}
 	{{- range .NotTypes}}
 	{{- if eq . "integer"}}
-	if jsonIsInteger(_v, {{if $.StrictInteger}}true{{else}}false{{end}}) {
+	if rt.IsInteger(_v, {{if $.StrictInteger}}true{{else}}false{{end}}) {
 		return fmt.Errorf("not: value must not be integer")
 	}
 	{{- else if eq . "number"}}
-	if jsonIsNumber(_v) {
+	if rt.IsNumber(_v) {
 		return fmt.Errorf("not: value must not be number")
 	}
 	{{- else if eq . "string"}}
@@ -69,11 +69,11 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		_branchMatches := true
 		{{- range $branch.Types}}
 		{{- if eq . "integer"}}
-		if !jsonIsInteger(_v, {{if $.StrictInteger}}true{{else}}false{{end}}) {
+		if !rt.IsInteger(_v, {{if $.StrictInteger}}true{{else}}false{{end}}) {
 			_branchMatches = false
 		}
 		{{- else if eq . "number"}}
-		if !jsonIsNumber(_v) {
+		if !rt.IsNumber(_v) {
 			_branchMatches = false
 		}
 		{{- else if eq . "string"}}
@@ -110,9 +110,9 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				_branchMatches = false
 			} else {
 				{{- if eq .JSONType "integer"}}
-				if !jsonIsInteger(_propVal, {{if $.StrictInteger}}true{{else}}false{{end}}) { _branchMatches = false }
+				if !rt.IsInteger(_propVal, {{if $.StrictInteger}}true{{else}}false{{end}}) { _branchMatches = false }
 				{{- else if eq .JSONType "number"}}
-				if !jsonIsNumber(_propVal) { _branchMatches = false }
+				if !rt.IsNumber(_propVal) { _branchMatches = false }
 				{{- else if eq .JSONType "string"}}
 				if _, _sOk := _propVal.(string); !_sOk { _branchMatches = false }
 				{{- else if eq .JSONType "boolean"}}
@@ -148,7 +148,7 @@ func ({{$recv}} {{.Name}}) Validate() error {
 				{{- else if eq .RuleType "maxLength"}}
 				if utf8.RuneCountInString(_s) > {{countExpr .Value}} { _branchMatches = false }
 				{{- else if eq .RuleType "pattern"}}
-				if _matched, _mErr := {{patternVar .Value}}.matches(_s); _mErr != nil {
+				if _matched, _mErr := {{patternVar .Value}}.Matches(_s); _mErr != nil {
 					// Inverting no answer is still no answer.
 					return fmt.Errorf("not: %w", _mErr)
 				} else if !_matched {

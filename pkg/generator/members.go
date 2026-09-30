@@ -145,7 +145,7 @@ func (d *StructDef) builtMembers() []StructMember {
 	if d.NeedsDoc() {
 		members = append(members, StructMember{
 			Name:    "_doc",
-			Type:    &PointerType{Inner: &PrimitiveType{Name: "jsonDoc"}},
+			Type:    &PointerType{Inner: &PrimitiveType{Name: "rt.Doc"}},
 			Comment: "set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through",
 		})
 	}

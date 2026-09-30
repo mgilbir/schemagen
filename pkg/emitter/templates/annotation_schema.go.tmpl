@@ -25,29 +25,30 @@ var {{.AccessRulesVar}} = {{accessRules .AccessRules}}
 // UnmarshalJSON replaces {{$recv}} with the value the document holds. See
 // decodeJSONAt.
 func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
-	_d, _sp, _err := jsonOpenDoc(data)
+	_d, _sp, _err := rt.OpenDoc(data)
 	if _err != nil {
-		return jsonDecodeRefusal(_err)
+		return rt.DecodeRefusal(_err)
 	}
-	return _d.finish({{$recv}}.decodeJSONAt(_d, _sp))
+	return _d.Finish({{$recv}}.decodeJSONAt(_d, _sp))
 }
+{{template "generated_marker" .}}
 
 // decodeJSONAt keeps the value at _sp, replacing whatever {{$recv}} held. The
-// bytes kept are the document's own copy (see jsonDoc.keep): the methods that
+// bytes kept are the document's own copy (see rt.Doc.Keep): the methods that
 // hand them out hand out copies.
 //
 // A value setting a location the schema marks readOnly is still kept whole: the
 // refusal is recorded on the document and returned once the decode is done
-// (see jsonDoc.finish), so a Validate check that has to ignore it -- readOnly
+// (see rt.Doc.Finish), so a Validate check that has to ignore it -- readOnly
 // constrains no document -- has the value to judge.
-func ({{$recv}} *{{.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+func ({{$recv}} *{{.Name}}) decodeJSONAt(_d *rt.Doc, _sp rt.Span) error {
 	*{{$recv}} = {{.Name}}{}
-	if _d.refusal == nil {
-		if _err := _accessRefuseReadOnly(_d, _sp, {{.AccessRulesVar}}); _err != nil {
-			_d.refusal = _err
+	if !_d.Refused() {
+		if _err := rt.AccessRefuseReadOnly(_d, _sp, {{.AccessRulesVar}}); _err != nil {
+			_d.Refuse(_err)
 		}
 	}
-	{{$recv}}._raw = _d.keep(_sp)
+	{{$recv}}._raw = _d.Keep(_sp)
 	return nil
 }
 
@@ -57,33 +58,33 @@ func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 	if len({{$recv}}._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return _accessStripWriteOnly(append([]byte(nil), {{$recv}}._raw...), {{.AccessRulesVar}})
+	return rt.AccessStripWriteOnly(append([]byte(nil), {{$recv}}._raw...), {{.AccessRulesVar}})
 }
 
 // Raw returns a copy of the value's bytes.
 func ({{$recv}} {{.Name}}) Raw() json.RawMessage { return append(json.RawMessage(nil), {{$recv}}._raw...) }
 {{- if .HasIdentity}}
 
-// jsonIdentity is {{$recv}}'s identity as JSON: that of what MarshalJSON writes,
-// the value's bytes with the writeOnly locations stripped -- read off the
-// value's tree with them taken out of it (see _accessStripTree), rather than
-// off what MarshalJSON writes. See jsonID.
-func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+// SchemagenJSONIdentity is {{$recv}}'s identity as JSON: that of what
+// MarshalJSON writes, the value's bytes with the writeOnly locations stripped --
+// read off the value's tree with them taken out of it (see
+// rt.AccessStripTree), rather than off what MarshalJSON writes. See rt.ID.
+func ({{$recv}} *{{.Name}}) SchemagenJSONIdentity(_m *rt.Validation) (rt.ID, error) {
 	if len({{$recv}}._raw) == 0 {
-		return jsonIDNull(_m)
+		return rt.IDNull(_m)
 	}
-	_t, _err := jsonTreeRaw({{$recv}}._raw, false)
+	_t, _err := rt.TreeRaw({{$recv}}._raw, false)
 	if _err != nil {
-		return jsonID{}, _err
+		return rt.ID{}, _err
 	}
-	if _t, _err = _accessStripTree(_t, {{.AccessRulesVar}}); _err != nil {
-		return jsonID{}, _err
+	if _t, _err = rt.AccessStripTree(_t, {{.AccessRulesVar}}); _err != nil {
+		return rt.ID{}, _err
 	}
-	if _m.reading() {
-		_m.push(_t)
-		return jsonID{}, nil
+	if _m.Reading() {
+		_m.Push(_t)
+		return rt.ID{}, nil
 	}
-	return jsonIDAny(_t, _m)
+	return rt.IDAny(_t, _m)
 }
 {{- end}}
 {{- else}}
@@ -105,9 +106,9 @@ func ({{$recv}} {{.Name}}) String() string { return string({{$recv}}._raw) }
 // initialisers. Taking a node's address is not part of that cycle, so the
 // assignments may run in any order.
 var (
-	{{.SchemaVar}} _schemaNode
+	{{.SchemaVar}} rt.Node
 {{- range .Nodes}}
-	{{.Name}} _schemaNode
+	{{.Name}} rt.Node
 {{- end}}
 )
 
@@ -130,27 +131,26 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	if len({{$recv}}._raw) == 0 {
 		return nil
 	}
-	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// Read one level at a time (see rt.Lazy), as the evaluator asks for each
 	// level, with every number the literal the document wrote, which the
 	// evaluator judges exactly. Decoded whole, the value was an any the
 	// evaluator's checks that compare values -- uniqueItems, const, enum -- read
 	// the identity of afresh at every level of a document; read off a document,
-	// what one level computes is kept there for the next (see
-	// jsonLazy.jsonDocID).
-	_v, _err := jsonReadLazily({{$recv}}._raw)
+	// what one level computes is kept there for the next.
+	_v, _err := rt.ReadLazily({{$recv}}._raw)
 	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
-		return jsonValueErrorf("cannot decode value: %w", _err)
+		return rt.ValueErrorf("cannot decode value: %w", _err)
 	}
 	{{- /* The evaluator's reason is put behind whatever path reaches this value by
-	       the same rule as every other message (see _evalError and
-	       jsonPathError). Handed up bare, a sentence about the value was joined
+	       the same rule as every other message (see rt.EvalError and
+	       rt.PathError). Handed up bare, a sentence about the value was joined
 	       as though it were a member name: `p.value matches no anyOf branch`,
 	       naming a member p.value the document does not have. Issue #284. */}}
-	if _res := _evalNode(&{{.SchemaVar}}, _v); !_res.ok {
-		return _evalError(_res)
+	if _res := rt.EvalNode(&{{.SchemaVar}}, _v); !_res.OK() {
+		return rt.EvalError(_res)
 	}
 	return nil
 }
@@ -169,9 +169,9 @@ AnnotationSchemaDef's are.
 // decoded JSON against it, and the nodes below it are the parts of that schema
 // something inside it refers back to.
 var (
-	{{.Var}} _schemaNode
+	{{.Var}} rt.Node
 {{- range .Nodes}}
-	{{.Name}} _schemaNode
+	{{.Name}} rt.Node
 {{- end}}
 )
 
@@ -186,20 +186,4 @@ func init() {
 // decoded JSON against it.
 var {{.Var}} = {{.Literal}}
 {{- end}}
-{{- end}}
-
-{{/*
-tree_method declares SchemagenJSONTree on a type that reads its own identity.
-*/}}
-{{define "tree_method"}}
-{{- $recv := receiverName .Name}}
-
-// SchemagenJSONTree returns {{$recv}} as encoding/json decodes the JSON its
-// MarshalJSON writes into an any -- map[string]any, []any, string, bool, nil and
-// json.Number -- read off the value rather than written out and decoded. Another
-// package generated in the same run compares values of this type by it (const,
-// enum, uniqueItems) without encoding them. Its result is the caller's.
-func ({{$recv}} *{{.Name}}) SchemagenJSONTree() (any, error) {
-	return jsonTreeOfIdentifier({{$recv}}, nil)
-}
 {{- end}}

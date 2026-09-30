@@ -15,7 +15,6 @@ import (
 	"time"
 
 	"github.com/mgilbir/schemagen/internal/testgo"
-	"github.com/mgilbir/schemagen/pkg/emitter"
 	"github.com/mgilbir/schemagen/pkg/generator"
 )
 
@@ -48,24 +47,11 @@ type numberCoreCase struct {
 // the digit arithmetic is for.
 func TestEmittedNumberCoreIsExact(t *testing.T) {
 	cases := numberCoreCases(t)
-	em, err := emitter.New()
-	if err != nil {
-		t.Fatalf("emitter.New: %v", err)
-	}
-	// The core, whole -- a hand-built set, which the pruning keeps whole -- and
-	// the canonical block too: its number reduction is read by the same core,
-	// and the hostile literals below put it through a huge exponent.
-	helpers, ok, err := em.EmitHelpers("main", generator.HelperSet{NumberCompare: true, Canonical: true})
-	if err != nil {
-		t.Fatalf("emitting the number core: %v", err)
-	}
-	if !ok {
-		t.Fatal("the number core emitted no file, so this test would compile nothing")
-	}
+	// The core is the runtime module's, called through its exported API as
+	// generated code calls it; the canonical reduction is in it too, its number
+	// reduction being read by the same core, and the hostile literals below put
+	// it through a huge exponent.
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "helpers.go"), helpers, 0o644); err != nil {
-		t.Fatal(err)
-	}
 	data, err := json.Marshal(cases)
 	if err != nil {
 		t.Fatal(err)
@@ -123,6 +109,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	rt "github.com/mgilbir/schemagen/runtime"
 )
 
 type numberCoreCase struct {
@@ -147,24 +135,25 @@ func main() {
 	for i, c := range cases {
 		switch c.Op {
 		case "cmp":
-			answers[i] = strconv.Itoa(jsonDecimalCmp(c.A, c.B))
+			answers[i] = strconv.Itoa(rt.NumberCmp(json.Number(c.A), c.B))
 		case "mult":
-			answers[i] = strconv.FormatBool(jsonDecimalIsMultipleOf(c.A, c.B))
+			answers[i] = strconv.FormatBool(rt.NumberIsMultipleOf(json.Number(c.A), c.B))
 		case "integral":
-			answers[i] = strconv.FormatBool(jsonDecimalIsIntegral(c.A))
+			answers[i] = strconv.FormatBool(rt.DecimalIsIntegral(c.A))
 		case "token":
-			answers[i] = strconv.FormatBool(jsonDecimalIsIntegerToken(c.A))
+			// "integer" read off the token, as draft 3 and 4 read it.
+			answers[i] = strconv.FormatBool(rt.IsInteger(json.Number(c.A), true))
 		case "floatmult":
 			f, _ := strconv.ParseFloat(c.A, 64)
-			fast := jsonFloatIsMultipleOf(f, c.B, c.Digits, c.Frac)
-			slow := jsonFloatIsMultipleOf(f, c.B, 0, 0)
+			fast := rt.FloatIsMultipleOf(f, c.B, c.Digits, c.Frac)
+			slow := rt.FloatIsMultipleOf(f, c.B, 0, 0)
 			if fast != slow {
 				answers[i] = "fast and slow paths disagree"
 			} else {
 				answers[i] = strconv.FormatBool(fast)
 			}
 		case "bigint":
-			v, ok, tooLarge := jsonBigIntFromLiteral(c.A)
+			v, ok, tooLarge := rt.BigIntFromLiteral(c.A)
 			switch {
 			case tooLarge:
 				answers[i] = "too large"
@@ -184,15 +173,15 @@ func main() {
 	// else while the literals are answered.
 	long := "1" + strings.Repeat("7", 1<<20)
 	start := processCPU()
-	jsonDecimalIsMultipleOf(long, "7")
-	jsonDecimalIsMultipleOf(long, "123456789012345678901234567890")
-	jsonDecimalIsMultipleOf(long+"e99999999999999999999", "3.3")
-	jsonDecimalCmp(long, long+"1")
-	jsonDecimalIsIntegral(long + "e-99999999999999999999")
-	_jsonCanonicalNumber(long + "0000e99999999999999999999")
-	jsonBigIntFromLiteral(long)
-	jsonBigIntFromLiteral("1e1000000000000")
-	jsonDecimalIsMultipleOf("1e1000000000000", "7")
+	rt.NumberIsMultipleOf(json.Number(long), "7")
+	rt.NumberIsMultipleOf(json.Number(long), "123456789012345678901234567890")
+	rt.NumberIsMultipleOf(json.Number(long+"e99999999999999999999"), "3.3")
+	rt.NumberCmp(json.Number(long), long+"1")
+	rt.DecimalIsIntegral(long + "e-99999999999999999999")
+	rt.Canonical([]byte(long + "0000e99999999999999999999"))
+	rt.BigIntFromLiteral(long)
+	rt.BigIntFromLiteral("1e1000000000000")
+	rt.NumberIsMultipleOf(json.Number("1e1000000000000"), "7")
 	hostile := (processCPU() - start).Seconds()
 
 	enc, err := json.Marshal(struct {

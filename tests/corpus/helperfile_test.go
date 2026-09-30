@@ -3,9 +3,12 @@ package corpus
 import (
 	"encoding/json"
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -15,33 +18,29 @@ import (
 	"github.com/mgilbir/schemagen/tests/internal/testsupport"
 )
 
-// helperCallPattern matches a call to any shared helper the generated code can
-// make. The families are matched by prefix rather than by name so that a helper
-// added to a block is covered the day it is written -- a list of names is what
-// failed on PR #59 and again on the format block.
-var helperCallPattern = regexp.MustCompile(`\b(schemagenFormat\w*|schemagen[A-Z]\w*|oneofHasRequiredFields|oneofDiscriminatorValue|jsonInteger\w*|jsonExactProperties|jsonDecode\w*|jsonValueErrorf|jsonElemErrorf|jsonPathf|jsonElemPathf|checkJSONNullsAt|_dyn\w*|_schemaNode|_evalNode|jsonNumber\w*|jsonDecimal\w*|jsonIsInteger|jsonIsNumber|jsonRaw\w*|jsonFloat\w*|jsonBigInt\w*|_jsonCanonical\w*|_jsonEqualText)\(`)
-
-// TestHelperFileDeclaresEveryHelperCalled compiles the one claim the helper file
-// has to satisfy: everything the generated code calls, it declares.
+// TestGeneratedCodeNamesOnlyWhatTheRuntimeExports holds the claim the runtime
+// module makes possible: everything the generated code reaches for in the
+// runtime package, the runtime exports.
 //
-// This is the guard that was missing. Which helpers a package needs used to be
-// decided by walking the IR and naming the fields a helper-backed rule can live
-// in; ItemValidations was not named, so a `format` on an array element or a map
-// value emitted the call and never the function, and the generated package did
-// not compile. Every harness in this repository derived the set from the emitted
-// source instead, so every harness wrote the right helper file and none of them
-// asked what the generator would have written. The two answers have been one
-// function since, and this walks every fixture in the tree through it.
+// The call and the declaration are in different modules, and the compiler only
+// joins them when somebody compiles the schema. A template that spells a name the
+// runtime does not have -- a rename on one side, a helper moved and its callers
+// left -- fails to build for whichever schema first reaches it, which need not be
+// one any compile test generates. This walks every fixture in the tree, in both
+// format postures, and asks the question of the emitted source directly: every
+// `rt.X` it contains, in the types file and in the package's pattern file, is an
+// exported top-level name of the runtime.
 //
 // It reads the emitted source rather than a golden, so a fixture that is not
-// pinned as a golden is covered too, and both format postures are exercised:
-// which checks are emitted depends on the draft, so a fixture that annotates on
-// its own dialect is generated a second time with assertion forced.
-func TestHelperFileDeclaresEveryHelperCalled(t *testing.T) {
+// pinned as a golden is covered too. Which checks are emitted depends on the
+// draft, so a fixture that annotates on its own dialect is generated a second
+// time with assertion forced.
+func TestGeneratedCodeNamesOnlyWhatTheRuntimeExports(t *testing.T) {
 	schemaFiles := allRegressionSchemas(t)
 	if len(schemaFiles) == 0 {
 		t.Fatal("no schemas found to check")
 	}
+	exports := runtimeExports(t)
 
 	em, err := emitter.New()
 	if err != nil {
@@ -60,6 +59,7 @@ func TestHelperFileDeclaresEveryHelperCalled(t *testing.T) {
 	for _, cfg := range cfgs {
 		refusals[cfg.name] = newRefusalLedger("helper-file/" + cfg.name)
 	}
+	references := 0
 	for _, path := range schemaFiles {
 		for _, cfg := range cfgs {
 			ledger := refusals[cfg.name]
@@ -96,30 +96,12 @@ func TestHelperFileDeclaresEveryHelperCalled(t *testing.T) {
 				}
 				ledger.generated()
 
-				helperSrc, needed, err := em.EmitHelpers("testpkg", generator.HelpersReferencedBy(string(src)))
+				helperSrc, _, err := em.EmitHelpers("testpkg", generator.HelpersReferencedBy(string(src)))
 				if err != nil {
 					t.Fatalf("emitting helpers: %v", err)
 				}
-				declared := ""
-				if needed {
-					declared = string(helperSrc)
-				}
-
-				// The helper file is held to the same claim as the generated
-				// types, and against itself as well as against them. Which
-				// helpers a package needs is read from what the *types* call,
-				// and a call from one helper block to another appears in no
-				// types file at all -- the null walker's refusal is built by
-				// jsonValueErrorf, and a schema with one string property names
-				// the walker and never the constructor. See
-				// HelperSet.CloseOverCalls and issue #282.
-				for _, src := range []string{string(src), declared} {
-					for _, m := range helperCallPattern.FindAllStringSubmatch(src, -1) {
-						name := m[1]
-						if !declaresFunc(declared, name) {
-							t.Errorf("%s calls %s, which the helper file does not declare", filepath.Base(path), name)
-						}
-					}
+				for _, text := range [][]byte{src, helperSrc} {
+					references += checkRuntimeReferences(t, filepath.Base(path), text, exports)
 				}
 			})
 		}
@@ -127,46 +109,33 @@ func TestHelperFileDeclaresEveryHelperCalled(t *testing.T) {
 	for _, cfg := range cfgs {
 		refusals[cfg.name].check(t)
 	}
+	if references == 0 {
+		t.Fatal("no reference to the runtime package in any generated file: this test is watching nothing")
+	}
 }
 
-// TestHelperFileDeclaresWhatItsOwnBlocksCall is the same claim for a call made
-// inside the helper file, which is a hole the fixture walk above cannot see.
-//
-// Which helpers a package needs is read from what the generated *types* call,
-// and a call from one helper block to another appears in no types file at all.
-// The blocks that refuse a document at decode time -- the null walker, the two
-// numeric shadows, the date-time and ip shadows, the decode trace -- all build
-// their refusal with the path-join constructors, and a schema can reach any of
-// them while naming none of those constructors itself. See
-// HelperSet.CloseOverCalls and issue #282.
-//
-// The schemas below are the smallest that do it, and they are inline rather than
-// corpus fixtures because that is the property being pinned: `{"properties":
-// {"b":{}}}` names jsonDecodeMemberError and nothing else at all. Every corpus
-// schema outside the adversarial set happens to name a constructor for some
-// other reason, so the fixture walk passes with the closure removed.
-func TestHelperFileDeclaresWhatItsOwnBlocksCall(t *testing.T) {
+// TestGeneratedCodeNamesOnlyWhatTheRuntimeExportsForSmallSchemas is the same
+// claim for the smallest schemas that reach one construct each, which are inline
+// rather than corpus fixtures because the construct is the property being
+// pinned: a corpus schema outside the adversarial set happens to reach most
+// of them for some other reason, and would pass with one of them broken.
+func TestGeneratedCodeNamesOnlyWhatTheRuntimeExportsForSmallSchemas(t *testing.T) {
 	em, err := emitter.New()
 	if err != nil {
 		t.Fatalf("creating emitter: %v", err)
 	}
+	exports := runtimeExports(t)
 	for _, tc := range []struct {
 		name   string
 		schema string
-		why    string
 	}{
-		{"one untyped property", `{"properties":{"b":{}}}`,
-			"the types file names jsonDecodeMemberError and no other helper"},
-		{"a nullable property", `{"properties":{"b":{"type":["string","null"]}}}`,
-			"the same, with the null admitted so no null rule is emitted either"},
-		{"a container alias", `{"type":"array","items":{"type":"string"}}`,
-			"the null walker is reached from the alias template, which has no path to put in front of it"},
-		{"an integer property", `{"properties":{"n":{"type":"integer"}}}`,
-			"the integer shadow"},
-		{"a date-time property", `{"properties":{"d":{"type":"string","format":"date-time"}}}`,
-			"the date-time shadow"},
-		{"an ipv4 property", `{"properties":{"a":{"type":"string","format":"ipv4"}}}`,
-			"the ip shadows"},
+		{"one untyped property", `{"properties":{"b":{}}}`},
+		{"a nullable property", `{"properties":{"b":{"type":["string","null"]}}}`},
+		{"a container alias", `{"type":"array","items":{"type":"string"}}`},
+		{"an integer property", `{"properties":{"n":{"type":"integer"}}}`},
+		{"a date-time property", `{"properties":{"d":{"type":"string","format":"date-time"}}}`},
+		{"an ipv4 property", `{"properties":{"a":{"type":"string","format":"ipv4"}}}`},
+		{"a pattern", `{"properties":{"p":{"type":"string","pattern":"^a+$"}}}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var s schema.Schema
@@ -186,37 +155,92 @@ func TestHelperFileDeclaresWhatItsOwnBlocksCall(t *testing.T) {
 			if err != nil {
 				t.Fatalf("emit: %v", err)
 			}
-			helperSrc, needed, err := em.EmitHelpers("testpkg", generator.HelpersReferencedBy(string(src)))
+			helperSrc, _, err := em.EmitHelpers("testpkg", generator.HelpersReferencedBy(string(src)))
 			if err != nil {
 				t.Fatalf("emitting helpers: %v", err)
 			}
-			declared := ""
-			if needed {
-				declared = string(helperSrc)
+			n := 0
+			for _, text := range [][]byte{src, helperSrc} {
+				n += checkRuntimeReferences(t, tc.name, text, exports)
 			}
-			for _, text := range []string{string(src), declared} {
-				for _, m := range helperCallPattern.FindAllStringSubmatch(text, -1) {
-					if !declaresFunc(declared, m[1]) {
-						t.Errorf("%s: %s is called and not declared (%s)", tc.name, m[1], tc.why)
-					}
-				}
+			if n == 0 {
+				t.Errorf("%s: the generated files name nothing in the runtime, so nothing was checked", tc.name)
 			}
 		})
 	}
 }
 
-// declaresFunc reports whether src declares this name. The type parameter list
-// is optional: three of the integer rebuilders are generic, and matching only
-// "func name(" reported them as undeclared when they were right there.
-//
-// A type of the same name counts, because the pattern above cannot tell a call
-// from a conversion and does not need to: `jsonInteger(_i)` and `jsonIPv4Addr(_a)`
-// are conversions to the shadows the same block declares, and what is being
-// asked either way is whether the file the name appears in has it.
-func declaresFunc(src, name string) bool {
-	q := regexp.QuoteMeta(name)
-	return regexp.MustCompile(`func\s+`+q+`\s*[\[(]`).MatchString(src) ||
-		regexp.MustCompile(`(?m)^type\s+`+q+`\b`).MatchString(src)
+// checkRuntimeReferences reports every `rt.X` in one generated file that is not
+// an exported name of the runtime, and returns how many references it looked at.
+// An empty file (no pattern file was written) has none.
+func checkRuntimeReferences(t *testing.T, label string, src []byte, exports map[string]bool) int {
+	t.Helper()
+	if len(src) == 0 {
+		return 0
+	}
+	f, err := parser.ParseFile(token.NewFileSet(), "", src, 0)
+	if err != nil {
+		t.Errorf("%s: generated source does not parse: %v", label, err)
+		return 0
+	}
+	n := 0
+	ast.Inspect(f, func(node ast.Node) bool {
+		sel, ok := node.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		if id, ok := sel.X.(*ast.Ident); ok && id.Name == generator.RuntimeAlias && id.Obj == nil {
+			n++
+			if !exports[sel.Sel.Name] {
+				t.Errorf("%s: the generated code uses %s.%s, which the runtime module does not export", label, id.Name, sel.Sel.Name)
+			}
+		}
+		return true
+	})
+	return n
+}
+
+// runtimeExports is every exported top-level name the runtime module declares --
+// functions, types, variables and constants -- read from its source.
+func runtimeExports(t *testing.T) map[string]bool {
+	t.Helper()
+	dir := testsupport.RepoPath("runtime")
+	pkgs, err := parser.ParseDir(token.NewFileSet(), dir, func(fi fs.FileInfo) bool { return !strings.HasSuffix(fi.Name(), "_test.go") }, 0)
+	if err != nil {
+		t.Fatalf("parsing the runtime module: %v", err)
+	}
+	out := map[string]bool{}
+	for _, pkg := range pkgs {
+		for _, f := range pkg.Files {
+			for _, d := range f.Decls {
+				switch d := d.(type) {
+				case *ast.FuncDecl:
+					if d.Recv == nil && d.Name.IsExported() {
+						out[d.Name.Name] = true
+					}
+				case *ast.GenDecl:
+					for _, spec := range d.Specs {
+						switch spec := spec.(type) {
+						case *ast.TypeSpec:
+							if spec.Name.IsExported() {
+								out[spec.Name.Name] = true
+							}
+						case *ast.ValueSpec:
+							for _, name := range spec.Names {
+								if name.IsExported() {
+									out[name.Name] = true
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	if len(out) < 100 {
+		t.Fatalf("found only %d exported names in %s; the scan is not reading the runtime module", len(out), dir)
+	}
+	return out
 }
 
 // allRegressionSchemas lists every schema fixture in the tree, which is the

@@ -1,4 +1,12 @@
-{{define "access_helpers"}}
+package runtime
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"sort"
+)
+
 // --strict-read-write's reach below a value the generated code keeps as raw
 // JSON.
 //
@@ -28,34 +36,35 @@ const (
 	_accessTuple
 )
 
-// Declared with the members that carry a pointer first and the plain integers
-// last, which is what keeps the garbage collector's scan of a rule's path short.
-type _accessStep struct {
-{{- if .AccessPattern}}
+// AccessStep is one step of a path down to a location --strict-read-write's
+// rules name. Declared with the members that carry a pointer first and the
+// plain integers last, which is what keeps the garbage collector's scan of a
+// rule's path short.
+type AccessStep struct {
 	// Pattern is an _accessPattern step's key test, one of the package's
 	// compiled patterns.
-	Pattern *_schemagenRegexp
-{{- end}}
-	Name string
+	Pattern *Pattern
+	Name    string
 	// Except and ExceptPatterns are what an _accessOther step steps past: the
 	// members the same schema object declares by name and by pattern, which are
 	// exactly the ones additionalProperties and unevaluatedProperties do not
 	// reach.
-	Except []string
-{{- if .AccessPattern}}
-	ExceptPatterns []*_schemagenRegexp
-{{- end}}
-	Kind  int
-	Index int
+	Except         []string
+	ExceptPatterns []*Pattern
+	Kind           int
+	Index          int
 }
 
-type _accessRule struct {
-	Path      []_accessStep
+// AccessRule is a location no Go field answers for, as a path from a generated
+// struct, and whether a document may set it (ReadOnly) or it is written back
+// (WriteOnly).
+type AccessRule struct {
+	Path      []AccessStep
 	ReadOnly  bool
 	WriteOnly bool
 }
 
-// _readOnlyRefusal is the error --strict-read-write's decoder returns for a
+// ReadOnlyRefusal is the error --strict-read-write's decoder returns for a
 // document that sets a readOnly property.
 //
 // It is a type rather than a formatted string because two callers have to tell
@@ -65,11 +74,12 @@ type _accessRule struct {
 // into a generated type has to ignore it outright, because readOnly is an
 // annotation and constrains no document -- a Validate that consulted one would
 // answer a question the schema did not ask.
-type _readOnlyRefusal struct {
+type ReadOnlyRefusal struct {
 	Path string
 }
 
-func (e *_readOnlyRefusal) Error() string {
+// Error names the property that was set.
+func (e *ReadOnlyRefusal) Error() string {
 	return e.Path + ": read-only property may not be set"
 }
 
@@ -106,18 +116,13 @@ func _accessKeyMatches(step _accessStep, key string) (bool, error) {
 	case _accessProperty:
 		return key == step.Name, nil
 	case _accessPattern:
-{{- if .AccessPattern}}
 		return step.Pattern.matches(key)
-{{- else}}
-		return false, nil
-{{- end}}
 	case _accessOther:
 		for _, name := range step.Except {
 			if key == name {
 				return false, nil
 			}
 		}
-{{- if .AccessPattern}}
 		for _, pat := range step.ExceptPatterns {
 			matched, err := pat.matches(key)
 			if err != nil {
@@ -127,7 +132,6 @@ func _accessKeyMatches(step _accessStep, key string) (bool, error) {
 				return false, nil
 			}
 		}
-{{- end}}
 		return true, nil
 	}
 	return false, nil
@@ -417,7 +421,7 @@ func (o *jsonObj) stripWriteOnly(rules []_accessRule, member jsonMemberEnc) erro
 			case m.idx >= 0:
 				val, err = member(m.idx, m.key, nil)
 			case m.raw:
-				val, err = jsonAppendLeaf(json.RawMessage(m.val), nil)
+				val, err = AppendLeaf(json.RawMessage(m.val), nil)
 			default:
 				val = m.val
 			}
@@ -450,7 +454,6 @@ func _accessStripWriteOnly(data []byte, rules []_accessRule) ([]byte, error) {
 	}
 	return out, nil
 }
-{{- if .IdentityValue}}
 
 // _accessStripTree is _accessStripWriteOnly over a tree (see jsonValidation):
 // the members the rules reach are taken out of it, by the same steps in the same
@@ -488,7 +491,6 @@ func _accessStripTreeAt(t any, path []_accessStep) (any, error) {
 			return t, nil
 		}
 		keys := make([]string, 0, len(obj))
-		{{- /* maporder: gathers the keys, which are sorted before any is read. */}}
 		for k := range obj {
 			keys = append(keys, k)
 		}
@@ -554,7 +556,6 @@ func (o *jsonIDObj) idStripWriteOnly(rules []_accessRule, member jsonIDMemberFun
 			}
 		}
 		sort.Slice(live, func(i, j int) bool { return live[i].key < live[j].key })
-		{{- /* maporder: not a map: ranges a slice. */}}
 		for _, mb := range live {
 			matched, mErr := _accessKeyMatches(step, mb.key)
 			if mErr != nil {
@@ -580,5 +581,3 @@ func (o *jsonIDObj) idStripWriteOnly(rules []_accessRule, member jsonIDMemberFun
 	}
 	return nil
 }
-{{- end}}
-{{- end}}

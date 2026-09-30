@@ -19,11 +19,11 @@ A rule with neither keyword is never built, so there is no empty-call case to
 guard: contentCheckFor refuses to produce one.
 */}}
 {{define "string_content_check"}}
-if _err := schemagenContentString({{.Expr}}, {{printf "%q" .Encoding}}, {{printf "%q" .MediaType}}); _err != nil {
+if _err := rt.ContentString({{.Expr}}, {{printf "%q" .Encoding}}, {{printf "%q" .MediaType}}); _err != nil {
 	{{- if .Path}}
 	return {{pathErrf .Path}}("{{.Path}}: %w", {{if .Args}}{{.Args}}, {{end}}_err)
 	{{- else}}
-	return jsonValueErrorf("%w", _err)
+	return rt.ValueErrorf("%w", _err)
 	{{- end}}
 }
 {{- end}}

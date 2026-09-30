@@ -3,7 +3,7 @@ package testsupport
 // IdentityCheckSource is a file for a generated package that compares, for
 // every value reachable from a decoded document whose type reads its own
 // identity, that identity with the identity of what MarshalJSON writes -- and
-// the same for every value held as an any, which jsonIDAny reads.
+// the same for every value held as an any, which rt.IDAny reads.
 //
 // The values are then changed the ways a decoded document never changes them,
 // one at a time, and compared again: every string member set to one that is not
@@ -24,7 +24,15 @@ import (
 	"reflect"
 	"strings"
 	"time"
+
+	rt "github.com/mgilbir/schemagen/runtime"
 )
+
+// jsonIdentifier is a type that reads its own identity: every one schemagen
+// generates with a struct, an alias with a MarshalJSON, and so on.
+type jsonIdentifier interface {
+	SchemagenJSONIdentity(*rt.Validation) (rt.ID, error)
+}
 
 type schemagenIdentityCheck struct {
 	diffs          []string
@@ -36,7 +44,7 @@ func (c *schemagenIdentityCheck) compare(p reflect.Value, path, how string) {
 	if !ok {
 		return
 	}
-	got, gErr := id.jsonIdentity(nil)
+	got, gErr := id.SchemagenJSONIdentity(nil)
 	b, mErr := json.Marshal(p.Interface())
 	if (gErr == nil) != (mErr == nil) {
 		c.diffs = append(c.diffs, fmt.Sprintf("%s%s (%s): identity error %v, marshal error %v", path, how, p.Type().Elem(), gErr, mErr))
@@ -45,38 +53,39 @@ func (c *schemagenIdentityCheck) compare(p reflect.Value, path, how string) {
 	if gErr != nil {
 		return
 	}
-	want, err := jsonIDRaw(b)
+	want, err := rt.IDRawIn(b, nil)
 	if err != nil || got != want {
 		c.diffs = append(c.diffs, fmt.Sprintf("%s%s (%s): identity is not that of %s", path, how, p.Type().Elem(), b))
 	}
 	// The tree the same rules read, which is what a const, an enum and a
 	// duplicate are decided on, is what encoding/json decodes the text into.
-	m := &jsonValidation{tree: true}
-	if _, err := id.jsonIdentity(m); err != nil || len(m.trees) != 1 {
-		c.diffs = append(c.diffs, fmt.Sprintf("%s%s (%s): reading its tree: %v, %d trees", path, how, p.Type().Elem(), err, len(m.trees)))
+	m := rt.NewTreeValidation()
+	if _, err := id.SchemagenJSONIdentity(m); err != nil {
+		c.diffs = append(c.diffs, fmt.Sprintf("%s%s (%s): reading its tree: %v", path, how, p.Type().Elem(), err))
 		return
 	}
-	wantTree, err := jsonTreeRaw(b, false)
-	if err != nil || !jsonTreeEqual(m.trees[0], wantTree) {
-		c.diffs = append(c.diffs, fmt.Sprintf("%s%s (%s): tree %v is not that of %s", path, how, p.Type().Elem(), m.trees[0], b))
+	tree := m.Pop()
+	wantTree, err := rt.TreeRaw(b, false)
+	if err != nil || !rt.TreeWritten(tree, wantTree) {
+		c.diffs = append(c.diffs, fmt.Sprintf("%s%s (%s): tree %v is not that of %s", path, how, p.Type().Elem(), tree, b))
 	}
 }
 
 func (c *schemagenIdentityCheck) compareAny(v any, path string) {
-	got, gErr := jsonIDAny(v, nil)
+	got, gErr := rt.IDAny(v, nil)
 	b, mErr := json.Marshal(v)
 	if (gErr == nil) != (mErr == nil) {
 		c.diffs = append(c.diffs, fmt.Sprintf("%s (any): identity error %v, marshal error %v", path, gErr, mErr))
 		return
 	}
 	if gErr == nil {
-		want, err := jsonIDRaw(b)
+		want, err := rt.IDRawIn(b, nil)
 		if err != nil || got != want {
 			c.diffs = append(c.diffs, fmt.Sprintf("%s (any %T): identity is not that of %s", path, v, b))
 		}
-		tree, tErr := jsonTreeAny(v, nil)
-		wantTree, err := jsonTreeRaw(b, false)
-		if tErr != nil || err != nil || !jsonTreeEqual(tree, wantTree) {
+		tree, tErr := rt.TreeView(v)
+		wantTree, err := rt.TreeRaw(b, false)
+		if tErr != nil || err != nil || !rt.TreeWritten(tree, wantTree) {
 			c.diffs = append(c.diffs, fmt.Sprintf("%s (any %T): tree is not that of %s", path, v, b))
 		}
 	}

@@ -1911,7 +1911,7 @@ type EnumDef struct {
 	NeedsNullCheck bool
 
 	// HasIdentity says a check comparing values can reach this enum, whose
-	// MarshalJSON then has a jsonIdentity beside it. Only the two forms with a
+	// MarshalJSON then has a SchemagenJSONIdentity beside it. Only the two forms with a
 	// MarshalJSON -- the raw form and the number form -- carry one. See
 	// identityplan.go.
 	HasIdentity bool
@@ -2414,7 +2414,7 @@ type InferredAliasDef struct {
 	memberOrder []int
 
 	// HasIdentity says a check comparing values can reach this wrapper, whose
-	// MarshalJSON then has a jsonIdentity beside it. See identityplan.go.
+	// MarshalJSON then has a SchemagenJSONIdentity beside it. See identityplan.go.
 	HasIdentity bool
 }
 
@@ -2652,7 +2652,7 @@ type BigIntAliasDef struct {
 	AllowsNull bool
 
 	// HasIdentity says a check comparing values can reach this wrapper, whose
-	// MarshalJSON then has a jsonIdentity beside it. See identityplan.go.
+	// MarshalJSON then has a SchemagenJSONIdentity beside it. See identityplan.go.
 	HasIdentity bool
 }
 
@@ -2671,7 +2671,7 @@ type NotSchemaDef struct {
 	NotBranches []NotSchemaBranch // not:anyOf branches from draft3 disallow arrays
 
 	// HasIdentity says a check comparing values can reach this wrapper, whose
-	// MarshalJSON then has a jsonIdentity beside it. See identityplan.go.
+	// MarshalJSON then has a SchemagenJSONIdentity beside it. See identityplan.go.
 	HasIdentity bool
 	// StrictInteger reads "integer" off the value's token, as draft 3 and
 	// draft 4 do -- and draft 3's disallow is what the branches come from.
@@ -2735,7 +2735,7 @@ type DynamicSchemaDef struct {
 	HasElse       bool
 
 	// HasIdentity says a check comparing values can reach this wrapper, whose
-	// MarshalJSON then has a jsonIdentity beside it. See identityplan.go.
+	// MarshalJSON then has a SchemagenJSONIdentity beside it. See identityplan.go.
 	HasIdentity bool
 }
 
@@ -2785,7 +2785,7 @@ type AnnotationSchemaDef struct {
 	AccessRulesVar string
 
 	// HasIdentity says a check comparing values can reach this wrapper, whose
-	// MarshalJSON then has a jsonIdentity beside it. See identityplan.go.
+	// MarshalJSON then has a SchemagenJSONIdentity beside it. See identityplan.go.
 	HasIdentity bool
 }
 
@@ -2851,7 +2851,7 @@ type TypeOnlySchemaDef struct {
 	VisitTarget bool
 
 	// HasIdentity says a check comparing values can reach this wrapper, whose
-	// MarshalJSON then has a jsonIdentity beside it. See identityplan.go.
+	// MarshalJSON then has a SchemagenJSONIdentity beside it. See identityplan.go.
 	HasIdentity bool
 
 	// StrictInteger reads "integer" off the value's token, as draft 3 and
@@ -2953,18 +2953,6 @@ type File struct {
 	// items -- compiled for the runtime evaluator, which judges the element as
 	// it is held rather than decoding it into the type. See ElementNode.
 	ElementNodes []*ElementNode
-
-	// TreeTypes are the types of this file that read their own identity, each of
-	// which declares SchemagenJSONTree: the exported reading of its tree that
-	// another package of a multi-package run compares its values by, since it
-	// cannot call the unexported jsonIdentity. See resolveIdentityPlans.
-	TreeTypes []TreeType
-}
-
-// TreeType is a type of the file that declares SchemagenJSONTree. See
-// File.TreeTypes.
-type TreeType struct {
-	Name string
 }
 
 // ElementNode is the schema of a type, compiled for the runtime evaluator: what

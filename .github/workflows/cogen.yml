@@ -62,14 +62,17 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # Generated code imports the ECMA-262 regexp package, and x/net/idna for
-      # the two hostname formats. Both are reachable only from generated code --
-      # `go build ./...` never fetches them, so the first compiled iteration
-      # would do the download itself. Pull them up front
+      # Generated code imports the runtime module, which carries the ECMA-262
+      # regexp package, and x/net/idna for the two hostname formats. They are
+      # reachable only from generated code -- `go build ./...` never fetches
+      # them, and x/net is not in the root go.mod at all -- so the first
+      # compiled iteration would do the download itself. Pull them up front
       # so a network problem fails here, plainly, instead of inside the harness
       # and looking like a generator fault.
       - name: download dependencies
-        run: go mod download
+        run: |
+          go mod download
+          cd runtime && go mod download
 
       # Each seed is an independent sweep. Running several decorrelates the
       # schema shapes far better than one long sequence from a single seed, and

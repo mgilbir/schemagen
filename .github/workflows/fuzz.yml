@@ -52,7 +52,9 @@ jobs:
       # it a network blip surfaces as a red fuzz step with an empty artifact,
       # which reads exactly like a finding that got lost.
       - name: download dependencies
-        run: go mod download
+        run: |
+          go mod download
+          cd runtime && go mod download
 
       # On a scheduled run `inputs.fuzz_time` is empty, so the 30m default here
       # is what nightly actually uses; the workflow_dispatch default only

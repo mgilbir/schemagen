@@ -39,6 +39,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 var (
@@ -64,6 +65,7 @@ func Main(m *testing.M) {
 func Run(m *testing.M) int {
 	claimSharedCache()
 	mainInstalled = true
+	warmRuntimeBuild()
 	code := m.Run()
 	processDirsMu.Lock()
 	for _, d := range processDirs {
@@ -73,6 +75,32 @@ func Run(m *testing.M) int {
 	processDirsMu.Unlock()
 	releaseSharedCache()
 	return code
+}
+
+// warmRuntimeBuild builds the runtime module, and with it the standard library
+// packages and the two third-party modules the code it imports needs, into the
+// shared cache before the first test runs.
+//
+// Every generated package the tests compile imports the runtime, so the first
+// compile in a cold cache builds all of that as well as the package. The tests
+// bound a compile at 30 seconds, and a `go test ./...` starts some twenty test
+// binaries at once on a cold cache: the first compile of each is the one that
+// paid, on a busy machine that is the one that ran out of time, and it failed
+// with "signal: killed" on a build that takes a second when the cache is warm
+// (tests/golden, TestCompile, the first golden file). The bound is right for a
+// compile, and stays; the cost of the shared code moves out from under it.
+//
+// It is best effort: a failure here is reported by the first test that needs the
+// build, in the words of the build.
+func warmRuntimeBuild() {
+	dir, err := RuntimeDir()
+	if err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	cmd := Command(ctx, dir, "build", "./...")
+	_ = cmd.Run()
 }
 
 // Command returns a go command -- `go <args...>` run in dir -- in the

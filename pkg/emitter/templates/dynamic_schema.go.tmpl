@@ -26,9 +26,9 @@ func ({{$recv}} {{.Name}}) Validate() error {
 		return nil
 	}
 	{{- /* Every number is kept as the literal the document wrote, which the
-	       checks below judge exactly. See jsonDecodeNumbers. */}}
+	       checks below judge exactly. See rt.DecodeNumbers. */}}
 	var _v any
-	if _err := jsonDecodeNumbers({{$recv}}._raw, &_v); _err != nil {
+	if _err := rt.DecodeNumbers({{$recv}}._raw, &_v); _err != nil {
 		return fmt.Errorf("cannot decode value: %w", _err)
 	}
 	{{- $undecided := .NeedsPattern}}
@@ -139,20 +139,20 @@ holds".
 {{- else}}
 {{- range $i, $c := .}}{{if $i}} && {{end}}
 {{- if eq $c.Kind "type"}}
-{{- if eq $c.Value "integer"}}jsonIsInteger(_v, {{if $c.Strict}}true{{else}}false{{end}})
-{{- else if eq $c.Value "number"}}jsonIsNumber(_v)
-{{- else if eq $c.Value "string"}}_dynIsString(_v)
-{{- else if eq $c.Value "boolean"}}_dynIsBool(_v)
-{{- else if eq $c.Value "object"}}_dynIsObject(_v)
-{{- else if eq $c.Value "array"}}_dynIsArray(_v)
+{{- if eq $c.Value "integer"}}rt.IsInteger(_v, {{if $c.Strict}}true{{else}}false{{end}})
+{{- else if eq $c.Value "number"}}rt.IsNumber(_v)
+{{- else if eq $c.Value "string"}}rt.DynIsString(_v)
+{{- else if eq $c.Value "boolean"}}rt.DynIsBool(_v)
+{{- else if eq $c.Value "object"}}rt.DynIsObject(_v)
+{{- else if eq $c.Value "array"}}rt.DynIsArray(_v)
 {{- else if eq $c.Value "null"}}_v == nil
 {{- else}}true
 {{- end}}
-{{- else if eq $c.Kind "const"}}_dynConstOK(_v, {{printf "%q" $c.Value}})
+{{- else if eq $c.Kind "const"}}rt.DynConstOK(_v, {{printf "%q" $c.Value}})
 {{- else if or (eq $c.Kind "minimum") (eq $c.Kind "maximum") (eq $c.Kind "exclusiveMinimum") (eq $c.Kind "exclusiveMaximum") (eq $c.Kind "multipleOf")}}!{{numAnyViolated $c.Kind $c.Value "_v"}}
-{{- else if eq $c.Kind "minLength"}}_dynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) >= {{countExpr $c.Value}} })
-{{- else if eq $c.Kind "maxLength"}}_dynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) <= {{countExpr $c.Value}} })
-{{- else if eq $c.Kind "pattern"}}{{patternVar $c.Value}}.matchesValue(_v, &_undecided)
+{{- else if eq $c.Kind "minLength"}}rt.DynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) >= {{countExpr $c.Value}} })
+{{- else if eq $c.Kind "maxLength"}}rt.DynStrOK(_v, func(_str string) bool { return utf8.RuneCountInString(_str) <= {{countExpr $c.Value}} })
+{{- else if eq $c.Kind "pattern"}}{{patternVar $c.Value}}.MatchesValue(_v, &_undecided)
 {{- else}}true
 {{- end}}
 {{- end}}

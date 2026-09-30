@@ -1,16 +1,24 @@
-{{define "pattern_helpers"}}
-// _schemagenRegexp is one JSON Schema regular expression -- a "pattern", a
+package runtime
+
+import (
+	"errors"
+
+	ecma262 "github.com/mgilbir/goecma262"
+	ecmaflags "github.com/mgilbir/goecma262/flags"
+)
+
+// Pattern is one JSON Schema regular expression -- a "pattern", a
 // "patternProperties" key, a "propertyNames" pattern -- compiled once, when the
-// package is initialised, with the ECMA-262 engine and the "u" flag JSON
-// Schema calls for. Every check in this package that matches a pattern goes
-// through one of the variables declared below; nothing compiles a pattern
-// where it is used.
+// generated package is initialised (see CompilePattern), with the ECMA-262
+// engine and the "u" flag JSON Schema calls for. Every check in a generated
+// package that matches a pattern goes through one of the variables its helper
+// file declares; nothing compiles a pattern where it is used.
 //
 // source is the text the engine was given and pattern the text the schema
 // wrote, which is what a message quotes. They differ only for a pattern that
 // escapes punctuation the "u" flag does not let it escape; see schemagen's
 // README.
-type _schemagenRegexp struct {
+type Pattern struct {
 	re      *ecma262.Regexp
 	err     error
 	pattern string
@@ -88,14 +96,6 @@ func (e *_schemagenPatternError) Unwrap() error { return e.err }
 // an unexported method belongs to the package that declares it.
 func (e *_schemagenPatternError) SchemagenUndecided() bool { return true }
 
-var (
-{{- range .Patterns}}
-	{{patternVar .}} = _schemagenCompilePattern({{printf "%q" .}}, {{patternEngineSource .}})
-{{- end}}
-)
-{{- end}}
-
-{{define "undecided_helper"}}
 // _schemagenUndecided reports whether err is, or wraps, a pattern match the
 // engine gave no answer for (see _schemagenRegexp.matches).
 //
@@ -108,67 +108,3 @@ func _schemagenUndecided(err error) bool {
 	var u interface{ SchemagenUndecided() bool }
 	return errors.As(err, &u) && u.SchemagenUndecided()
 }
-{{- end}}
-
-{{define "quote_helper"}}
-// _schemagenQuote writes a string taken from the document into a message:
-// Go-quoted, and cut short when it is long. A message quoting a 600 KB value in
-// full is a 600 KB error string, logged wherever the error goes. Up to 128
-// bytes are quoted whole; a longer string is quoted to its first 64 bytes,
-// backed off to the start of a character, followed by its length and the word
-// "truncated", so the cut is deterministic and says that it happened.
-func _schemagenQuote(s string) string {
-	if head, cut := _schemagenCut(s); cut {
-		return strconv.Quote(head) + "... (" + strconv.Itoa(len(s)) + " bytes, truncated)"
-	}
-	return strconv.Quote(s)
-}
-
-// _schemagenClipText is the same rule for a message that writes the text as a
-// step of a path rather than as a quoted value -- the runtime evaluator's
-// "property k", the --strict-read-write walker's "a.k" -- and so leaves a short
-// string exactly as it was.
-func _schemagenClipText(s string) string {
-	if head, cut := _schemagenCut(s); cut {
-		return head + "... (" + strconv.Itoa(len(s)) + " bytes, truncated)"
-	}
-	return s
-}
-
-// _schemagenCut is the rule itself: a string of up to 128 bytes is kept whole,
-// and a longer one is cut to its first 64, backed off to the start of a
-// character so that the cut never splits one.
-func _schemagenCut(s string) (string, bool) {
-	const whole, head = 128, 64
-	if len(s) <= whole {
-		return s, false
-	}
-	cut := head
-	for cut > 0 && !utf8.RuneStart(s[cut]) {
-		cut--
-	}
-	return s[:cut], true
-}
-
-// _schemagenClipErr bounds the message of an error from a parser the document's
-// text was handed to. time.Parse, url.Parse, netip.ParseAddr and the IDNA
-// profile all quote their input back, so wrapping one reintroduces the whole
-// value _schemagenQuote just cut short. The error is kept underneath for
-// errors.Is and errors.As; only the text is cut, by the same rule and with the
-// same marker.
-func _schemagenClipErr(err error) error {
-	msg := err.Error()
-	if _, cut := _schemagenCut(msg); !cut {
-		return err
-	}
-	return &_schemagenClippedError{err: err, msg: _schemagenClipText(msg)}
-}
-
-type _schemagenClippedError struct {
-	err error
-	msg string
-}
-
-func (e *_schemagenClippedError) Error() string { return e.msg }
-func (e *_schemagenClippedError) Unwrap() error { return e.err }
-{{- end}}

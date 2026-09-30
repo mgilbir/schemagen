@@ -1,79 +1,4 @@
-package roundtrip
-
-import (
-	"context"
-	"os"
-	"path/filepath"
-	"strings"
-	"testing"
-	"time"
-
-	"github.com/mgilbir/schemagen/internal/testgo"
-	"github.com/mgilbir/schemagen/pkg/emitter"
-	"github.com/mgilbir/schemagen/pkg/generator"
-)
-
-// TestDecodeHelpersAgreeWithEncodingJSON holds the in-place decode's reading of
-// a document to encoding/json's, on encoding/json's own ground.
-//
-// The generated types no longer hand a document to encoding/json level by
-// level: jsonDoc checks it, indexes it and splits its objects and arrays into
-// members itself, and reads the commonest scalars without a decoder. Each of
-// those is a second implementation of something encoding/json already decides,
-// and a disagreement is a document one of them accepts and the other refuses,
-// or a key one of them reads differently -- invisible to every test that feeds
-// only well-formed documents through. So the helpers are emitted exactly as a
-// generated package gets them, and put to many thousands of documents, well
-// formed and not, beside encoding/json:
-//
-//   - the check accepts exactly what json.Valid accepts, and the index it builds
-//     is the one the non-checking indexer builds;
-//   - an object's members and an array's elements are the ones encoding/json
-//     reads, keys and all;
-//   - jsonAtJSON decodes a value into every kind of leaf -- a scalar, a pointer
-//     to one, a slice, a map, an interface, a type that decodes itself and a
-//     pointer to one, a type that decodes itself from text -- to the value
-//     json.Unmarshal gives, and refuses it with the same words.
-//
-// It runs under whichever encoding/json the toolchain builds with, which is
-// the point: the check has to agree with the one the caller's program links.
-func TestDecodeHelpersAgreeWithEncodingJSON(t *testing.T) {
-	if testing.Short() {
-		t.Skip("compiles and runs a program")
-	}
-	t.Parallel()
-	em, err := emitter.New()
-	if err != nil {
-		t.Fatal(err)
-	}
-	helpers, ok, err := em.EmitHelpers("main", generator.HelperSet{Decode: true})
-	if err != nil || !ok {
-		t.Fatalf("emitting the decode helpers: ok=%v err=%v", ok, err)
-	}
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "helpers.go"), helpers, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(decodeHelpersDriver), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := writeTestGoMod(dir, "decode_helpers_test"); err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
-	defer cancel()
-	output, err := testgo.Command(ctx, dir, "run", ".").CombinedOutput()
-	if err != nil {
-		t.Fatalf("driver: %v\n%s", err, output)
-	}
-	out := programOutput(output)
-	t.Log(out[strings.LastIndex(out, "\n")+1:])
-	if !strings.HasPrefix(out, "PASS ") {
-		t.Errorf("the in-place decode and encoding/json disagree:\n%s", out)
-	}
-}
-
-const decodeHelpersDriver = `package main
+package runtime
 
 import (
 	"encoding/json"
@@ -81,10 +6,10 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/netip"
-	"os"
 	"reflect"
 	"slices"
 	"strings"
+	"testing"
 	"time"
 )
 
@@ -257,7 +182,7 @@ func walk(d *jsonDoc, sp jsonSpan, doc string) {
 
 func leaf[T any](d *jsonDoc, sp jsonSpan, doc string) {
 	var got, want T
-	gerr := jsonAtJSON(&got, d, sp)
+	gerr := AtJSON(&got, d, sp)
 	werr := json.Unmarshal(d.raw(sp), &want)
 	if (gerr == nil) != (werr == nil) || (gerr != nil && gerr.Error() != werr.Error()) {
 		fail("%q into %T: %v, encoding/json %v", doc, got, gerr, werr)
@@ -268,7 +193,7 @@ func leaf[T any](d *jsonDoc, sp jsonSpan, doc string) {
 	}
 }
 
-func check(doc string, deep bool) {
+func checkDoc(doc string, deep bool) {
 	data := []byte(doc)
 	d, sp, err := jsonOpenDoc(data)
 	valid := json.Valid(data)
@@ -326,7 +251,31 @@ func check(doc string, deep bool) {
 	leaf[*netip.Addr](d, sp, doc)
 }
 
-func main() {
+// TestDecodeHelpersAgreeWithEncodingJSON holds the in-place decode's reading of
+// a document to encoding/json's, on encoding/json's own ground.
+//
+// The generated types no longer hand a document to encoding/json level by
+// level: Doc checks it, indexes it and splits its objects and arrays into
+// members itself, and reads the commonest scalars without a decoder. Each of
+// those is a second implementation of something encoding/json already decides,
+// and a disagreement is a document one of them accepts and the other refuses,
+// or a key one of them reads differently -- invisible to every test that feeds
+// only well-formed documents through. So the decoder is put to many thousands of
+// documents, well formed and not, beside encoding/json:
+//
+//   - the check accepts exactly what json.Valid accepts, and the index it builds
+//     is the one the non-checking indexer builds;
+//   - an object's members and an array's elements are the ones encoding/json
+//     reads, keys and all;
+//   - AtJSON decodes a value into every kind of leaf -- a scalar, a pointer to
+//     one, a slice, a map, an interface, a type that decodes itself and a
+//     pointer to one, a type that decodes itself from text -- to the value
+//     json.Unmarshal gives, and refuses it with the same words.
+//
+// It runs under whichever encoding/json the toolchain builds with, which is the
+// point: the check has to agree with the one the caller's program links.
+func TestDecodeHelpersAgreeWithEncodingJSON(t *testing.T) {
+	failures = 0
 	r := rand.New(rand.NewPCG(1, 2))
 	docs := append([]string(nil), seeds...)
 	for i := 0; i < 20000; i++ {
@@ -339,17 +288,15 @@ func main() {
 		}
 	}
 	for _, doc := range docs {
-		check(doc, false)
+		checkDoc(doc, false)
 	}
 	// Nesting at and past encoding/json's limit.
 	for _, n := range []int{9999, 10000, 10001} {
-		check(strings.Repeat("[", n)+strings.Repeat("]", n), true)
-		check(strings.Repeat("{\"a\":", n)+"1"+strings.Repeat("}", n), true)
+		checkDoc(strings.Repeat("[", n)+strings.Repeat("]", n), true)
+		checkDoc(strings.Repeat("{\"a\":", n)+"1"+strings.Repeat("}", n), true)
 	}
 	if failures > 0 {
-		fmt.Printf("FAIL %d disagreements over %d documents\n", failures, len(docs))
-		os.Exit(0)
+		t.Errorf("%d disagreements over %d documents", failures, len(docs))
 	}
-	fmt.Printf("PASS %d documents\n", len(docs))
+	t.Logf("%d documents", len(docs))
 }
-`
