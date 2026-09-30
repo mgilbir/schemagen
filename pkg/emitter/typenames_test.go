@@ -91,26 +91,47 @@ var typeNameEmissionSites = map[string]emissionSite{
 	"unmarshal.go.tmpl | goType $v.LeafDecode.ShadowType":                           {Kind: nameGoType},
 	"unmarshal.go.tmpl | goType $v.Type":                                            {Kind: nameGoType},
 	"unmarshal.go.tmpl | goType .LeafDecode.ShadowType":                             {Kind: nameGoType},
+	"encode.go.tmpl | goType .AdditionalProperties.ValueType":                       {Kind: nameGoType},
+	// The decode plans (generator/decodeplan.go) are Go expressions the
+	// generator composes, and every type they spell is either GoTypeName() --
+	// the same funnel goType is, qualified for a foreign type -- or the name of
+	// a declaration in this package with a decodeJSONAt method, which a foreign
+	// type never reaches: an unexported method belongs to the package that
+	// declares it, so a foreign position is always handed to encoding/json.
+	"unmarshal.go.tmpl | .MemberDecoder":                            {Kind: nameGoType, Why: "a decode plan; see above"},
+	"unmarshal.go.tmpl | .ValueDecoder":                             {Kind: nameGoType, Why: "a decode plan; see above"},
+	"unmarshal.go.tmpl | $v.Decoder":                                {Kind: nameGoType, Why: "a decode plan; see above"},
+	"unmarshal.go.tmpl | $struct.AdditionalProperties.ValueDecoder": {Kind: nameGoType, Why: "a decode plan; see above"},
+	"alias.go.tmpl | .UnderlyingDecoder":                            {Kind: nameGoType, Why: "a decode plan; see above"},
+	"alias.go.tmpl | .UnmarshalAsDecoder":                           {Kind: nameGoType, Why: "a decode plan; see above"},
 
 	// ---- not a type ----
 	"alias.go.tmpl | $recv":                   {Kind: nameNotAType, Why: "`*<recv> = ...` assigns through the receiver; the star is a dereference"},
 	"enum.go.tmpl | $recv":                    {Kind: nameNotAType, Why: "as alias.go.tmpl: a dereferenced receiver, not a type"},
+	"enum.go.tmpl | receiverName .Name":       {Kind: nameNotAType, Why: "as alias.go.tmpl: the receiver, spelled by enum_null_guard, zeroed through a dereference"},
 	"validation.go.tmpl | $recv":              {Kind: nameNotAType, Why: "as alias.go.tmpl: a dereferenced receiver, not a type"},
+	"unmarshal.go.tmpl | $recv":               {Kind: nameNotAType, Why: "as alias.go.tmpl: the receiver zeroed before the decode, `*<recv> = T{}`"},
+	"annotation_schema.go.tmpl | $recv":       {Kind: nameNotAType, Why: "as unmarshal.go.tmpl"},
+	"bigint_alias.go.tmpl | $recv":            {Kind: nameNotAType, Why: "as unmarshal.go.tmpl"},
+	"inferred_alias.go.tmpl | $recv":          {Kind: nameNotAType, Why: "as unmarshal.go.tmpl"},
+	"raw_holder.go.tmpl | $recv":              {Kind: nameNotAType, Why: "as unmarshal.go.tmpl"},
 	"inferred_alias.go.tmpl | .AccessorName":  {Kind: nameNotAType, Why: "the name of the accessor method being declared"},
 	"inferred_alias.go.tmpl | .TypeCheckName": {Kind: nameNotAType, Why: "the name of the predicate method being declared"},
 	"oneof.go.tmpl | $oneof.InterfaceName":    {Kind: nameNotAType, Why: "the sealing method's name, declared on the interface and on each wrapper"},
 	"oneof.go.tmpl | .GetterName":             {Kind: nameNotAType, Why: "the getter method being declared, named by the generator's name registry"},
 
 	// ---- a declaration in the file being emitted ----
-	"alias.go.tmpl | .Name":                  {Kind: nameLocalDecl, Why: "the alias this template is declaring"},
+	"alias.go.tmpl | .Name": {Kind: nameLocalDecl, Why: "the alias this template is declaring"},
+	"type_only_schema.go.tmpl | $branch.InPlaceType": {Kind: nameLocalDecl, Why: "a type wrapper this package declares -- " +
+		"resolveTypeBranchesInPlace sets it only where the branch's chain of names ends at one, and a foreign name ends the walk first"},
 	"annotation_schema.go.tmpl | .Name":      {Kind: nameLocalDecl, Why: "the type this template is declaring"},
 	"bigint_alias.go.tmpl | .Name":           {Kind: nameLocalDecl, Why: "the type this template is declaring"},
-	"dynamic_schema.go.tmpl | .Name":         {Kind: nameLocalDecl, Why: "the type this template is declaring"},
 	"enum.go.tmpl | .Name":                   {Kind: nameLocalDecl, Why: "the enum this template is declaring"},
 	"inferred_alias.go.tmpl | .Name":         {Kind: nameLocalDecl, Why: "the wrapper this template is declaring"},
-	"not_schema.go.tmpl | .Name":             {Kind: nameLocalDecl, Why: "the type this template is declaring"},
-	"type_only_schema.go.tmpl | .Name":       {Kind: nameLocalDecl, Why: "the wrapper this template is declaring"},
-	"marshal.go.tmpl | .WrapperName":         {Kind: nameLocalDecl, Why: "a oneOf variant wrapper, minted and declared by this package"},
+	"raw_holder.go.tmpl | .Name":             {Kind: nameLocalDecl, Why: "the raw-JSON wrapper whose methods this template declares"},
+	"encode.go.tmpl | .WrapperName":          {Kind: nameLocalDecl, Why: "a oneOf variant wrapper, minted and declared by this package"},
+	"encode.go.tmpl | $v.WrapperName":        {Kind: nameLocalDecl, Why: "a oneOf variant wrapper, minted and declared by this package"},
+	"encode.go.tmpl | .Name":                 {Kind: nameLocalDecl, Why: "the struct whose appendJSON this template declares, zeroed for the null record"},
 	"oneof.go.tmpl | .WrapperName":           {Kind: nameLocalDecl, Why: "a oneOf variant wrapper, minted and declared by this package"},
 	"validation.go.tmpl | $v.WrapperName":    {Kind: nameLocalDecl, Why: "a oneOf variant wrapper, minted and declared by this package"},
 	"oneof.go.tmpl | $parent":                {Kind: nameLocalDecl, Why: "the struct the oneOf group hangs off, declared here"},
@@ -127,6 +148,7 @@ var typeNameEmissionSites = map[string]emissionSite{
 	// ---- the sites the qualification question is about ----
 	"alias.go.tmpl | .UnmarshalAs": siteOf(generator.AliasDef{}, "UnmarshalAs", "an alias over another package's type inherits none of its methods and has to convert to the qualified name"),
 	"alias.go.tmpl | .MarshalAs":   siteOf(generator.AliasDef{}, "MarshalAs", "as UnmarshalAs"),
+	"encode.go.tmpl | .MarshalAs":  siteOf(generator.AliasDef{}, "MarshalAs", "as alias.go.tmpl: the value converted to what MarshalJSON writes"),
 	"alias.go.tmpl | .ValidateAs":  siteOf(generator.AliasDef{}, "ValidateAs", "as UnmarshalAs"),
 	"inferred_alias.go.tmpl | .ValidateAs": siteOf(generator.InferredAliasDef{}, "ValidateAs",
 		"emitted as a conversion of the wrapper's value; a local namesake would convert cleanly and dispatch the wrong Validate"),

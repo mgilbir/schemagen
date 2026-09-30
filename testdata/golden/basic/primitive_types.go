@@ -16,160 +16,242 @@ type PrimitiveTypes struct {
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
 }
 
+// UnmarshalJSON replaces p with the value the document holds. See
+// decodeJSONAt.
 func (p *PrimitiveTypes) UnmarshalJSON(data []byte) error {
-	p.AdditionalProperties = nil
-	p._jsonNulls = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(p.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into p, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever p held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (p *PrimitiveTypes) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*p = PrimitiveTypes{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"bool_field",
-			"int_field",
-			"nullable_str",
-			"num_field",
-			"str_field",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*PrimitiveTypes)(nil)))
 	}
-	type Alias PrimitiveTypes
-	aux := &struct {
-		*Alias
-		IntField **jsonInteger `json:"int_field"`
-	}{
-		Alias: (*Alias)(p),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "bool_field", decode: jsonDecodeValue[*bool]},
-			{name: "int_field", decode: jsonDecodeValue[*jsonInteger]},
-			{name: "nullable_str", decode: jsonDecodeValue[*string]},
-			{name: "num_field", decode: jsonDecodeValue[*float64]},
-			{name: "str_field", decode: jsonDecodeValue[*string]},
-		})
-	}
-
-	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
-	// above are what let encoding/json see it. Each outer pointer is nil when
-	// the property was absent or null, both of which leave the field as it was.
-	if aux.IntField != nil {
-		_iv := *aux.IntField
-		p.IntField = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"bool_field",
-			"int_field",
-			"num_field",
-			"str_field",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"nullable_str",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if p._jsonNulls == nil {
-					p._jsonNulls = make(map[string]bool, 1)
-				}
-				p._jsonNulls[_nullKey] = true
-			}
-		}
-		knownFields := map[string]bool{
-			"bool_field":   true,
-			"int_field":    true,
-			"nullable_str": true,
-			"num_field":    true,
-			"str_field":    true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if p.AdditionalProperties == nil {
-				p.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			p.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	if _v, _ok := _raw["bool_field"]; _ok {
+		if _err := func(_p **bool, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*bool](_p, _d, _s, jsonDecodeValue[*bool])
+		}(&p.BoolField, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "bool_field")
+		}
+	}
+	if _v, _ok := _raw["int_field"]; _ok {
+		// A number written 1.0 is the integer 1 from draft 6 on; the shadow is
+		// what lets it through. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv *jsonInteger
+			if _err := func(_p **jsonInteger, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[*jsonInteger](_p, _d, _s, jsonDecodeValue[*jsonInteger])
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "int_field")
+			}
+			p.IntField = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
+		}
+	}
+	if _v, _ok := _raw["nullable_str"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&p.NullableStr, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "nullable_str")
+		}
+	}
+	if _v, _ok := _raw["num_field"]; _ok {
+		if _err := func(_p **float64, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*float64](_p, _d, _s, jsonDecodeValue[*float64])
+		}(&p.NumField, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "num_field")
+		}
+	}
+	if _v, _ok := _raw["str_field"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&p.StrField, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "str_field")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"bool_field",
+		"int_field",
+		"num_field",
+		"str_field",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"nullable_str",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if p._jsonNulls == nil {
+				p._jsonNulls = make(map[string]bool, 1)
+			}
+			p._jsonNulls[_nullKey] = true
+		}
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "bool_field", "int_field", "nullable_str", "num_field", "str_field":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	p.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (p PrimitiveTypes) MarshalJSON() ([]byte, error) {
-	type Alias PrimitiveTypes
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(p),
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p PrimitiveTypes) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := p.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(p._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range p._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero PrimitiveTypes
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range p._jsonNulls {
+				_cur, _present, _err := _o.memberBytes(_k, p.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range p.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, p.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members p's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (p PrimitiveTypes) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(p.BoolField)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("bool_field", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(p.IntField)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("int_field", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(p.NullableStr)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nullable_str", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(p.NumField)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("num_field", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(p.StrField)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("str_field", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of p numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (p PrimitiveTypes) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks PrimitiveTypes against its JSON Schema constraints.

@@ -15,19 +15,35 @@ type OneOfBooleanAndConstBranchesFalseBranch struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces o with the value the document holds. See
+// decodeJSONAt.
 func (o *OneOfBooleanAndConstBranchesFalseBranch) UnmarshalJSON(data []byte) error {
-	o._raw = append(o._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(o.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever o held.
+func (o *OneOfBooleanAndConstBranchesFalseBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*o = OneOfBooleanAndConstBranchesFalseBranch{}
+	o._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (o OneOfBooleanAndConstBranchesFalseBranch) MarshalJSON() ([]byte, error) {
 	if len(o._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return o._raw, nil
+	return append([]byte(nil), o._raw...), nil
 }
 
-func (o OneOfBooleanAndConstBranchesFalseBranch) Raw() json.RawMessage { return o._raw }
+// Raw returns a copy of the value's bytes.
+func (o OneOfBooleanAndConstBranchesFalseBranch) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), o._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -59,8 +75,13 @@ func (o OneOfBooleanAndConstBranchesFalseBranch) Validate() error {
 	if len(o._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(o._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(o._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -80,19 +101,35 @@ type OneOfBooleanAndConstBranchesMixed struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces o with the value the document holds. See
+// decodeJSONAt.
 func (o *OneOfBooleanAndConstBranchesMixed) UnmarshalJSON(data []byte) error {
-	o._raw = append(o._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(o.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever o held.
+func (o *OneOfBooleanAndConstBranchesMixed) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*o = OneOfBooleanAndConstBranchesMixed{}
+	o._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (o OneOfBooleanAndConstBranchesMixed) MarshalJSON() ([]byte, error) {
 	if len(o._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return o._raw, nil
+	return append([]byte(nil), o._raw...), nil
 }
 
-func (o OneOfBooleanAndConstBranchesMixed) Raw() json.RawMessage { return o._raw }
+// Raw returns a copy of the value's bytes.
+func (o OneOfBooleanAndConstBranchesMixed) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), o._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -127,8 +164,13 @@ func (o OneOfBooleanAndConstBranchesMixed) Validate() error {
 	if len(o._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(o._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(o._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -146,99 +188,131 @@ type OneOfBooleanAndConstBranchesObjectsOnlyOption0 struct {
 	K                    string                     `json:"k"`
 }
 
+// UnmarshalJSON replaces o with the value the document holds. See
+// decodeJSONAt.
 func (o *OneOfBooleanAndConstBranchesObjectsOnlyOption0) UnmarshalJSON(data []byte) error {
-	o.AdditionalProperties = nil
-	o._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(o.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into o, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever o held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (o *OneOfBooleanAndConstBranchesObjectsOnlyOption0) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*o = OneOfBooleanAndConstBranchesObjectsOnlyOption0{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"k",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfBooleanAndConstBranchesObjectsOnlyOption0)(nil)))
 	}
-	type Alias OneOfBooleanAndConstBranchesObjectsOnlyOption0
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(o),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "k", decode: jsonDecodeValue[string]},
-		})
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"k",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-		}
-		o._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			o._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{
-			"k": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if o.AdditionalProperties == nil {
-				o.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			o.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	if _v, _ok := _raw["k"]; _ok {
+		if _err := func(_p *string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[string](_p, _d, _s, jsonDecodeValue[string])
+		}(&o.K, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "k")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"k",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	o._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		o._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "k":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	o.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (o OneOfBooleanAndConstBranchesObjectsOnlyOption0) MarshalJSON() ([]byte, error) {
-	type Alias OneOfBooleanAndConstBranchesObjectsOnlyOption0
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OneOfBooleanAndConstBranchesObjectsOnlyOption0) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range o.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o OneOfBooleanAndConstBranchesObjectsOnlyOption0) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(o.K, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("k", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o OneOfBooleanAndConstBranchesObjectsOnlyOption0) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks OneOfBooleanAndConstBranchesObjectsOnlyOption0 against its JSON Schema constraints.
@@ -263,99 +337,131 @@ type OneOfBooleanAndConstBranchesObjectsOnlyOption1 struct {
 	J                    string                     `json:"j"`
 }
 
+// UnmarshalJSON replaces o with the value the document holds. See
+// decodeJSONAt.
 func (o *OneOfBooleanAndConstBranchesObjectsOnlyOption1) UnmarshalJSON(data []byte) error {
-	o.AdditionalProperties = nil
-	o._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(o.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into o, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever o held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (o *OneOfBooleanAndConstBranchesObjectsOnlyOption1) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*o = OneOfBooleanAndConstBranchesObjectsOnlyOption1{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"j",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfBooleanAndConstBranchesObjectsOnlyOption1)(nil)))
 	}
-	type Alias OneOfBooleanAndConstBranchesObjectsOnlyOption1
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(o),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "j", decode: jsonDecodeValue[string]},
-		})
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"j",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-		}
-		o._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			o._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{
-			"j": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if o.AdditionalProperties == nil {
-				o.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			o.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	if _v, _ok := _raw["j"]; _ok {
+		if _err := func(_p *string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[string](_p, _d, _s, jsonDecodeValue[string])
+		}(&o.J, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "j")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"j",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	o._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		o._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "j":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	o.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (o OneOfBooleanAndConstBranchesObjectsOnlyOption1) MarshalJSON() ([]byte, error) {
-	type Alias OneOfBooleanAndConstBranchesObjectsOnlyOption1
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OneOfBooleanAndConstBranchesObjectsOnlyOption1) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range o.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o OneOfBooleanAndConstBranchesObjectsOnlyOption1) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(o.J, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("j", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o OneOfBooleanAndConstBranchesObjectsOnlyOption1) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks OneOfBooleanAndConstBranchesObjectsOnlyOption1 against its JSON Schema constraints.
@@ -380,99 +486,131 @@ type OneOfBooleanAndConstBranchesTrueBranchOption0 struct {
 	K                    string                     `json:"k"`
 }
 
+// UnmarshalJSON replaces o with the value the document holds. See
+// decodeJSONAt.
 func (o *OneOfBooleanAndConstBranchesTrueBranchOption0) UnmarshalJSON(data []byte) error {
-	o.AdditionalProperties = nil
-	o._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(o.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into o, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever o held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (o *OneOfBooleanAndConstBranchesTrueBranchOption0) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*o = OneOfBooleanAndConstBranchesTrueBranchOption0{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"k",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfBooleanAndConstBranchesTrueBranchOption0)(nil)))
 	}
-	type Alias OneOfBooleanAndConstBranchesTrueBranchOption0
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(o),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "k", decode: jsonDecodeValue[string]},
-		})
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"k",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-		}
-		o._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			o._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{
-			"k": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if o.AdditionalProperties == nil {
-				o.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			o.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	if _v, _ok := _raw["k"]; _ok {
+		if _err := func(_p *string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[string](_p, _d, _s, jsonDecodeValue[string])
+		}(&o.K, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "k")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"k",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	o._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		o._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "k":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	o.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (o OneOfBooleanAndConstBranchesTrueBranchOption0) MarshalJSON() ([]byte, error) {
-	type Alias OneOfBooleanAndConstBranchesTrueBranchOption0
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OneOfBooleanAndConstBranchesTrueBranchOption0) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range o.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o OneOfBooleanAndConstBranchesTrueBranchOption0) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(o.K, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("k", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o OneOfBooleanAndConstBranchesTrueBranchOption0) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks OneOfBooleanAndConstBranchesTrueBranchOption0 against its JSON Schema constraints.
@@ -499,19 +637,35 @@ type OneOfBooleanAndConstBranchesTypedEnumBranch struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces o with the value the document holds. See
+// decodeJSONAt.
 func (o *OneOfBooleanAndConstBranchesTypedEnumBranch) UnmarshalJSON(data []byte) error {
-	o._raw = append(o._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(o.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever o held.
+func (o *OneOfBooleanAndConstBranchesTypedEnumBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*o = OneOfBooleanAndConstBranchesTypedEnumBranch{}
+	o._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (o OneOfBooleanAndConstBranchesTypedEnumBranch) MarshalJSON() ([]byte, error) {
 	if len(o._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return o._raw, nil
+	return append([]byte(nil), o._raw...), nil
 }
 
-func (o OneOfBooleanAndConstBranchesTypedEnumBranch) Raw() json.RawMessage { return o._raw }
+// Raw returns a copy of the value's bytes.
+func (o OneOfBooleanAndConstBranchesTypedEnumBranch) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), o._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -547,8 +701,13 @@ func (o OneOfBooleanAndConstBranchesTypedEnumBranch) Validate() error {
 	if len(o._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(o._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(o._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -702,60 +861,73 @@ func (o *OneOfBooleanAndConstBranches) GetAny() any {
 	return zero
 }
 
+// UnmarshalJSON replaces o with the value the document holds. See
+// decodeJSONAt.
 func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
-	o.AdditionalProperties = nil
-	o._jsonKeys = nil
-	o._jsonNulls = nil
-	o.ObjectsOnly = nil
-	o.ScalarsOnly = nil
-	o.TrueBranch = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(o.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into o, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever o held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (o *OneOfBooleanAndConstBranches) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*o = OneOfBooleanAndConstBranches{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"falseBranch",
-			"mixed",
-			"typedEnumBranch",
-			"objectsOnly",
-			"scalarsOnly",
-			"trueBranch",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfBooleanAndConstBranches)(nil)))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias OneOfBooleanAndConstBranches
-	aux := &struct {
-		*Alias
-		ObjectsOnly json.RawMessage `json:"objectsOnly"`
-		ScalarsOnly json.RawMessage `json:"scalarsOnly"`
-		TrueBranch  json.RawMessage `json:"trueBranch"`
-	}{
-		Alias: (*Alias)(o),
+	if _v, _ok := _raw["falseBranch"]; _ok {
+		if _err := func(_p *OneOfBooleanAndConstBranchesFalseBranch, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*OneOfBooleanAndConstBranchesFalseBranch).decodeJSONAt(_p, _d, _s))
+		}(&o.FalseBranch, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "falseBranch")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "falseBranch", decode: jsonDecodeValue[OneOfBooleanAndConstBranchesFalseBranch]},
-			{name: "mixed", decode: jsonDecodeValue[OneOfBooleanAndConstBranchesMixed]},
-			{name: "typedEnumBranch", decode: jsonDecodeValue[OneOfBooleanAndConstBranchesTypedEnumBranch]},
-		})
+	if _v, _ok := _raw["mixed"]; _ok {
+		if _err := func(_p *OneOfBooleanAndConstBranchesMixed, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*OneOfBooleanAndConstBranchesMixed).decodeJSONAt(_p, _d, _s))
+		}(&o.Mixed, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "mixed")
+		}
+	}
+	if _v, _ok := _raw["typedEnumBranch"]; _ok {
+		if _err := func(_p *OneOfBooleanAndConstBranchesTypedEnumBranch, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*OneOfBooleanAndConstBranchesTypedEnumBranch).decodeJSONAt(_p, _d, _s))
+		}(&o.TypedEnumBranch, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "typedEnumBranch")
+		}
 	}
 
 	{
-		oneofData := aux.ObjectsOnly
+		_ov, _has := _raw["objectsOnly"]
 		// Every refusal this union raises is a sentence about the value the union
 		// holds, and the property that reaches it goes in front of that sentence
 		// by the rule every other message is joined by (see jsonPathError).
@@ -767,7 +939,15 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 		oneofErrf := func(format string, args ...any) error {
 			return jsonPathf(jsonValueErrorf(format, args...), "%s", "objectsOnly")
 		}
-		if len(oneofData) > 0 && string(oneofData) != "null" {
+		// oneofWrapf is oneofErrf for a sentence that ends with a branch's own
+		// refusal, which is kept as a step of the message rather than written
+		// into it (see jsonValueWrapf): at every level of a recursive document
+		// that refuses at the bottom, each union puts its words in front of the
+		// words of the one below it.
+		oneofWrapf := func(err error, prefix string) error {
+			return jsonPathf(jsonValueWrapf(err, prefix), "%s", "objectsOnly")
+		}
+		if _has && !_d.isNull(_ov) {
 			var oneofMatched int
 			var oneofLastErr error
 			// A second tally: branches actually satisfied, not merely decoded.
@@ -779,29 +959,45 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 			var oneofOpaque int
 			var oneofStrictSel isOneOfBooleanAndConstBranches_ObjectsOnly
 			var oneofStrictErr error
+			// The candidate this branch decoded, held for the tally below. Its
+			// Validate is asked only if more than one branch matched, which is
+			// the only case the tally is read in: asked here, it was run over
+			// the whole of the value at every level of a recursive document.
+			var _vc0 *OneOfBooleanAndConstBranchesObjectsOnlyOption0
+			var _vcOK0 bool
+			// The candidate this branch decoded, held for the tally below. Its
+			// Validate is asked only if more than one branch matched, which is
+			// the only case the tally is read in: asked here, it was run over
+			// the whole of the value at every level of a recursive document.
+			var _vc1 *OneOfBooleanAndConstBranchesObjectsOnlyOption1
+			var _vcOK1 bool
+			// Every branch below is a trial, and one that holds the value's
+			// members as raw JSON takes views of the document rather than
+			// copies of them; see jsonDoc.copyOf.
+			_d.trial++
 
 			// Try variant: OneOfBooleanAndConstBranchesObjectsOnlyOption0
 			{
-				if oneofHasRequiredFields(oneofData, "k") {
+				if oneofHasRequiredFields(_d, _ov, "k") {
 					var candidate *OneOfBooleanAndConstBranchesObjectsOnlyOption0
-					if err := json.Unmarshal(oneofData, &candidate); err == nil {
+					if err := func(_p **OneOfBooleanAndConstBranchesObjectsOnlyOption0, _d *jsonDoc, _s jsonSpan) error {
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(OneOfBooleanAndConstBranchesObjectsOnlyOption0)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
+					}(&candidate, _d, _ov); err == nil {
 						o.ObjectsOnly = &OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption0{OneOfBooleanAndConstBranchesObjectsOnlyOption0: candidate}
 						oneofMatched++
 						if candidate != nil {
-							if _vErr := candidate.Validate(); _vErr == nil {
-								oneofStrict++
-								oneofStrictSel = &OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption0{OneOfBooleanAndConstBranchesObjectsOnlyOption0: candidate}
-							} else if _schemagenUndecided(_vErr) {
-								// No verdict on this branch, so no telling
-								// which one the document selects.
-								return oneofErrf("variant OneOfBooleanAndConstBranchesObjectsOnlyOption0: %w", _vErr)
-							} else {
-								oneofStrictErr = fmt.Errorf("variant OneOfBooleanAndConstBranchesObjectsOnlyOption0: %w", _vErr)
-							}
+							_vc0, _vcOK0 = candidate, true
 						} else {
 							oneofOpaque++
 						}
 					} else if _schemagenUndecided(err) {
+						_d.trial--
 						return oneofErrf("variant OneOfBooleanAndConstBranchesObjectsOnlyOption0: %w", err)
 					} else {
 						oneofLastErr = err
@@ -811,32 +1007,33 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 
 			// Try variant: OneOfBooleanAndConstBranchesObjectsOnlyOption1
 			{
-				if oneofHasRequiredFields(oneofData, "j") {
+				if oneofHasRequiredFields(_d, _ov, "j") {
 					var candidate *OneOfBooleanAndConstBranchesObjectsOnlyOption1
-					if err := json.Unmarshal(oneofData, &candidate); err == nil {
+					if err := func(_p **OneOfBooleanAndConstBranchesObjectsOnlyOption1, _d *jsonDoc, _s jsonSpan) error {
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(OneOfBooleanAndConstBranchesObjectsOnlyOption1)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
+					}(&candidate, _d, _ov); err == nil {
 						o.ObjectsOnly = &OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption1{OneOfBooleanAndConstBranchesObjectsOnlyOption1: candidate}
 						oneofMatched++
 						if candidate != nil {
-							if _vErr := candidate.Validate(); _vErr == nil {
-								oneofStrict++
-								oneofStrictSel = &OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption1{OneOfBooleanAndConstBranchesObjectsOnlyOption1: candidate}
-							} else if _schemagenUndecided(_vErr) {
-								// No verdict on this branch, so no telling
-								// which one the document selects.
-								return oneofErrf("variant OneOfBooleanAndConstBranchesObjectsOnlyOption1: %w", _vErr)
-							} else {
-								oneofStrictErr = fmt.Errorf("variant OneOfBooleanAndConstBranchesObjectsOnlyOption1: %w", _vErr)
-							}
+							_vc1, _vcOK1 = candidate, true
 						} else {
 							oneofOpaque++
 						}
 					} else if _schemagenUndecided(err) {
+						_d.trial--
 						return oneofErrf("variant OneOfBooleanAndConstBranchesObjectsOnlyOption1: %w", err)
 					} else {
 						oneofLastErr = err
 					}
 				}
 			}
+			_d.trial--
 
 			if oneofMatched == 0 {
 				// A branch is only put to a decode once the keys it selects on are
@@ -847,9 +1044,33 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 				if oneofLastErr == nil {
 					return oneofErrf("no matching oneOf variant")
 				}
-				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
+				return oneofWrapf(oneofLastErr, "no matching oneOf variant: ")
 			}
 			if oneofMatched > 1 && oneofOpaque == 0 {
+				if _vcOK0 {
+					if _vErr := _vc0.Validate(); _vErr == nil {
+						oneofStrict++
+						oneofStrictSel = &OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption0{OneOfBooleanAndConstBranchesObjectsOnlyOption0: _vc0}
+					} else if _schemagenUndecided(_vErr) {
+						// No verdict on this branch, so no telling which one
+						// the document selects.
+						return oneofErrf("variant OneOfBooleanAndConstBranchesObjectsOnlyOption0: %w", _vErr)
+					} else {
+						oneofStrictErr = jsonValueWrapf(_vErr, "variant OneOfBooleanAndConstBranchesObjectsOnlyOption0: ")
+					}
+				}
+				if _vcOK1 {
+					if _vErr := _vc1.Validate(); _vErr == nil {
+						oneofStrict++
+						oneofStrictSel = &OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption1{OneOfBooleanAndConstBranchesObjectsOnlyOption1: _vc1}
+					} else if _schemagenUndecided(_vErr) {
+						// No verdict on this branch, so no telling which one
+						// the document selects.
+						return oneofErrf("variant OneOfBooleanAndConstBranchesObjectsOnlyOption1: %w", _vErr)
+					} else {
+						oneofStrictErr = jsonValueWrapf(_vErr, "variant OneOfBooleanAndConstBranchesObjectsOnlyOption1: ")
+					}
+				}
 				// Several branches decoded and every one can be judged, so the
 				// branches' own constraints settle which of them the value
 				// really satisfies. Ambiguity is already a rejection here, so
@@ -863,7 +1084,7 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 				case oneofStrictErr != nil:
 					// Not ambiguity but a value no branch accepts: report the
 					// branch's own reason rather than a count.
-					return oneofErrf("no matching oneOf variant: %w", oneofStrictErr)
+					return oneofWrapf(oneofStrictErr, "no matching oneOf variant: ")
 				}
 			}
 			if oneofMatched > 1 {
@@ -873,7 +1094,7 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 	}
 
 	{
-		oneofData := aux.ScalarsOnly
+		_ov, _has := _raw["scalarsOnly"]
 		// Every refusal this union raises is a sentence about the value the union
 		// holds, and the property that reaches it goes in front of that sentence
 		// by the rule every other message is joined by (see jsonPathError).
@@ -885,17 +1106,30 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 		oneofErrf := func(format string, args ...any) error {
 			return jsonPathf(jsonValueErrorf(format, args...), "%s", "scalarsOnly")
 		}
-		if len(oneofData) > 0 && string(oneofData) != "null" {
+		// oneofWrapf is oneofErrf for a sentence that ends with a branch's own
+		// refusal, which is kept as a step of the message rather than written
+		// into it (see jsonValueWrapf): at every level of a recursive document
+		// that refuses at the bottom, each union puts its words in front of the
+		// words of the one below it.
+		oneofWrapf := func(err error, prefix string) error {
+			return jsonPathf(jsonValueWrapf(err, prefix), "%s", "scalarsOnly")
+		}
+		if _has && !_d.isNull(_ov) {
 			var oneofMatched int
 			var oneofLastErr error
+			// Every branch below is a trial, and one that holds the value's
+			// members as raw JSON takes views of the document rather than
+			// copies of them; see jsonDoc.copyOf.
+			_d.trial++
 
 			// Try variant: String
 			{
 				var candidate string
-				if err := json.Unmarshal(oneofData, &candidate); err == nil {
+				if err := jsonAtJSON[string](&candidate, _d, _ov); err == nil {
 					o.ScalarsOnly = &OneOfBooleanAndConstBranches_String{String: candidate}
 					oneofMatched++
 				} else if _schemagenUndecided(err) {
+					_d.trial--
 					return oneofErrf("variant String: %w", err)
 				} else {
 					oneofLastErr = err
@@ -910,7 +1144,7 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 				// of the file does -- otherwise a document this branch
 				// accepts is reported as matching no branch at all.
 				var _iv jsonInteger
-				_ivErr := json.Unmarshal(oneofData, &_iv)
+				_ivErr := jsonAtJSON[jsonInteger](&_iv, _d, _ov)
 				if _ivErr == nil {
 					candidate = int64(_iv)
 				}
@@ -918,11 +1152,13 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 					o.ScalarsOnly = &OneOfBooleanAndConstBranches_Integer{Integer: candidate}
 					oneofMatched++
 				} else if _schemagenUndecided(err) {
+					_d.trial--
 					return oneofErrf("variant Integer: %w", err)
 				} else {
 					oneofLastErr = err
 				}
 			}
+			_d.trial--
 
 			if oneofMatched == 0 {
 				// A branch is only put to a decode once the keys it selects on are
@@ -933,7 +1169,7 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 				if oneofLastErr == nil {
 					return oneofErrf("no matching oneOf variant")
 				}
-				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
+				return oneofWrapf(oneofLastErr, "no matching oneOf variant: ")
 			}
 			if oneofMatched > 1 {
 				return oneofErrf("multiple oneOf variants matched (%d), expected exactly 1", oneofMatched)
@@ -942,7 +1178,7 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 	}
 
 	{
-		oneofData := aux.TrueBranch
+		_ov, _has := _raw["trueBranch"]
 		// Every refusal this union raises is a sentence about the value the union
 		// holds, and the property that reaches it goes in front of that sentence
 		// by the rule every other message is joined by (see jsonPathError).
@@ -954,7 +1190,15 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 		oneofErrf := func(format string, args ...any) error {
 			return jsonPathf(jsonValueErrorf(format, args...), "%s", "trueBranch")
 		}
-		if len(oneofData) > 0 && string(oneofData) != "null" {
+		// oneofWrapf is oneofErrf for a sentence that ends with a branch's own
+		// refusal, which is kept as a step of the message rather than written
+		// into it (see jsonValueWrapf): at every level of a recursive document
+		// that refuses at the bottom, each union puts its words in front of the
+		// words of the one below it.
+		oneofWrapf := func(err error, prefix string) error {
+			return jsonPathf(jsonValueWrapf(err, prefix), "%s", "trueBranch")
+		}
+		if _has && !_d.isNull(_ov) {
 			var oneofMatched int
 			var oneofLastErr error
 			// A second tally: branches actually satisfied, not merely decoded.
@@ -966,29 +1210,39 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 			var oneofOpaque int
 			var oneofStrictSel isOneOfBooleanAndConstBranches_TrueBranch
 			var oneofStrictErr error
+			// The candidate this branch decoded, held for the tally below. Its
+			// Validate is asked only if more than one branch matched, which is
+			// the only case the tally is read in: asked here, it was run over
+			// the whole of the value at every level of a recursive document.
+			var _vc0 *OneOfBooleanAndConstBranchesTrueBranchOption0
+			var _vcOK0 bool
+			// Every branch below is a trial, and one that holds the value's
+			// members as raw JSON takes views of the document rather than
+			// copies of them; see jsonDoc.copyOf.
+			_d.trial++
 
 			// Try variant: OneOfBooleanAndConstBranchesTrueBranchOption0
 			{
-				if oneofHasRequiredFields(oneofData, "k") {
+				if oneofHasRequiredFields(_d, _ov, "k") {
 					var candidate *OneOfBooleanAndConstBranchesTrueBranchOption0
-					if err := json.Unmarshal(oneofData, &candidate); err == nil {
+					if err := func(_p **OneOfBooleanAndConstBranchesTrueBranchOption0, _d *jsonDoc, _s jsonSpan) error {
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(OneOfBooleanAndConstBranchesTrueBranchOption0)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
+					}(&candidate, _d, _ov); err == nil {
 						o.TrueBranch = &OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesTrueBranchOption0{OneOfBooleanAndConstBranchesTrueBranchOption0: candidate}
 						oneofMatched++
 						if candidate != nil {
-							if _vErr := candidate.Validate(); _vErr == nil {
-								oneofStrict++
-								oneofStrictSel = &OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesTrueBranchOption0{OneOfBooleanAndConstBranchesTrueBranchOption0: candidate}
-							} else if _schemagenUndecided(_vErr) {
-								// No verdict on this branch, so no telling
-								// which one the document selects.
-								return oneofErrf("variant OneOfBooleanAndConstBranchesTrueBranchOption0: %w", _vErr)
-							} else {
-								oneofStrictErr = fmt.Errorf("variant OneOfBooleanAndConstBranchesTrueBranchOption0: %w", _vErr)
-							}
+							_vc0, _vcOK0 = candidate, true
 						} else {
 							oneofOpaque++
 						}
 					} else if _schemagenUndecided(err) {
+						_d.trial--
 						return oneofErrf("variant OneOfBooleanAndConstBranchesTrueBranchOption0: %w", err)
 					} else {
 						oneofLastErr = err
@@ -999,7 +1253,7 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 			// Try variant: Any
 			{
 				var candidate any
-				if err := json.Unmarshal(oneofData, &candidate); err == nil {
+				if err := jsonAtJSON[any](&candidate, _d, _ov); err == nil {
 					o.TrueBranch = &OneOfBooleanAndConstBranches_Any{Any: candidate}
 					oneofMatched++
 					// Nothing this branch says is left for a Validate to
@@ -1007,11 +1261,13 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 					oneofStrict++
 					oneofStrictSel = &OneOfBooleanAndConstBranches_Any{Any: candidate}
 				} else if _schemagenUndecided(err) {
+					_d.trial--
 					return oneofErrf("variant Any: %w", err)
 				} else {
 					oneofLastErr = err
 				}
 			}
+			_d.trial--
 
 			if oneofMatched == 0 {
 				// A branch is only put to a decode once the keys it selects on are
@@ -1022,9 +1278,21 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 				if oneofLastErr == nil {
 					return oneofErrf("no matching oneOf variant")
 				}
-				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
+				return oneofWrapf(oneofLastErr, "no matching oneOf variant: ")
 			}
 			if oneofMatched > 1 && oneofOpaque == 0 {
+				if _vcOK0 {
+					if _vErr := _vc0.Validate(); _vErr == nil {
+						oneofStrict++
+						oneofStrictSel = &OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesTrueBranchOption0{OneOfBooleanAndConstBranchesTrueBranchOption0: _vc0}
+					} else if _schemagenUndecided(_vErr) {
+						// No verdict on this branch, so no telling which one
+						// the document selects.
+						return oneofErrf("variant OneOfBooleanAndConstBranchesTrueBranchOption0: %w", _vErr)
+					} else {
+						oneofStrictErr = jsonValueWrapf(_vErr, "variant OneOfBooleanAndConstBranchesTrueBranchOption0: ")
+					}
+				}
 				// Several branches decoded and every one can be judged, so the
 				// branches' own constraints settle which of them the value
 				// really satisfies. Ambiguity is already a rejection here, so
@@ -1038,7 +1306,7 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 				case oneofStrictErr != nil:
 					// Not ambiguity but a value no branch accepts: report the
 					// branch's own reason rather than a count.
-					return oneofErrf("no matching oneOf variant: %w", oneofStrictErr)
+					return oneofWrapf(oneofStrictErr, "no matching oneOf variant: ")
 				}
 			}
 			if oneofMatched > 1 {
@@ -1046,166 +1314,235 @@ func (o *OneOfBooleanAndConstBranches) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"falseBranch",
-			"mixed",
-			"objectsOnly",
-			"scalarsOnly",
-			"typedEnumBranch",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
-		}
-		o._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			o._jsonKeys[_k] = true
-		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"trueBranch",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if o._jsonNulls == nil {
-					o._jsonNulls = make(map[string]bool, 1)
-				}
-				o._jsonNulls[_nullKey] = true
-			}
-		}
-		knownFields := map[string]bool{
-			"falseBranch":     true,
-			"mixed":           true,
-			"typedEnumBranch": true,
-			"objectsOnly":     true,
-			"scalarsOnly":     true,
-			"trueBranch":      true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if o.AdditionalProperties == nil {
-				o.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			o.AdditionalProperties[rawKey] = rawVal
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"falseBranch",
+		"mixed",
+		"objectsOnly",
+		"scalarsOnly",
+		"typedEnumBranch",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
 	}
+	o._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		o._jsonKeys[_k] = true
+	}
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"trueBranch",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if o._jsonNulls == nil {
+				o._jsonNulls = make(map[string]bool, 1)
+			}
+			o._jsonNulls[_nullKey] = true
+		}
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "falseBranch", "mixed", "typedEnumBranch", "objectsOnly", "scalarsOnly", "trueBranch":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	o.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (o OneOfBooleanAndConstBranches) MarshalJSON() ([]byte, error) {
-	type Alias OneOfBooleanAndConstBranches
-	aux := struct {
-		Alias
-		ObjectsOnly json.RawMessage `json:"objectsOnly,omitempty"`
-		ScalarsOnly json.RawMessage `json:"scalarsOnly,omitempty"`
-		TrueBranch  json.RawMessage `json:"trueBranch,omitempty"`
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
+	return _b, nil
+}
 
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OneOfBooleanAndConstBranches) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
+	}
 	if o.ObjectsOnly != nil {
-		switch _sel := o.ObjectsOnly.(type) {
-		case *OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption0:
-			raw, err := json.Marshal(_sel.OneOfBooleanAndConstBranchesObjectsOnlyOption0)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.ObjectsOnly: %w", err)
-			}
-			aux.ObjectsOnly = raw
-		case *OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption1:
-			raw, err := json.Marshal(_sel.OneOfBooleanAndConstBranchesObjectsOnlyOption1)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.ObjectsOnly: %w", err)
-			}
-			aux.ObjectsOnly = raw
+		switch o.ObjectsOnly.(type) {
+		case *OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption0, *OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption1:
+			_o.deferred("objectsOnly", 3)
 		}
 	}
-
 	if o.ScalarsOnly != nil {
-		switch _sel := o.ScalarsOnly.(type) {
-		case *OneOfBooleanAndConstBranches_String:
-			raw, err := json.Marshal(_sel.String)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.ScalarsOnly: %w", err)
-			}
-			aux.ScalarsOnly = raw
-		case *OneOfBooleanAndConstBranches_Integer:
-			raw, err := json.Marshal(_sel.Integer)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.ScalarsOnly: %w", err)
-			}
-			aux.ScalarsOnly = raw
+		switch o.ScalarsOnly.(type) {
+		case *OneOfBooleanAndConstBranches_String, *OneOfBooleanAndConstBranches_Integer:
+			_o.deferred("scalarsOnly", 4)
 		}
 	}
-
 	if o.TrueBranch != nil {
-		switch _sel := o.TrueBranch.(type) {
-		case *OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesTrueBranchOption0:
-			raw, err := json.Marshal(_sel.OneOfBooleanAndConstBranchesTrueBranchOption0)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.TrueBranch: %w", err)
-			}
-			aux.TrueBranch = raw
-		case *OneOfBooleanAndConstBranches_Any:
-			raw, err := json.Marshal(_sel.Any)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.TrueBranch: %w", err)
-			}
-			aux.TrueBranch = raw
+		switch o.TrueBranch.(type) {
+		case *OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesTrueBranchOption0, *OneOfBooleanAndConstBranches_Any:
+			_o.deferred("trueBranch", 5)
 		}
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(o._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range o._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero OneOfBooleanAndConstBranches
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range o._jsonNulls {
+				_cur, _present, _err := _o.memberBytes(_k, o.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range o.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o OneOfBooleanAndConstBranches) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitZero(o.FalseBranch)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("falseBranch", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(o.Mixed)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("mixed", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(o.TypedEnumBranch)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("typedEnumBranch", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o OneOfBooleanAndConstBranches) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 3:
+		switch _sel := o.ObjectsOnly.(type) {
+		case *OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption0:
+			_out, _err := (func(_v *OneOfBooleanAndConstBranchesObjectsOnlyOption0, _b []byte) ([]byte, error) {
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*OneOfBooleanAndConstBranchesObjectsOnlyOption0)(nil), true)
+				}
+				return _out, nil
+			})(_sel.OneOfBooleanAndConstBranchesObjectsOnlyOption0, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.ObjectsOnly: %w", _err)
+			}
+			return _out, nil
+		case *OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesObjectsOnlyOption1:
+			_out, _err := (func(_v *OneOfBooleanAndConstBranchesObjectsOnlyOption1, _b []byte) ([]byte, error) {
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*OneOfBooleanAndConstBranchesObjectsOnlyOption1)(nil), true)
+				}
+				return _out, nil
+			})(_sel.OneOfBooleanAndConstBranchesObjectsOnlyOption1, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.ObjectsOnly: %w", _err)
+			}
+			return _out, nil
+		}
+	case 4:
+		switch _sel := o.ScalarsOnly.(type) {
+		case *OneOfBooleanAndConstBranches_String:
+			_out, _err := (jsonAppendLeaf[string])(_sel.String, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.ScalarsOnly: %w", _err)
+			}
+			return _out, nil
+		case *OneOfBooleanAndConstBranches_Integer:
+			_out, _err := (jsonAppendLeaf[int64])(_sel.Integer, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.ScalarsOnly: %w", _err)
+			}
+			return _out, nil
+		}
+	case 5:
+		switch _sel := o.TrueBranch.(type) {
+		case *OneOfBooleanAndConstBranches_OneOfBooleanAndConstBranchesTrueBranchOption0:
+			_out, _err := (func(_v *OneOfBooleanAndConstBranchesTrueBranchOption0, _b []byte) ([]byte, error) {
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*OneOfBooleanAndConstBranchesTrueBranchOption0)(nil), true)
+				}
+				return _out, nil
+			})(_sel.OneOfBooleanAndConstBranchesTrueBranchOption0, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.TrueBranch: %w", _err)
+			}
+			return _out, nil
+		case *OneOfBooleanAndConstBranches_Any:
+			_out, _err := (jsonAppendLeaf[any])(_sel.Any, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling OneOfBooleanAndConstBranches.TrueBranch: %w", _err)
+			}
+			return _out, nil
+		}
+	}
+	return _b, nil
 }
 
 // Validate checks OneOfBooleanAndConstBranches against its JSON Schema constraints.

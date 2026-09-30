@@ -16,19 +16,35 @@ type UnevaluatedItemsTestAllofExtendedTuple struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces u with the value the document holds. See
+// decodeJSONAt.
 func (u *UnevaluatedItemsTestAllofExtendedTuple) UnmarshalJSON(data []byte) error {
-	u._raw = append(u._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(u.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever u held.
+func (u *UnevaluatedItemsTestAllofExtendedTuple) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*u = UnevaluatedItemsTestAllofExtendedTuple{}
+	u._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (u UnevaluatedItemsTestAllofExtendedTuple) MarshalJSON() ([]byte, error) {
 	if len(u._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return u._raw, nil
+	return append([]byte(nil), u._raw...), nil
 }
 
-func (u UnevaluatedItemsTestAllofExtendedTuple) Raw() json.RawMessage { return u._raw }
+// Raw returns a copy of the value's bytes.
+func (u UnevaluatedItemsTestAllofExtendedTuple) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), u._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -70,8 +86,13 @@ func (u UnevaluatedItemsTestAllofExtendedTuple) Validate() error {
 	if len(u._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(u._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(u._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -91,107 +112,167 @@ type UnevaluatedItemsTest struct {
 	TypedOverflow        []any                                  `json:"typed_overflow,omitzero"`
 }
 
+// UnmarshalJSON replaces u with the value the document holds. See
+// decodeJSONAt.
 func (u *UnevaluatedItemsTest) UnmarshalJSON(data []byte) error {
-	u.AdditionalProperties = nil
-	u._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(u.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into u, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever u held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (u *UnevaluatedItemsTest) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*u = UnevaluatedItemsTest{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"allof_extended_tuple",
-			"strict_tuple",
-			"typed_overflow",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*UnevaluatedItemsTest)(nil)))
 	}
-	type Alias UnevaluatedItemsTest
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(u),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "allof_extended_tuple", decode: jsonDecodeValue[UnevaluatedItemsTestAllofExtendedTuple]},
-			{name: "strict_tuple", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "typed_overflow", decode: jsonDecodeItems(jsonDecodeValue[any])},
-		})
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"allof_extended_tuple",
-			"strict_tuple",
-			"typed_overflow",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-		}
-		u._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			u._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{
-			"allof_extended_tuple": true,
-			"strict_tuple":         true,
-			"typed_overflow":       true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if u.AdditionalProperties == nil {
-				u.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			u.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	if _v, _ok := _raw["allof_extended_tuple"]; _ok {
+		if _err := func(_p *UnevaluatedItemsTestAllofExtendedTuple, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*UnevaluatedItemsTestAllofExtendedTuple).decodeJSONAt(_p, _d, _s))
+		}(&u.AllofExtendedTuple, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "allof_extended_tuple")
+		}
+	}
+	if _v, _ok := _raw["strict_tuple"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&u.StrictTuple, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "strict_tuple")
+		}
+	}
+	if _v, _ok := _raw["typed_overflow"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&u.TypedOverflow, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "typed_overflow")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"allof_extended_tuple",
+		"strict_tuple",
+		"typed_overflow",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	u._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		u._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "allof_extended_tuple", "strict_tuple", "typed_overflow":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	u.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (u UnevaluatedItemsTest) MarshalJSON() ([]byte, error) {
-	type Alias UnevaluatedItemsTest
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(u),
+	_b, _err := u.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends u to _b as JSON. See jsonEnc.
+func (u UnevaluatedItemsTest) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := u.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range u.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, u.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members u's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (u UnevaluatedItemsTest) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.AllofExtendedTuple)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("allof_extended_tuple", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.StrictTuple)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("strict_tuple", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.TypedOverflow)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("typed_overflow", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of u numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (u UnevaluatedItemsTest) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks UnevaluatedItemsTest against its JSON Schema constraints.
@@ -255,11 +336,12 @@ func (u UnevaluatedItemsTest) Validate() error {
 			for _ui := evaluatedCount; _ui < len(u.TypedOverflow); _ui++ {
 				_uiElem := any(u.TypedOverflow[_ui])
 				_ = _uiElem
-				_uiBytes, _uiMarshalErr := json.Marshal(_uiElem)
-				if _uiMarshalErr != nil {
-					return fmt.Errorf("typed_overflow: unevaluatedItems[%d]: %w", _ui, _uiMarshalErr)
+				_uiKind, _uiText := jsonKindAny(_uiElem)
+				_ = _uiText
+				if _uiKind == 0 {
+					return fmt.Errorf("typed_overflow: unevaluatedItems[%d]: %w", _ui, jsonMarshalError(&_uiElem, fmt.Errorf("json: the item cannot be written as JSON")))
 				}
-				if len(_uiBytes) < 2 || _uiBytes[0] != '"' {
+				if _uiKind != jsonIDStringKind {
 					return fmt.Errorf("typed_overflow: unevaluatedItems[%d]: must be a string", _ui)
 				}
 			}

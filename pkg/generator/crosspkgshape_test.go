@@ -412,6 +412,10 @@ func TestForeignTypeIsNeverJudgedByALocalNamesake(t *testing.T) {
 		Struct:            true,
 		Collection:        true,
 		Interface:         true,
+		NilState:          true,
+		StringBacked:      false,
+		NoMethods:         true,
+		ZeroJSONKind:      zeroKindNull,
 		RawWrapper:        true,
 		AliasDropsMethods: true,
 		Unmarshaler:       true,
@@ -473,10 +477,40 @@ func TestForeignTypeIsNeverJudgedByALocalNamesake(t *testing.T) {
 			if !g.isInterfaceType(foreign()) {
 				t.Error("isInterfaceType answered from the local table for a foreign name")
 			}
-			aliases := map[string]*AliasDef{"T": {Name: "T", Underlying: &PrimitiveType{Name: "string"}}}
-			if canHaveMethodsResolved(foreign(), aliases) {
-				t.Error("canHaveMethodsResolved followed a local alias of the same name to decide whether a " +
-					"foreign type can carry methods; Go permits none on a type whose underlying resolves to any")
+		},
+		"NoMethods": func(t *testing.T) {
+			if newGen().canHaveMethods(foreign()) {
+				t.Error("canHaveMethods followed a local alias of the same name to decide whether a " +
+					"foreign type can carry methods; Go permits none on a type whose underlying resolves to " +
+					"a pointer or to any")
+			}
+		},
+		"ZeroJSONKind": func(t *testing.T) {
+			// The local namesake is a string, whose zero writes "". The record
+			// says the foreign type's zero writes null.
+			if kind, ok := newGen().zeroJSONKind(foreign(), 0); !ok || kind != zeroKindNull {
+				t.Errorf("zeroJSONKind = %q (ok=%v), want the published %q", kind, ok, zeroKindNull)
+			}
+		},
+		"NilState": func(t *testing.T) {
+			if !newGen().hasNilState(foreign()) {
+				t.Error("hasNilState answered from the local string alias for a foreign type published as " +
+					"having a nil state, so an optional field of it is pointer-wrapped for no reason and a " +
+					"forbidden property built in Go is never caught")
+			}
+			// Through a local alias over the foreign name too: the chain ends at
+			// the foreign type, and the record answers for everything past it.
+			g := newGen()
+			g.output.TypeDefs = append(g.output.TypeDefs, &AliasDef{Name: "Over", Underlying: foreign()})
+			if !g.hasNilState(&NamedType{Name: "Over"}) {
+				t.Error("hasNilState stopped at a local alias over a foreign type instead of reading the " +
+					"foreign record at the end of the chain")
+			}
+		},
+		"StringBacked": func(t *testing.T) {
+			if newGen().isStringBackedNamedType(foreign()) {
+				t.Error("isStringBackedNamedType answered from the local string alias for a foreign type " +
+					"published as not a string, so a string(v) conversion is emitted over it and does not compile")
 			}
 		},
 		"RawWrapper": func(t *testing.T) {

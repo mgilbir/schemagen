@@ -38,6 +38,7 @@ var inertFields = map[string]string{
 	"Name":                    "a Go identifier: a type, field, constant or getter name",
 	"FieldName":               "a Go field identifier",
 	"TypeName":                "a Go type identifier",
+	"InPlaceType":             "a Go type identifier: a type wrapper this package declares",
 	"WrapperName":             "a Go type identifier",
 	"InterfaceName":           "a Go type identifier",
 	"ItemsTypeName":           "a Go type identifier",
@@ -60,6 +61,9 @@ var inertFields = map[string]string{
 	"ParentName":              "a Go type identifier",
 	"AccessRulesVar":          "a Go package-variable identifier the generator's name registry mints",
 	"SchemaVar":               "a Go package-variable identifier the generator's name registry mints",
+	"Var":                     "ElementNode.Var: a Go package-variable identifier the generator's name registry mints",
+	"EncodeKeysVar":           "a Go package-variable identifier the generator's name registry mints",
+	"StripRulesVar":           "a Go package-variable identifier the generator's name registry mints",
 	"AllowedVar":              "a Go package-variable identifier the generator's name registry mints",
 	"GetterName":              "a Go method identifier the generator's name registry mints in the parent's member scope",
 }
@@ -109,6 +113,7 @@ var codeFuncs = map[string]string{
 	"itemArgs":            "index variables the generator picks",
 	"argPrefix":           "index variables the generator picks",
 	"pathErrf":            "one of two function names",
+	"pathWrapf":           "one of two function names",
 	"pathJoin":            "one of two function names",
 	"formatHelperName":    "a helper function name from a fixed table",
 	"formatElemExpr":      "a conversion built from a code expression",
@@ -118,24 +123,38 @@ var codeFuncs = map[string]string{
 // codeFields hold Go code or literals the generator built, each from minted
 // identifiers and strconv-quoted schema text.
 var codeFields = map[string]string{
-	"Expr":           "a Go expression built from minted identifiers",
-	"Cond":           "a Go condition built from minted identifiers and ints",
-	"Args":           "index variables the generator picks",
-	"Convert":        "a conversion the generator picks",
-	"Decoder":        "a decode function name from a fixed table",
-	"UnmarshalAs":    "a Go type expression",
-	"MarshalAs":      "a Go type expression",
-	"ValidateAs":     "a Go type expression",
-	"ValueType":      "a Go type expression",
-	"DefaultLiteral": "a Go composite literal; generator.defaultLiteral quotes every string",
-	"ZeroLiteral":    "a Go zero value for a minted type",
-	"NodeLiteral":    "an evaluator node literal; generator quotes every string",
-	"Literal":        "a Go literal; generator quotes every string",
-	"Indent":         "whitespace",
-	"Vars":           "a leastKeyCtx's key and value variables; see TestLeastKeyArgumentsAreCode",
-	"Container":      "a leastKeyCtx's map expression; see TestLeastKeyArgumentsAreCode",
-	"Key":            "a leastKeyCtx's key variable; see TestLeastKeyArgumentsAreCode",
-	"Ret":            "a leastKeyCtx's return operands; see TestLeastKeyArgumentsAreCode",
+	"Expr":    "a Go expression built from minted identifiers",
+	"Cond":    "a Go condition built from minted identifiers and ints",
+	"Args":    "index variables the generator picks",
+	"Convert": "a conversion the generator picks",
+	// The decode plans generator/decodeplan.go composes: helper names, method
+	// expressions and function literals over GoTypeName()s. Nothing from the
+	// schema but minted type names reaches them.
+	"Decoder":            "a decode plan: a jsonAt expression built from helper names and minted type names",
+	"MemberDecoder":      "a decode plan, as Decoder",
+	"ValueDecoder":       "a decode plan, as Decoder",
+	"UnderlyingDecoder":  "a decode plan, as Decoder",
+	"UnmarshalAsDecoder": "a decode plan, as Decoder",
+	// The encode plans generator/encodeplan.go composes, the same way.
+	"Encoder":      "an encode plan: a jsonEnc expression built from helper names and minted type names",
+	"ValueEncoder": "an encode plan, as Encoder",
+	// The identity plans generator/identityplan.go composes, the same way.
+	"Identifier":             "an identity plan: a jsonIdentify expression built from helper names and minted type names",
+	"ValueIdentifier":        "an identity plan, as Identifier",
+	"EncodeAdditionalMember": "an int constant",
+	"UnmarshalAs":            "a Go type expression",
+	"MarshalAs":              "a Go type expression",
+	"ValidateAs":             "a Go type expression",
+	"ValueType":              "a Go type expression",
+	"DefaultLiteral":         "a Go composite literal; generator.defaultLiteral quotes every string",
+	"ZeroLiteral":            "a Go zero value for a minted type",
+	"NodeLiteral":            "an evaluator node literal; generator quotes every string",
+	"Literal":                "a Go literal; generator quotes every string",
+	"Indent":                 "whitespace",
+	"Vars":                   "a leastKeyCtx's key and value variables; see TestLeastKeyArgumentsAreCode",
+	"Container":              "a leastKeyCtx's map expression; see TestLeastKeyArgumentsAreCode",
+	"Key":                    "a leastKeyCtx's key variable; see TestLeastKeyArgumentsAreCode",
+	"Ret":                    "a leastKeyCtx's return operands; see TestLeastKeyArgumentsAreCode",
 }
 
 // formatFields are fields typed formatText (see TestFormatFieldsAreTyped), so

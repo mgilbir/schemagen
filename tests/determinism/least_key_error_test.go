@@ -227,3 +227,160 @@ func main() {
 		}
 	}
 }
+
+// TestRefusedDecodeLeavesOneValue decodes, many times over in one process, a
+// document the decoder refuses at one member, and requires every decode to
+// leave the same value behind.
+//
+// The least-key loop that files a struct's additional and pattern members
+// ranges over them in Go's randomised map order, and it filed each member into
+// the receiver as it met it. A refusal at the least key ends the loop with the
+// members met before it filed and the rest not, so one refused document left a
+// different value from run to run -- and a value decoded into twice was not the
+// value the second document alone leaves, which the corpus-wide ownership test
+// in tests/corpus caught only when the order happened to go that way. The
+// members are now filed into locals the receiver is given only when no member
+// was refused. Each document here refuses at its least key and carries a dozen
+// members that decode, so a loop that still files as it goes leaves a
+// different value within the first few of its forty decodes: all forty
+// differed from the first, for each case, when this was written.
+func TestRefusedDecodeLeavesOneValue(t *testing.T) {
+	if testing.Short() {
+		t.Skip("builds and runs a program")
+	}
+	members := func(format string) string {
+		keys := strings.Split("cdefghijklmn", "")
+		parts := make([]string, len(keys))
+		for i, k := range keys {
+			parts[i] = fmt.Sprintf(format, k)
+		}
+		return strings.Join(parts, ",")
+	}
+	cases := []struct{ name, schema, doc string }{
+		{
+			name:   "additionalProperties value refused",
+			schema: `{"type":"object","properties":{"a":{"type":"string"}},"additionalProperties":{"type":"integer"}}`,
+			doc:    `{"a":"x","b":"not a number",` + members(`"%s":1`) + `}`,
+		},
+		{
+			name:   "additionalProperties null refused",
+			schema: `{"type":"object","properties":{"a":{"type":"string"}},"additionalProperties":{"type":"string"}}`,
+			doc:    `{"a":"x","b":null,` + members(`"%s":"v"`) + `}`,
+		},
+		{
+			name:   "pattern members filed before an additional member is refused",
+			schema: `{"type":"object","patternProperties":{"^p":{}},"additionalProperties":{"type":"integer"}}`,
+			doc:    `{"b":"not a number",` + members(`"p%s":{}`) + `}`,
+		},
+	}
+
+	em, err := emitter.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := writeTestGoMod(dir, "refusedvalue"); err != nil {
+		t.Fatal(err)
+	}
+	var imports, calls strings.Builder
+	for i, c := range cases {
+		pkg := fmt.Sprintf("c%02d", i)
+		sub := filepath.Join(dir, pkg)
+		if err := os.MkdirAll(sub, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		schemaPath := filepath.Join(sub, "schema.json")
+		if err := os.WriteFile(schemaPath, []byte(c.schema), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		tr := generateTranscript(em, schemaPath, generator.Config{
+			PackageName: pkg,
+			OutputDir:   ".",
+			OmitEmpty:   true,
+			Validation:  generator.ValidationModeStatic,
+		})
+		if tr.src == nil {
+			t.Fatalf("%s: schema did not generate:\n%s", c.name, tr.report)
+		}
+		if !strings.Contains(string(tr.src), "// refused for the least failing key") {
+			t.Fatalf("%s: the generated code has no loop emitted by least_key_open", c.name)
+		}
+		if err := os.WriteFile(filepath.Join(sub, "types.go"), tr.src, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(sub, "helpers.go"), tr.helpers, 0o644); err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(&imports, "\t%s \"refusedvalue/%s\"\n", pkg, pkg)
+		fmt.Fprintf(&calls, "\trun(%q, %q, func() any { return new(%s.Root) })\n", c.name, c.doc, pkg)
+	}
+	mainGo := `package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"reflect"
+` + imports.String() + `)
+
+type outcome struct {
+	Err       string
+	Differing int
+}
+
+var out = map[string]outcome{}
+
+// run decodes doc into a fresh value, then forty more times, and counts the
+// later decodes whose value differs from the first one's.
+func run(name, doc string, mk func() any) {
+	first := mk()
+	err := json.Unmarshal([]byte(doc), first)
+	o := outcome{Err: fmt.Sprint(err)}
+	for i := 0; i < 40; i++ {
+		v := mk()
+		_ = json.Unmarshal([]byte(doc), v)
+		if !reflect.DeepEqual(v, first) {
+			o.Differing++
+		}
+	}
+	out[name] = o
+}
+
+func main() {
+` + calls.String() + `	if err := json.NewEncoder(os.Stdout).Encode(out); err != nil {
+		panic(err)
+	}
+}
+`
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte(mainGo), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+	output, err := testgo.Command(ctx, dir, "run", ".").Output()
+	if err != nil {
+		stderr := ""
+		if ee, ok := err.(*exec.ExitError); ok {
+			stderr = string(ee.Stderr)
+		}
+		t.Fatalf("running the program: %v\n%s", err, stderr)
+	}
+	var got map[string]struct {
+		Err       string
+		Differing int
+	}
+	if err := json.Unmarshal(output, &got); err != nil {
+		t.Fatalf("reading the program's output: %v\n%s", err, output)
+	}
+	for _, c := range cases {
+		o, ok := got[c.name]
+		switch {
+		case !ok:
+			t.Errorf("%s: the program reported nothing", c.name)
+		case o.Err == "<nil>":
+			t.Errorf("%s: the document was accepted; the case is not reaching the refusal it is written for", c.name)
+		case o.Differing != 0:
+			t.Errorf("%s: %d of forty decodes of one refused document left a value different from the first decode's", c.name, o.Differing)
+		}
+	}
+}

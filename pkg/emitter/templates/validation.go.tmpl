@@ -3,7 +3,15 @@
 {{- $recv := receiverName .Name -}}
 
 // Validate checks {{$struct.Name}} against its JSON Schema constraints.
+{{- if $struct.ValidateIn}}
+func ({{$recv}} {{$struct.Name}}) Validate() error { return {{$recv}}.validateIn(nil) }
+
+// validateIn is Validate, sharing _vc with the values below it: the element
+// identities a uniqueItems check keeps. See jsonValidation.
+func ({{$recv}} {{$struct.Name}}) validateIn(_vc *jsonValidation) error {
+{{- else}}
 func ({{$recv}} {{$struct.Name}}) Validate() error {
+{{- end}}
 	{{- if $struct.AcceptNonObject}}
 	// Non-object data was silently accepted — validate non-object constraints if any.
 	if {{$recv}}._nonObject {
@@ -352,27 +360,21 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{{- else}}
 		arr := {{$recv}}.{{.FieldName}}
 		{{- end}}
-		seen := make(map[string]bool, len(arr))
-		for _at, item := range arr {
-			_enc, err := json.Marshal(item)
-			if err != nil {
-				return fmt.Errorf("{{jsonErrorName .JSONName}}: uniqueItems check: marshal error at index %d: %w", _at, err)
-			}
-			{{- if .RawElements}}
-			// The elements are the document's own bytes, and the bytes are not
-			// the value: 1 and 1.0 are one element to uniqueItems. Reduced to
-			// the one text every equal JSON value shares. See _jsonCanonical.
-			key, err := _jsonCanonical(_enc)
-			if err != nil {
-				return fmt.Errorf("{{jsonErrorName .JSONName}}: uniqueItems check: invalid JSON at index %d: %w", _at, err)
-			}
-			{{- else}}
-			key := string(_enc)
-			{{- end}}
-			if seen[key] {
-				return fmt.Errorf("{{jsonErrorName .JSONName}}: items are not unique (duplicate at index %d)", _at)
-			}
-			seen[key] = true
+		{{- /* Compared by identity, read off each element as it is held: equal
+		       as JSON -- 1 and 1.0, members in any order -- is one identity. The
+		       elements were marshalled and compared as text, which at every
+		       level of a document wrote out every subtree below it. See jsonID. */}}
+		{{- if .KeepIDs}}
+		if _vc == nil {
+			_vc = &jsonValidation{}
+		}
+		{{- end}}
+		_ids, _at, _err := jsonIDsOf(arr, {{if .KeepIDs}}_vc{{else}}nil{{end}}, {{.Identifier}})
+		if _err != nil {
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: uniqueItems check: marshal error at index %d: %w", _at, jsonMarshalError(&arr[_at], _err))
+		}
+		if _at := jsonFirstDuplicate(arr, _ids, {{.Identifier}}); _at >= 0 {
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: items are not unique (duplicate at index %d)", _at)
 		}
 	}
 	{{- end}}
@@ -414,9 +416,10 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- if eq .RuleType "const"}}
 	{{- if .ExactCompare}}
 	{{- /* The const is a number and the value is held as its literal, so the
-	       two are compared as numbers. The general arm below marshals the value
-	       and compares the JSON text, which reads 2.50 and 2.5 as different
-	       constants; they are one number, and the schema named the number. */}}
+	       two are compared as numbers: the general arm below compares against
+	       the const's text as folded through float64, which reads a literal
+	       float64 cannot hold as a neighbour it rounds to; the schema named the
+	       number. */}}
 	{{- if .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil && {{exactConstViolated . (printf "*%s.%s" $recv .FieldName)}} {
 		return fmt.Errorf("{{jsonErrorName .JSONName}}: value must be %s, got %s", {{printf "%q" .Value}}, _schemagenClipText(fmt.Sprint(*{{$recv}}.{{.FieldName}})))
@@ -427,13 +430,21 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	}
 	{{- end}}
 	{{- else}}
+	{{- /* Compared by identity (see jsonID): equal as JSON is the const,
+	       whatever the spelling. The value was marshalled and its text compared
+	       with the const's, which is a comparison of spellings: an object whose
+	       fields are declared in another order than the const writes its keys was
+	       refused. */}}
 	{
-		_constGot, _constErr := json.Marshal({{$recv}}.{{.FieldName}})
+		{{- /* A copy, so that the receiver, whose field's address would otherwise
+		       be taken, stays where it is. */}}
+		_constV := {{$recv}}.{{.FieldName}}
+		_constOK, _constErr := jsonMatchesConst(&_constV, {{.Identifier}}, jsonConstOf(false, {{printf "%q" .Value}}))
 		if _constErr != nil {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: failed to marshal for const check: %w", _constErr)
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: failed to marshal for const check: %w", jsonMarshalError(&_constV, _constErr))
 		}
-		if string(_constGot) != {{printf "%q" .Value}} {
-			return fmt.Errorf("{{jsonErrorName .JSONName}}: value must be %s, got %s", {{printf "%q" .Value}}, _schemagenClipText(string(_constGot)))
+		if !_constOK {
+			return fmt.Errorf("{{jsonErrorName .JSONName}}: value must be %s, got %s", {{printf "%q" .Value}}, _schemagenClipText(jsonMarshalText(&_constV)))
 		}
 	}
 	{{- end}}
@@ -523,6 +534,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				_branchMatches = false
 			}
 			{{- end}}
+			{{- template "object_branch_closed_keys" (mkClosedKeysCtx $recv $branch)}}
 			{{- range $branch.Checks}}
 			if _branchMatches {
 				if _raw, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .JSONName}}]; _ok {
@@ -602,6 +614,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				_branchMatches = false
 			}
 			{{- end}}
+			{{- template "object_branch_closed_keys" (mkClosedKeysCtx $recv $branch)}}
 			{{- range $branch.Checks}}
 			if _branchMatches {
 				if _raw, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .JSONName}}]; _ok {
@@ -683,11 +696,12 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		{{- range $cond.If.Properties}}
 		if _condHolds {
 			if _raw, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .JSONName}}]; _ok {
-				var _v any
+				_v, _err := jsonHeld({{$recv}}._doc, _raw)
+				_v = jsonTop(_v)
 				{{- if dynChecksMatchPattern .Checks}}
 				var _undecided error
 				{{- end}}
-				if _err := json.Unmarshal(_raw, &_v); _err != nil || !({{template "dyn_branch" .Checks}}) {
+				if _err != nil || !({{template "dyn_branch" .Checks}}) {
 					_condHolds = false
 				}
 				{{- if dynChecksMatchPattern .Checks}}
@@ -739,11 +753,15 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					// decoded into it, so the decode enforces shape and the
 					// Validate enforces everything beyond it.
 					var _pv {{$pp.TypeName}}
+					{{- if $pp.Decoder}}
+					if _uErr := jsonDecodeHeld({{$recv}}._doc, _member, &_pv, {{$pp.Decoder}}); _uErr != nil{{if $pp.StrictReadWrite}} && !_isReadOnlyRefusal(_uErr){{end}} {
+					{{- else}}
 					if _uErr := {{if $pp.StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), _uErr)
+					{{- end}}
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", {{printf "%q" $pp.Pattern}}, _schemagenQuote(_key)))
 					}
 				}
 				{{- end}}
@@ -969,7 +987,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				{{- end}}
 			}
 			{{- end}}
-			if err := _item.Validate(); err != nil {
+			if err := _item.{{if .ValidateIn}}validateIn(_vc){{else}}Validate(){{end}}; err != nil {
 				return jsonPathf(err, "{{jsonErrorName .JSONName}}[%d]", _i)
 			}
 		}
@@ -985,7 +1003,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- end}}
 		}
 		{{- end}}
-		if err := _item.Validate(); err != nil {
+		if err := _item.{{if .ValidateIn}}validateIn(_vc){{else}}Validate(){{end}}; err != nil {
 			return jsonPathf(err, "{{jsonErrorName .JSONName}}[%d]", _i)
 		}
 	}
@@ -1002,7 +1020,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				{{- end}}
 			}
 			{{- end}}
-			if err := _val.Validate(); err != nil {
+			if err := _val.{{if .ValidateIn}}validateIn(_vc){{else}}Validate(){{end}}; err != nil {
 				return jsonPathf(err, "{{jsonErrorName .JSONName}}[%s]", _schemagenQuote(_k))
 			}
 			return nil
@@ -1020,20 +1038,20 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			{{- end}}
 		}
 		{{- end}}
-		if err := _val.Validate(); err != nil {
+		if err := _val.{{if .ValidateIn}}validateIn(_vc){{else}}Validate(){{end}}; err != nil {
 			return jsonPathf(err, "{{jsonErrorName .JSONName}}[%s]", _schemagenQuote(_k))
 		}
 		return nil
 	{{- template "least_key_close" $lk}}
 	{{- else if .IsPointer}}
 	if {{$recv}}.{{.FieldName}} != nil {
-		if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
+		if err := {{$recv}}.{{.FieldName}}.{{if .ValidateIn}}validateIn(_vc){{else}}Validate(){{end}}; err != nil {
 			return jsonPathf(err, "{{jsonErrorName .JSONName}}")
 		}
 	}
 	{{- else if and .OmitEmpty .ZeroLiteral}}
 	if {{$recv}}.{{.FieldName}} != {{.ZeroLiteral}} {
-		if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
+		if err := {{$recv}}.{{.FieldName}}.{{if .ValidateIn}}validateIn(_vc){{else}}Validate(){{end}}; err != nil {
 			return jsonPathf(err, "{{jsonErrorName .JSONName}}")
 		}
 	}
@@ -1045,7 +1063,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	// null leaves the same zero and is recorded in _jsonNulls; the schema
 	// permits the null, so there is nothing here to judge either.
 	if ({{$recv}}._jsonKeys == nil || {{$recv}}._jsonKeys[{{printf "%q" .JSONName}}]) && !{{$recv}}._jsonNulls[{{printf "%q" .JSONName}}] {
-		if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
+		if err := {{$recv}}.{{.FieldName}}.{{if .ValidateIn}}validateIn(_vc){{else}}Validate(){{end}}; err != nil {
 			return jsonPathf(err, "{{jsonErrorName .JSONName}}")
 		}
 	}
@@ -1055,7 +1073,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	// keys the JSON had; when nil the value was not built from JSON and
 	// presence is unknowable, so the check still runs.
 	if {{$recv}}._jsonKeys == nil || {{$recv}}._jsonKeys[{{printf "%q" .JSONName}}] {
-		if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
+		if err := {{$recv}}.{{.FieldName}}.{{if .ValidateIn}}validateIn(_vc){{else}}Validate(){{end}}; err != nil {
 			return jsonPathf(err, "{{jsonErrorName .JSONName}}")
 		}
 	}
@@ -1063,12 +1081,12 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	// A property written as null leaves the same Go zero an absent one does,
 	// and the schema permits the null, so the zero is not a value to judge.
 	if !{{$recv}}._jsonNulls[{{printf "%q" .JSONName}}] {
-		if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
+		if err := {{$recv}}.{{.FieldName}}.{{if .ValidateIn}}validateIn(_vc){{else}}Validate(){{end}}; err != nil {
 			return jsonPathf(err, "{{jsonErrorName .JSONName}}")
 		}
 	}
 	{{- else}}
-	if err := {{$recv}}.{{.FieldName}}.Validate(); err != nil {
+	if err := {{$recv}}.{{.FieldName}}.{{if .ValidateIn}}validateIn(_vc){{else}}Validate(){{end}}; err != nil {
 		return jsonPathf(err, "{{jsonErrorName .JSONName}}")
 	}
 	{{- end}}
@@ -1087,7 +1105,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	case *{{$v.WrapperName}}:
 		{{- if $v.Type.IsPointer}}
 		if _oneOfSel.{{$v.FieldName}} != nil {
-			if err := _oneOfSel.{{$v.FieldName}}.Validate(); err != nil {
+			if err := _oneOfSel.{{$v.FieldName}}.{{if $v.ValidateIn}}validateIn(_vc){{else}}Validate(){{end}}; err != nil {
 				{{- if $oneOf.IsProperty}}
 				return jsonPathf(err, "{{jsonErrorName $oneOf.JSONName}}")
 				{{- else}}
@@ -1096,7 +1114,7 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			}
 		}
 		{{- else}}
-		if err := _oneOfSel.{{$v.FieldName}}.Validate(); err != nil {
+		if err := _oneOfSel.{{$v.FieldName}}.{{if $v.ValidateIn}}validateIn(_vc){{else}}Validate(){{end}}; err != nil {
 			{{- if $oneOf.IsProperty}}
 			return jsonPathf(err, "{{jsonErrorName $oneOf.JSONName}}")
 			{{- else}}
@@ -1308,11 +1326,11 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 					// The sub-schema's own type answers for the value: the decode
 					// enforces its shape and the Validate enforces the rest.
 					var _bVal {{$branch.TypeName}}
-					if _bErr := json.Unmarshal(_bv, &_bVal); _bErr != nil {
-						return fmt.Errorf("{{fmtText $branch.Keyword}}: property %s: %w", _schemagenQuote(_key), _bErr)
+					if _bErr := {{if $branch.Decoder}}jsonDecodeHeld({{$recv}}._doc, _bv, &_bVal, {{$branch.Decoder}}){{else}}json.Unmarshal(_bv, &_bVal){{end}}; _bErr != nil {
+						return jsonWrapf(_bErr, fmt.Sprintf("{{fmtText $branch.Keyword}}: property %s: ", _schemagenQuote(_key)))
 					}
 					if _bErr := _bVal.Validate(); _bErr != nil {
-						return fmt.Errorf("{{fmtText $branch.Keyword}}: property %s: %w", _schemagenQuote(_key), _bErr)
+						return jsonWrapf(_bErr, fmt.Sprintf("{{fmtText $branch.Keyword}}: property %s: ", _schemagenQuote(_key)))
 					}
 				}
 				{{- end}}
@@ -1344,8 +1362,8 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 		_rbInstance := make(map[string]any, len({{$recv}}._jsonRawProps))
 		{{- $lk := leastKey "_rbKey" "_rbRaw" (printf "%s._jsonRawProps" $recv) "_failed"}}
 		{{- template "least_key_open" $lk}}
-			var _rbVal any
-			if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+			_rbVal, _rbErr := jsonHeld({{$recv}}._doc, _rbRaw)
+			if _rbErr != nil {
 				return jsonValueErrorf("cannot decode property %s: %w", _schemagenQuote(_rbKey), _rbErr)
 			}
 			_rbInstance[_rbKey] = _rbVal
@@ -1374,10 +1392,10 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 			}
 			{{- else}}
 			if _rbRes := _evalNode(&_rbNode{{$ri}}, _rbInstance); !_rbRes.ok {
-				if _rbRes.reason == "" {
+				if _rbRes.why.String() == "" {
 					return fmt.Errorf("{{fmtText $check.Keyword}}: value does not satisfy the schema")
 				}
-				return fmt.Errorf("{{fmtText $check.Keyword}}: %s", _rbRes.reason)
+				return fmt.Errorf("{{fmtText $check.Keyword}}: %s", _rbRes.why.String())
 			}
 			{{- end}}
 		}
@@ -1386,35 +1404,27 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 	{{- end}}
 	{{- if $struct.HasObjectEnum}}
 	{{- /* An enum an allOf branch stated about the whole object. Its members are
-	       documents, so the comparison is against the document -- read off the
-	       raw JSON the unmarshaler kept and put through the same encoder the
-	       members were, which settles key order and number format. A value that
-	       was not built from JSON has no document to compare, and is passed over
-	       the way a required-property check is. */}}
+	       documents, so the comparison is against the document -- the members
+	       the unmarshaler kept, compared with each permitted document by
+	       identity (see jsonID), which settles key order and number spelling.
+	       The kept members used to be marshalled into one document and that
+	       reduced to canonical text. A value that was not built from JSON has no
+	       document to compare, and is passed over the way a required-property
+	       check is. */}}
 	// enum: the object as a whole must be one of the permitted documents.
 	if {{$recv}}._jsonRawProps != nil {
-		_enumAllowed := _jsonCanonicalTexts([]string{
+		_enumProps := {{$recv}}._jsonRawProps
+		_enumOK, _enumErr := jsonMatchesConstAt(&_enumProps, jsonConstOf(false,
 			{{- range $struct.ObjectEnum}}
 			{{goStringQuote .}},
 			{{- end}}
-		})
-		_enumRaw, _enumErr := json.Marshal({{$recv}}._jsonRawProps)
+		))
 		if _enumErr != nil {
-			return fmt.Errorf("enum: cannot encode value: %w", _enumErr)
-		}
-		_enumCanon, _enumErr := _jsonCanonical(_enumRaw)
-		if _enumErr != nil {
-			return fmt.Errorf("enum: cannot decode value: %w", _enumErr)
-		}
-		_enumOK := false
-		for _, _allowed := range _enumAllowed {
-			if _enumCanon == _allowed {
-				_enumOK = true
-				break
-			}
+			return fmt.Errorf("enum: cannot encode value: %w", jsonMarshalError(&_enumProps, _enumErr))
 		}
 		if !_enumOK {
-			return fmt.Errorf("enum: value %s is not one of the permitted values", _schemagenClipText(string(_enumCanon)))
+			_enumCanon, _ := _jsonCanonical([]byte(jsonMarshalText(&_enumProps)))
+			return fmt.Errorf("enum: value %s is not one of the permitted values", _schemagenClipText(_enumCanon))
 		}
 	}
 	{{- end}}
@@ -1602,8 +1612,8 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				}
 				{{- else if $uneval.ValueType}}
 				var _uVal {{$uneval.ValueType}}
-				if _uErr := json.Unmarshal(_member, &_uVal); _uErr != nil {
-					return jsonValueErrorf("unevaluated property %s: %w", _schemagenQuote(_key), _uErr)
+				if _uErr := {{if $uneval.ValueDecoder}}jsonDecodeHeld({{$recv}}._doc, _member, &_uVal, {{$uneval.ValueDecoder}}){{else}}json.Unmarshal(_member, &_uVal){{end}}; _uErr != nil {
+					return jsonValueWrapf(_uErr, fmt.Sprintf("unevaluated property %s: ", _schemagenQuote(_key)))
 				}
 				{{- range $uneval.Validations}}
 				{{- template "validation_rule_inline" .}}
@@ -1652,8 +1662,8 @@ func ({{$recv}} {{$struct.Name}}) Validate() error {
 				}
 				{{- else if $uneval.ValueType}}
 				var _uVal {{$uneval.ValueType}}
-				if _uErr := json.Unmarshal(_member, &_uVal); _uErr != nil {
-					return jsonValueErrorf("unevaluated property %s: %w", _schemagenQuote(_key), _uErr)
+				if _uErr := {{if $uneval.ValueDecoder}}jsonDecodeHeld({{$recv}}._doc, _member, &_uVal, {{$uneval.ValueDecoder}}){{else}}json.Unmarshal(_member, &_uVal){{end}}; _uErr != nil {
+					return jsonValueWrapf(_uErr, fmt.Sprintf("unevaluated property %s: ", _schemagenQuote(_key)))
 				}
 				{{- range $uneval.Validations}}
 				{{- template "validation_rule_inline" .}}
@@ -1725,7 +1735,7 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{$container}} {
 	{{- if $lv.CallValidate}}
 	{{- /* Not the dereferenced form: *x.Validate() parses as *(x.Validate()).
 	       A method call on a pointer needs no explicit indirection anyway. */}}
-	if _err := {{$lv.ElemVar}}.Validate(); _err != nil {
+	if _err := {{$lv.ElemVar}}.{{if $lv.ValidateIn}}validateIn(_vc){{else}}Validate(){{end}}; _err != nil {
 		return {{$joinf}}(_err, "{{$path}}", {{$args}})
 	}
 	{{- end}}
@@ -1844,12 +1854,14 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{$container}} {
 	}
 	{{- else}}
 	{
-		_constGot, _constErr := json.Marshal({{$elem}})
+		{{- /* Compared by identity; see the property form above. */}}
+		_constV := {{$elem}}
+		_constOK, _constErr := jsonMatchesConst(&_constV, {{.Identifier}}, jsonConstOf(false, {{printf "%q" .Value}}))
 		if _constErr != nil {
-			return {{$errf}}("{{$path}}: failed to marshal for const check: %w", {{$args}}, _constErr)
+			return {{$errf}}("{{$path}}: failed to marshal for const check: %w", {{$args}}, jsonMarshalError(&_constV, _constErr))
 		}
-		if string(_constGot) != {{printf "%q" .Value}} {
-			return {{$errf}}("{{$path}}: value must be %s, got %s", {{$args}}, {{printf "%q" .Value}}, _schemagenClipText(string(_constGot)))
+		if !_constOK {
+			return {{$errf}}("{{$path}}: value must be %s, got %s", {{$args}}, {{printf "%q" .Value}}, _schemagenClipText(jsonMarshalText(&_constV)))
 		}
 	}
 	{{- end}}
@@ -1866,29 +1878,18 @@ for {{$lv.IndexVar}}, {{$lv.ElemVar}} := range {{$container}} {
 	level's own copy of this block.
 	*/}}
 	{
-		_uqSeen := make(map[string]bool, len({{$elem}}))
-		for _uqIdx, _uqItem := range {{$elem}} {
-			_uqBytes, _uqErr := json.Marshal(_uqItem)
-			if _uqErr != nil {
-				return {{$errf}}("{{$path}}: uniqueItems check: marshal error at index %d: %w", {{$args}}, _uqIdx, _uqErr)
-			}
-			{{- if .RawElements}}
-			// Raw elements, compared as JSON values rather than as the bytes
-			// json.Marshal writes back unchanged. See _jsonCanonical.
-			_uqKey, _uqErr := _jsonCanonical(_uqBytes)
-			if _uqErr != nil {
-				return {{$errf}}("{{$path}}: uniqueItems check: invalid JSON at index %d: %w", {{$args}}, _uqIdx, _uqErr)
-			}
-			if _uqSeen[_uqKey] {
-				return {{$errf}}("{{$path}}: items are not unique (duplicate at index %d)", {{$args}}, _uqIdx)
-			}
-			_uqSeen[_uqKey] = true
-			{{- else}}
-			if _uqSeen[string(_uqBytes)] {
-				return {{$errf}}("{{$path}}: items are not unique (duplicate at index %d)", {{$args}}, _uqIdx)
-			}
-			_uqSeen[string(_uqBytes)] = true
-			{{- end}}
+		_uqArr := {{$elem}}
+		{{- if .KeepIDs}}
+		if _vc == nil {
+			_vc = &jsonValidation{}
+		}
+		{{- end}}
+		_uqIDs, _uqIdx, _uqErr := jsonIDsOf(_uqArr, {{if .KeepIDs}}_vc{{else}}nil{{end}}, {{.Identifier}})
+		if _uqErr != nil {
+			return {{$errf}}("{{$path}}: uniqueItems check: marshal error at index %d: %w", {{$args}}, _uqIdx, jsonMarshalError(&_uqArr[_uqIdx], _uqErr))
+		}
+		if _uqIdx := jsonFirstDuplicate(_uqArr, _uqIDs, {{.Identifier}}); _uqIdx >= 0 {
+			return {{$errf}}("{{$path}}: items are not unique (duplicate at index %d)", {{$args}}, _uqIdx)
 		}
 	}
 	{{- end}}
@@ -2023,10 +2024,11 @@ declares a field for it at all.
 {{- end}}
 {{- range .Branch.Properties}}
 			if _raw, _ok := {{$recv}}._jsonRawProps[{{printf "%q" .JSONName}}]; _ok {
-				var _v any
-				if _err := json.Unmarshal(_raw, &_v); _err != nil {
+				_v, _err := jsonHeld({{$recv}}._doc, _raw)
+				if _err != nil {
 					return fmt.Errorf("{{$kw}}: property %q: cannot decode value: %w", {{printf "%q" .JSONName}}, _err)
 				}
+				_v = jsonTop(_v)
 				{{- if dynChecksMatchPattern .Checks}}
 				var _undecided error
 				_branchOK := {{template "dyn_branch" .Checks}}
@@ -2083,67 +2085,47 @@ declares a field for it at all.
 		// contains: false — no element can ever match, so the count stays at 0.
 		{{- else if .Def.IsTrue}}
 		_containsCount = len({{$expr}})
-		{{- else if .Def.ConstJSON}}
-		{{- if .Def.RawElements}}
-		{{- /* The elements are the document's own bytes, so the match is decided
-		       on the canonical text of each side rather than on the bytes: the
-		       literal as the schema wrote it, every digit kept, against the
-		       element reduced the same way. See ContainsDef.RawElements. */}}
-		_cWant := _jsonCanonicalTexts([]string{ {{printf "%q" .Def.ConstJSON}} })[0]
-		for _, _cElem := range {{$expr}} {
-			_cBytes, _cErr := json.Marshal(_cElem)
-			if _cErr != nil {
-				continue
-			}
-			if _cCanon, _cCanonErr := _jsonCanonical(_cBytes); _cCanonErr == nil && _cCanon == _cWant {
-				_containsCount++
-			}
-		}
-		{{- else}}
-		for _, _cElem := range {{$expr}} {
-			_cBytes, _cErr := json.Marshal(_cElem)
-			if _cErr == nil && string(_cBytes) == {{printf "%q" .Def.ConstJSON}} {
-				_containsCount++
-			}
-		}
-		{{- end}}
-		{{- else if .Def.EnumJSON}}
-		{{- if .Def.RawElements}}
-		_cWant := _jsonCanonicalTexts([]string{
+		{{- else if or .Def.ConstJSON .Def.EnumJSON}}
+		{{- /* Each element compared with the const, or the enum's members, as JSON
+		       (see jsonMatchesConst): equal as JSON is a match, whatever the
+		       spelling on either side -- the literal as the schema wrote it, every
+		       digit kept, and the element as it is held. The element used to be
+		       marshalled and its text compared, which for an element that is not
+		       raw JSON compared spellings rather than values. */}}
+		_cWant := jsonConstOf(false,
+			{{- if .Def.ConstJSON}}
+			{{printf "%q" .Def.ConstJSON}},
+			{{- else}}
 			{{- range .Def.EnumJSON}}
 			{{printf "%q" .}},
 			{{- end}}
-		})
-		for _, _cElem := range {{$expr}} {
-			_cBytes, _cErr := json.Marshal(_cElem)
-			if _cErr != nil {
-				continue
-			}
-			_cCanon, _cCanonErr := _jsonCanonical(_cBytes)
-			if _cCanonErr != nil {
-				continue
-			}
-			for _, _cAllowed := range _cWant {
-				if _cCanon == _cAllowed {
-					_containsCount++
-					break
-				}
+			{{- end}}
+		)
+		_cArr := {{$expr}}
+		for _ci := range _cArr {
+			if _cOK, _cErr := jsonMatchesConstAt(&_cArr[_ci], _cWant); _cErr == nil && _cOK {
+				_containsCount++
 			}
 		}
-		{{- else}}
-		for _, _cElem := range {{$expr}} {
-			_cBytes, _cErr := json.Marshal(_cElem)
-			if _cErr == nil {
-				_cStr := string(_cBytes)
-				{{- range .Def.EnumJSON}}
-				if _cStr == {{printf "%q" .}} {
-					_containsCount++
-					continue
-				}
-				{{- end}}
+		{{- else if .Def.Node}}
+		{{- /* Each element judged as it is held, by the sub-schema compiled for the
+		       evaluator (see ElementNode); it was marshalled and decoded into the
+		       sub-schema's type. An element with no verdict leaves the count
+		       unknown. */}}
+		_cArr := {{$expr}}
+		for _ci := range _cArr {
+			_cTv, _cTvErr := jsonTreeView(any(_cArr[_ci]))
+			if _cTvErr != nil {
+				continue
+			}
+			_cr := _evalNode(&{{.Def.Node.Var}}, _cTv)
+			if _cr.undecided != nil {
+				return {{$errf}}("{{$path}}: %w", {{$args}}_evalError(_cr))
+			}
+			if _cr.ok {
+				_containsCount++
 			}
 		}
-		{{- end}}
 		{{- else if .Def.TypeName}}
 		{{- /*
 		A sub-schema richer than the checks below can express. An element
@@ -2174,61 +2156,46 @@ declares a field for it at all.
 			_containsCount++
 		}
 		{{- else if .Def.Checks}}
-		for _, _cElem := range {{$expr}} {
+		{{- /* Each element's kind, and its text where it is a string or a number,
+		       read off the element as it is held (see jsonKindAt) -- once, for
+		       every check below. It used to be marshalled once per check and the
+		       text's first byte looked at, which also took a null for an integer:
+		       encoding/json decodes a null into a float64 as a no-op, without an
+		       error, so the null read as the 0 it left behind. */}}
+		_cArr := {{$expr}}
+		for _ci := range _cArr {
+			_cKind, _cText := jsonKindAt(&_cArr[_ci])
+			_ = _cText
 			_cMatch := true
 			{{- range .Def.Checks}}
 			{{- if eq .CheckType "type"}}
 			{{- if eq .Value "integer"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				var _cf float64
-				if json.Unmarshal(_cBytes, &_cf) != nil || _cf != math.Trunc(_cf) {
-					_cMatch = false
-				}
+			if _cf, _cOK := jsonFloatOf(_cKind, _cText); !_cOK || _cf != math.Trunc(_cf) {
+				_cMatch = false
 			}
 			{{- else if eq .Value "number"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				var _cf float64
-				if json.Unmarshal(_cBytes, &_cf) != nil {
-					_cMatch = false
-				}
+			if _, _cOK := jsonFloatOf(_cKind, _cText); !_cOK {
+				_cMatch = false
 			}
 			{{- else if eq .Value "string"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				if len(_cBytes) < 2 || _cBytes[0] != '"' {
-					_cMatch = false
-				}
+			if _cKind != jsonIDStringKind {
+				_cMatch = false
 			}
 			{{- else if eq .Value "boolean"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				_cs := string(_cBytes)
-				if _cs != "true" && _cs != "false" {
-					_cMatch = false
-				}
+			if _cKind != jsonIDTrueKind && _cKind != jsonIDFalseKind {
+				_cMatch = false
 			}
 			{{- else if eq .Value "null"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				if string(_cBytes) != "null" {
-					_cMatch = false
-				}
+			if _cKind != jsonIDNullKind {
+				_cMatch = false
 			}
 			{{- else if eq .Value "array"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				if len(_cBytes) == 0 || _cBytes[0] != '[' {
-					_cMatch = false
-				}
+			if _cKind != jsonIDArrayKind {
+				_cMatch = false
 			}
 			{{- else if eq .Value "object"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				if len(_cBytes) == 0 || _cBytes[0] != '{' {
-					_cMatch = false
-				}
+			if _cKind != jsonIDObjectKind {
+				_cMatch = false
 			}
 			{{- end}}
 			{{- /* Every keyword below judges one JSON type and says nothing about
@@ -2239,128 +2206,69 @@ declares a field for it at all.
 			       a non-match -- {"contains":{"minimum":3}} refused ["a"] -- and
 			       a null, which encoding/json decodes into a float64 as 0 and
 			       into a string as "", was measured as that zero. */}}
-			{{- else if eq .CheckType "minimum"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				if len(_cBytes) > 0 && (_cBytes[0] == '-' || _cBytes[0] >= '0' && _cBytes[0] <= '9') {
-					{{- if $.Def.ExactNumbers}}
-					var _cn jsonNumber
-					if json.Unmarshal(_cBytes, &_cn) != nil || jsonNumberCmp(json.Number(_cn), {{jsonNumberLiteral .Value}}) < 0 {
-						_cMatch = false
-					}
-					{{- else}}
-					var _cf float64
-					if json.Unmarshal(_cBytes, &_cf) != nil || _cf < {{countExpr .Value}} {
-						_cMatch = false
-					}
-					{{- end}}
+			{{- else if or (eq .CheckType "minimum") (eq .CheckType "maximum") (eq .CheckType "exclusiveMinimum") (eq .CheckType "exclusiveMaximum") (eq .CheckType "multipleOf")}}
+			if _cMatch && _cKind == jsonIDNumberKind {
+				{{- if $.Def.ExactNumbers}}
+				{{- if eq .CheckType "minimum"}}
+				if jsonNumberCmp(json.Number(_cText), {{jsonNumberLiteral .Value}}) < 0 {
+				{{- else if eq .CheckType "maximum"}}
+				if jsonNumberCmp(json.Number(_cText), {{jsonNumberLiteral .Value}}) > 0 {
+				{{- else if eq .CheckType "exclusiveMinimum"}}
+				if jsonNumberCmp(json.Number(_cText), {{jsonNumberLiteral .Value}}) <= 0 {
+				{{- else if eq .CheckType "exclusiveMaximum"}}
+				if jsonNumberCmp(json.Number(_cText), {{jsonNumberLiteral .Value}}) >= 0 {
+				{{- else}}
+				if !jsonNumberIsMultipleOf(json.Number(_cText), {{jsonNumberLiteral .Value}}) {
+				{{- end}}
+					_cMatch = false
 				}
-			}
-			{{- else if eq .CheckType "maximum"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				if len(_cBytes) > 0 && (_cBytes[0] == '-' || _cBytes[0] >= '0' && _cBytes[0] <= '9') {
-					{{- if $.Def.ExactNumbers}}
-					var _cn jsonNumber
-					if json.Unmarshal(_cBytes, &_cn) != nil || jsonNumberCmp(json.Number(_cn), {{jsonNumberLiteral .Value}}) > 0 {
-						_cMatch = false
-					}
-					{{- else}}
-					var _cf float64
-					if json.Unmarshal(_cBytes, &_cf) != nil || _cf > {{countExpr .Value}} {
-						_cMatch = false
-					}
-					{{- end}}
+				{{- else}}
+				_cf, _cOK := jsonFloatOf(_cKind, _cText)
+				{{- if eq .CheckType "minimum"}}
+				if !_cOK || _cf < {{countExpr .Value}} {
+					_cMatch = false
 				}
-			}
-			{{- else if eq .CheckType "exclusiveMinimum"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				if len(_cBytes) > 0 && (_cBytes[0] == '-' || _cBytes[0] >= '0' && _cBytes[0] <= '9') {
-					{{- if $.Def.ExactNumbers}}
-					var _cn jsonNumber
-					if json.Unmarshal(_cBytes, &_cn) != nil || jsonNumberCmp(json.Number(_cn), {{jsonNumberLiteral .Value}}) <= 0 {
-						_cMatch = false
-					}
-					{{- else}}
-					var _cf float64
-					if json.Unmarshal(_cBytes, &_cf) != nil || _cf <= {{countExpr .Value}} {
-						_cMatch = false
-					}
-					{{- end}}
+				{{- else if eq .CheckType "maximum"}}
+				if !_cOK || _cf > {{countExpr .Value}} {
+					_cMatch = false
 				}
-			}
-			{{- else if eq .CheckType "exclusiveMaximum"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				if len(_cBytes) > 0 && (_cBytes[0] == '-' || _cBytes[0] >= '0' && _cBytes[0] <= '9') {
-					{{- if $.Def.ExactNumbers}}
-					var _cn jsonNumber
-					if json.Unmarshal(_cBytes, &_cn) != nil || jsonNumberCmp(json.Number(_cn), {{jsonNumberLiteral .Value}}) >= 0 {
-						_cMatch = false
-					}
-					{{- else}}
-					var _cf float64
-					if json.Unmarshal(_cBytes, &_cf) != nil || _cf >= {{countExpr .Value}} {
-						_cMatch = false
-					}
-					{{- end}}
+				{{- else if eq .CheckType "exclusiveMinimum"}}
+				if !_cOK || _cf <= {{countExpr .Value}} {
+					_cMatch = false
 				}
-			}
-			{{- else if eq .CheckType "multipleOf"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				if len(_cBytes) > 0 && (_cBytes[0] == '-' || _cBytes[0] >= '0' && _cBytes[0] <= '9') {
-					{{- if $.Def.ExactNumbers}}
-					var _cn jsonNumber
-					if json.Unmarshal(_cBytes, &_cn) != nil || !jsonNumberIsMultipleOf(json.Number(_cn), {{jsonNumberLiteral .Value}}) {
-						_cMatch = false
-					}
-					{{- else}}
-					var _cf float64
-					if json.Unmarshal(_cBytes, &_cf) != nil {
-						_cMatch = false
-					} else {
-						_cq := _cf / {{numLit .Value}}
-						if math.Abs(_cq - math.Round(_cq)) > 1e-9 {
-							_cMatch = false
-						}
-					}
-					{{- end}}
+				{{- else if eq .CheckType "exclusiveMaximum"}}
+				if !_cOK || _cf >= {{countExpr .Value}} {
+					_cMatch = false
 				}
+				{{- else}}
+				if !_cOK {
+					_cMatch = false
+				} else if _cq := _cf / {{numLit .Value}}; math.Abs(_cq - math.Round(_cq)) > 1e-9 {
+					_cMatch = false
+				}
+				{{- end}}
+				{{- end}}
 			}
 			{{- else if eq .CheckType "minLength"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				var _cs string
-				if len(_cBytes) > 0 && _cBytes[0] == '"' && (json.Unmarshal(_cBytes, &_cs) != nil || len([]rune(_cs)) < {{countExpr .Value}}) {
-					_cMatch = false
-				}
+			if _cMatch && _cKind == jsonIDStringKind && len([]rune(_cText)) < {{countExpr .Value}} {
+				_cMatch = false
 			}
 			{{- else if eq .CheckType "maxLength"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				var _cs string
-				if len(_cBytes) > 0 && _cBytes[0] == '"' && (json.Unmarshal(_cBytes, &_cs) != nil || len([]rune(_cs)) > {{countExpr .Value}}) {
-					_cMatch = false
-				}
+			if _cMatch && _cKind == jsonIDStringKind && len([]rune(_cText)) > {{countExpr .Value}} {
+				_cMatch = false
 			}
 			{{- else if eq .CheckType "pattern"}}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				var _cs string
-				{{- /* A pattern constrains strings only, so an element that is not
-				       one -- a number, a null, which encoding/json would decode
-				       into a string as "" -- satisfies it and leaves _cMatch
-				       as it is. It used to be counted as a non-match. */}}
-				if len(_cBytes) > 0 && _cBytes[0] == '"' && json.Unmarshal(_cBytes, &_cs) == nil {
-					if _cMatched, _cMErr := {{patternVar .Value}}.matches(_cs); _cMErr != nil {
-						// An element that may or may not match leaves the count
-						// unknown, so there is no verdict to give.
-						return {{$errf}}("{{$path}}: %w", {{$args}}_cMErr)
-					} else if !_cMatched {
-						_cMatch = false
-					}
+			{{- /* A pattern constrains strings only, so an element that is not one
+			       -- a number, a null, which encoding/json would decode into a
+			       string as "" -- satisfies it and leaves _cMatch as it is. It
+			       used to be counted as a non-match. */}}
+			if _cMatch && _cKind == jsonIDStringKind {
+				if _cMatched, _cMErr := {{patternVar .Value}}.matches(_cText); _cMErr != nil {
+					// An element that may or may not match leaves the count
+					// unknown, so there is no verdict to give.
+					return {{$errf}}("{{$path}}: %w", {{$args}}_cMErr)
+				} else if !_cMatched {
+					_cMatch = false
 				}
 			}
 			{{- end}}
@@ -2409,6 +2317,15 @@ declares a field for it at all.
 	// Tuple items: validate each position against its schema type.
 	for _idx, _elem := range {{.Expr}} {
 		_ = _elem
+		{{- if tupleHeld .Items .Tail}}
+		// An element read lazily (see jsonLazyItemsOr) has its first level read
+		// here, for the arms that ask its JSON type; a position of this
+		// package's type decodes it from its span instead.
+		_lz, _isLazy := _elem.(jsonLazy)
+		if _isLazy {
+			_elem = _lz.jsonLevel()
+		}
+		{{- end}}
 		{{- $path := .Path}}
 		{{- $args := .Args}}
 		{{- range $i, $ti := .Items}}
@@ -2434,18 +2351,50 @@ declares a field for it at all.
 		if {{$.Cond}} {
 			return {{$errf}}("{{$path}}[%d]: value is not allowed (schema is false)", {{$args}}_idx)
 		}
-{{- else if .TypeName}}
+{{- else if .Node}}
+		{{- /* Judged as it is held, by the position's schema compiled for the
+		       evaluator (see ElementNode): the element is an any, decoded whole or
+		       built in Go, and was marshalled and decoded into the position's type
+		       to be judged. */}}
+		{{- $wrapf := pathWrapf $path}}
 		if {{$.Cond}} {
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return {{$wrapf}}(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("{{$path}}[%d]: ", {{$args}}_idx))
+			}
+			if _tr := _evalNode(&{{.Node.Var}}, _tv); !_tr.ok {
+				return {{$wrapf}}(_evalError(_tr), fmt.Sprintf("{{$path}}[%d]: ", {{$args}}_idx))
+			}
+		}
+{{- else if .TypeName}}
+		{{- $wrapf := pathWrapf $path}}
+		if {{$.Cond}} {
+			var _typed {{.TypeName}}
+			{{- if .Decoder}}
+			var _uErr error
+			if _isLazy {
+				_uErr = jsonDecodeLazy(_lz, &_typed, {{.Decoder}})
+			} else {
+				_raw, _mErr := json.Marshal(_elem)
+				if _mErr != nil {
+					return {{$wrapf}}(_mErr, fmt.Sprintf("{{$path}}[%d]: ", {{$args}}_idx))
+				}
+				_uErr = jsonDecodeHeld(nil, _raw, &_typed, {{.Decoder}})
+			}
+			if _uErr != nil{{if .StrictReadWrite}} && !_isReadOnlyRefusal(_uErr){{end}} {
+				return {{$wrapf}}(_uErr, fmt.Sprintf("{{$path}}[%d]: ", {{$args}}_idx))
+			}
+			{{- else}}
 			_raw, _mErr := json.Marshal(_elem)
 			if _mErr != nil {
-				return {{$errf}}("{{$path}}[%d]: %w", {{$args}}_idx, _mErr)
+				return {{$wrapf}}(_mErr, fmt.Sprintf("{{$path}}[%d]: ", {{$args}}_idx))
 			}
-			var _typed {{.TypeName}}
 			if _uErr := {{if .StrictReadWrite}}_decodeIgnoringReadOnly{{else}}json.Unmarshal{{end}}(_raw, &_typed); _uErr != nil {
-				return {{$errf}}("{{$path}}[%d]: %w", {{$args}}_idx, _uErr)
+				return {{$wrapf}}(_uErr, fmt.Sprintf("{{$path}}[%d]: ", {{$args}}_idx))
 			}
+			{{- end}}
 			if _vErr := _typed.Validate(); _vErr != nil {
-				return {{$errf}}("{{$path}}[%d]: %w", {{$args}}_idx, _vErr)
+				return {{$wrapf}}(_vErr, fmt.Sprintf("{{$path}}[%d]: ", {{$args}}_idx))
 			}
 		}
 {{- else if .JSONType}}
@@ -2519,39 +2468,39 @@ declares a field for it at all.
 				_uiElem := any({{$expr}}[_ui])
 				_ = _uiElem
 				{{- if .ValueType}}
-				_uiBytes, _uiMarshalErr := json.Marshal(_uiElem)
-				if _uiMarshalErr != nil {
-					return {{$errf}}("{{$path}}[%d]: %w", {{$args}}_ui, _uiMarshalErr)
+				{{- /* The item's kind, read off it as it is held (see jsonKindAt);
+				       it was marshalled and the text's first byte looked at. */}}
+				_uiKind, _uiText := jsonKindAny(_uiElem)
+				_ = _uiText
+				if _uiKind == 0 {
+					return {{$errf}}("{{$path}}[%d]: %w", {{$args}}_ui, jsonMarshalError(&_uiElem, fmt.Errorf("json: the item cannot be written as JSON")))
 				}
 				{{- if eq .ValueType "string"}}
-				if len(_uiBytes) < 2 || _uiBytes[0] != '"' {
+				if _uiKind != jsonIDStringKind {
 					return {{$errf}}("{{$path}}[%d]: must be a string", {{$args}}_ui)
 				}
 				{{- else if eq .ValueType "integer"}}
-				var _uiNum float64
-				if json.Unmarshal(_uiBytes, &_uiNum) != nil || _uiNum != math.Trunc(_uiNum) {
+				if _uiNum, _uiOK := jsonFloatOf(_uiKind, _uiText); !_uiOK || _uiNum != math.Trunc(_uiNum) {
 					return {{$errf}}("{{$path}}[%d]: must be an integer", {{$args}}_ui)
 				}
 				{{- else if eq .ValueType "number"}}
-				var _uiNum float64
-				if json.Unmarshal(_uiBytes, &_uiNum) != nil {
+				if _, _uiOK := jsonFloatOf(_uiKind, _uiText); !_uiOK {
 					return {{$errf}}("{{$path}}[%d]: must be a number", {{$args}}_ui)
 				}
 				{{- else if eq .ValueType "boolean"}}
-				_uiString := string(_uiBytes)
-				if _uiString != "true" && _uiString != "false" {
+				if _uiKind != jsonIDTrueKind && _uiKind != jsonIDFalseKind {
 					return {{$errf}}("{{$path}}[%d]: must be a boolean", {{$args}}_ui)
 				}
 				{{- else if eq .ValueType "object"}}
-				if len(_uiBytes) == 0 || _uiBytes[0] != '{' {
+				if _uiKind != jsonIDObjectKind {
 					return {{$errf}}("{{$path}}[%d]: must be an object", {{$args}}_ui)
 				}
 				{{- else if eq .ValueType "array"}}
-				if len(_uiBytes) == 0 || _uiBytes[0] != '[' {
+				if _uiKind != jsonIDArrayKind {
 					return {{$errf}}("{{$path}}[%d]: must be an array", {{$args}}_ui)
 				}
 				{{- else if eq .ValueType "null"}}
-				if string(_uiBytes) != "null" {
+				if _uiKind != jsonIDNullKind {
 					return {{$errf}}("{{$path}}[%d]: must be null", {{$args}}_ui)
 				}
 				{{- end}}
@@ -2582,12 +2531,12 @@ declares a field for it at all.
        schema to the runtime evaluator instead. That is what keeps the two
        keywords enforcing the same vocabulary rather than each its own.
 
-       The string keywords read the element through json.Marshal rather than a
+       The string keywords read the element through jsonKindAny rather than a
        type assertion, because the slice element may be a json.RawMessage or a
        named string type, neither of which a `.(string)` sees -- and a check that
        silently does not fire is the defect this whole family keeps producing.
-       A value of any other JSON kind unmarshals into no string, and the keyword
-       says nothing about it, so it passes. */}}
+       A value of any other JSON kind is no string, and the keyword says nothing
+       about it, so it passes. */}}
 {{define "uneval_item_checks"}}
 {{- $path := .Path}}
 {{- $errf := pathErrf $path}}
@@ -2617,28 +2566,19 @@ declares a field for it at all.
 					}
 				}
 				{{- else if eq .CheckType "minLength"}}
-				{
-					_uiStrBytes, _ := json.Marshal(_uiElem)
-					var _uiStrVal string
-					if json.Unmarshal(_uiStrBytes, &_uiStrVal) == nil && utf8.RuneCountInString(_uiStrVal) < {{countExpr .Value}} {
-						return {{$errf}}("{{$path}}[%d]: length %d is less than minimum {{fmtText .Value}}", {{$args}}_ui, utf8.RuneCountInString(_uiStrVal))
-					}
+				if _uiStrKind, _uiStrVal := jsonKindAny(_uiElem); _uiStrKind == jsonIDStringKind && utf8.RuneCountInString(_uiStrVal) < {{countExpr .Value}} {
+					return {{$errf}}("{{$path}}[%d]: length %d is less than minimum {{fmtText .Value}}", {{$args}}_ui, utf8.RuneCountInString(_uiStrVal))
 				}
 				{{- else if eq .CheckType "maxLength"}}
-				{
-					_uiStrBytes, _ := json.Marshal(_uiElem)
-					var _uiStrVal string
-					if json.Unmarshal(_uiStrBytes, &_uiStrVal) == nil && utf8.RuneCountInString(_uiStrVal) > {{countExpr .Value}} {
-						return {{$errf}}("{{$path}}[%d]: length %d exceeds maximum {{fmtText .Value}}", {{$args}}_ui, utf8.RuneCountInString(_uiStrVal))
-					}
+				if _uiStrKind, _uiStrVal := jsonKindAny(_uiElem); _uiStrKind == jsonIDStringKind && utf8.RuneCountInString(_uiStrVal) > {{countExpr .Value}} {
+					return {{$errf}}("{{$path}}[%d]: length %d exceeds maximum {{fmtText .Value}}", {{$args}}_ui, utf8.RuneCountInString(_uiStrVal))
 				}
 				{{- else if eq .CheckType "pattern"}}
 				{
-					_uiStrBytes, _ := json.Marshal(_uiElem)
-					var _uiStrVal string
 					{{- /* A string only: a null decodes into a Go string as "",
-					       and a pattern says nothing about a null. */}}
-					if len(_uiStrBytes) > 0 && _uiStrBytes[0] == '"' && json.Unmarshal(_uiStrBytes, &_uiStrVal) == nil {
+					       and a pattern says nothing about a null -- nor does a
+					       length bound, which used to measure a null as that "". */}}
+					if _uiStrKind, _uiStrVal := jsonKindAny(_uiElem); _uiStrKind == jsonIDStringKind {
 						if _uiMatched, _uiMErr := {{patternVar .Value}}.matches(_uiStrVal); _uiMErr != nil {
 							return {{$errf}}("{{$path}}[%d]: %w", {{$args}}_ui, _uiMErr)
 						} else if !_uiMatched {
@@ -2678,6 +2618,33 @@ declares a field for it at all.
 			continue
 		}
 		if _err := func() error {
+{{- end}}
+
+{{- /* object_branch_closed_keys fails an object-level oneOf/anyOf branch for a
+       key the document wrote that one of the branch's closed schemas
+       ("additionalProperties": false) does not allow. See
+       ObjectOneOfBranch.ClosedKeySets. */}}
+{{define "object_branch_closed_keys"}}
+{{- $recv := .Recv}}
+{{- range $set := .Branch.ClosedKeySets}}
+			if _branchMatches {
+				{{- /* maporder: only asks whether some recorded key is outside the set, which no order of the loop changes. */}}
+				for _key, _present := range {{$recv}}._jsonKeys {
+					if !_present {
+						continue
+					}
+					{{- if $set}}
+					switch _key {
+					case {{range $i, $k := $set}}{{if $i}}, {{end}}{{printf "%q" $k}}{{end}}:
+					default:
+						_branchMatches = false
+					}
+					{{- else}}
+					_branchMatches = false
+					{{- end}}
+				}
+			}
+{{- end}}
 {{- end}}
 
 {{define "least_key_close"}}

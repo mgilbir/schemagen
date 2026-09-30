@@ -10,6 +10,8 @@ import (
 type OneOfStringLengthVariants string
 
 func (o *OneOfStringLengthVariants) UnmarshalJSON(data []byte) error {
+	var _zero OneOfStringLengthVariants
+	*o = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}

@@ -13,111 +13,158 @@ type Inner struct {
 	_nonObject           bool              // set by UnmarshalJSON when the JSON data is not an object
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *Inner) UnmarshalJSON(data []byte) error {
-	i.AdditionalProperties = nil
-	i._nonObject = false
-	i._rawNonObject = nil
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into i, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever i held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (i *Inner) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = Inner{}
 	// The schema admits a document that is not an object, so object constraints
 	// are type-conditional. Non-object JSON data is accepted here and judged by
 	// Validate; raw bytes are preserved for roundtrip.
-	if len(data) == 0 || data[0] != '{' {
+	if _d.data[_sp.start] != '{' {
 		i._nonObject = true
-		i._rawNonObject = append(i._rawNonObject[:0], data...)
+		i._rawNonObject = _d.keep(_sp)
 		return nil
 	}
-	type Alias Inner
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(i),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Inner)(nil)))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
-	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
-		knownFields := map[string]bool{}
-		{
-			var _least string
-			var _failed error
-			for rawKey, rawVal := range raw { // refused for the least failing key
-				if _failed != nil && rawKey >= _least {
-					continue
+	}
+	var _apFiled map[string]*Inner
+	{
+		var _least string
+		var _failed error
+		for rawKey, rawVal := range _raw { // refused for the least failing key
+			if _failed != nil && rawKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				if _apFiled == nil {
+					_apFiled = make(map[string]*Inner)
 				}
-				if _err := func() error {
-					if knownFields[rawKey] {
+				var val *Inner
+				if err := func(_p **Inner, _d *jsonDoc, _s jsonSpan) error {
+					if _d.isNull(_s) {
+						*_p = nil
 						return nil
 					}
-					if i.AdditionalProperties == nil {
-						i.AdditionalProperties = make(map[string]*Inner)
-					}
-					var val *Inner
-					if err := json.Unmarshal(rawVal, &val); err != nil {
-						return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
-					}
-					i.AdditionalProperties[rawKey] = val
-					return nil
-				}(); _err != nil {
-					_least, _failed = rawKey, _err
+					_v := new(Inner)
+					*_p = _v
+					return _v.decodeJSONAt(_d, _s)
+				}(&val, _d, rawVal); err != nil {
+					return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
 				}
-			}
-			if _failed != nil {
-				return _failed
+				_apFiled[rawKey] = val
+				return nil
+			}(); _err != nil {
+				_least, _failed = rawKey, _err
 			}
 		}
+		if _failed != nil {
+			return _failed
+		}
 	}
+	i.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (i Inner) MarshalJSON() ([]byte, error) {
-	// Non-object data was silently accepted — return the original raw bytes.
+	// Non-object data was silently accepted — return the original raw bytes,
+	// in a buffer of their own: the value's bytes, handed out, are bytes a
+	// caller can rewrite the value through.
 	if i._nonObject {
 		if len(i._rawNonObject) > 0 {
-			return i._rawNonObject, nil
+			return append([]byte(nil), i._rawNonObject...), nil
 		}
 		return []byte("null"), nil
 	}
-	type Alias Inner
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(i),
+	_b, _err := i.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	{
-		var _least string
-		var _failed error
-		for _key, _member := range i.AdditionalProperties { // refused for the least failing key
-			if _failed != nil && _key >= _least {
-				continue
-			}
-			if _err := func() error {
-				raw, err := json.Marshal(_member)
-				if err != nil {
-					return fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), err)
-				}
-				obj[_key] = raw
-				return nil
-			}(); _err != nil {
-				_least, _failed = _key, _err
-			}
+	return _b, nil
+}
+
+// appendJSON appends i to _b as JSON. See jsonEnc.
+func (i Inner) appendJSON(_b []byte) ([]byte, error) {
+	if i._nonObject {
+		if len(i._rawNonObject) > 0 {
+			return jsonAppendLeaf(json.RawMessage(i._rawNonObject), _b)
 		}
-		if _failed != nil {
-			return nil, _failed
-		}
+		return append(_b, "null"...), nil
 	}
-	return json.Marshal(obj)
+	var _o jsonObj
+	if _err := i.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
+	}
+	for _key := range i.AdditionalProperties {
+		_o.deferred(_key, 1073741824)
+	}
+	return _o.write(_b, i.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members i's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (i Inner) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of i numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (i Inner) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 1073741824:
+		_out, _err := (func(_v *Inner, _b []byte) ([]byte, error) {
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*Inner)(nil), true)
+			}
+			return _out, nil
+		})(i.AdditionalProperties[_key], _b)
+		if _err != nil {
+			return _b, fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), _err)
+		}
+		return _out, nil
+	}
+	return _b, nil
 }
 
 // Validate checks Inner against its JSON Schema constraints.
@@ -160,19 +207,33 @@ type Root struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *Root) UnmarshalJSON(data []byte) error {
-	r._raw = append(r._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever r held.
+func (r *Root) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*r = Root{}
+	r._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (r Root) MarshalJSON() ([]byte, error) {
 	if len(r._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return r._raw, nil
+	return append([]byte(nil), r._raw...), nil
 }
 
-func (r Root) Raw() json.RawMessage { return r._raw }
+// Raw returns a copy of the value's bytes.
+func (r Root) Raw() json.RawMessage { return append(json.RawMessage(nil), r._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -238,8 +299,13 @@ func (r Root) Validate() error {
 	if len(r._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(r._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(r._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.

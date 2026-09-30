@@ -10,6 +10,8 @@ import (
 type Word string
 
 func (w *Word) UnmarshalJSON(data []byte) error {
+	var _zero Word
+	*w = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -28,6 +30,8 @@ func (w Word) Validate() error {
 type NamedEmptyEnum Word
 
 func (n *NamedEmptyEnum) UnmarshalJSON(data []byte) error {
+	var _zero NamedEmptyEnum
+	*n = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -54,6 +58,8 @@ func (n NamedEmptyEnum) Validate() error {
 type NamedSibling Word
 
 func (n *NamedSibling) UnmarshalJSON(data []byte) error {
+	var _zero NamedSibling
+	*n = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -90,130 +96,256 @@ type RefSiblingValuesDraft7 struct {
 	ListSibling          []Word                     `json:"listSibling,omitzero"`
 }
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *RefSiblingValuesDraft7) UnmarshalJSON(data []byte) error {
-	r.AdditionalProperties = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into r, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever r held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (r *RefSiblingValuesDraft7) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*r = RefSiblingValuesDraft7{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"constSibling",
-			"emptyEnumSibling",
-			"enumSibling",
-			"listSibling",
-			"mapSibling",
-			"namedEmptyEnum",
-			"namedSibling",
-			"noSibling",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*RefSiblingValuesDraft7)(nil)))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias RefSiblingValuesDraft7
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(r),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "constSibling", decode: jsonDecodeValue[*Word]},
-			{name: "emptyEnumSibling", decode: jsonDecodeValue[*Word]},
-			{name: "enumSibling", decode: jsonDecodeValue[*Word]},
-			{name: "listSibling", decode: jsonDecodeItems(jsonDecodeValue[Word])},
-			{name: "mapSibling", decode: jsonDecodeValues(jsonDecodeValue[Word])},
-			{name: "namedEmptyEnum", decode: jsonDecodeValue[*NamedEmptyEnum]},
-			{name: "namedSibling", decode: jsonDecodeValue[*NamedSibling]},
-			{name: "noSibling", decode: jsonDecodeValue[*Word]},
-		})
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"constSibling",
-			"emptyEnumSibling",
-			"enumSibling",
-			"namedEmptyEnum",
-			"namedSibling",
-			"noSibling",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
-		}
-		if _v, ok := raw["listSibling"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "listSibling")
-			}
-		}
-		if _v, ok := raw["mapSibling"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "mapSibling")
-			}
-		}
-		knownFields := map[string]bool{
-			"constSibling":     true,
-			"emptyEnumSibling": true,
-			"enumSibling":      true,
-			"listSibling":      true,
-			"mapSibling":       true,
-			"namedEmptyEnum":   true,
-			"namedSibling":     true,
-			"noSibling":        true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if r.AdditionalProperties == nil {
-				r.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			r.AdditionalProperties[rawKey] = rawVal
+	if _v, _ok := _raw["constSibling"]; _ok {
+		if _err := func(_p **Word, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*Word](_p, _d, _s, jsonDecodeValue[*Word])
+		}(&r.ConstSibling, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constSibling")
 		}
 	}
+	if _v, _ok := _raw["emptyEnumSibling"]; _ok {
+		if _err := func(_p **Word, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*Word](_p, _d, _s, jsonDecodeValue[*Word])
+		}(&r.EmptyEnumSibling, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "emptyEnumSibling")
+		}
+	}
+	if _v, _ok := _raw["enumSibling"]; _ok {
+		if _err := func(_p **Word, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*Word](_p, _d, _s, jsonDecodeValue[*Word])
+		}(&r.EnumSibling, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "enumSibling")
+		}
+	}
+	if _v, _ok := _raw["listSibling"]; _ok {
+		if _err := func(_p *[]Word, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]Word](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[Word]))
+		}(&r.ListSibling, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "listSibling")
+		}
+	}
+	if _v, _ok := _raw["mapSibling"]; _ok {
+		if _err := func(_p *map[string]Word, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[map[string]Word](_p, _d, _s, jsonDecodeValues(jsonDecodeValue[Word]))
+		}(&r.MapSibling, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "mapSibling")
+		}
+	}
+	if _v, _ok := _raw["namedEmptyEnum"]; _ok {
+		if _err := func(_p **NamedEmptyEnum, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*NamedEmptyEnum](_p, _d, _s, jsonDecodeValue[*NamedEmptyEnum])
+		}(&r.NamedEmptyEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "namedEmptyEnum")
+		}
+	}
+	if _v, _ok := _raw["namedSibling"]; _ok {
+		if _err := func(_p **NamedSibling, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*NamedSibling](_p, _d, _s, jsonDecodeValue[*NamedSibling])
+		}(&r.NamedSibling, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "namedSibling")
+		}
+	}
+	if _v, _ok := _raw["noSibling"]; _ok {
+		if _err := func(_p **Word, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*Word](_p, _d, _s, jsonDecodeValue[*Word])
+		}(&r.NoSibling, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "noSibling")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"constSibling",
+		"emptyEnumSibling",
+		"enumSibling",
+		"namedEmptyEnum",
+		"namedSibling",
+		"noSibling",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	if _v, ok := _raw["listSibling"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "listSibling")
+		}
+	}
+	if _v, ok := _raw["mapSibling"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "mapSibling")
+		}
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "constSibling", "emptyEnumSibling", "enumSibling", "listSibling", "mapSibling", "namedEmptyEnum", "namedSibling", "noSibling":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	r.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (r RefSiblingValuesDraft7) MarshalJSON() ([]byte, error) {
-	type Alias RefSiblingValuesDraft7
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(r),
+	_b, _err := r.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends r to _b as JSON. See jsonEnc.
+func (r RefSiblingValuesDraft7) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := r.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range r.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, r.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members r's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (r RefSiblingValuesDraft7) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(r.ConstSibling)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constSibling", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(r.EmptyEnumSibling)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("emptyEnumSibling", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(r.EnumSibling)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("enumSibling", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(r.MapSibling)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("mapSibling", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(r.NamedEmptyEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("namedEmptyEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(r.NamedSibling)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("namedSibling", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(r.NoSibling)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("noSibling", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(r.ListSibling)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("listSibling", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of r numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (r RefSiblingValuesDraft7) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks RefSiblingValuesDraft7 against its JSON Schema constraints.

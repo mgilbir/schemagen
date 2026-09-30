@@ -1325,13 +1325,28 @@ func tryRoundTrip(schemaJSON, dataJSON json.RawMessage, cfg generator.Config) er
 	if err := os.WriteFile(filepath.Join(tmpDir, "types.go"), []byte(mainContent), 0o644); err != nil {
 		return fmt.Errorf("write types: %w", err)
 	}
-	if err := writeSharedHelpersErr(tmpDir, mainContent); err != nil {
+	// Where a type of the package reads its own identity, every value the
+	// document decodes into is held to TestIdentityIsWhatMarshalJSONWrites's
+	// rule as well: its identity is that of what MarshalJSON writes for it. The
+	// check is a file of the package that calls the identity helpers, so the
+	// helper file is written for it too: the package's own code reaches only
+	// what it calls (see the emitter's pruneHelpers).
+	checkIdentity := strings.Contains(mainContent, ") jsonIdentity(")
+	helperRoots := mainContent
+	if checkIdentity {
+		check := identityCheckSource("main")
+		helperRoots += "\n" + check
+		if err := os.WriteFile(filepath.Join(tmpDir, "identity_check.go"), []byte(check), 0o644); err != nil {
+			return fmt.Errorf("write identity check: %w", err)
+		}
+	}
+	if err := writeSharedHelpersErr(tmpDir, helperRoots); err != nil {
 		return fmt.Errorf("write helpers: %w", err)
 	}
 	if err := os.WriteFile(filepath.Join(tmpDir, "fixture.json"), dataJSON, 0o644); err != nil {
 		return fmt.Errorf("write fixture: %w", err)
 	}
-	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(generateRoundTripMain(rootType)), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(tmpDir, "main.go"), []byte(generateRoundTripMainChecking(rootType, checkIdentity)), 0o644); err != nil {
 		return fmt.Errorf("write main: %w", err)
 	}
 	if err := writeTestGoMod(tmpDir, "roundtrip_test"); err != nil {

@@ -3,7 +3,6 @@
 package testpkg
 
 import (
-	"encoding/json"
 	"fmt"
 )
 
@@ -12,100 +11,126 @@ type FormatMapValues struct {
 	AdditionalProperties map[string]string `json:"-"`
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *FormatMapValues) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *FormatMapValues) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = FormatMapValues{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias FormatMapValues
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(f),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*FormatMapValues)(nil)))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
+	var _apFiled map[string]string
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+		var _least string
+		var _failed error
+		for rawKey, rawVal := range _raw { // refused for the least failing key
+			if _failed != nil && rawKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				if _d.isNull(rawVal) {
+					return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%s]", _schemagenQuote(rawKey))
+				}
+				if _apFiled == nil {
+					_apFiled = make(map[string]string)
+				}
+				var val string
+				if err := jsonAtJSON[string](&val, _d, rawVal); err != nil {
+					return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
+				}
+				_apFiled[rawKey] = val
+				return nil
+			}(); _err != nil {
+				_least, _failed = rawKey, _err
+			}
 		}
-		knownFields := map[string]bool{}
-		{
-			var _least string
-			var _failed error
-			for rawKey, rawVal := range raw { // refused for the least failing key
-				if _failed != nil && rawKey >= _least {
-					continue
-				}
-				if _err := func() error {
-					if knownFields[rawKey] {
-						return nil
-					}
-					if string(rawVal) == "null" {
-						return jsonElemPathf(jsonValueErrorf("null is not allowed"), "[%s]", _schemagenQuote(rawKey))
-					}
-					if f.AdditionalProperties == nil {
-						f.AdditionalProperties = make(map[string]string)
-					}
-					var val string
-					if err := json.Unmarshal(rawVal, &val); err != nil {
-						return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
-					}
-					f.AdditionalProperties[rawKey] = val
-					return nil
-				}(); _err != nil {
-					_least, _failed = rawKey, _err
-				}
-			}
-			if _failed != nil {
-				return _failed
-			}
+		if _failed != nil {
+			return _failed
 		}
 	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (f FormatMapValues) MarshalJSON() ([]byte, error) {
-	type Alias FormatMapValues
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f FormatMapValues) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	{
-		var _least string
-		var _failed error
-		for _key, _member := range f.AdditionalProperties { // refused for the least failing key
-			if _failed != nil && _key >= _least {
-				continue
+		// In key order, so that a member that fails is reported for the least
+		// key, whatever order the map is ranged in.
+		for _, _key := range jsonSortedKeys(f.AdditionalProperties) {
+			_v, _err := (jsonAppendLeaf[string])(f.AdditionalProperties[_key], nil)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), _err)
 			}
-			if _err := func() error {
-				raw, err := json.Marshal(_member)
-				if err != nil {
-					return fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), err)
-				}
-				obj[_key] = raw
-				return nil
-			}(); _err != nil {
-				_least, _failed = _key, _err
-			}
-		}
-		if _failed != nil {
-			return nil, _failed
+			_o.encoded(_key, _v)
 		}
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f FormatMapValues) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f FormatMapValues) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks FormatMapValues against its JSON Schema constraints.

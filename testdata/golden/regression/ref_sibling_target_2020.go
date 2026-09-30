@@ -10,6 +10,8 @@ import (
 type AnyWord string
 
 func (a *AnyWord) UnmarshalJSON(data []byte) error {
+	var _zero AnyWord
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -25,6 +27,8 @@ func (a AnyWord) Validate() error {
 type Long string
 
 func (l *Long) UnmarshalJSON(data []byte) error {
+	var _zero Long
+	*l = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -48,19 +52,33 @@ type NamedConst struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NamedConst) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NamedConst) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NamedConst{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NamedConst) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NamedConst) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NamedConst) Raw() json.RawMessage { return append(json.RawMessage(nil), n._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -91,8 +109,13 @@ func (n NamedConst) Validate() error {
 	if len(n._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(n._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -112,19 +135,33 @@ type NamedEnum struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NamedEnum) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NamedEnum) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NamedEnum{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NamedEnum) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NamedEnum) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NamedEnum) Raw() json.RawMessage { return append(json.RawMessage(nil), n._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -155,8 +192,13 @@ func (n NamedEnum) Validate() error {
 	if len(n._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(n._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -176,19 +218,35 @@ type RefSiblingTarget2020ConstForbidden struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *RefSiblingTarget2020ConstForbidden) UnmarshalJSON(data []byte) error {
-	r._raw = append(r._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever r held.
+func (r *RefSiblingTarget2020ConstForbidden) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*r = RefSiblingTarget2020ConstForbidden{}
+	r._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (r RefSiblingTarget2020ConstForbidden) MarshalJSON() ([]byte, error) {
 	if len(r._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return r._raw, nil
+	return append([]byte(nil), r._raw...), nil
 }
 
-func (r RefSiblingTarget2020ConstForbidden) Raw() json.RawMessage { return r._raw }
+// Raw returns a copy of the value's bytes.
+func (r RefSiblingTarget2020ConstForbidden) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), r._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -219,8 +277,13 @@ func (r RefSiblingTarget2020ConstForbidden) Validate() error {
 	if len(r._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(r._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(r._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -240,19 +303,35 @@ type RefSiblingTarget2020ConstSatisfied struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *RefSiblingTarget2020ConstSatisfied) UnmarshalJSON(data []byte) error {
-	r._raw = append(r._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever r held.
+func (r *RefSiblingTarget2020ConstSatisfied) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*r = RefSiblingTarget2020ConstSatisfied{}
+	r._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (r RefSiblingTarget2020ConstSatisfied) MarshalJSON() ([]byte, error) {
 	if len(r._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return r._raw, nil
+	return append([]byte(nil), r._raw...), nil
 }
 
-func (r RefSiblingTarget2020ConstSatisfied) Raw() json.RawMessage { return r._raw }
+// Raw returns a copy of the value's bytes.
+func (r RefSiblingTarget2020ConstSatisfied) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), r._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -283,8 +362,13 @@ func (r RefSiblingTarget2020ConstSatisfied) Validate() error {
 	if len(r._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(r._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(r._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -320,19 +404,35 @@ type RefSiblingTarget2020EnumSibling struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *RefSiblingTarget2020EnumSibling) UnmarshalJSON(data []byte) error {
-	r._raw = append(r._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever r held.
+func (r *RefSiblingTarget2020EnumSibling) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*r = RefSiblingTarget2020EnumSibling{}
+	r._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (r RefSiblingTarget2020EnumSibling) MarshalJSON() ([]byte, error) {
 	if len(r._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return r._raw, nil
+	return append([]byte(nil), r._raw...), nil
 }
 
-func (r RefSiblingTarget2020EnumSibling) Raw() json.RawMessage { return r._raw }
+// Raw returns a copy of the value's bytes.
+func (r RefSiblingTarget2020EnumSibling) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), r._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -363,8 +463,13 @@ func (r RefSiblingTarget2020EnumSibling) Validate() error {
 	if len(r._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(r._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(r._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -384,19 +489,35 @@ type RefSiblingTarget2020ListSiblingItem struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *RefSiblingTarget2020ListSiblingItem) UnmarshalJSON(data []byte) error {
-	r._raw = append(r._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever r held.
+func (r *RefSiblingTarget2020ListSiblingItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*r = RefSiblingTarget2020ListSiblingItem{}
+	r._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (r RefSiblingTarget2020ListSiblingItem) MarshalJSON() ([]byte, error) {
 	if len(r._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return r._raw, nil
+	return append([]byte(nil), r._raw...), nil
 }
 
-func (r RefSiblingTarget2020ListSiblingItem) Raw() json.RawMessage { return r._raw }
+// Raw returns a copy of the value's bytes.
+func (r RefSiblingTarget2020ListSiblingItem) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), r._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -427,8 +548,13 @@ func (r RefSiblingTarget2020ListSiblingItem) Validate() error {
 	if len(r._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(r._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(r._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -448,19 +574,35 @@ type RefSiblingTarget2020MapSiblingValue struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *RefSiblingTarget2020MapSiblingValue) UnmarshalJSON(data []byte) error {
-	r._raw = append(r._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever r held.
+func (r *RefSiblingTarget2020MapSiblingValue) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*r = RefSiblingTarget2020MapSiblingValue{}
+	r._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (r RefSiblingTarget2020MapSiblingValue) MarshalJSON() ([]byte, error) {
 	if len(r._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return r._raw, nil
+	return append([]byte(nil), r._raw...), nil
 }
 
-func (r RefSiblingTarget2020MapSiblingValue) Raw() json.RawMessage { return r._raw }
+// Raw returns a copy of the value's bytes.
+func (r RefSiblingTarget2020MapSiblingValue) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), r._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -491,8 +633,13 @@ func (r RefSiblingTarget2020MapSiblingValue) Validate() error {
 	if len(r._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(r._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(r._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -537,143 +684,298 @@ type RefSiblingTarget2020 struct {
 	NamedEnum            NamedEnum                                      `json:"namedEnum,omitzero"`
 }
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *RefSiblingTarget2020) UnmarshalJSON(data []byte) error {
-	r.AdditionalProperties = nil
-	r._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into r, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever r held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (r *RefSiblingTarget2020) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*r = RefSiblingTarget2020{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"constForbidden",
-			"constSatisfied",
-			"dynSibling",
-			"enumSibling",
-			"listSibling",
-			"mapSibling",
-			"namedConst",
-			"namedEnum",
-			"noRef",
-			"noSibling",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*RefSiblingTarget2020)(nil)))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias RefSiblingTarget2020
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(r),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "constForbidden", decode: jsonDecodeValue[RefSiblingTarget2020ConstForbidden]},
-			{name: "constSatisfied", decode: jsonDecodeValue[RefSiblingTarget2020ConstSatisfied]},
-			{name: "dynSibling", decode: jsonDecodeValue[*RefSiblingTarget2020DynSibling]},
-			{name: "enumSibling", decode: jsonDecodeValue[RefSiblingTarget2020EnumSibling]},
-			{name: "listSibling", decode: jsonDecodeItems(jsonDecodeValue[RefSiblingTarget2020ListSiblingItem])},
-			{name: "mapSibling", decode: jsonDecodeValues(jsonDecodeValue[RefSiblingTarget2020MapSiblingValue])},
-			{name: "namedConst", decode: jsonDecodeValue[NamedConst]},
-			{name: "namedEnum", decode: jsonDecodeValue[NamedEnum]},
-			{name: "noRef", decode: jsonDecodeValue[*RefSiblingTarget2020NoRef]},
-			{name: "noSibling", decode: jsonDecodeValue[*Long]},
-		})
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"constForbidden",
-			"constSatisfied",
-			"dynSibling",
-			"enumSibling",
-			"namedConst",
-			"namedEnum",
-			"noRef",
-			"noSibling",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
-		}
-		if _v, ok := raw["listSibling"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "listSibling")
-			}
-		}
-		if _v, ok := raw["mapSibling"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "mapSibling")
-			}
-		}
-		r._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			r._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{
-			"constForbidden": true,
-			"constSatisfied": true,
-			"dynSibling":     true,
-			"enumSibling":    true,
-			"listSibling":    true,
-			"mapSibling":     true,
-			"namedConst":     true,
-			"namedEnum":      true,
-			"noRef":          true,
-			"noSibling":      true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if r.AdditionalProperties == nil {
-				r.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			r.AdditionalProperties[rawKey] = rawVal
+	if _v, _ok := _raw["constForbidden"]; _ok {
+		if _err := func(_p *RefSiblingTarget2020ConstForbidden, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*RefSiblingTarget2020ConstForbidden).decodeJSONAt(_p, _d, _s))
+		}(&r.ConstForbidden, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constForbidden")
 		}
 	}
+	if _v, _ok := _raw["constSatisfied"]; _ok {
+		if _err := func(_p *RefSiblingTarget2020ConstSatisfied, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*RefSiblingTarget2020ConstSatisfied).decodeJSONAt(_p, _d, _s))
+		}(&r.ConstSatisfied, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constSatisfied")
+		}
+	}
+	if _v, _ok := _raw["dynSibling"]; _ok {
+		if _err := func(_p **RefSiblingTarget2020DynSibling, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*RefSiblingTarget2020DynSibling](_p, _d, _s, jsonDecodeValue[*RefSiblingTarget2020DynSibling])
+		}(&r.DynSibling, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dynSibling")
+		}
+	}
+	if _v, _ok := _raw["enumSibling"]; _ok {
+		if _err := func(_p *RefSiblingTarget2020EnumSibling, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*RefSiblingTarget2020EnumSibling).decodeJSONAt(_p, _d, _s))
+		}(&r.EnumSibling, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "enumSibling")
+		}
+	}
+	if _v, _ok := _raw["listSibling"]; _ok {
+		if _err := func(_p *[]RefSiblingTarget2020ListSiblingItem, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeSlice[RefSiblingTarget2020ListSiblingItem](_p, _d, _s, func(_p *RefSiblingTarget2020ListSiblingItem, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*RefSiblingTarget2020ListSiblingItem).decodeJSONAt(_p, _d, _s))
+			})
+		}(&r.ListSibling, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "listSibling")
+		}
+	}
+	if _v, _ok := _raw["mapSibling"]; _ok {
+		if _err := func(_p *map[string]RefSiblingTarget2020MapSiblingValue, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeMap[RefSiblingTarget2020MapSiblingValue](_p, _d, _s, func(_p *RefSiblingTarget2020MapSiblingValue, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*RefSiblingTarget2020MapSiblingValue).decodeJSONAt(_p, _d, _s))
+			})
+		}(&r.MapSibling, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "mapSibling")
+		}
+	}
+	if _v, _ok := _raw["namedConst"]; _ok {
+		if _err := func(_p *NamedConst, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*NamedConst).decodeJSONAt(_p, _d, _s))
+		}(&r.NamedConst, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "namedConst")
+		}
+	}
+	if _v, _ok := _raw["namedEnum"]; _ok {
+		if _err := func(_p *NamedEnum, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*NamedEnum).decodeJSONAt(_p, _d, _s))
+		}(&r.NamedEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "namedEnum")
+		}
+	}
+	if _v, _ok := _raw["noRef"]; _ok {
+		if _err := func(_p **RefSiblingTarget2020NoRef, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*RefSiblingTarget2020NoRef](_p, _d, _s, jsonDecodeValue[*RefSiblingTarget2020NoRef])
+		}(&r.NoRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "noRef")
+		}
+	}
+	if _v, _ok := _raw["noSibling"]; _ok {
+		if _err := func(_p **Long, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*Long](_p, _d, _s, jsonDecodeValue[*Long])
+		}(&r.NoSibling, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "noSibling")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"constForbidden",
+		"constSatisfied",
+		"dynSibling",
+		"enumSibling",
+		"namedConst",
+		"namedEnum",
+		"noRef",
+		"noSibling",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	if _v, ok := _raw["listSibling"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "listSibling")
+		}
+	}
+	if _v, ok := _raw["mapSibling"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "mapSibling")
+		}
+	}
+	r._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		r._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "constForbidden", "constSatisfied", "dynSibling", "enumSibling", "listSibling", "mapSibling", "namedConst", "namedEnum", "noRef", "noSibling":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	r.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (r RefSiblingTarget2020) MarshalJSON() ([]byte, error) {
-	type Alias RefSiblingTarget2020
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(r),
+	_b, _err := r.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends r to _b as JSON. See jsonEnc.
+func (r RefSiblingTarget2020) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := r.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range r.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, r.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members r's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (r RefSiblingTarget2020) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(r.DynSibling)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dynSibling", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(r.MapSibling)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("mapSibling", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(r.NoRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("noRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(r.NoSibling)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("noSibling", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(r.ConstForbidden)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constForbidden", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(r.ConstSatisfied)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constSatisfied", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(r.EnumSibling)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("enumSibling", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(r.ListSibling)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("listSibling", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(r.NamedConst)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("namedConst", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(r.NamedEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("namedEnum", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of r numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (r RefSiblingTarget2020) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks RefSiblingTarget2020 against its JSON Schema constraints.

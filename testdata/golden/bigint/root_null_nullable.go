@@ -22,6 +22,7 @@ type RootNullBigIntNullable struct {
 }
 
 func (r *RootNullBigIntNullable) UnmarshalJSON(data []byte) error {
+	*r = RootNullBigIntNullable{}
 	// The schema admits null. Take it before json.Number does: a null decodes
 	// into a json.Number as the empty string, which then fails every numeric
 	// parse below -- which is how a permitted null came to be reported as
@@ -97,9 +98,13 @@ func (r RootNullBigIntNullable) MarshalJSON() ([]byte, error) {
 	return json.Marshal(r._int64)
 }
 func (r RootNullBigIntNullable) Int64() int64 { return r._int64 }
+
+// BigInt returns the value as a *big.Int of the caller's own. The value's own
+// is not handed out: a copy of the value shares it, and a caller writing
+// through it would change both.
 func (r RootNullBigIntNullable) BigInt() *big.Int {
 	if r._isBigInt && r._bigInt != nil {
-		return r._bigInt
+		return new(big.Int).Set(r._bigInt)
 	}
 	return big.NewInt(r._int64)
 }

@@ -187,8 +187,18 @@ var nameSiteCalls = map[string]bool{
 // nameSiteAllowances are the sites whose name the classification above cannot
 // follow, each with the reason it comes out of the registry all the same.
 var nameSiteAllowances = map[string]string{
-	"emitDef: declare(def.TypeName(), ...)": "the name the def was built under; emitDefAs checks it is the name its caller holds, and the one direct caller (generateTypeDefFor's backstop) builds it from its own parameter",
-	"Generate: NamedType{Name: name}":       "the cross-package publishing loop, naming each def already in the file by the name it was declared under",
+	"emitDef: declare(def.TypeName(), ...)":                   "the name the def was built under; emitDefAs checks it is the name its caller holds, and the one direct caller (generateTypeDefFor's backstop) builds it from its own parameter",
+	"Generate: NamedType{Name: name}":                         "the cross-package publishing loop, naming each def already in the file by the name it was declared under",
+	"resolveTypeBranchesInPlace: NamedType{Name: b.TypeName}": "a type-schema branch's type, already named by the registry when the branch was built; looked up, never declared",
+	"resolveEncodePlans: NamedType{Name: d.MarshalAs}":        "the type an alias's MarshalJSON already delegates to, named when the delegate was settled",
+	"resolveEncodePlans: NamedType{Name: d.Name}":             "the encode plan of an alias already in the file, written over the alias itself: the name it was declared under",
+	"aliasEncodes: NamedType{Name: ad.MarshalAs}":             "the type an alias's MarshalJSON already delegates to; looked up, never declared",
+	"identityReach: NamedType{Name: d.MarshalAs}":             "the type an alias's MarshalJSON already delegates to; looked up, never declared",
+	"identityReach: NamedType{Name: n.TypeName}":              "the type an element node was compiled from, named by the registry when its position was built; looked up, never declared",
+	"identityReach: NamedType{Name: td.TypeName()}":           "a type already declared in the file, by the name it was declared under; looked up, never declared",
+	"resolveIdentityPlans: NamedType{Name: d.MarshalAs}":      "the type an alias's MarshalJSON already delegates to, named when the delegate was settled",
+	"resolveIdentityPlans: NamedType{Name: d.Name}":           "the identity of an alias already in the file, read over the alias itself: the name it was declared under",
+	"resolveDecodePlans: NamedType{Name: d.Name}":             "the decode plan of an alias already in the file, written over the alias itself: the name it was declared under",
 }
 
 // TestNoTypeNameIsBuiltOutsideTheRegistry reads every place pkg/generator names

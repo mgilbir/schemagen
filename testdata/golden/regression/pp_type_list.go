@@ -12,95 +12,135 @@ import (
 type Root struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	PatternProperties    map[string]json.RawMessage `json:"-"`
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *Root) UnmarshalJSON(data []byte) error {
-	r.AdditionalProperties = nil
-	r.PatternProperties = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into r, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever r held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (r *Root) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*r = Root{}
+	r._doc = _d
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias Root
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(r),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Root)(nil)))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
+	var _ppFiled map[string]json.RawMessage
+	var _apFiled map[string]json.RawMessage
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
-		}
-		knownFields := map[string]bool{}
-		{
-			var _least string
-			var _failed error
-			for rawKey, rawVal := range raw { // refused for the least failing key
-				if _failed != nil && rawKey >= _least {
-					continue
+		var _least string
+		var _failed error
+		for rawKey, rawVal := range _raw { // refused for the least failing key
+			if _failed != nil && rawKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				matchesPattern := false
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_3bcb94591421aa37.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
+					}
+					matchesPattern = _ppMatched
 				}
-				if _err := func() error {
-					if knownFields[rawKey] {
-						return nil
+				if matchesPattern {
+					if _ppFiled == nil {
+						_ppFiled = make(map[string]json.RawMessage)
 					}
-					matchesPattern := false
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_3bcb94591421aa37.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
-					}
-					if matchesPattern {
-						if r.PatternProperties == nil {
-							r.PatternProperties = make(map[string]json.RawMessage)
-						}
-						r.PatternProperties[rawKey] = rawVal
-						return nil
-					}
-					if r.AdditionalProperties == nil {
-						r.AdditionalProperties = make(map[string]json.RawMessage)
-					}
-					r.AdditionalProperties[rawKey] = rawVal
+					_ppFiled[rawKey] = _d.copyOf(rawVal)
 					return nil
-				}(); _err != nil {
-					_least, _failed = rawKey, _err
 				}
+				if _apFiled == nil {
+					_apFiled = make(map[string]json.RawMessage)
+				}
+				_apFiled[rawKey] = _d.copyOf(rawVal)
+				return nil
+			}(); _err != nil {
+				_least, _failed = rawKey, _err
 			}
-			if _failed != nil {
-				return _failed
-			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
+	r.PatternProperties = _ppFiled
+	r.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (r Root) MarshalJSON() ([]byte, error) {
-	type Alias Root
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(r),
+	_b, _err := r.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends r to _b as JSON. See jsonEnc.
+func (r Root) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := r.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range r.PatternProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
 	for _key, _member := range r.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, r.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members r's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (r Root) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of r numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (r Root) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks Root against its JSON Schema constraints.

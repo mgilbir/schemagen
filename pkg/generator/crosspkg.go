@@ -90,6 +90,23 @@ type typeShape struct {
 	// Interface says the type is, or is an alias over, `any`. Like a pointer and
 	// a collection its nil means absent -- and it cannot carry methods.
 	Interface bool
+	// NilState says a value of the type can be nil: it is, or is an alias over,
+	// a pointer, a collection, an interface or raw JSON bytes. Nil is then what
+	// an absent property leaves, `x != nil` compiles against a field of it, and
+	// an optional one needs no pointer to be omitted. See hasNilState.
+	NilState bool
+	// StringBacked says the type is a string underneath, so `string(v)`
+	// converts it and a check that takes a string can be handed one. See
+	// isStringBackedNamedType.
+	StringBacked bool
+	// NoMethods says the type is, or is an alias over, a pointer or an
+	// interface, so Go permits no method on it or on any type declared over
+	// it. See canHaveMethods.
+	NoMethods bool
+	// ZeroJSONKind is the JSON value the type's zero marshals to, where one
+	// value names it ("null", "string", "number", "boolean"), and "" where
+	// none does. See zeroJSONKind.
+	ZeroJSONKind string
 	// RawWrapper says the type is one of the wrappers that keep the value as raw
 	// JSON and judge it afterwards. It is a struct with a custom MarshalJSON, so
 	// omitempty never drops it; it carries IsZero, so ",omitzero" drops exactly

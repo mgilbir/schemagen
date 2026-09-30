@@ -365,5 +365,21 @@ func decodePathFixtures() []errorPathFixture {
 				{Name: "accepts", Doc: `{"a%d":"v","[x]":{"n":"v"}}`, Reason: "control"},
 			},
 		},
+		{
+			// A named container encoding/json decodes whole is decoded at the
+			// root without opening an indexed document -- there is nothing to
+			// index -- so its null is refused at that entry rather than by
+			// decodeJSONAt. Both have to say it.
+			Name:   "a_root_container_decoded_whole_refuses_null",
+			Schema: `{"type":"array","prefixItems":[{"type":"number"},{"type":"string"}]}`,
+			Cases: []errorPathCase{
+				{Name: "null", Doc: `null`, Want: `null is not allowed`,
+					Reason: "json.Unmarshal would decode null into a nil slice and accept it"},
+				{Name: "the wrong kind", Doc: `{}`,
+					Want:   `expected array, got object`,
+					Reason: "control: the refusal is encoding/json's, read for the schema's words, as before"},
+				{Name: "accepts", Doc: `[1,"a"]`, Reason: "control"},
+			},
+		},
 	}
 }

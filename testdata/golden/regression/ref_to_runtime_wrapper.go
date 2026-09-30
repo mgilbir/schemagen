@@ -14,19 +14,33 @@ type Wrapped struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces w with the value the document holds. See
+// decodeJSONAt.
 func (w *Wrapped) UnmarshalJSON(data []byte) error {
-	w._raw = append(w._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(w.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever w held.
+func (w *Wrapped) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*w = Wrapped{}
+	w._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (w Wrapped) MarshalJSON() ([]byte, error) {
 	if len(w._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return w._raw, nil
+	return append([]byte(nil), w._raw...), nil
 }
 
-func (w Wrapped) Raw() json.RawMessage { return w._raw }
+// Raw returns a copy of the value's bytes.
+func (w Wrapped) Raw() json.RawMessage { return append(json.RawMessage(nil), w._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -56,8 +70,13 @@ func (w Wrapped) Validate() error {
 	if len(w._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(w._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(w._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -71,12 +90,29 @@ func (w Wrapped) Validate() error {
 
 type RefToRuntimeWrapper Wrapped
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *RefToRuntimeWrapper) UnmarshalJSON(data []byte) error {
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into r, in place. The value is
+// replaced rather than merged into: a slice is decoded into an array of its
+// own rather than over the one r held, which a copy of the value made
+// earlier still shares, and a map loses the members an earlier document gave
+// it.
+func (r *RefToRuntimeWrapper) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	var _zero RefToRuntimeWrapper
+	*r = _zero
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
 	var _target Wrapped
-	if _err := json.Unmarshal(data, &_target); _err != nil {
+	if _err := (*Wrapped).decodeJSONAt(&_target, _d, _sp); _err != nil {
 		return jsonDecodeRefusal(_err)
 	}
 	*r = RefToRuntimeWrapper(_target)

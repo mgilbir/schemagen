@@ -9,6 +9,8 @@ import (
 type Root int64
 
 func (r *Root) UnmarshalJSON(data []byte) error {
+	var _zero Root
+	*r = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}

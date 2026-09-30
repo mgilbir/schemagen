@@ -11,98 +11,143 @@ type AnyOfSummary struct {
 	A                    *string                    `json:"a,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
+// UnmarshalJSON replaces a with the value the document holds. See
+// decodeJSONAt.
 func (a *AnyOfSummary) UnmarshalJSON(data []byte) error {
-	a.AdditionalProperties = nil
-	a._jsonRawProps = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(a.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into a, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever a held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (a *AnyOfSummary) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*a = AnyOfSummary{}
+	a._doc = _d
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"a",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AnyOfSummary)(nil)))
 	}
-	type Alias AnyOfSummary
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(a),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "a", decode: jsonDecodeValue[*string]},
-		})
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"a",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-		}
-		a._jsonRawProps = raw
-		knownFields := map[string]bool{
-			"a": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if a.AdditionalProperties == nil {
-				a.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			a.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	if _v, _ok := _raw["a"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&a.A, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "a")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"a",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	// The members a Validate check reads back as JSON. Each is a view of the
+	// document's own copy rather than a copy of its own: at every depth of a
+	// recursive document these hold the member below, and a copy each was the
+	// whole subtree held once per level. See jsonDoc.keep.
+	if _d.data[_sp.start] == '{' {
+		a._jsonRawProps = make(map[string]json.RawMessage, len(_raw))
+		for _k, _v := range _raw {
+			a._jsonRawProps[_k] = _d.keep(_v)
+		}
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "a":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	a.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (a AnyOfSummary) MarshalJSON() ([]byte, error) {
-	type Alias AnyOfSummary
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AnyOfSummary) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AnyOfSummary) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.A)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("a", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AnyOfSummary) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AnyOfSummary against its JSON Schema constraints.
@@ -119,8 +164,8 @@ func (a AnyOfSummary) Validate() error {
 					continue
 				}
 				if _err := func() error {
-					var _rbVal any
-					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+					_rbVal, _rbErr := jsonHeld(a._doc, _rbRaw)
+					if _rbErr != nil {
 						return jsonValueErrorf("cannot decode property %s: %w", _schemagenQuote(_rbKey), _rbErr)
 					}
 					_rbInstance[_rbKey] = _rbVal
@@ -148,10 +193,10 @@ func (a AnyOfSummary) Validate() error {
 				},
 			}
 			if _rbRes := _evalNode(&_rbNode0, _rbInstance); !_rbRes.ok {
-				if _rbRes.reason == "" {
+				if _rbRes.why.String() == "" {
 					return fmt.Errorf("anyOf: value does not satisfy the schema")
 				}
-				return fmt.Errorf("anyOf: %s", _rbRes.reason)
+				return fmt.Errorf("anyOf: %s", _rbRes.why.String())
 			}
 		}
 	}
@@ -162,98 +207,143 @@ type AnyOfSummaryFalse struct {
 	A                    *string                    `json:"a,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
+// UnmarshalJSON replaces a with the value the document holds. See
+// decodeJSONAt.
 func (a *AnyOfSummaryFalse) UnmarshalJSON(data []byte) error {
-	a.AdditionalProperties = nil
-	a._jsonRawProps = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(a.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into a, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever a held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (a *AnyOfSummaryFalse) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*a = AnyOfSummaryFalse{}
+	a._doc = _d
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"a",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AnyOfSummaryFalse)(nil)))
 	}
-	type Alias AnyOfSummaryFalse
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(a),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "a", decode: jsonDecodeValue[*string]},
-		})
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"a",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-		}
-		a._jsonRawProps = raw
-		knownFields := map[string]bool{
-			"a": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if a.AdditionalProperties == nil {
-				a.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			a.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	if _v, _ok := _raw["a"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&a.A, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "a")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"a",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	// The members a Validate check reads back as JSON. Each is a view of the
+	// document's own copy rather than a copy of its own: at every depth of a
+	// recursive document these hold the member below, and a copy each was the
+	// whole subtree held once per level. See jsonDoc.keep.
+	if _d.data[_sp.start] == '{' {
+		a._jsonRawProps = make(map[string]json.RawMessage, len(_raw))
+		for _k, _v := range _raw {
+			a._jsonRawProps[_k] = _d.keep(_v)
+		}
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "a":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	a.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (a AnyOfSummaryFalse) MarshalJSON() ([]byte, error) {
-	type Alias AnyOfSummaryFalse
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AnyOfSummaryFalse) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AnyOfSummaryFalse) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.A)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("a", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AnyOfSummaryFalse) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks AnyOfSummaryFalse against its JSON Schema constraints.
@@ -270,8 +360,8 @@ func (a AnyOfSummaryFalse) Validate() error {
 					continue
 				}
 				if _err := func() error {
-					var _rbVal any
-					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+					_rbVal, _rbErr := jsonHeld(a._doc, _rbRaw)
+					if _rbErr != nil {
 						return jsonValueErrorf("cannot decode property %s: %w", _schemagenQuote(_rbKey), _rbErr)
 					}
 					_rbInstance[_rbKey] = _rbVal
@@ -299,10 +389,10 @@ func (a AnyOfSummaryFalse) Validate() error {
 				},
 			}
 			if _rbRes := _evalNode(&_rbNode0, _rbInstance); !_rbRes.ok {
-				if _rbRes.reason == "" {
+				if _rbRes.why.String() == "" {
 					return fmt.Errorf("anyOf: value does not satisfy the schema")
 				}
-				return fmt.Errorf("anyOf: %s", _rbRes.reason)
+				return fmt.Errorf("anyOf: %s", _rbRes.why.String())
 			}
 		}
 	}
@@ -317,19 +407,35 @@ type HiddenKeywordSpellingsConstNullBranch struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces h with the value the document holds. See
+// decodeJSONAt.
 func (h *HiddenKeywordSpellingsConstNullBranch) UnmarshalJSON(data []byte) error {
-	h._raw = append(h._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(h.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever h held.
+func (h *HiddenKeywordSpellingsConstNullBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*h = HiddenKeywordSpellingsConstNullBranch{}
+	h._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (h HiddenKeywordSpellingsConstNullBranch) MarshalJSON() ([]byte, error) {
 	if len(h._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return h._raw, nil
+	return append([]byte(nil), h._raw...), nil
 }
 
-func (h HiddenKeywordSpellingsConstNullBranch) Raw() json.RawMessage { return h._raw }
+// Raw returns a copy of the value's bytes.
+func (h HiddenKeywordSpellingsConstNullBranch) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), h._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -354,8 +460,13 @@ func (h HiddenKeywordSpellingsConstNullBranch) Validate() error {
 	if len(h._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(h._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(h._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -375,19 +486,35 @@ type HiddenKeywordSpellingsConstStringBranch struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces h with the value the document holds. See
+// decodeJSONAt.
 func (h *HiddenKeywordSpellingsConstStringBranch) UnmarshalJSON(data []byte) error {
-	h._raw = append(h._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(h.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever h held.
+func (h *HiddenKeywordSpellingsConstStringBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*h = HiddenKeywordSpellingsConstStringBranch{}
+	h._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (h HiddenKeywordSpellingsConstStringBranch) MarshalJSON() ([]byte, error) {
 	if len(h._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return h._raw, nil
+	return append([]byte(nil), h._raw...), nil
 }
 
-func (h HiddenKeywordSpellingsConstStringBranch) Raw() json.RawMessage { return h._raw }
+// Raw returns a copy of the value's bytes.
+func (h HiddenKeywordSpellingsConstStringBranch) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), h._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -412,8 +539,13 @@ func (h HiddenKeywordSpellingsConstStringBranch) Validate() error {
 	if len(h._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(h._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(h._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -433,19 +565,35 @@ type HiddenKeywordSpellingsOneOfConstNull struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces h with the value the document holds. See
+// decodeJSONAt.
 func (h *HiddenKeywordSpellingsOneOfConstNull) UnmarshalJSON(data []byte) error {
-	h._raw = append(h._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(h.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever h held.
+func (h *HiddenKeywordSpellingsOneOfConstNull) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*h = HiddenKeywordSpellingsOneOfConstNull{}
+	h._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (h HiddenKeywordSpellingsOneOfConstNull) MarshalJSON() ([]byte, error) {
 	if len(h._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return h._raw, nil
+	return append([]byte(nil), h._raw...), nil
 }
 
-func (h HiddenKeywordSpellingsOneOfConstNull) Raw() json.RawMessage { return h._raw }
+// Raw returns a copy of the value's bytes.
+func (h HiddenKeywordSpellingsOneOfConstNull) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), h._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -473,8 +621,13 @@ func (h HiddenKeywordSpellingsOneOfConstNull) Validate() error {
 	if len(h._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(h._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(h._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -488,134 +641,189 @@ func (h HiddenKeywordSpellingsOneOfConstNull) Validate() error {
 
 type HiddenKeywordSpellingsPatternConstNullPattern0 json.RawMessage
 
-// The members as the schema wrote them, reduced at package initialisation to
-// the one spelling every JSON value equal to each of them shares -- which is
-// the same reduction Validate puts the instance through. See _jsonCanonical.
-var hiddenKeywordSpellingsPatternConstNullPattern0AllowedJSON = _jsonCanonicalTexts([]string{
+// The members as the schema wrote them, read at package initialisation: the
+// identity every JSON value equal to each shares, and its tree, which is what
+// Validate compares the instance with. See jsonMatchesConstRaw.
+var hiddenKeywordSpellingsPatternConstNullPattern0AllowedJSON = jsonConstOf(false,
 	"null",
-})
+)
 
+// UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
+//
+// encoding/json's contract for an Unmarshaler is that it copies what it keeps,
+// and this one kept the caller's slice: a caller that reused its read buffer --
+// a json.Decoder over a stream does, for every document -- rewrote a value it had
+// already decoded, which then validated as whatever the next document held
+// there. A value that is not JSON at all is refused in encoding/json's words;
+// encoding/json never hands one over, so only a direct caller reaches that.
 func (h *HiddenKeywordSpellingsPatternConstNullPattern0) UnmarshalJSON(data []byte) error {
-	*h = HiddenKeywordSpellingsPatternConstNullPattern0(data)
+	*h = nil
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	*h = HiddenKeywordSpellingsPatternConstNullPattern0(append([]byte(nil), data...))
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it, in a buffer of
+// its own: the value's bytes, handed out, are bytes a caller can rewrite it
+// through.
 func (h HiddenKeywordSpellingsPatternConstNullPattern0) MarshalJSON() ([]byte, error) {
 	if len(h) == 0 {
 		return []byte("null"), nil
 	}
-	return json.RawMessage(h).MarshalJSON()
+	return append([]byte(nil), h...), nil
 }
 
 // Validate checks HiddenKeywordSpellingsPatternConstNullPattern0 against its JSON Schema constraints.
 func (h HiddenKeywordSpellingsPatternConstNullPattern0) Validate() error {
-	// Reduced to one spelling per JSON value, which is what the member list was
-	// reduced to as well: whitespace, member order and number spelling are not
-	// what an enum is decided on.
-	_canon, _canonErr := _jsonCanonical([]byte(h))
-	if _canonErr != nil {
+	// Compared as JSON (see jsonMatchesConstRaw): whitespace, member order and
+	// number spelling are not what an enum is decided on. It used to reduce the
+	// value to canonical text, re-encoding every string and key in it, to decide.
+	_ok, _okErr := jsonMatchesConstRaw(h, hiddenKeywordSpellingsPatternConstNullPattern0AllowedJSON)
+	if _okErr != nil {
 		return jsonValueErrorf("invalid HiddenKeywordSpellingsPatternConstNullPattern0 value: %s", _schemagenClipText(string(h)))
 	}
-	for _, allowed := range hiddenKeywordSpellingsPatternConstNullPattern0AllowedJSON {
-		if _canon == allowed {
-			return nil
-		}
+	if _ok {
+		return nil
 	}
+	_canon, _ := _jsonCanonical([]byte(h))
 	return jsonValueErrorf("invalid HiddenKeywordSpellingsPatternConstNullPattern0 value: %s", _canon)
 }
 
 type HiddenKeywordSpellingsPatternConstNull struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	PatternProperties    map[string]json.RawMessage `json:"-"`
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
+// UnmarshalJSON replaces h with the value the document holds. See
+// decodeJSONAt.
 func (h *HiddenKeywordSpellingsPatternConstNull) UnmarshalJSON(data []byte) error {
-	h.AdditionalProperties = nil
-	h.PatternProperties = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(h.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into h, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever h held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (h *HiddenKeywordSpellingsPatternConstNull) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*h = HiddenKeywordSpellingsPatternConstNull{}
+	h._doc = _d
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias HiddenKeywordSpellingsPatternConstNull
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(h),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*HiddenKeywordSpellingsPatternConstNull)(nil)))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
+	var _ppFiled map[string]json.RawMessage
+	var _apFiled map[string]json.RawMessage
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
-		}
-		knownFields := map[string]bool{}
-		{
-			var _least string
-			var _failed error
-			for rawKey, rawVal := range raw { // refused for the least failing key
-				if _failed != nil && rawKey >= _least {
-					continue
+		var _least string
+		var _failed error
+		for rawKey, rawVal := range _raw { // refused for the least failing key
+			if _failed != nil && rawKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				matchesPattern := false
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_5cd67a1734052155.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
+					}
+					matchesPattern = _ppMatched
 				}
-				if _err := func() error {
-					if knownFields[rawKey] {
-						return nil
+				if matchesPattern {
+					if _ppFiled == nil {
+						_ppFiled = make(map[string]json.RawMessage)
 					}
-					matchesPattern := false
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_5cd67a1734052155.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
-					}
-					if matchesPattern {
-						if h.PatternProperties == nil {
-							h.PatternProperties = make(map[string]json.RawMessage)
-						}
-						h.PatternProperties[rawKey] = rawVal
-						return nil
-					}
-					if h.AdditionalProperties == nil {
-						h.AdditionalProperties = make(map[string]json.RawMessage)
-					}
-					h.AdditionalProperties[rawKey] = rawVal
+					_ppFiled[rawKey] = _d.copyOf(rawVal)
 					return nil
-				}(); _err != nil {
-					_least, _failed = rawKey, _err
 				}
+				if _apFiled == nil {
+					_apFiled = make(map[string]json.RawMessage)
+				}
+				_apFiled[rawKey] = _d.copyOf(rawVal)
+				return nil
+			}(); _err != nil {
+				_least, _failed = rawKey, _err
 			}
-			if _failed != nil {
-				return _failed
-			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
+	h.PatternProperties = _ppFiled
+	h.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (h HiddenKeywordSpellingsPatternConstNull) MarshalJSON() ([]byte, error) {
-	type Alias HiddenKeywordSpellingsPatternConstNull
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(h),
+	_b, _err := h.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends h to _b as JSON. See jsonEnc.
+func (h HiddenKeywordSpellingsPatternConstNull) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := h.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range h.PatternProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
 	for _key, _member := range h.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, h.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members h's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (h HiddenKeywordSpellingsPatternConstNull) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of h numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (h HiddenKeywordSpellingsPatternConstNull) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks HiddenKeywordSpellingsPatternConstNull against its JSON Schema constraints.
@@ -636,10 +844,10 @@ func (h HiddenKeywordSpellingsPatternConstNull) Validate() error {
 					// Validate enforces everything beyond it.
 					var _pv HiddenKeywordSpellingsPatternConstNullPattern0
 					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^a", _schemagenQuote(_key), _uErr)
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^a", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^a", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^a", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -682,6 +890,8 @@ const (
 // is invisible whenever the zero is a member of the enum. The two arms above
 // carry the same guard inside the decoders they already declare.
 func (h *HiddenKeywordSpellingsPatternConstStringPattern0) UnmarshalJSON(data []byte) error {
+	var _zero HiddenKeywordSpellingsPatternConstStringPattern0
+	*h = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -702,95 +912,135 @@ func (h HiddenKeywordSpellingsPatternConstStringPattern0) Validate() error {
 type HiddenKeywordSpellingsPatternConstString struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	PatternProperties    map[string]json.RawMessage `json:"-"`
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
+// UnmarshalJSON replaces h with the value the document holds. See
+// decodeJSONAt.
 func (h *HiddenKeywordSpellingsPatternConstString) UnmarshalJSON(data []byte) error {
-	h.AdditionalProperties = nil
-	h.PatternProperties = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(h.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into h, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever h held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (h *HiddenKeywordSpellingsPatternConstString) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*h = HiddenKeywordSpellingsPatternConstString{}
+	h._doc = _d
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias HiddenKeywordSpellingsPatternConstString
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(h),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*HiddenKeywordSpellingsPatternConstString)(nil)))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
+	var _ppFiled map[string]json.RawMessage
+	var _apFiled map[string]json.RawMessage
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
-		}
-		knownFields := map[string]bool{}
-		{
-			var _least string
-			var _failed error
-			for rawKey, rawVal := range raw { // refused for the least failing key
-				if _failed != nil && rawKey >= _least {
-					continue
+		var _least string
+		var _failed error
+		for rawKey, rawVal := range _raw { // refused for the least failing key
+			if _failed != nil && rawKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				matchesPattern := false
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_04cf29b1e752ed04.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
+					}
+					matchesPattern = _ppMatched
 				}
-				if _err := func() error {
-					if knownFields[rawKey] {
-						return nil
+				if matchesPattern {
+					if _ppFiled == nil {
+						_ppFiled = make(map[string]json.RawMessage)
 					}
-					matchesPattern := false
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_04cf29b1e752ed04.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
-					}
-					if matchesPattern {
-						if h.PatternProperties == nil {
-							h.PatternProperties = make(map[string]json.RawMessage)
-						}
-						h.PatternProperties[rawKey] = rawVal
-						return nil
-					}
-					if h.AdditionalProperties == nil {
-						h.AdditionalProperties = make(map[string]json.RawMessage)
-					}
-					h.AdditionalProperties[rawKey] = rawVal
+					_ppFiled[rawKey] = _d.copyOf(rawVal)
 					return nil
-				}(); _err != nil {
-					_least, _failed = rawKey, _err
 				}
+				if _apFiled == nil {
+					_apFiled = make(map[string]json.RawMessage)
+				}
+				_apFiled[rawKey] = _d.copyOf(rawVal)
+				return nil
+			}(); _err != nil {
+				_least, _failed = rawKey, _err
 			}
-			if _failed != nil {
-				return _failed
-			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
+	h.PatternProperties = _ppFiled
+	h.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (h HiddenKeywordSpellingsPatternConstString) MarshalJSON() ([]byte, error) {
-	type Alias HiddenKeywordSpellingsPatternConstString
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(h),
+	_b, _err := h.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends h to _b as JSON. See jsonEnc.
+func (h HiddenKeywordSpellingsPatternConstString) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := h.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range h.PatternProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
 	for _key, _member := range h.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, h.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members h's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (h HiddenKeywordSpellingsPatternConstString) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of h numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (h HiddenKeywordSpellingsPatternConstString) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks HiddenKeywordSpellingsPatternConstString against its JSON Schema constraints.
@@ -811,10 +1061,10 @@ func (h HiddenKeywordSpellingsPatternConstString) Validate() error {
 					// Validate enforces everything beyond it.
 					var _pv HiddenKeywordSpellingsPatternConstStringPattern0
 					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^b", _schemagenQuote(_key), _uErr)
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^b", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^b", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^b", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -874,125 +1124,310 @@ type HiddenKeywordSpellings struct {
 	OneOfConstNull        HiddenKeywordSpellingsOneOfConstNull      `json:"oneOfConstNull,omitzero"`
 }
 
+// UnmarshalJSON replaces h with the value the document holds. See
+// decodeJSONAt.
 func (h *HiddenKeywordSpellings) UnmarshalJSON(data []byte) error {
-	h.AdditionalProperties = nil
-	h._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(h.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into h, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever h held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (h *HiddenKeywordSpellings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*h = HiddenKeywordSpellings{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"anyOfSummaryEmptyEnum",
-			"anyOfSummaryFalse",
-			"constNullBranch",
-			"constStringBranch",
-			"oneOfConstNull",
-			"patternConstNull",
-			"patternConstString",
-			"plainEnum",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*HiddenKeywordSpellings)(nil)))
 	}
-	type Alias HiddenKeywordSpellings
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(h),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "anyOfSummaryEmptyEnum", decode: jsonDecodeValue[*AnyOfSummary]},
-			{name: "anyOfSummaryFalse", decode: jsonDecodeValue[*AnyOfSummaryFalse]},
-			{name: "constNullBranch", decode: jsonDecodeValue[HiddenKeywordSpellingsConstNullBranch]},
-			{name: "constStringBranch", decode: jsonDecodeValue[HiddenKeywordSpellingsConstStringBranch]},
-			{name: "oneOfConstNull", decode: jsonDecodeValue[HiddenKeywordSpellingsOneOfConstNull]},
-			{name: "patternConstNull", decode: jsonDecodeValue[*HiddenKeywordSpellingsPatternConstNull]},
-			{name: "patternConstString", decode: jsonDecodeValue[*HiddenKeywordSpellingsPatternConstString]},
-			{name: "plainEnum", decode: jsonDecodeValue[*HiddenKeywordSpellingsPlainEnum]},
-		})
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"anyOfSummaryEmptyEnum",
-			"anyOfSummaryFalse",
-			"constStringBranch",
-			"patternConstNull",
-			"patternConstString",
-			"plainEnum",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-		}
-		h._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			h._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{
-			"anyOfSummaryEmptyEnum": true,
-			"anyOfSummaryFalse":     true,
-			"constNullBranch":       true,
-			"constStringBranch":     true,
-			"oneOfConstNull":        true,
-			"patternConstNull":      true,
-			"patternConstString":    true,
-			"plainEnum":             true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if h.AdditionalProperties == nil {
-				h.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			h.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	if _v, _ok := _raw["anyOfSummaryEmptyEnum"]; _ok {
+		if _err := func(_p **AnyOfSummary, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **AnyOfSummary, _d *jsonDoc, _s jsonSpan) error {
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AnyOfSummary)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
+			}(_p, _d, _s))
+		}(&h.AnyOfSummaryEmptyEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "anyOfSummaryEmptyEnum")
+		}
+	}
+	if _v, _ok := _raw["anyOfSummaryFalse"]; _ok {
+		if _err := func(_p **AnyOfSummaryFalse, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **AnyOfSummaryFalse, _d *jsonDoc, _s jsonSpan) error {
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(AnyOfSummaryFalse)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
+			}(_p, _d, _s))
+		}(&h.AnyOfSummaryFalse, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "anyOfSummaryFalse")
+		}
+	}
+	if _v, _ok := _raw["constNullBranch"]; _ok {
+		if _err := func(_p *HiddenKeywordSpellingsConstNullBranch, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*HiddenKeywordSpellingsConstNullBranch).decodeJSONAt(_p, _d, _s))
+		}(&h.ConstNullBranch, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constNullBranch")
+		}
+	}
+	if _v, _ok := _raw["constStringBranch"]; _ok {
+		if _err := func(_p *HiddenKeywordSpellingsConstStringBranch, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*HiddenKeywordSpellingsConstStringBranch).decodeJSONAt(_p, _d, _s))
+		}(&h.ConstStringBranch, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constStringBranch")
+		}
+	}
+	if _v, _ok := _raw["oneOfConstNull"]; _ok {
+		if _err := func(_p *HiddenKeywordSpellingsOneOfConstNull, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*HiddenKeywordSpellingsOneOfConstNull).decodeJSONAt(_p, _d, _s))
+		}(&h.OneOfConstNull, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "oneOfConstNull")
+		}
+	}
+	if _v, _ok := _raw["patternConstNull"]; _ok {
+		if _err := func(_p **HiddenKeywordSpellingsPatternConstNull, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **HiddenKeywordSpellingsPatternConstNull, _d *jsonDoc, _s jsonSpan) error {
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(HiddenKeywordSpellingsPatternConstNull)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
+			}(_p, _d, _s))
+		}(&h.PatternConstNull, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "patternConstNull")
+		}
+	}
+	if _v, _ok := _raw["patternConstString"]; _ok {
+		if _err := func(_p **HiddenKeywordSpellingsPatternConstString, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **HiddenKeywordSpellingsPatternConstString, _d *jsonDoc, _s jsonSpan) error {
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(HiddenKeywordSpellingsPatternConstString)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
+			}(_p, _d, _s))
+		}(&h.PatternConstString, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "patternConstString")
+		}
+	}
+	if _v, _ok := _raw["plainEnum"]; _ok {
+		if _err := func(_p **HiddenKeywordSpellingsPlainEnum, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*HiddenKeywordSpellingsPlainEnum](_p, _d, _s, jsonDecodeValue[*HiddenKeywordSpellingsPlainEnum])
+		}(&h.PlainEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "plainEnum")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"anyOfSummaryEmptyEnum",
+		"anyOfSummaryFalse",
+		"constStringBranch",
+		"patternConstNull",
+		"patternConstString",
+		"plainEnum",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	h._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		h._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "anyOfSummaryEmptyEnum", "anyOfSummaryFalse", "constNullBranch", "constStringBranch", "oneOfConstNull", "patternConstNull", "patternConstString", "plainEnum":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	h.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (h HiddenKeywordSpellings) MarshalJSON() ([]byte, error) {
-	type Alias HiddenKeywordSpellings
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(h),
+	_b, _err := h.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends h to _b as JSON. See jsonEnc.
+func (h HiddenKeywordSpellings) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := h.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range h.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, h.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members h's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (h HiddenKeywordSpellings) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		if !jsonIsEmpty(h.AnyOfSummaryEmptyEnum) {
+			_o.deferred("anyOfSummaryEmptyEnum", 0)
+		}
+	}
+	{
+		if !jsonIsEmpty(h.AnyOfSummaryFalse) {
+			_o.deferred("anyOfSummaryFalse", 1)
+		}
+	}
+	{
+		if !jsonIsEmpty(h.PatternConstNull) {
+			_o.deferred("patternConstNull", 2)
+		}
+	}
+	{
+		if !jsonIsEmpty(h.PatternConstString) {
+			_o.deferred("patternConstString", 3)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(h.PlainEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("plainEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(h.ConstNullBranch)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constNullBranch", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(h.ConstStringBranch)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constStringBranch", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(h.OneOfConstNull)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("oneOfConstNull", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of h numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (h HiddenKeywordSpellings) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 0:
+		return (func(_v *AnyOfSummary, _b []byte) ([]byte, error) {
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AnyOfSummary)(nil), true)
+			}
+			return _out, nil
+		})(h.AnyOfSummaryEmptyEnum, _b)
+	case 1:
+		return (func(_v *AnyOfSummaryFalse, _b []byte) ([]byte, error) {
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*AnyOfSummaryFalse)(nil), true)
+			}
+			return _out, nil
+		})(h.AnyOfSummaryFalse, _b)
+	case 2:
+		return (func(_v *HiddenKeywordSpellingsPatternConstNull, _b []byte) ([]byte, error) {
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*HiddenKeywordSpellingsPatternConstNull)(nil), true)
+			}
+			return _out, nil
+		})(h.PatternConstNull, _b)
+	case 3:
+		return (func(_v *HiddenKeywordSpellingsPatternConstString, _b []byte) ([]byte, error) {
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*HiddenKeywordSpellingsPatternConstString)(nil), true)
+			}
+			return _out, nil
+		})(h.PatternConstString, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks HiddenKeywordSpellings against its JSON Schema constraints.

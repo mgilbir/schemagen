@@ -65,6 +65,21 @@
 
 ### Fixed
 
+- A document refused while decoding a struct's additional or pattern members
+  leaves the same value every time. The members were filed into the receiver as
+  the decoder met them, in Go's randomised map order, and a refusal at the least
+  failing key stopped with some filed and some not, so one refused document
+  left a different value from run to run, and a value decoded into twice was
+  not the value the second document alone leaves. The members are filed into
+  the receiver only once none has been refused; a refused decode leaves both
+  maps empty.
+- A Go map whose keys are not valid UTF-8, and read as one name -- each byte
+  that is not UTF-8 read as U+FFFD -- is compared as encoding/json writes it:
+  every member, in the order of the keys, of which a reader keeps the last. Its
+  identity counted every member, and its tree kept whichever member the map's
+  randomised order put last, so the same value could compare differently from
+  run to run. Of members sharing a name, the one with the greatest key now
+  counts, in the identity and in the tree.
 - Every JSON Schema pattern is matched by one engine, compiled once, and a
   match the engine cannot decide is an error rather than a "no". A `contains`
   whose sub-schema had a `pattern` compiled it with Go's RE2 on every element,
@@ -287,6 +302,137 @@
   generator cannot judge that two definitions agree, and sharing a name between
   two nodes is what it no longer does unasked. The CLI judges agreement and pins
   agreeing definitions to one name, so `--shared-types` still shares them.
+- An optional property reached through a chain of `$ref`s round-trips as
+  absent. `{"$ref":"#/$defs/A"}` with `A` a `$ref` to an object became a value
+  field that `omitempty` never omits, so `{"name":"x"}` was written back as
+  `{"name":"x","sig":{"q":""}}` -- a property the document never had, satisfying
+  the definition's own `required` -- or, where the object was a `oneOf`, as
+  `"sig":null`, which the same type then refused to read. Every CycloneDX 1.6
+  BOM has such a property (`signature`). Whether an optional field needs a
+  pointer, and whether it has a nil state, is now decided by the type at the end
+  of the chain of names, however long, across documents and across packages;
+  under `--schema-package` an alias over another package's alias over `any` or a
+  pointer, which did not compile, now does. Under `--omit-empty=false` a union
+  whose zero is written as `null` is omitted where the schema forbids `null`.
+- Decoding costs time and memory in proportion to the document, however deeply
+  it nests. Each level of a recursive type decoded its whole subtree again:
+  `{"c":{"c":...}}` 8,000 levels deep took six seconds, a 24 KB document with an
+  `if`/`then` beside the members kept 70 MB of copies alive, and a refusal at the
+  deepest level took time exponential in the depth -- a 200-byte document did not
+  finish. Every generated type now decodes the value it is handed in place, over
+  one indexed copy of the document, and reports a refusal without decoding
+  anything a second time.
+- A decoded value no longer shares memory with the buffer it was decoded from,
+  or with a copy of it taken before a later decode. A heterogeneous `enum` kept
+  the caller's slice as its value -- under a `json.Decoder` over a stream, 133 of
+  400 decoded values changed -- and the raw-JSON wrappers wrote each decode over
+  the array they already held. `Raw()`, `MarshalJSON()` and `BigInt()` return
+  copies rather than the value's own bytes.
+- A type's `UnmarshalJSON` called directly with bytes that are not JSON refuses
+  them with `encoding/json`'s own words. The raw-JSON wrappers, the inferred
+  wrappers and the heterogeneous enums accepted them and wrote them back out.
+- An object-level `oneOf` or `anyOf` branch closed with `"additionalProperties":
+  false` no longer matches an object carrying keys it forbids. A `oneOf` counted
+  it as a second match and refused the object: four of the example BOMs the
+  CycloneDX 1.6 specification ships (a jsf signature, a model card's inline
+  dataset) failed `Validate`.
+- Under `--omit-empty=false`, an absent optional property is no longer written
+  back as a zero its own type then refuses because two `oneOf` branches admit
+  it, or because a `not` does: `{"oneOf":[{"minimum":1},{"maximum":0}]}` wrote
+  `null`, which both branches admit.
+- `Validate` costs time and memory in proportion to the document. A value held as
+  raw JSON -- a `patternProperties` value, a member an `allOf` branch's
+  `additionalProperties` or an `unevaluatedProperties` judges, a draft 3
+  schema-valued `type`, a tuple position -- was decoded afresh at every level of
+  a recursive document, and a keyword judged at run time decoded every member
+  whole: a `patternProperties` chain 2,000 levels deep took 363 ms and 194 MB,
+  and one with a run-time `anyOf` six seconds. They are now read through the
+  document the value was decoded from, a level at a time, and a refusal's
+  message is written out once rather than once per level.
+- `MarshalJSON` costs time and memory in proportion to the value. Each level
+  handed its members to `encoding/json`, which checked and compacted every
+  member type's output -- the whole subtree, at every level -- and a type with
+  members written by hand parsed its output back into a map and wrote it again:
+  a value 8,000 levels deep took 4.5 s, and under `--strict-read-write` the
+  writeOnly rules re-read it again at every level. Every generated type now
+  writes itself into one buffer; the bytes, and the errors, are the ones
+  `encoding/json` wrote.
+- `Validate` no longer writes a value out to judge it. `uniqueItems`, `const`,
+  `enum` and `contains` marshalled each value they compared and compared the
+  text, and the runtime evaluator marshalled and decoded again: an array of
+  objects with `uniqueItems` wrote out every element's subtree, the same check
+  one level down wrote out the same subtrees again, and most of `Validate`'s
+  time over a CycloneDX BOM went there. Values are now compared by an identity
+  read off the value as it is held -- by the rules its `MarshalJSON` writes it
+  by -- and the identities an array's check computes are kept for the checks
+  of the arrays below it, so each is computed once however deeply they nest.
+  An identity only decides a mismatch: a `const` or `enum` match and a
+  `uniqueItems` duplicate are confirmed by reading both values and comparing
+  them as JSON, so no hash collision decides a verdict. Validating the 45
+  example BOMs the CycloneDX 1.6 specification ships takes
+  a third of the time and a quarter of the allocations it did, and writes
+  nothing out. What `MarshalJSON` decides by what it writes is decided the
+  same way, on the value read as a tree: the `writeOnly` locations
+  `--strict-read-write` strips from below a struct's members and from a value
+  held whole, the nulls a document wrote that are written back, and a member
+  left out for writing what its Go zero writes. The helpers that read
+  identities are emitted in six blocks, and a package carries only the ones
+  its code calls: the runtime evaluator and the dynamic checks, which compare
+  decoded documents, take none of the reader of Go values, and a schema
+  stating no `const`, `enum` or `uniqueItems` for the evaluator takes nothing.
+- The helper file a package is given holds only the declarations its generated
+  code reaches, found by following what each declaration names from what the
+  generated files name; before, it held every declaration of every block the
+  package touched. Over the 625 packages the test corpus generates, the helper
+  files are 858k lines rather than 1.65M, and a cold build of the corpus takes
+  about a quarter less CPU. A struct's decode and encode no longer instantiate
+  a generic helper per struct type, and the helpers they call on every member
+  are not inlined into each type's methods.
+- A value of a type another package of the same run generated is compared --
+  `const`, `enum`, `uniqueItems`, an element judged as it is held -- by that
+  type's new exported `SchemagenJSONTree` method, rather than by what its
+  `MarshalJSON` writes. See "Several Schemas, Several Packages" in the README.
+- An element held as decoded JSON whose sub-schema has a type of its own -- a
+  tuple position of a `[]any`, an element `contains` counts, an inferred
+  array's items and tail -- is judged as it is held, by that schema compiled for
+  the runtime evaluator, rather than marshalled and decoded into the type. An
+  element built in Go, of the generated type or any other Go value, is read the
+  same way without being written out. Verdicts are unchanged across the JSON
+  Schema Test Suite in all seven configurations the differential runs; the
+  messages at those positions are the evaluator's (`value is not of type
+  integer` where the typed check said `expected integer, got string`). A
+  schema the evaluator declines keeps the typed judgement.
+- `uniqueItems`, `const` and `enum` compare values as JSON wherever they are
+  held. Where an element held a `json.Number` or raw JSON, or a `const` was an
+  object, the comparison was of the text a value marshalled to: `1.0` and `1`
+  in two otherwise equal elements were two distinct elements, and an object
+  whose fields are declared in an order other than the one the `const` writes
+  its keys in was refused. A `contains` or `unevaluatedItems` type check no
+  longer takes a `null` for an integer or a number, nor measures a `null`'s
+  length as that of `""`: `encoding/json` decodes a `null` into a `float64` or
+  a `string` by leaving it alone, without an error.
+- A draft 3 schema-valued `type` entry that leads back to its own definition no
+  longer overflows the stack. `{"type":[{"$ref":"#/$defs/C"}]}` as the whole of
+  `C` made `Validate` call itself on the same value until the goroutine's stack
+  ran out, on any document. A branch that re-enters a definition already
+  judging the same value now contributes nothing, so such a definition admits
+  what its other alternatives admit.
+
+### Changed
+
+- Decoding into a value replaces it. Every generated `UnmarshalJSON` starts from
+  the zero value, so a value decoded twice is the second document and nothing of
+  the first: `{"a":"x","extra":1}` and then `{}` into one struct used to validate
+  as "a: required property is missing" while marshalling as `{"a":"x"}`. This is
+  a deliberate difference from `encoding/json`, whose own decode merges. See the
+  README's "Decoding: replaced, owned, and linear".
+- A property written twice in an object a generated type decodes means its last
+  value, as it does where pkg/schema reads a schema: the earlier occurrence is
+  not decoded at all. It used to be decoded too, and one that did not decode
+  refused the document with a message that named no property. A map or a slice
+  of scalars is still decoded whole by `encoding/json`, whose rule inside it is
+  the same for the value and refuses an earlier occurrence that does not
+  decode.
 
 ## 0.1.3
 

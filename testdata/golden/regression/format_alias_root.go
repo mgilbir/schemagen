@@ -10,6 +10,8 @@ import (
 type FormatAliasRoot string
 
 func (f *FormatAliasRoot) UnmarshalJSON(data []byte) error {
+	var _zero FormatAliasRoot
+	*f = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}

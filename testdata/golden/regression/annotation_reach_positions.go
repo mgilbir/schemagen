@@ -13,6 +13,8 @@ import (
 type DefaultedString string
 
 func (d *DefaultedString) UnmarshalJSON(data []byte) error {
+	var _zero DefaultedString
+	*d = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -28,6 +30,8 @@ func (d DefaultedString) Validate() error {
 type AliasOfDefaultedString DefaultedString
 
 func (a *AliasOfDefaultedString) UnmarshalJSON(data []byte) error {
+	var _zero AliasOfDefaultedString
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -60,6 +64,8 @@ func (a AliasOfDefaultedString) Validate() error {
 type AnnotatedString string
 
 func (a *AnnotatedString) UnmarshalJSON(data []byte) error {
+	var _zero AnnotatedString
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -78,108 +84,137 @@ type ByID struct {
 	ID                   int64                      `json:"id"`
 }
 
+// UnmarshalJSON replaces b with the value the document holds. See
+// decodeJSONAt.
 func (b *ByID) UnmarshalJSON(data []byte) error {
-	b.AdditionalProperties = nil
-	b._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(b.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into b, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever b held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (b *ByID) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*b = ByID{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"id",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ByID)(nil)))
 	}
-	type Alias ByID
-	aux := &struct {
-		*Alias
-		ID *jsonInteger `json:"id"`
-	}{
-		Alias: (*Alias)(b),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "id", decode: jsonDecodeValue[jsonInteger]},
-		})
-	}
-
-	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
-	// above are what let encoding/json see it. Each outer pointer is nil when
-	// the property was absent or null, both of which leave the field as it was.
-	if aux.ID != nil {
-		_iv := *aux.ID
-		b.ID = int64(_iv)
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"id",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-		}
-		b._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			b._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{
-			"id": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if b.AdditionalProperties == nil {
-				b.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			b.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	if _v, _ok := _raw["id"]; _ok {
+		// A number written 1.0 is the integer 1 from draft 6 on; the shadow is
+		// what lets it through. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv jsonInteger
+			if _err := func(_p *jsonInteger, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[jsonInteger](_p, _d, _s, jsonDecodeValue[jsonInteger])
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "id")
+			}
+			b.ID = int64(_iv)
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"id",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	b._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		b._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "id":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	b.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (b ByID) MarshalJSON() ([]byte, error) {
-	type Alias ByID
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(b),
+	_b, _err := b.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends b to _b as JSON. See jsonEnc.
+func (b ByID) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := b.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range b.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, b.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members b's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (b ByID) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(b.ID, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("id", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of b numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (b ByID) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ByID against its JSON Schema constraints.
@@ -204,99 +239,131 @@ type ByName struct {
 	Name                 string                     `json:"name"`
 }
 
+// UnmarshalJSON replaces b with the value the document holds. See
+// decodeJSONAt.
 func (b *ByName) UnmarshalJSON(data []byte) error {
-	b.AdditionalProperties = nil
-	b._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(b.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into b, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever b held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (b *ByName) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*b = ByName{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"name",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ByName)(nil)))
 	}
-	type Alias ByName
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(b),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "name", decode: jsonDecodeValue[string]},
-		})
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"name",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-		}
-		b._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			b._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{
-			"name": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if b.AdditionalProperties == nil {
-				b.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			b.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	if _v, _ok := _raw["name"]; _ok {
+		if _err := func(_p *string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[string](_p, _d, _s, jsonDecodeValue[string])
+		}(&b.Name, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "name")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"name",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	b._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		b._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "name":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	b.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (b ByName) MarshalJSON() ([]byte, error) {
-	type Alias ByName
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(b),
+	_b, _err := b.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends b to _b as JSON. See jsonEnc.
+func (b ByName) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := b.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range b.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, b.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members b's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (b ByName) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(b.Name, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("name", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of b numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (b ByName) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ByName against its JSON Schema constraints.
@@ -318,6 +385,8 @@ func (b ByName) Validate() error {
 type DefaultedBool bool
 
 func (d *DefaultedBool) UnmarshalJSON(data []byte) error {
+	var _zero DefaultedBool
+	*d = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -333,6 +402,8 @@ func (d DefaultedBool) Validate() error {
 type DefaultedEmptyString string
 
 func (d *DefaultedEmptyString) UnmarshalJSON(data []byte) error {
+	var _zero DefaultedEmptyString
+	*d = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -348,6 +419,8 @@ func (d DefaultedEmptyString) Validate() error {
 type DefaultedInt int64
 
 func (d *DefaultedInt) UnmarshalJSON(data []byte) error {
+	var _zero DefaultedInt
+	*d = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -385,6 +458,8 @@ func (d DefaultedInt) Validate() error {
 type DefaultedNumber float64
 
 func (d *DefaultedNumber) UnmarshalJSON(data []byte) error {
+	var _zero DefaultedNumber
+	*d = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -402,94 +477,129 @@ type DefaultedObject struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 }
 
+// UnmarshalJSON replaces d with the value the document holds. See
+// decodeJSONAt.
 func (d *DefaultedObject) UnmarshalJSON(data []byte) error {
-	d.AdditionalProperties = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(d.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into d, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever d held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (d *DefaultedObject) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*d = DefaultedObject{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"n",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*DefaultedObject)(nil)))
 	}
-	type Alias DefaultedObject
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(d),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "n", decode: jsonDecodeValue[*string]},
-		})
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"n",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-		}
-		knownFields := map[string]bool{
-			"n": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if d.AdditionalProperties == nil {
-				d.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			d.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	if _v, _ok := _raw["n"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&d.N, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "n")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"n",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "n":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	d.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (d DefaultedObject) MarshalJSON() ([]byte, error) {
-	type Alias DefaultedObject
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(d),
+	_b, _err := d.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends d to _b as JSON. See jsonEnc.
+func (d DefaultedObject) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := d.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range d.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, d.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members d's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (d DefaultedObject) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(d.N)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("n", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of d numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (d DefaultedObject) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks DefaultedObject against its JSON Schema constraints.
@@ -500,6 +610,8 @@ func (d DefaultedObject) Validate() error {
 type MistypedDefaultInt int64
 
 func (m *MistypedDefaultInt) UnmarshalJSON(data []byte) error {
+	var _zero MistypedDefaultInt
+	*m = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -536,19 +648,33 @@ type MultiTypedDefault struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces m with the value the document holds. See
+// decodeJSONAt.
 func (m *MultiTypedDefault) UnmarshalJSON(data []byte) error {
-	m._raw = append(m._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(m.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever m held.
+func (m *MultiTypedDefault) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*m = MultiTypedDefault{}
+	m._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (m MultiTypedDefault) MarshalJSON() ([]byte, error) {
 	if len(m._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return m._raw, nil
+	return append([]byte(nil), m._raw...), nil
 }
 
-func (m MultiTypedDefault) Raw() json.RawMessage { return m._raw }
+// Raw returns a copy of the value's bytes.
+func (m MultiTypedDefault) Raw() json.RawMessage { return append(json.RawMessage(nil), m._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -601,6 +727,8 @@ func (m MultiTypedDefault) Validate() error {
 type PlainString string
 
 func (p *PlainString) UnmarshalJSON(data []byte) error {
+	var _zero PlainString
+	*p = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -616,6 +744,8 @@ func (p PlainString) Validate() error {
 type SelfReferential string
 
 func (s *SelfReferential) UnmarshalJSON(data []byte) error {
+	var _zero SelfReferential
+	*s = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -642,6 +772,8 @@ type UntypedDefault any
 type AnnotationReachPositionsAnnViaAllOf string
 
 func (a *AnnotationReachPositionsAnnViaAllOf) UnmarshalJSON(data []byte) error {
+	var _zero AnnotationReachPositionsAnnViaAllOf
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -663,6 +795,8 @@ func (a AnnotationReachPositionsAnnViaAllOf) Validate() error {
 type AnnotationReachPositionsAnnViaNestedAllOf string
 
 func (a *AnnotationReachPositionsAnnViaNestedAllOf) UnmarshalJSON(data []byte) error {
+	var _zero AnnotationReachPositionsAnnViaNestedAllOf
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -678,6 +812,8 @@ func (a AnnotationReachPositionsAnnViaNestedAllOf) Validate() error {
 type AnnotationReachPositionsDfltViaAllOf string
 
 func (a *AnnotationReachPositionsDfltViaAllOf) UnmarshalJSON(data []byte) error {
+	var _zero AnnotationReachPositionsDfltViaAllOf
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -693,6 +829,8 @@ func (a AnnotationReachPositionsDfltViaAllOf) Validate() error {
 type AnnotationReachPositionsDfltViaAllOfRef string
 
 func (a *AnnotationReachPositionsDfltViaAllOfRef) UnmarshalJSON(data []byte) error {
+	var _zero AnnotationReachPositionsDfltViaAllOfRef
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -708,6 +846,8 @@ func (a AnnotationReachPositionsDfltViaAllOfRef) Validate() error {
 type AnnotationReachPositionsDfltViaNestedAllOf string
 
 func (a *AnnotationReachPositionsDfltViaNestedAllOf) UnmarshalJSON(data []byte) error {
+	var _zero AnnotationReachPositionsDfltViaNestedAllOf
+	*a = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -780,6 +920,7 @@ type AnnotationReachPositions struct {
 	_jsonKeys            map[string]bool                             // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps        map[string]json.RawMessage                  // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
 	_jsonNulls           map[string]bool                             // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	_doc                 *jsonDoc                                    // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 	DfltRequiredViaRef   DefaultedString                             `json:"dfltRequiredViaRef"`
 	DfltMultiTypeViaRef  MultiTypedDefault                           `json:"dfltMultiTypeViaRef,omitzero"`
 }
@@ -868,134 +1009,311 @@ func (a *AnnotationReachPositions) GetByID2() *ByID {
 	return zero
 }
 
+// UnmarshalJSON replaces a with the value the document holds. See
+// decodeJSONAt.
 func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
-	a.AdditionalProperties = nil
-	a._jsonKeys = nil
-	a._jsonRawProps = nil
-	a._jsonNulls = nil
-	a.AnnCondGroup = nil
-	a.AnnGroupPlain = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(a.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into a, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever a held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (a *AnnotationReachPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*a = AnnotationReachPositions{}
+	a._doc = _d
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"annCondAnyOf",
-			"annCondThen",
-			"annPlain",
-			"annViaAllOf",
-			"annViaMergedAllOf",
-			"annViaNestedAllOf",
-			"annViaRef",
-			"dfltAnyViaRef",
-			"dfltBindsBoth",
-			"dfltBoolViaRef",
-			"dfltCondAnyOf",
-			"dfltCondElse",
-			"dfltCondOneOf",
-			"dfltCondThen",
-			"dfltEmptyViaRef",
-			"dfltInline",
-			"dfltIntViaRef",
-			"dfltMismatchViaRef",
-			"dfltMultiTypeViaRef",
-			"dfltNearestWins",
-			"dfltNone",
-			"dfltNumberViaRef",
-			"dfltObjectViaRef",
-			"dfltRequiredViaRef",
-			"dfltViaAllOf",
-			"dfltViaAllOfRef",
-			"dfltViaCycle",
-			"dfltViaMergedAllOf",
-			"dfltViaNestedAllOf",
-			"dfltViaRef",
-			"dfltViaRefChain",
-			"mode",
-			"pickA",
-			"pickB",
-			"annCondGroup",
-			"annGroupPlain",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AnnotationReachPositions)(nil)))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias AnnotationReachPositions
-	aux := &struct {
-		*Alias
-		PickA         **jsonInteger   `json:"pickA"`
-		PickB         **jsonInteger   `json:"pickB"`
-		AnnCondGroup  json.RawMessage `json:"annCondGroup"`
-		AnnGroupPlain json.RawMessage `json:"annGroupPlain"`
-	}{
-		Alias: (*Alias)(a),
+	if _v, _ok := _raw["annCondAnyOf"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&a.AnnCondAnyOf, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "annCondAnyOf")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "annCondAnyOf", decode: jsonDecodeValue[*string]},
-			{name: "annCondThen", decode: jsonDecodeValue[*string]},
-			{name: "annPlain", decode: jsonDecodeValue[*string]},
-			{name: "annViaAllOf", decode: jsonDecodeValue[*AnnotationReachPositionsAnnViaAllOf]},
-			{name: "annViaMergedAllOf", decode: jsonDecodeValue[*string]},
-			{name: "annViaNestedAllOf", decode: jsonDecodeValue[*AnnotationReachPositionsAnnViaNestedAllOf]},
-			{name: "annViaRef", decode: jsonDecodeValue[*AnnotatedString]},
-			{name: "dfltAnyViaRef", decode: jsonDecodeValue[UntypedDefault]},
-			{name: "dfltBindsBoth", decode: jsonDecodeValue[*string]},
-			{name: "dfltBoolViaRef", decode: jsonDecodeValue[*DefaultedBool]},
-			{name: "dfltCondAnyOf", decode: jsonDecodeValue[*string]},
-			{name: "dfltCondElse", decode: jsonDecodeValue[*string]},
-			{name: "dfltCondOneOf", decode: jsonDecodeValue[*string]},
-			{name: "dfltCondThen", decode: jsonDecodeValue[*string]},
-			{name: "dfltEmptyViaRef", decode: jsonDecodeValue[*DefaultedEmptyString]},
-			{name: "dfltInline", decode: jsonDecodeValue[*string]},
-			{name: "dfltIntViaRef", decode: jsonDecodeValue[*DefaultedInt]},
-			{name: "dfltMismatchViaRef", decode: jsonDecodeValue[*MistypedDefaultInt]},
-			{name: "dfltMultiTypeViaRef", decode: jsonDecodeValue[MultiTypedDefault]},
-			{name: "dfltNearestWins", decode: jsonDecodeValue[*string]},
-			{name: "dfltNone", decode: jsonDecodeValue[*PlainString]},
-			{name: "dfltNumberViaRef", decode: jsonDecodeValue[*DefaultedNumber]},
-			{name: "dfltObjectViaRef", decode: jsonDecodeValue[*DefaultedObject]},
-			{name: "dfltRequiredViaRef", decode: jsonDecodeValue[DefaultedString]},
-			{name: "dfltViaAllOf", decode: jsonDecodeValue[*AnnotationReachPositionsDfltViaAllOf]},
-			{name: "dfltViaAllOfRef", decode: jsonDecodeValue[*AnnotationReachPositionsDfltViaAllOfRef]},
-			{name: "dfltViaCycle", decode: jsonDecodeValue[*SelfReferential]},
-			{name: "dfltViaMergedAllOf", decode: jsonDecodeValue[*string]},
-			{name: "dfltViaNestedAllOf", decode: jsonDecodeValue[*AnnotationReachPositionsDfltViaNestedAllOf]},
-			{name: "dfltViaRef", decode: jsonDecodeValue[*DefaultedString]},
-			{name: "dfltViaRefChain", decode: jsonDecodeValue[*AliasOfDefaultedString]},
-			{name: "mode", decode: jsonDecodeValue[*string]},
-			{name: "pickA", decode: jsonDecodeValue[*jsonInteger]},
-			{name: "pickB", decode: jsonDecodeValue[*jsonInteger]},
-		})
+	if _v, _ok := _raw["annCondThen"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&a.AnnCondThen, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "annCondThen")
+		}
 	}
-
-	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
-	// above are what let encoding/json see it. Each outer pointer is nil when
-	// the property was absent or null, both of which leave the field as it was.
-	if aux.PickA != nil {
-		_iv := *aux.PickA
-		a.PickA = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
+	if _v, _ok := _raw["annPlain"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&a.AnnPlain, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "annPlain")
+		}
 	}
-	if aux.PickB != nil {
-		_iv := *aux.PickB
-		a.PickB = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
+	if _v, _ok := _raw["annViaAllOf"]; _ok {
+		if _err := func(_p **AnnotationReachPositionsAnnViaAllOf, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AnnotationReachPositionsAnnViaAllOf](_p, _d, _s, jsonDecodeValue[*AnnotationReachPositionsAnnViaAllOf])
+		}(&a.AnnViaAllOf, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "annViaAllOf")
+		}
+	}
+	if _v, _ok := _raw["annViaMergedAllOf"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&a.AnnViaMergedAllOf, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "annViaMergedAllOf")
+		}
+	}
+	if _v, _ok := _raw["annViaNestedAllOf"]; _ok {
+		if _err := func(_p **AnnotationReachPositionsAnnViaNestedAllOf, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AnnotationReachPositionsAnnViaNestedAllOf](_p, _d, _s, jsonDecodeValue[*AnnotationReachPositionsAnnViaNestedAllOf])
+		}(&a.AnnViaNestedAllOf, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "annViaNestedAllOf")
+		}
+	}
+	if _v, _ok := _raw["annViaRef"]; _ok {
+		if _err := func(_p **AnnotatedString, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AnnotatedString](_p, _d, _s, jsonDecodeValue[*AnnotatedString])
+		}(&a.AnnViaRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "annViaRef")
+		}
+	}
+	if _v, _ok := _raw["dfltAnyViaRef"]; _ok {
+		if _err := func(_p *UntypedDefault, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[UntypedDefault](_p, _d, _s, jsonDecodeValue[UntypedDefault])
+		}(&a.DfltAnyViaRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltAnyViaRef")
+		}
+	}
+	if _v, _ok := _raw["dfltBindsBoth"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&a.DfltBindsBoth, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltBindsBoth")
+		}
+	}
+	if _v, _ok := _raw["dfltBoolViaRef"]; _ok {
+		if _err := func(_p **DefaultedBool, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*DefaultedBool](_p, _d, _s, jsonDecodeValue[*DefaultedBool])
+		}(&a.DfltBoolViaRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltBoolViaRef")
+		}
+	}
+	if _v, _ok := _raw["dfltCondAnyOf"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&a.DfltCondAnyOf, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltCondAnyOf")
+		}
+	}
+	if _v, _ok := _raw["dfltCondElse"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&a.DfltCondElse, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltCondElse")
+		}
+	}
+	if _v, _ok := _raw["dfltCondOneOf"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&a.DfltCondOneOf, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltCondOneOf")
+		}
+	}
+	if _v, _ok := _raw["dfltCondThen"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&a.DfltCondThen, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltCondThen")
+		}
+	}
+	if _v, _ok := _raw["dfltEmptyViaRef"]; _ok {
+		if _err := func(_p **DefaultedEmptyString, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*DefaultedEmptyString](_p, _d, _s, jsonDecodeValue[*DefaultedEmptyString])
+		}(&a.DfltEmptyViaRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltEmptyViaRef")
+		}
+	}
+	if _v, _ok := _raw["dfltInline"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&a.DfltInline, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltInline")
+		}
+	}
+	if _v, _ok := _raw["dfltIntViaRef"]; _ok {
+		if _err := func(_p **DefaultedInt, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*DefaultedInt](_p, _d, _s, jsonDecodeValue[*DefaultedInt])
+		}(&a.DfltIntViaRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltIntViaRef")
+		}
+	}
+	if _v, _ok := _raw["dfltMismatchViaRef"]; _ok {
+		if _err := func(_p **MistypedDefaultInt, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*MistypedDefaultInt](_p, _d, _s, jsonDecodeValue[*MistypedDefaultInt])
+		}(&a.DfltMismatchViaRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltMismatchViaRef")
+		}
+	}
+	if _v, _ok := _raw["dfltMultiTypeViaRef"]; _ok {
+		if _err := func(_p *MultiTypedDefault, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*MultiTypedDefault).decodeJSONAt(_p, _d, _s))
+		}(&a.DfltMultiTypeViaRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltMultiTypeViaRef")
+		}
+	}
+	if _v, _ok := _raw["dfltNearestWins"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&a.DfltNearestWins, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltNearestWins")
+		}
+	}
+	if _v, _ok := _raw["dfltNone"]; _ok {
+		if _err := func(_p **PlainString, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*PlainString](_p, _d, _s, jsonDecodeValue[*PlainString])
+		}(&a.DfltNone, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltNone")
+		}
+	}
+	if _v, _ok := _raw["dfltNumberViaRef"]; _ok {
+		if _err := func(_p **DefaultedNumber, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*DefaultedNumber](_p, _d, _s, jsonDecodeValue[*DefaultedNumber])
+		}(&a.DfltNumberViaRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltNumberViaRef")
+		}
+	}
+	if _v, _ok := _raw["dfltObjectViaRef"]; _ok {
+		if _err := func(_p **DefaultedObject, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **DefaultedObject, _d *jsonDoc, _s jsonSpan) error {
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(DefaultedObject)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
+			}(_p, _d, _s))
+		}(&a.DfltObjectViaRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltObjectViaRef")
+		}
+	}
+	if _v, _ok := _raw["dfltRequiredViaRef"]; _ok {
+		if _err := func(_p *DefaultedString, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[DefaultedString](_p, _d, _s, jsonDecodeValue[DefaultedString])
+		}(&a.DfltRequiredViaRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltRequiredViaRef")
+		}
+	}
+	if _v, _ok := _raw["dfltViaAllOf"]; _ok {
+		if _err := func(_p **AnnotationReachPositionsDfltViaAllOf, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AnnotationReachPositionsDfltViaAllOf](_p, _d, _s, jsonDecodeValue[*AnnotationReachPositionsDfltViaAllOf])
+		}(&a.DfltViaAllOf, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltViaAllOf")
+		}
+	}
+	if _v, _ok := _raw["dfltViaAllOfRef"]; _ok {
+		if _err := func(_p **AnnotationReachPositionsDfltViaAllOfRef, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AnnotationReachPositionsDfltViaAllOfRef](_p, _d, _s, jsonDecodeValue[*AnnotationReachPositionsDfltViaAllOfRef])
+		}(&a.DfltViaAllOfRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltViaAllOfRef")
+		}
+	}
+	if _v, _ok := _raw["dfltViaCycle"]; _ok {
+		if _err := func(_p **SelfReferential, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*SelfReferential](_p, _d, _s, jsonDecodeValue[*SelfReferential])
+		}(&a.DfltViaCycle, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltViaCycle")
+		}
+	}
+	if _v, _ok := _raw["dfltViaMergedAllOf"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&a.DfltViaMergedAllOf, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltViaMergedAllOf")
+		}
+	}
+	if _v, _ok := _raw["dfltViaNestedAllOf"]; _ok {
+		if _err := func(_p **AnnotationReachPositionsDfltViaNestedAllOf, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AnnotationReachPositionsDfltViaNestedAllOf](_p, _d, _s, jsonDecodeValue[*AnnotationReachPositionsDfltViaNestedAllOf])
+		}(&a.DfltViaNestedAllOf, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltViaNestedAllOf")
+		}
+	}
+	if _v, _ok := _raw["dfltViaRef"]; _ok {
+		if _err := func(_p **DefaultedString, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*DefaultedString](_p, _d, _s, jsonDecodeValue[*DefaultedString])
+		}(&a.DfltViaRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltViaRef")
+		}
+	}
+	if _v, _ok := _raw["dfltViaRefChain"]; _ok {
+		if _err := func(_p **AliasOfDefaultedString, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AliasOfDefaultedString](_p, _d, _s, jsonDecodeValue[*AliasOfDefaultedString])
+		}(&a.DfltViaRefChain, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dfltViaRefChain")
+		}
+	}
+	if _v, _ok := _raw["mode"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&a.Mode, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "mode")
+		}
+	}
+	if _v, _ok := _raw["pickA"]; _ok {
+		// A number written 1.0 is the integer 1 from draft 6 on; the shadow is
+		// what lets it through. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv *jsonInteger
+			if _err := func(_p **jsonInteger, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[*jsonInteger](_p, _d, _s, jsonDecodeValue[*jsonInteger])
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "pickA")
+			}
+			a.PickA = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
+		}
+	}
+	if _v, _ok := _raw["pickB"]; _ok {
+		// A number written 1.0 is the integer 1 from draft 6 on; the shadow is
+		// what lets it through. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv *jsonInteger
+			if _err := func(_p **jsonInteger, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[*jsonInteger](_p, _d, _s, jsonDecodeValue[*jsonInteger])
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "pickB")
+			}
+			a.PickB = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
+		}
 	}
 
 	{
-		oneofData := aux.AnnCondGroup
+		_ov, _has := _raw["annCondGroup"]
 		// Every refusal this union raises is a sentence about the value the union
 		// holds, and the property that reaches it goes in front of that sentence
 		// by the rule every other message is joined by (see jsonPathError).
@@ -1007,7 +1325,15 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 		oneofErrf := func(format string, args ...any) error {
 			return jsonPathf(jsonValueErrorf(format, args...), "%s", "annCondGroup")
 		}
-		if len(oneofData) > 0 && string(oneofData) != "null" {
+		// oneofWrapf is oneofErrf for a sentence that ends with a branch's own
+		// refusal, which is kept as a step of the message rather than written
+		// into it (see jsonValueWrapf): at every level of a recursive document
+		// that refuses at the bottom, each union puts its words in front of the
+		// words of the one below it.
+		oneofWrapf := func(err error, prefix string) error {
+			return jsonPathf(jsonValueWrapf(err, prefix), "%s", "annCondGroup")
+		}
+		if _has && !_d.isNull(_ov) {
 			var oneofMatched int
 			var oneofLastErr error
 			// A second tally: branches actually satisfied, not merely decoded.
@@ -1019,29 +1345,45 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 			var oneofOpaque int
 			var oneofStrictSel isAnnotationReachPositions_AnnCondGroup
 			var oneofStrictErr error
+			// The candidate this branch decoded, held for the tally below. Its
+			// Validate is asked only if more than one branch matched, which is
+			// the only case the tally is read in: asked here, it was run over
+			// the whole of the value at every level of a recursive document.
+			var _vc0 *ByName
+			var _vcOK0 bool
+			// The candidate this branch decoded, held for the tally below. Its
+			// Validate is asked only if more than one branch matched, which is
+			// the only case the tally is read in: asked here, it was run over
+			// the whole of the value at every level of a recursive document.
+			var _vc1 *ByID
+			var _vcOK1 bool
+			// Every branch below is a trial, and one that holds the value's
+			// members as raw JSON takes views of the document rather than
+			// copies of them; see jsonDoc.copyOf.
+			_d.trial++
 
 			// Try variant: ByName
 			{
-				if oneofHasRequiredFields(oneofData, "name") {
+				if oneofHasRequiredFields(_d, _ov, "name") {
 					var candidate *ByName
-					if err := json.Unmarshal(oneofData, &candidate); err == nil {
+					if err := func(_p **ByName, _d *jsonDoc, _s jsonSpan) error {
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(ByName)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
+					}(&candidate, _d, _ov); err == nil {
 						a.AnnCondGroup = &AnnotationReachPositions_ByName{ByName: candidate}
 						oneofMatched++
 						if candidate != nil {
-							if _vErr := candidate.Validate(); _vErr == nil {
-								oneofStrict++
-								oneofStrictSel = &AnnotationReachPositions_ByName{ByName: candidate}
-							} else if _schemagenUndecided(_vErr) {
-								// No verdict on this branch, so no telling
-								// which one the document selects.
-								return oneofErrf("variant ByName: %w", _vErr)
-							} else {
-								oneofStrictErr = fmt.Errorf("variant ByName: %w", _vErr)
-							}
+							_vc0, _vcOK0 = candidate, true
 						} else {
 							oneofOpaque++
 						}
 					} else if _schemagenUndecided(err) {
+						_d.trial--
 						return oneofErrf("variant ByName: %w", err)
 					} else {
 						oneofLastErr = err
@@ -1051,32 +1393,33 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 
 			// Try variant: ByID
 			{
-				if oneofHasRequiredFields(oneofData, "id") {
+				if oneofHasRequiredFields(_d, _ov, "id") {
 					var candidate *ByID
-					if err := json.Unmarshal(oneofData, &candidate); err == nil {
+					if err := func(_p **ByID, _d *jsonDoc, _s jsonSpan) error {
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(ByID)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
+					}(&candidate, _d, _ov); err == nil {
 						a.AnnCondGroup = &AnnotationReachPositions_ByID{ByID: candidate}
 						oneofMatched++
 						if candidate != nil {
-							if _vErr := candidate.Validate(); _vErr == nil {
-								oneofStrict++
-								oneofStrictSel = &AnnotationReachPositions_ByID{ByID: candidate}
-							} else if _schemagenUndecided(_vErr) {
-								// No verdict on this branch, so no telling
-								// which one the document selects.
-								return oneofErrf("variant ByID: %w", _vErr)
-							} else {
-								oneofStrictErr = fmt.Errorf("variant ByID: %w", _vErr)
-							}
+							_vc1, _vcOK1 = candidate, true
 						} else {
 							oneofOpaque++
 						}
 					} else if _schemagenUndecided(err) {
+						_d.trial--
 						return oneofErrf("variant ByID: %w", err)
 					} else {
 						oneofLastErr = err
 					}
 				}
 			}
+			_d.trial--
 
 			if oneofMatched == 0 {
 				// A branch is only put to a decode once the keys it selects on are
@@ -1087,9 +1430,33 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 				if oneofLastErr == nil {
 					return oneofErrf("no matching oneOf variant")
 				}
-				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
+				return oneofWrapf(oneofLastErr, "no matching oneOf variant: ")
 			}
 			if oneofMatched > 1 && oneofOpaque == 0 {
+				if _vcOK0 {
+					if _vErr := _vc0.Validate(); _vErr == nil {
+						oneofStrict++
+						oneofStrictSel = &AnnotationReachPositions_ByName{ByName: _vc0}
+					} else if _schemagenUndecided(_vErr) {
+						// No verdict on this branch, so no telling which one
+						// the document selects.
+						return oneofErrf("variant ByName: %w", _vErr)
+					} else {
+						oneofStrictErr = jsonValueWrapf(_vErr, "variant ByName: ")
+					}
+				}
+				if _vcOK1 {
+					if _vErr := _vc1.Validate(); _vErr == nil {
+						oneofStrict++
+						oneofStrictSel = &AnnotationReachPositions_ByID{ByID: _vc1}
+					} else if _schemagenUndecided(_vErr) {
+						// No verdict on this branch, so no telling which one
+						// the document selects.
+						return oneofErrf("variant ByID: %w", _vErr)
+					} else {
+						oneofStrictErr = jsonValueWrapf(_vErr, "variant ByID: ")
+					}
+				}
 				// Several branches decoded and every one can be judged, so the
 				// branches' own constraints settle which of them the value
 				// really satisfies. Ambiguity is already a rejection here, so
@@ -1103,7 +1470,7 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 				case oneofStrictErr != nil:
 					// Not ambiguity but a value no branch accepts: report the
 					// branch's own reason rather than a count.
-					return oneofErrf("no matching oneOf variant: %w", oneofStrictErr)
+					return oneofWrapf(oneofStrictErr, "no matching oneOf variant: ")
 				}
 			}
 			if oneofMatched > 1 {
@@ -1113,7 +1480,7 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 	}
 
 	{
-		oneofData := aux.AnnGroupPlain
+		_ov, _has := _raw["annGroupPlain"]
 		// Every refusal this union raises is a sentence about the value the union
 		// holds, and the property that reaches it goes in front of that sentence
 		// by the rule every other message is joined by (see jsonPathError).
@@ -1125,7 +1492,15 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 		oneofErrf := func(format string, args ...any) error {
 			return jsonPathf(jsonValueErrorf(format, args...), "%s", "annGroupPlain")
 		}
-		if len(oneofData) > 0 && string(oneofData) != "null" {
+		// oneofWrapf is oneofErrf for a sentence that ends with a branch's own
+		// refusal, which is kept as a step of the message rather than written
+		// into it (see jsonValueWrapf): at every level of a recursive document
+		// that refuses at the bottom, each union puts its words in front of the
+		// words of the one below it.
+		oneofWrapf := func(err error, prefix string) error {
+			return jsonPathf(jsonValueWrapf(err, prefix), "%s", "annGroupPlain")
+		}
+		if _has && !_d.isNull(_ov) {
 			var oneofMatched int
 			var oneofLastErr error
 			// A second tally: branches actually satisfied, not merely decoded.
@@ -1137,29 +1512,45 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 			var oneofOpaque int
 			var oneofStrictSel isAnnotationReachPositions_AnnGroupPlain
 			var oneofStrictErr error
+			// The candidate this branch decoded, held for the tally below. Its
+			// Validate is asked only if more than one branch matched, which is
+			// the only case the tally is read in: asked here, it was run over
+			// the whole of the value at every level of a recursive document.
+			var _vc0 *ByName
+			var _vcOK0 bool
+			// The candidate this branch decoded, held for the tally below. Its
+			// Validate is asked only if more than one branch matched, which is
+			// the only case the tally is read in: asked here, it was run over
+			// the whole of the value at every level of a recursive document.
+			var _vc1 *ByID
+			var _vcOK1 bool
+			// Every branch below is a trial, and one that holds the value's
+			// members as raw JSON takes views of the document rather than
+			// copies of them; see jsonDoc.copyOf.
+			_d.trial++
 
 			// Try variant: ByName2
 			{
-				if oneofHasRequiredFields(oneofData, "name") {
+				if oneofHasRequiredFields(_d, _ov, "name") {
 					var candidate *ByName
-					if err := json.Unmarshal(oneofData, &candidate); err == nil {
+					if err := func(_p **ByName, _d *jsonDoc, _s jsonSpan) error {
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(ByName)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
+					}(&candidate, _d, _ov); err == nil {
 						a.AnnGroupPlain = &AnnotationReachPositions_ByName2{ByName2: candidate}
 						oneofMatched++
 						if candidate != nil {
-							if _vErr := candidate.Validate(); _vErr == nil {
-								oneofStrict++
-								oneofStrictSel = &AnnotationReachPositions_ByName2{ByName2: candidate}
-							} else if _schemagenUndecided(_vErr) {
-								// No verdict on this branch, so no telling
-								// which one the document selects.
-								return oneofErrf("variant ByName2: %w", _vErr)
-							} else {
-								oneofStrictErr = fmt.Errorf("variant ByName2: %w", _vErr)
-							}
+							_vc0, _vcOK0 = candidate, true
 						} else {
 							oneofOpaque++
 						}
 					} else if _schemagenUndecided(err) {
+						_d.trial--
 						return oneofErrf("variant ByName2: %w", err)
 					} else {
 						oneofLastErr = err
@@ -1169,32 +1560,33 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 
 			// Try variant: ByID2
 			{
-				if oneofHasRequiredFields(oneofData, "id") {
+				if oneofHasRequiredFields(_d, _ov, "id") {
 					var candidate *ByID
-					if err := json.Unmarshal(oneofData, &candidate); err == nil {
+					if err := func(_p **ByID, _d *jsonDoc, _s jsonSpan) error {
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(ByID)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
+					}(&candidate, _d, _ov); err == nil {
 						a.AnnGroupPlain = &AnnotationReachPositions_ByID2{ByID2: candidate}
 						oneofMatched++
 						if candidate != nil {
-							if _vErr := candidate.Validate(); _vErr == nil {
-								oneofStrict++
-								oneofStrictSel = &AnnotationReachPositions_ByID2{ByID2: candidate}
-							} else if _schemagenUndecided(_vErr) {
-								// No verdict on this branch, so no telling
-								// which one the document selects.
-								return oneofErrf("variant ByID2: %w", _vErr)
-							} else {
-								oneofStrictErr = fmt.Errorf("variant ByID2: %w", _vErr)
-							}
+							_vc1, _vcOK1 = candidate, true
 						} else {
 							oneofOpaque++
 						}
 					} else if _schemagenUndecided(err) {
+						_d.trial--
 						return oneofErrf("variant ByID2: %w", err)
 					} else {
 						oneofLastErr = err
 					}
 				}
 			}
+			_d.trial--
 
 			if oneofMatched == 0 {
 				// A branch is only put to a decode once the keys it selects on are
@@ -1205,9 +1597,33 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 				if oneofLastErr == nil {
 					return oneofErrf("no matching oneOf variant")
 				}
-				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
+				return oneofWrapf(oneofLastErr, "no matching oneOf variant: ")
 			}
 			if oneofMatched > 1 && oneofOpaque == 0 {
+				if _vcOK0 {
+					if _vErr := _vc0.Validate(); _vErr == nil {
+						oneofStrict++
+						oneofStrictSel = &AnnotationReachPositions_ByName2{ByName2: _vc0}
+					} else if _schemagenUndecided(_vErr) {
+						// No verdict on this branch, so no telling which one
+						// the document selects.
+						return oneofErrf("variant ByName2: %w", _vErr)
+					} else {
+						oneofStrictErr = jsonValueWrapf(_vErr, "variant ByName2: ")
+					}
+				}
+				if _vcOK1 {
+					if _vErr := _vc1.Validate(); _vErr == nil {
+						oneofStrict++
+						oneofStrictSel = &AnnotationReachPositions_ByID2{ByID2: _vc1}
+					} else if _schemagenUndecided(_vErr) {
+						// No verdict on this branch, so no telling which one
+						// the document selects.
+						return oneofErrf("variant ByID2: %w", _vErr)
+					} else {
+						oneofStrictErr = jsonValueWrapf(_vErr, "variant ByID2: ")
+					}
+				}
 				// Several branches decoded and every one can be judged, so the
 				// branches' own constraints settle which of them the value
 				// really satisfies. Ambiguity is already a rejection here, so
@@ -1221,7 +1637,7 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 				case oneofStrictErr != nil:
 					// Not ambiguity but a value no branch accepts: report the
 					// branch's own reason rather than a count.
-					return oneofErrf("no matching oneOf variant: %w", oneofStrictErr)
+					return oneofWrapf(oneofStrictErr, "no matching oneOf variant: ")
 				}
 			}
 			if oneofMatched > 1 {
@@ -1229,209 +1645,547 @@ func (a *AnnotationReachPositions) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"annCondAnyOf",
-			"annGroupPlain",
-			"annPlain",
-			"annViaAllOf",
-			"annViaMergedAllOf",
-			"annViaNestedAllOf",
-			"annViaRef",
-			"dfltBindsBoth",
-			"dfltBoolViaRef",
-			"dfltCondAnyOf",
-			"dfltCondOneOf",
-			"dfltEmptyViaRef",
-			"dfltInline",
-			"dfltIntViaRef",
-			"dfltMismatchViaRef",
-			"dfltMultiTypeViaRef",
-			"dfltNearestWins",
-			"dfltNone",
-			"dfltNumberViaRef",
-			"dfltObjectViaRef",
-			"dfltRequiredViaRef",
-			"dfltViaAllOf",
-			"dfltViaAllOfRef",
-			"dfltViaCycle",
-			"dfltViaMergedAllOf",
-			"dfltViaNestedAllOf",
-			"dfltViaRef",
-			"dfltViaRefChain",
-			"mode",
-			"pickA",
-			"pickB",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
-		}
-		a._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			a._jsonKeys[_k] = true
-		}
-		a._jsonRawProps = raw
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"annCondGroup",
-			"annCondThen",
-			"dfltAnyViaRef",
-			"dfltCondElse",
-			"dfltCondThen",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if a._jsonNulls == nil {
-					a._jsonNulls = make(map[string]bool, 1)
-				}
-				a._jsonNulls[_nullKey] = true
-			}
-		}
-		knownFields := map[string]bool{
-			"annCondAnyOf":        true,
-			"annCondThen":         true,
-			"annPlain":            true,
-			"annViaAllOf":         true,
-			"annViaMergedAllOf":   true,
-			"annViaNestedAllOf":   true,
-			"annViaRef":           true,
-			"dfltAnyViaRef":       true,
-			"dfltBindsBoth":       true,
-			"dfltBoolViaRef":      true,
-			"dfltCondAnyOf":       true,
-			"dfltCondElse":        true,
-			"dfltCondOneOf":       true,
-			"dfltCondThen":        true,
-			"dfltEmptyViaRef":     true,
-			"dfltInline":          true,
-			"dfltIntViaRef":       true,
-			"dfltMismatchViaRef":  true,
-			"dfltMultiTypeViaRef": true,
-			"dfltNearestWins":     true,
-			"dfltNone":            true,
-			"dfltNumberViaRef":    true,
-			"dfltObjectViaRef":    true,
-			"dfltRequiredViaRef":  true,
-			"dfltViaAllOf":        true,
-			"dfltViaAllOfRef":     true,
-			"dfltViaCycle":        true,
-			"dfltViaMergedAllOf":  true,
-			"dfltViaNestedAllOf":  true,
-			"dfltViaRef":          true,
-			"dfltViaRefChain":     true,
-			"mode":                true,
-			"pickA":               true,
-			"pickB":               true,
-			"annCondGroup":        true,
-			"annGroupPlain":       true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if a.AdditionalProperties == nil {
-				a.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			a.AdditionalProperties[rawKey] = rawVal
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"annCondAnyOf",
+		"annGroupPlain",
+		"annPlain",
+		"annViaAllOf",
+		"annViaMergedAllOf",
+		"annViaNestedAllOf",
+		"annViaRef",
+		"dfltBindsBoth",
+		"dfltBoolViaRef",
+		"dfltCondAnyOf",
+		"dfltCondOneOf",
+		"dfltEmptyViaRef",
+		"dfltInline",
+		"dfltIntViaRef",
+		"dfltMismatchViaRef",
+		"dfltMultiTypeViaRef",
+		"dfltNearestWins",
+		"dfltNone",
+		"dfltNumberViaRef",
+		"dfltObjectViaRef",
+		"dfltRequiredViaRef",
+		"dfltViaAllOf",
+		"dfltViaAllOfRef",
+		"dfltViaCycle",
+		"dfltViaMergedAllOf",
+		"dfltViaNestedAllOf",
+		"dfltViaRef",
+		"dfltViaRefChain",
+		"mode",
+		"pickA",
+		"pickB",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
 	}
+	a._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		a._jsonKeys[_k] = true
+	}
+	// The members a Validate check reads back as JSON. Each is a view of the
+	// document's own copy rather than a copy of its own: at every depth of a
+	// recursive document these hold the member below, and a copy each was the
+	// whole subtree held once per level. See jsonDoc.keep.
+	if _d.data[_sp.start] == '{' {
+		a._jsonRawProps = make(map[string]json.RawMessage, len(_raw))
+		for _k, _v := range _raw {
+			a._jsonRawProps[_k] = _d.keep(_v)
+		}
+	}
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"annCondGroup",
+		"annCondThen",
+		"dfltAnyViaRef",
+		"dfltCondElse",
+		"dfltCondThen",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if a._jsonNulls == nil {
+				a._jsonNulls = make(map[string]bool, 1)
+			}
+			a._jsonNulls[_nullKey] = true
+		}
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "annCondAnyOf", "annCondThen", "annPlain", "annViaAllOf", "annViaMergedAllOf", "annViaNestedAllOf", "annViaRef", "dfltAnyViaRef", "dfltBindsBoth", "dfltBoolViaRef", "dfltCondAnyOf", "dfltCondElse", "dfltCondOneOf", "dfltCondThen", "dfltEmptyViaRef", "dfltInline", "dfltIntViaRef", "dfltMismatchViaRef", "dfltMultiTypeViaRef", "dfltNearestWins", "dfltNone", "dfltNumberViaRef", "dfltObjectViaRef", "dfltRequiredViaRef", "dfltViaAllOf", "dfltViaAllOfRef", "dfltViaCycle", "dfltViaMergedAllOf", "dfltViaNestedAllOf", "dfltViaRef", "dfltViaRefChain", "mode", "pickA", "pickB", "annCondGroup", "annGroupPlain":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	a.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (a AnnotationReachPositions) MarshalJSON() ([]byte, error) {
-	type Alias AnnotationReachPositions
-	aux := struct {
-		Alias
-		AnnCondGroup  json.RawMessage `json:"annCondGroup,omitempty"`
-		AnnGroupPlain json.RawMessage `json:"annGroupPlain,omitempty"`
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
+	return _b, nil
+}
 
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AnnotationReachPositions) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
+	}
 	if a.AnnCondGroup != nil {
-		switch _sel := a.AnnCondGroup.(type) {
-		case *AnnotationReachPositions_ByName:
-			raw, err := json.Marshal(_sel.ByName)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling AnnotationReachPositions.AnnCondGroup: %w", err)
-			}
-			aux.AnnCondGroup = raw
-		case *AnnotationReachPositions_ByID:
-			raw, err := json.Marshal(_sel.ByID)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling AnnotationReachPositions.AnnCondGroup: %w", err)
-			}
-			aux.AnnCondGroup = raw
+		switch a.AnnCondGroup.(type) {
+		case *AnnotationReachPositions_ByName, *AnnotationReachPositions_ByID:
+			_o.deferred("annCondGroup", 34)
 		}
 	}
-
 	if a.AnnGroupPlain != nil {
-		switch _sel := a.AnnGroupPlain.(type) {
-		case *AnnotationReachPositions_ByName2:
-			raw, err := json.Marshal(_sel.ByName2)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling AnnotationReachPositions.AnnGroupPlain: %w", err)
-			}
-			aux.AnnGroupPlain = raw
-		case *AnnotationReachPositions_ByID2:
-			raw, err := json.Marshal(_sel.ByID2)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling AnnotationReachPositions.AnnGroupPlain: %w", err)
-			}
-			aux.AnnGroupPlain = raw
+		switch a.AnnGroupPlain.(type) {
+		case *AnnotationReachPositions_ByName2, *AnnotationReachPositions_ByID2:
+			_o.deferred("annGroupPlain", 35)
 		}
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(a._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range a._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero AnnotationReachPositions
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range a._jsonNulls {
+				_cur, _present, _err := _o.memberBytes(_k, a.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AnnotationReachPositions) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltAnyViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltAnyViaRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.AnnCondAnyOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("annCondAnyOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.AnnCondThen)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("annCondThen", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.AnnPlain)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("annPlain", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.AnnViaAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("annViaAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.AnnViaMergedAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("annViaMergedAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.AnnViaNestedAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("annViaNestedAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.AnnViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("annViaRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltBindsBoth)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltBindsBoth", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltBoolViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltBoolViaRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltCondAnyOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltCondAnyOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltCondElse)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltCondElse", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltCondOneOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltCondOneOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltCondThen)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltCondThen", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltEmptyViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltEmptyViaRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltInline)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltInline", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltIntViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltIntViaRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltMismatchViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltMismatchViaRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltNearestWins)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltNearestWins", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltNone)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltNone", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltNumberViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltNumberViaRef", _v)
+		}
+	}
+	{
+		if !jsonIsEmpty(a.DfltObjectViaRef) {
+			_o.deferred("dfltObjectViaRef", 21)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltViaAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltViaAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltViaAllOfRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltViaAllOfRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltViaCycle)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltViaCycle", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltViaMergedAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltViaMergedAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltViaNestedAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltViaNestedAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltViaRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.DfltViaRefChain)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltViaRefChain", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.Mode)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("mode", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.PickA)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("pickA", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.PickB)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("pickB", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(a.DfltRequiredViaRef, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("dfltRequiredViaRef", _v)
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(a.DfltMultiTypeViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dfltMultiTypeViaRef", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AnnotationReachPositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 21:
+		return (func(_v *DefaultedObject, _b []byte) ([]byte, error) {
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*DefaultedObject)(nil), true)
+			}
+			return _out, nil
+		})(a.DfltObjectViaRef, _b)
+	case 34:
+		switch _sel := a.AnnCondGroup.(type) {
+		case *AnnotationReachPositions_ByName:
+			_out, _err := (func(_v *ByName, _b []byte) ([]byte, error) {
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*ByName)(nil), true)
+				}
+				return _out, nil
+			})(_sel.ByName, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling AnnotationReachPositions.AnnCondGroup: %w", _err)
+			}
+			return _out, nil
+		case *AnnotationReachPositions_ByID:
+			_out, _err := (func(_v *ByID, _b []byte) ([]byte, error) {
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*ByID)(nil), true)
+				}
+				return _out, nil
+			})(_sel.ByID, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling AnnotationReachPositions.AnnCondGroup: %w", _err)
+			}
+			return _out, nil
+		}
+	case 35:
+		switch _sel := a.AnnGroupPlain.(type) {
+		case *AnnotationReachPositions_ByName2:
+			_out, _err := (func(_v *ByName, _b []byte) ([]byte, error) {
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*ByName)(nil), true)
+				}
+				return _out, nil
+			})(_sel.ByName2, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling AnnotationReachPositions.AnnGroupPlain: %w", _err)
+			}
+			return _out, nil
+		case *AnnotationReachPositions_ByID2:
+			_out, _err := (func(_v *ByID, _b []byte) ([]byte, error) {
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*ByID)(nil), true)
+				}
+				return _out, nil
+			})(_sel.ByID2, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling AnnotationReachPositions.AnnGroupPlain: %w", _err)
+			}
+			return _out, nil
+		}
+	}
+	return _b, nil
 }
 
 // SetDefaults writes each schema default into the properties this value does
@@ -1931,8 +2685,8 @@ func (a AnnotationReachPositions) Validate() error {
 					continue
 				}
 				if _err := func() error {
-					var _rbVal any
-					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+					_rbVal, _rbErr := jsonHeld(a._doc, _rbRaw)
+					if _rbErr != nil {
 						return jsonValueErrorf("cannot decode property %s: %w", _schemagenQuote(_rbKey), _rbErr)
 					}
 					_rbInstance[_rbKey] = _rbVal

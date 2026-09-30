@@ -11,6 +11,8 @@ import (
 type NullableV4String string
 
 func (n *NullableV4String) UnmarshalJSON(data []byte) error {
+	var _zero NullableV4String
+	*n = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -28,19 +30,33 @@ type NullableV4 struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableV4) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NullableV4) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableV4{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NullableV4) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NullableV4) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NullableV4) Raw() json.RawMessage { return append(json.RawMessage(nil), n._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -117,6 +133,8 @@ func (n NullableV4) Validate() error {
 type ChainInnerString string
 
 func (c *ChainInnerString) UnmarshalJSON(data []byte) error {
+	var _zero ChainInnerString
+	*c = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -134,19 +152,33 @@ type ChainInner struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces c with the value the document holds. See
+// decodeJSONAt.
 func (c *ChainInner) UnmarshalJSON(data []byte) error {
-	c._raw = append(c._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(c.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever c held.
+func (c *ChainInner) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*c = ChainInner{}
+	c._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (c ChainInner) MarshalJSON() ([]byte, error) {
 	if len(c._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return c._raw, nil
+	return append([]byte(nil), c._raw...), nil
 }
 
-func (c ChainInner) Raw() json.RawMessage { return c._raw }
+// Raw returns a copy of the value's bytes.
+func (c ChainInner) Raw() json.RawMessage { return append(json.RawMessage(nil), c._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -223,6 +255,8 @@ func (c ChainInner) Validate() error {
 type ChainOuterString string
 
 func (c *ChainOuterString) UnmarshalJSON(data []byte) error {
+	var _zero ChainOuterString
+	*c = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -240,19 +274,33 @@ type ChainOuter struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces c with the value the document holds. See
+// decodeJSONAt.
 func (c *ChainOuter) UnmarshalJSON(data []byte) error {
-	c._raw = append(c._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(c.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever c held.
+func (c *ChainOuter) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*c = ChainOuter{}
+	c._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (c ChainOuter) MarshalJSON() ([]byte, error) {
 	if len(c._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return c._raw, nil
+	return append([]byte(nil), c._raw...), nil
 }
 
-func (c ChainOuter) Raw() json.RawMessage { return c._raw }
+// Raw returns a copy of the value's bytes.
+func (c ChainOuter) Raw() json.RawMessage { return append(json.RawMessage(nil), c._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -329,6 +377,8 @@ func (c ChainOuter) Validate() error {
 type NullableFormatPositionsBranchOption0String string
 
 func (n *NullableFormatPositionsBranchOption0String) UnmarshalJSON(data []byte) error {
+	var _zero NullableFormatPositionsBranchOption0String
+	*n = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -346,19 +396,35 @@ type NullableFormatPositionsBranchOption0 struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableFormatPositionsBranchOption0) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NullableFormatPositionsBranchOption0) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableFormatPositionsBranchOption0{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NullableFormatPositionsBranchOption0) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NullableFormatPositionsBranchOption0) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NullableFormatPositionsBranchOption0) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), n._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -435,6 +501,8 @@ func (n NullableFormatPositionsBranchOption0) Validate() error {
 type NullableFormatPositionsBucketsPattern0String string
 
 func (n *NullableFormatPositionsBucketsPattern0String) UnmarshalJSON(data []byte) error {
+	var _zero NullableFormatPositionsBucketsPattern0String
+	*n = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -452,19 +520,35 @@ type NullableFormatPositionsBucketsPattern0 struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableFormatPositionsBucketsPattern0) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NullableFormatPositionsBucketsPattern0) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableFormatPositionsBucketsPattern0{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NullableFormatPositionsBucketsPattern0) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NullableFormatPositionsBucketsPattern0) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NullableFormatPositionsBucketsPattern0) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), n._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -541,95 +625,135 @@ func (n NullableFormatPositionsBucketsPattern0) Validate() error {
 type NullableFormatPositionsBuckets struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	PatternProperties    map[string]json.RawMessage `json:"-"`
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableFormatPositionsBuckets) UnmarshalJSON(data []byte) error {
-	n.AdditionalProperties = nil
-	n.PatternProperties = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into n, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever n held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (n *NullableFormatPositionsBuckets) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableFormatPositionsBuckets{}
+	n._doc = _d
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias NullableFormatPositionsBuckets
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(n),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*NullableFormatPositionsBuckets)(nil)))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
+	var _ppFiled map[string]json.RawMessage
+	var _apFiled map[string]json.RawMessage
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
-		}
-		knownFields := map[string]bool{}
-		{
-			var _least string
-			var _failed error
-			for rawKey, rawVal := range raw { // refused for the least failing key
-				if _failed != nil && rawKey >= _least {
-					continue
+		var _least string
+		var _failed error
+		for rawKey, rawVal := range _raw { // refused for the least failing key
+			if _failed != nil && rawKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				matchesPattern := false
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_9a393f59667e0a49.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
+					}
+					matchesPattern = _ppMatched
 				}
-				if _err := func() error {
-					if knownFields[rawKey] {
-						return nil
+				if matchesPattern {
+					if _ppFiled == nil {
+						_ppFiled = make(map[string]json.RawMessage)
 					}
-					matchesPattern := false
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_9a393f59667e0a49.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
-					}
-					if matchesPattern {
-						if n.PatternProperties == nil {
-							n.PatternProperties = make(map[string]json.RawMessage)
-						}
-						n.PatternProperties[rawKey] = rawVal
-						return nil
-					}
-					if n.AdditionalProperties == nil {
-						n.AdditionalProperties = make(map[string]json.RawMessage)
-					}
-					n.AdditionalProperties[rawKey] = rawVal
+					_ppFiled[rawKey] = _d.copyOf(rawVal)
 					return nil
-				}(); _err != nil {
-					_least, _failed = rawKey, _err
 				}
+				if _apFiled == nil {
+					_apFiled = make(map[string]json.RawMessage)
+				}
+				_apFiled[rawKey] = _d.copyOf(rawVal)
+				return nil
+			}(); _err != nil {
+				_least, _failed = rawKey, _err
 			}
-			if _failed != nil {
-				return _failed
-			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
+	n.PatternProperties = _ppFiled
+	n.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (n NullableFormatPositionsBuckets) MarshalJSON() ([]byte, error) {
-	type Alias NullableFormatPositionsBuckets
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(n),
+	_b, _err := n.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends n to _b as JSON. See jsonEnc.
+func (n NullableFormatPositionsBuckets) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := n.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range n.PatternProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
 	for _key, _member := range n.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, n.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members n's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (n NullableFormatPositionsBuckets) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of n numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (n NullableFormatPositionsBuckets) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks NullableFormatPositionsBuckets against its JSON Schema constraints.
@@ -649,11 +773,11 @@ func (n NullableFormatPositionsBuckets) Validate() error {
 					// decoded into it, so the decode enforces shape and the
 					// Validate enforces everything beyond it.
 					var _pv NullableFormatPositionsBucketsPattern0
-					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^p", _schemagenQuote(_key), _uErr)
+					if _uErr := jsonDecodeHeld(n._doc, _member, &_pv, (*NullableFormatPositionsBucketsPattern0).decodeJSONAt); _uErr != nil {
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^p", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^p", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^p", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -685,6 +809,8 @@ func (n NullableFormatPositionsBuckets) Validate() error {
 type NullableFormatPositionsInlineString string
 
 func (n *NullableFormatPositionsInlineString) UnmarshalJSON(data []byte) error {
+	var _zero NullableFormatPositionsInlineString
+	*n = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -702,19 +828,35 @@ type NullableFormatPositionsInline struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableFormatPositionsInline) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NullableFormatPositionsInline) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableFormatPositionsInline{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NullableFormatPositionsInline) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NullableFormatPositionsInline) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NullableFormatPositionsInline) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), n._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -791,6 +933,8 @@ func (n NullableFormatPositionsInline) Validate() error {
 type NullableFormatPositionsListItemString string
 
 func (n *NullableFormatPositionsListItemString) UnmarshalJSON(data []byte) error {
+	var _zero NullableFormatPositionsListItemString
+	*n = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -808,19 +952,35 @@ type NullableFormatPositionsListItem struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableFormatPositionsListItem) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NullableFormatPositionsListItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableFormatPositionsListItem{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NullableFormatPositionsListItem) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NullableFormatPositionsListItem) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NullableFormatPositionsListItem) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), n._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -897,6 +1057,8 @@ func (n NullableFormatPositionsListItem) Validate() error {
 type NullableFormatPositionsMailString string
 
 func (n *NullableFormatPositionsMailString) UnmarshalJSON(data []byte) error {
+	var _zero NullableFormatPositionsMailString
+	*n = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -914,19 +1076,35 @@ type NullableFormatPositionsMail struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableFormatPositionsMail) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NullableFormatPositionsMail) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableFormatPositionsMail{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NullableFormatPositionsMail) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NullableFormatPositionsMail) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NullableFormatPositionsMail) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), n._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1003,6 +1181,8 @@ func (n NullableFormatPositionsMail) Validate() error {
 type NullableFormatPositionsMapValueString string
 
 func (n *NullableFormatPositionsMapValueString) UnmarshalJSON(data []byte) error {
+	var _zero NullableFormatPositionsMapValueString
+	*n = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -1020,19 +1200,35 @@ type NullableFormatPositionsMapValue struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableFormatPositionsMapValue) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NullableFormatPositionsMapValue) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableFormatPositionsMapValue{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NullableFormatPositionsMapValue) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NullableFormatPositionsMapValue) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NullableFormatPositionsMapValue) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), n._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1109,6 +1305,8 @@ func (n NullableFormatPositionsMapValue) Validate() error {
 type NullableFormatPositionsStampString string
 
 func (n *NullableFormatPositionsStampString) UnmarshalJSON(data []byte) error {
+	var _zero NullableFormatPositionsStampString
+	*n = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -1126,19 +1324,35 @@ type NullableFormatPositionsStamp struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableFormatPositionsStamp) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NullableFormatPositionsStamp) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableFormatPositionsStamp{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NullableFormatPositionsStamp) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NullableFormatPositionsStamp) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NullableFormatPositionsStamp) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), n._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1215,6 +1429,8 @@ func (n NullableFormatPositionsStamp) Validate() error {
 type NullableFormatPositionsWrappedString string
 
 func (n *NullableFormatPositionsWrappedString) UnmarshalJSON(data []byte) error {
+	var _zero NullableFormatPositionsWrappedString
+	*n = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -1232,19 +1448,35 @@ type NullableFormatPositionsWrapped struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableFormatPositionsWrapped) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NullableFormatPositionsWrapped) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableFormatPositionsWrapped{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NullableFormatPositionsWrapped) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NullableFormatPositionsWrapped) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NullableFormatPositionsWrapped) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), n._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1321,6 +1553,8 @@ func (n NullableFormatPositionsWrapped) Validate() error {
 type NullableFormatPositionsTupleItem0String string
 
 func (n *NullableFormatPositionsTupleItem0String) UnmarshalJSON(data []byte) error {
+	var _zero NullableFormatPositionsTupleItem0String
+	*n = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -1338,19 +1572,44 @@ type NullableFormatPositionsTupleItem0 struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableFormatPositionsTupleItem0) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NullableFormatPositionsTupleItem0) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableFormatPositionsTupleItem0{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NullableFormatPositionsTupleItem0) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NullableFormatPositionsTupleItem0) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NullableFormatPositionsTupleItem0) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), n._raw...)
+}
+
+// jsonIdentity is n's identity as JSON: that of the bytes MarshalJSON
+// writes back. See jsonID.
+func (n *NullableFormatPositionsTupleItem0) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	if len(n._raw) == 0 {
+		return jsonIDNull(_m)
+	}
+	return jsonIDRawIn(n._raw, _m)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1485,68 +1744,136 @@ func (n *NullableFormatPositions) GetInteger() int64 {
 	return zero
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableFormatPositions) UnmarshalJSON(data []byte) error {
-	n.AdditionalProperties = nil
-	n._jsonKeys = nil
-	n._jsonNulls = nil
-	n.Branch = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into n, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever n held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (n *NullableFormatPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableFormatPositions{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"buckets",
-			"chain",
-			"inline",
-			"list",
-			"mail",
-			"map",
-			"ref",
-			"stamp",
-			"tuple",
-			"wrapped",
-			"branch",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*NullableFormatPositions)(nil)))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias NullableFormatPositions
-	aux := &struct {
-		*Alias
-		Branch json.RawMessage `json:"branch"`
-	}{
-		Alias: (*Alias)(n),
+	if _v, _ok := _raw["buckets"]; _ok {
+		if _err := func(_p **NullableFormatPositionsBuckets, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **NullableFormatPositionsBuckets, _d *jsonDoc, _s jsonSpan) error {
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(NullableFormatPositionsBuckets)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
+			}(_p, _d, _s))
+		}(&n.Buckets, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "buckets")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "buckets", decode: jsonDecodeValue[*NullableFormatPositionsBuckets]},
-			{name: "chain", decode: jsonDecodeValue[ChainOuter]},
-			{name: "inline", decode: jsonDecodeValue[NullableFormatPositionsInline]},
-			{name: "list", decode: jsonDecodeItems(jsonDecodeValue[NullableFormatPositionsListItem])},
-			{name: "mail", decode: jsonDecodeValue[NullableFormatPositionsMail]},
-			{name: "map", decode: jsonDecodeValues(jsonDecodeValue[NullableFormatPositionsMapValue])},
-			{name: "ref", decode: jsonDecodeValue[NullableV4]},
-			{name: "stamp", decode: jsonDecodeValue[NullableFormatPositionsStamp]},
-			{name: "tuple", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "wrapped", decode: jsonDecodeValue[NullableFormatPositionsWrapped]},
-		})
+	if _v, _ok := _raw["chain"]; _ok {
+		if _err := func(_p *ChainOuter, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*ChainOuter).decodeJSONAt(_p, _d, _s))
+		}(&n.Chain, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "chain")
+		}
+	}
+	if _v, _ok := _raw["inline"]; _ok {
+		if _err := func(_p *NullableFormatPositionsInline, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*NullableFormatPositionsInline).decodeJSONAt(_p, _d, _s))
+		}(&n.Inline, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "inline")
+		}
+	}
+	if _v, _ok := _raw["list"]; _ok {
+		if _err := func(_p *[]NullableFormatPositionsListItem, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeSlice[NullableFormatPositionsListItem](_p, _d, _s, func(_p *NullableFormatPositionsListItem, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*NullableFormatPositionsListItem).decodeJSONAt(_p, _d, _s))
+			})
+		}(&n.List, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "list")
+		}
+	}
+	if _v, _ok := _raw["mail"]; _ok {
+		if _err := func(_p *NullableFormatPositionsMail, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*NullableFormatPositionsMail).decodeJSONAt(_p, _d, _s))
+		}(&n.Mail, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "mail")
+		}
+	}
+	if _v, _ok := _raw["map"]; _ok {
+		if _err := func(_p *map[string]NullableFormatPositionsMapValue, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeMap[NullableFormatPositionsMapValue](_p, _d, _s, func(_p *NullableFormatPositionsMapValue, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*NullableFormatPositionsMapValue).decodeJSONAt(_p, _d, _s))
+			})
+		}(&n.Map, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "map")
+		}
+	}
+	if _v, _ok := _raw["ref"]; _ok {
+		if _err := func(_p *NullableV4, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*NullableV4).decodeJSONAt(_p, _d, _s))
+		}(&n.Ref, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "ref")
+		}
+	}
+	if _v, _ok := _raw["stamp"]; _ok {
+		if _err := func(_p *NullableFormatPositionsStamp, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*NullableFormatPositionsStamp).decodeJSONAt(_p, _d, _s))
+		}(&n.Stamp, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "stamp")
+		}
+	}
+	if _v, _ok := _raw["tuple"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonLazyItemsOr[[]any](_p, _d, _s, func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+			})
+		}(&n.Tuple, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "tuple")
+		}
+	}
+	if _v, _ok := _raw["wrapped"]; _ok {
+		if _err := func(_p *NullableFormatPositionsWrapped, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*NullableFormatPositionsWrapped).decodeJSONAt(_p, _d, _s))
+		}(&n.Wrapped, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "wrapped")
+		}
 	}
 
 	{
-		oneofData := aux.Branch
+		_ov, _has := _raw["branch"]
 		// Every refusal this union raises is a sentence about the value the union
 		// holds, and the property that reaches it goes in front of that sentence
 		// by the rule every other message is joined by (see jsonPathError).
@@ -1558,7 +1885,15 @@ func (n *NullableFormatPositions) UnmarshalJSON(data []byte) error {
 		oneofErrf := func(format string, args ...any) error {
 			return jsonPathf(jsonValueErrorf(format, args...), "%s", "branch")
 		}
-		if len(oneofData) > 0 && string(oneofData) != "null" {
+		// oneofWrapf is oneofErrf for a sentence that ends with a branch's own
+		// refusal, which is kept as a step of the message rather than written
+		// into it (see jsonValueWrapf): at every level of a recursive document
+		// that refuses at the bottom, each union puts its words in front of the
+		// words of the one below it.
+		oneofWrapf := func(err error, prefix string) error {
+			return jsonPathf(jsonValueWrapf(err, prefix), "%s", "branch")
+		}
+		if _has && !_d.isNull(_ov) {
 			var oneofMatched int
 			var oneofLastErr error
 			// A second tally: branches actually satisfied, not merely decoded.
@@ -1570,22 +1905,26 @@ func (n *NullableFormatPositions) UnmarshalJSON(data []byte) error {
 			var oneofOpaque int
 			var oneofStrictSel isNullableFormatPositions_Branch
 			var oneofStrictErr error
+			// The candidate this branch decoded, held for the tally below. Its
+			// Validate is asked only if more than one branch matched, which is
+			// the only case the tally is read in: asked here, it was run over
+			// the whole of the value at every level of a recursive document.
+			var _vc0 NullableFormatPositionsBranchOption0
+			var _vcOK0 bool
+			// Every branch below is a trial, and one that holds the value's
+			// members as raw JSON takes views of the document rather than
+			// copies of them; see jsonDoc.copyOf.
+			_d.trial++
 
 			// Try variant: NullableFormatPositionsBranchOption0
 			{
 				var candidate NullableFormatPositionsBranchOption0
-				if err := json.Unmarshal(oneofData, &candidate); err == nil {
+				if err := (*NullableFormatPositionsBranchOption0).decodeJSONAt(&candidate, _d, _ov); err == nil {
 					n.Branch = &NullableFormatPositions_NullableFormatPositionsBranchOption0{NullableFormatPositionsBranchOption0: candidate}
 					oneofMatched++
-					if _vErr := candidate.Validate(); _vErr == nil {
-						oneofStrict++
-						oneofStrictSel = &NullableFormatPositions_NullableFormatPositionsBranchOption0{NullableFormatPositionsBranchOption0: candidate}
-					} else if _schemagenUndecided(_vErr) {
-						return oneofErrf("variant NullableFormatPositionsBranchOption0: %w", _vErr)
-					} else {
-						oneofStrictErr = fmt.Errorf("variant NullableFormatPositionsBranchOption0: %w", _vErr)
-					}
+					_vc0, _vcOK0 = candidate, true
 				} else if _schemagenUndecided(err) {
+					_d.trial--
 					return oneofErrf("variant NullableFormatPositionsBranchOption0: %w", err)
 				} else {
 					oneofLastErr = err
@@ -1600,7 +1939,7 @@ func (n *NullableFormatPositions) UnmarshalJSON(data []byte) error {
 				// of the file does -- otherwise a document this branch
 				// accepts is reported as matching no branch at all.
 				var _iv jsonInteger
-				_ivErr := json.Unmarshal(oneofData, &_iv)
+				_ivErr := jsonAtJSON[jsonInteger](&_iv, _d, _ov)
 				if _ivErr == nil {
 					candidate = int64(_iv)
 				}
@@ -1612,11 +1951,13 @@ func (n *NullableFormatPositions) UnmarshalJSON(data []byte) error {
 					oneofStrict++
 					oneofStrictSel = &NullableFormatPositions_Integer{Integer: candidate}
 				} else if _schemagenUndecided(err) {
+					_d.trial--
 					return oneofErrf("variant Integer: %w", err)
 				} else {
 					oneofLastErr = err
 				}
 			}
+			_d.trial--
 
 			if oneofMatched == 0 {
 				// A branch is only put to a decode once the keys it selects on are
@@ -1627,9 +1968,21 @@ func (n *NullableFormatPositions) UnmarshalJSON(data []byte) error {
 				if oneofLastErr == nil {
 					return oneofErrf("no matching oneOf variant")
 				}
-				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
+				return oneofWrapf(oneofLastErr, "no matching oneOf variant: ")
 			}
 			if oneofMatched > 1 && oneofOpaque == 0 {
+				if _vcOK0 {
+					if _vErr := _vc0.Validate(); _vErr == nil {
+						oneofStrict++
+						oneofStrictSel = &NullableFormatPositions_NullableFormatPositionsBranchOption0{NullableFormatPositionsBranchOption0: _vc0}
+					} else if _schemagenUndecided(_vErr) {
+						// No verdict on this branch, so no telling which one
+						// the document selects.
+						return oneofErrf("variant NullableFormatPositionsBranchOption0: %w", _vErr)
+					} else {
+						oneofStrictErr = jsonValueWrapf(_vErr, "variant NullableFormatPositionsBranchOption0: ")
+					}
+				}
 				// Several branches decoded and every one can be judged, so the
 				// branches' own constraints settle which of them the value
 				// really satisfies. Ambiguity is already a rejection here, so
@@ -1643,7 +1996,7 @@ func (n *NullableFormatPositions) UnmarshalJSON(data []byte) error {
 				case oneofStrictErr != nil:
 					// Not ambiguity but a value no branch accepts: report the
 					// branch's own reason rather than a count.
-					return oneofErrf("no matching oneOf variant: %w", oneofStrictErr)
+					return oneofWrapf(oneofStrictErr, "no matching oneOf variant: ")
 				}
 			}
 			if oneofMatched > 1 {
@@ -1651,134 +2004,235 @@ func (n *NullableFormatPositions) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"buckets",
-			"list",
-			"map",
-			"tuple",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
-		}
-		n._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			n._jsonKeys[_k] = true
-		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"branch",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if n._jsonNulls == nil {
-					n._jsonNulls = make(map[string]bool, 1)
-				}
-				n._jsonNulls[_nullKey] = true
-			}
-		}
-		knownFields := map[string]bool{
-			"buckets": true,
-			"chain":   true,
-			"inline":  true,
-			"list":    true,
-			"mail":    true,
-			"map":     true,
-			"ref":     true,
-			"stamp":   true,
-			"tuple":   true,
-			"wrapped": true,
-			"branch":  true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if n.AdditionalProperties == nil {
-				n.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			n.AdditionalProperties[rawKey] = rawVal
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"buckets",
+		"list",
+		"map",
+		"tuple",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
 	}
+	n._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		n._jsonKeys[_k] = true
+	}
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"branch",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if n._jsonNulls == nil {
+				n._jsonNulls = make(map[string]bool, 1)
+			}
+			n._jsonNulls[_nullKey] = true
+		}
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "buckets", "chain", "inline", "list", "mail", "map", "ref", "stamp", "tuple", "wrapped", "branch":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	n.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (n NullableFormatPositions) MarshalJSON() ([]byte, error) {
-	type Alias NullableFormatPositions
-	aux := struct {
-		Alias
-		Branch json.RawMessage `json:"branch,omitempty"`
-	}{
-		Alias: (Alias)(n),
+	_b, _err := n.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
+	return _b, nil
+}
 
+// appendJSON appends n to _b as JSON. See jsonEnc.
+func (n NullableFormatPositions) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := n.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
+	}
 	if n.Branch != nil {
-		switch _sel := n.Branch.(type) {
-		case *NullableFormatPositions_NullableFormatPositionsBranchOption0:
-			raw, err := json.Marshal(_sel.NullableFormatPositionsBranchOption0)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling NullableFormatPositions.Branch: %w", err)
-			}
-			aux.Branch = raw
-		case *NullableFormatPositions_Integer:
-			raw, err := json.Marshal(_sel.Integer)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling NullableFormatPositions.Branch: %w", err)
-			}
-			aux.Branch = raw
+		switch n.Branch.(type) {
+		case *NullableFormatPositions_NullableFormatPositionsBranchOption0, *NullableFormatPositions_Integer:
+			_o.deferred("branch", 10)
 		}
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(n._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range n._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero NullableFormatPositions
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range n._jsonNulls {
+				_cur, _present, _err := _o.memberBytes(_k, n.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range n.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, n.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members n's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (n NullableFormatPositions) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		if !jsonIsEmpty(n.Buckets) {
+			_o.deferred("buckets", 0)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Map)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("map", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Chain)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("chain", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Inline)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("inline", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.List)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("list", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Mail)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("mail", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Ref)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("ref", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Stamp)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("stamp", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Tuple)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("tuple", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Wrapped)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("wrapped", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of n numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (n NullableFormatPositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 0:
+		return (func(_v *NullableFormatPositionsBuckets, _b []byte) ([]byte, error) {
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*NullableFormatPositionsBuckets)(nil), true)
+			}
+			return _out, nil
+		})(n.Buckets, _b)
+	case 10:
+		switch _sel := n.Branch.(type) {
+		case *NullableFormatPositions_NullableFormatPositionsBranchOption0:
+			_out, _err := (jsonAppendLeaf[NullableFormatPositionsBranchOption0])(_sel.NullableFormatPositionsBranchOption0, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling NullableFormatPositions.Branch: %w", _err)
+			}
+			return _out, nil
+		case *NullableFormatPositions_Integer:
+			_out, _err := (jsonAppendLeaf[int64])(_sel.Integer, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling NullableFormatPositions.Branch: %w", _err)
+			}
+			return _out, nil
+		}
+	}
+	return _b, nil
 }
 
 // Validate checks NullableFormatPositions against its JSON Schema constraints.
@@ -1882,17 +2336,20 @@ func (n NullableFormatPositions) Validate() error {
 	// Tuple items: validate each position against its schema type.
 	for _idx, _elem := range n.Tuple {
 		_ = _elem
+		// An element read lazily (see jsonLazyItemsOr) has its first level read
+		// here, for the arms that ask its JSON type; a position of this
+		// package's type decodes it from its span instead.
+		_lz, _isLazy := _elem.(jsonLazy)
+		if _isLazy {
+			_elem = _lz.jsonLevel()
+		}
 		if _idx == 0 {
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _mErr)
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
-			var _typed NullableFormatPositionsTupleItem0
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _uErr)
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _vErr)
+			if _tr := _evalNode(&_etNullableFormatPositionsTupleItem0, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 		}
 		if _idx == 1 {
@@ -1903,4 +2360,19 @@ func (n NullableFormatPositions) Validate() error {
 		}
 	}
 	return nil
+}
+
+// _etNullableFormatPositionsTupleItem0 is the schema of NullableFormatPositionsTupleItem0, compiled for judging an element held as
+// decoded JSON against it.
+var _etNullableFormatPositionsTupleItem0 = _schemaNode{
+	Type: []string{"string", "null"},
+}
+
+// SchemagenJSONTree returns n as encoding/json decodes the JSON its
+// MarshalJSON writes into an any -- map[string]any, []any, string, bool, nil and
+// json.Number -- read off the value rather than written out and decoded. Another
+// package generated in the same run compares values of this type by it (const,
+// enum, uniqueItems) without encoding them. Its result is the caller's.
+func (n *NullableFormatPositionsTupleItem0) SchemagenJSONTree() (any, error) {
+	return jsonTreeOfIdentifier(n, nil)
 }

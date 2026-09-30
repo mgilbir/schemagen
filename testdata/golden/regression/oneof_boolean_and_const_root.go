@@ -15,19 +15,35 @@ type OneOfBooleanAndConstRoot struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces o with the value the document holds. See
+// decodeJSONAt.
 func (o *OneOfBooleanAndConstRoot) UnmarshalJSON(data []byte) error {
-	o._raw = append(o._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(o.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever o held.
+func (o *OneOfBooleanAndConstRoot) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*o = OneOfBooleanAndConstRoot{}
+	o._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (o OneOfBooleanAndConstRoot) MarshalJSON() ([]byte, error) {
 	if len(o._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return o._raw, nil
+	return append([]byte(nil), o._raw...), nil
 }
 
-func (o OneOfBooleanAndConstRoot) Raw() json.RawMessage { return o._raw }
+// Raw returns a copy of the value's bytes.
+func (o OneOfBooleanAndConstRoot) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), o._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -62,8 +78,13 @@ func (o OneOfBooleanAndConstRoot) Validate() error {
 	if len(o._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(o._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(o._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.

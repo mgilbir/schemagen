@@ -10,6 +10,11 @@
      the refusal is decided by its schema -- the two are independent, and every
      combination has to carry it. */}}
 {{define "enum_null_guard"}}
+	{{- /* The value is replaced rather than merged into, as every generated
+	       type's is: a document refused below leaves the zero value, not the
+	       member an earlier one decoded to. */}}
+	var _zero {{.Name}}
+	*{{receiverName .Name}} = _zero
 {{- if .NeedsNullCheck}}
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
@@ -51,6 +56,14 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 	return json.Marshal(json.Number({{$recv}}))
 }
+{{- if .HasIdentity}}
+
+// jsonIdentity is {{$recv}}'s identity as JSON: the number MarshalJSON writes.
+// See jsonID.
+func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	return jsonIDNumberIn(json.Number(*{{$recv}}), _m)
+}
+{{- end}}
 {{- end}}
 {{- if .IntegerToken}}
 
@@ -118,26 +131,53 @@ type {{.Name}} json.RawMessage
 {{- $recv := receiverName .Name}}
 {{- $allowedVar := .AllowedVar}}
 
-// The members as the schema wrote them, reduced at package initialisation to
-// the one spelling every JSON value equal to each of them shares -- which is
-// the same reduction Validate puts the instance through. See _jsonCanonical.
-var {{$allowedVar}} = _jsonCanonicalTexts([]string{
+// The members as the schema wrote them, read at package initialisation: the
+// identity every JSON value equal to each shares, and its tree, which is what
+// Validate compares the instance with. See jsonMatchesConstRaw.
+var {{$allowedVar}} = jsonConstOf(false,
 {{- range .Values}}
 	{{goStringQuote .RawJSON}},
 {{- end}}
-})
+)
 
+// UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
+//
+// encoding/json's contract for an Unmarshaler is that it copies what it keeps,
+// and this one kept the caller's slice: a caller that reused its read buffer --
+// a json.Decoder over a stream does, for every document -- rewrote a value it had
+// already decoded, which then validated as whatever the next document held
+// there. A value that is not JSON at all is refused in encoding/json's words;
+// encoding/json never hands one over, so only a direct caller reaches that.
 func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
-	*{{$recv}} = {{.Name}}(data)
+	*{{$recv}} = nil
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	*{{$recv}} = {{.Name}}(append([]byte(nil), data...))
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it, in a buffer of
+// its own: the value's bytes, handed out, are bytes a caller can rewrite it
+// through.
 func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 	if len({{$recv}}) == 0 {
 		return []byte("null"), nil
 	}
-	return json.RawMessage({{$recv}}).MarshalJSON()
+	return append([]byte(nil), {{$recv}}...), nil
 }
+{{- if .HasIdentity}}
+
+// jsonIdentity is {{$recv}}'s identity as JSON: that of the bytes MarshalJSON
+// writes back. See jsonID.
+func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	if len(*{{$recv}}) == 0 {
+		return jsonIDNull(_m)
+	}
+	return jsonIDRawIn(*{{$recv}}, _m)
+}
+{{- end}}
 
 // Validate checks {{.Name}} against its JSON Schema constraints.
 func ({{$recv}} {{.Name}}) Validate() error {
@@ -147,18 +187,17 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	and then a comparison between the named type and a string. The underscore
 	prefix is the convention the rest of the generated code uses for exactly
 	this, and a receiver is one letter and can never carry it. */}}
-	// Reduced to one spelling per JSON value, which is what the member list was
-	// reduced to as well: whitespace, member order and number spelling are not
-	// what an enum is decided on.
-	_canon, _canonErr := _jsonCanonical([]byte({{$recv}}))
-	if _canonErr != nil {
+	// Compared as JSON (see jsonMatchesConstRaw): whitespace, member order and
+	// number spelling are not what an enum is decided on. It used to reduce the
+	// value to canonical text, re-encoding every string and key in it, to decide.
+	_ok, _okErr := jsonMatchesConstRaw({{$recv}}, {{$allowedVar}})
+	if _okErr != nil {
 		return jsonValueErrorf("invalid {{.Name}} value: %s", _schemagenClipText(string({{$recv}})))
 	}
-	for _, allowed := range {{$allowedVar}} {
-		if _canon == allowed {
-			return nil
-		}
+	if _ok {
+		return nil
 	}
+	_canon, _ := _jsonCanonical([]byte({{$recv}}))
 	return jsonValueErrorf("invalid {{.Name}} value: %s", _canon)
 }
 {{- end}}

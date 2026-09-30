@@ -15,19 +15,35 @@ type NullableCompositionBranchesAnyBound struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableCompositionBranchesAnyBound) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NullableCompositionBranchesAnyBound) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableCompositionBranchesAnyBound{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NullableCompositionBranchesAnyBound) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NullableCompositionBranchesAnyBound) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NullableCompositionBranchesAnyBound) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), n._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -70,19 +86,35 @@ type NullableCompositionBranchesAnyConst struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableCompositionBranchesAnyConst) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NullableCompositionBranchesAnyConst) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableCompositionBranchesAnyConst{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NullableCompositionBranchesAnyConst) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NullableCompositionBranchesAnyConst) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NullableCompositionBranchesAnyConst) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), n._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -111,8 +143,13 @@ func (n NullableCompositionBranchesAnyConst) Validate() error {
 	if len(n._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(n._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -132,19 +169,35 @@ type NullableCompositionBranchesAnyEmpty struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableCompositionBranchesAnyEmpty) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NullableCompositionBranchesAnyEmpty) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableCompositionBranchesAnyEmpty{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NullableCompositionBranchesAnyEmpty) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NullableCompositionBranchesAnyEmpty) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NullableCompositionBranchesAnyEmpty) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), n._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -170,8 +223,13 @@ func (n NullableCompositionBranchesAnyEmpty) Validate() error {
 	if len(n._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(n._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -208,19 +266,35 @@ type NullableCompositionBranchesAnyFalse struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableCompositionBranchesAnyFalse) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NullableCompositionBranchesAnyFalse) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableCompositionBranchesAnyFalse{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NullableCompositionBranchesAnyFalse) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NullableCompositionBranchesAnyFalse) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NullableCompositionBranchesAnyFalse) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), n._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -246,8 +320,13 @@ func (n NullableCompositionBranchesAnyFalse) Validate() error {
 	if len(n._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(n._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -267,19 +346,35 @@ type NullableCompositionBranchesAnyItems struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableCompositionBranchesAnyItems) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NullableCompositionBranchesAnyItems) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableCompositionBranchesAnyItems{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NullableCompositionBranchesAnyItems) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NullableCompositionBranchesAnyItems) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NullableCompositionBranchesAnyItems) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), n._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -311,8 +406,13 @@ func (n NullableCompositionBranchesAnyItems) Validate() error {
 	if len(n._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(n._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -331,19 +431,35 @@ type NullableCompositionBranchesAnyLen struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableCompositionBranchesAnyLen) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NullableCompositionBranchesAnyLen) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableCompositionBranchesAnyLen{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NullableCompositionBranchesAnyLen) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NullableCompositionBranchesAnyLen) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NullableCompositionBranchesAnyLen) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), n._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -386,19 +502,35 @@ type NullableCompositionBranchesAnyMinIt struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableCompositionBranchesAnyMinIt) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NullableCompositionBranchesAnyMinIt) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableCompositionBranchesAnyMinIt{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NullableCompositionBranchesAnyMinIt) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NullableCompositionBranchesAnyMinIt) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NullableCompositionBranchesAnyMinIt) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), n._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -427,8 +559,13 @@ func (n NullableCompositionBranchesAnyMinIt) Validate() error {
 	if len(n._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(n._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -446,99 +583,131 @@ type NullableCompositionBranchesAnyObj struct {
 	K                    string                     `json:"k"`
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableCompositionBranchesAnyObj) UnmarshalJSON(data []byte) error {
-	n.AdditionalProperties = nil
-	n._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into n, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever n held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (n *NullableCompositionBranchesAnyObj) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableCompositionBranchesAnyObj{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"k",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*NullableCompositionBranchesAnyObj)(nil)))
 	}
-	type Alias NullableCompositionBranchesAnyObj
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(n),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "k", decode: jsonDecodeValue[string]},
-		})
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"k",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-		}
-		n._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			n._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{
-			"k": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if n.AdditionalProperties == nil {
-				n.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			n.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	if _v, _ok := _raw["k"]; _ok {
+		if _err := func(_p *string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[string](_p, _d, _s, jsonDecodeValue[string])
+		}(&n.K, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "k")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"k",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	n._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		n._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "k":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	n.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (n NullableCompositionBranchesAnyObj) MarshalJSON() ([]byte, error) {
-	type Alias NullableCompositionBranchesAnyObj
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(n),
+	_b, _err := n.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends n to _b as JSON. See jsonEnc.
+func (n NullableCompositionBranchesAnyObj) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := n.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range n.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, n.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members n's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (n NullableCompositionBranchesAnyObj) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(n.K, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("k", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of n numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (n NullableCompositionBranchesAnyObj) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks NullableCompositionBranchesAnyObj against its JSON Schema constraints.
@@ -565,19 +734,35 @@ type NullableCompositionBranchesOneConst struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableCompositionBranchesOneConst) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NullableCompositionBranchesOneConst) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableCompositionBranchesOneConst{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NullableCompositionBranchesOneConst) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NullableCompositionBranchesOneConst) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NullableCompositionBranchesOneConst) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), n._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -606,8 +791,13 @@ func (n NullableCompositionBranchesOneConst) Validate() error {
 	if len(n._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(n._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -627,19 +817,35 @@ type NullableCompositionBranchesOneMapVal struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableCompositionBranchesOneMapVal) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NullableCompositionBranchesOneMapVal) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableCompositionBranchesOneMapVal{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NullableCompositionBranchesOneMapVal) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NullableCompositionBranchesOneMapVal) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NullableCompositionBranchesOneMapVal) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), n._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -671,8 +877,13 @@ func (n NullableCompositionBranchesOneMapVal) Validate() error {
 	if len(n._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(n._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(n._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -704,167 +915,370 @@ type NullableCompositionBranches struct {
 	OneMapVal            NullableCompositionBranchesOneMapVal `json:"oneMapVal,omitzero"`
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NullableCompositionBranches) UnmarshalJSON(data []byte) error {
-	n.AdditionalProperties = nil
-	n._jsonKeys = nil
-	n._jsonNulls = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into n, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever n held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (n *NullableCompositionBranches) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NullableCompositionBranches{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"anyArr",
-			"anyBound",
-			"anyConst",
-			"anyEmpty",
-			"anyEnum",
-			"anyFalse",
-			"anyItems",
-			"anyLen",
-			"anyMinIt",
-			"anyObj",
-			"anyPlain",
-			"oneConst",
-			"oneMapVal",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*NullableCompositionBranches)(nil)))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias NullableCompositionBranches
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(n),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "anyArr", decode: jsonDecodeValue[*[]string]},
-			{name: "anyBound", decode: jsonDecodeValue[NullableCompositionBranchesAnyBound]},
-			{name: "anyConst", decode: jsonDecodeValue[NullableCompositionBranchesAnyConst]},
-			{name: "anyEmpty", decode: jsonDecodeValue[NullableCompositionBranchesAnyEmpty]},
-			{name: "anyEnum", decode: jsonDecodeValue[*NullableCompositionBranchesAnyEnum]},
-			{name: "anyFalse", decode: jsonDecodeValue[NullableCompositionBranchesAnyFalse]},
-			{name: "anyItems", decode: jsonDecodeValue[NullableCompositionBranchesAnyItems]},
-			{name: "anyLen", decode: jsonDecodeValue[NullableCompositionBranchesAnyLen]},
-			{name: "anyMinIt", decode: jsonDecodeValue[NullableCompositionBranchesAnyMinIt]},
-			{name: "anyObj", decode: jsonDecodeValue[*NullableCompositionBranchesAnyObj]},
-			{name: "anyPlain", decode: jsonDecodeValue[*string]},
-			{name: "oneConst", decode: jsonDecodeValue[NullableCompositionBranchesOneConst]},
-			{name: "oneMapVal", decode: jsonDecodeValue[NullableCompositionBranchesOneMapVal]},
-		})
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	if _v, _ok := _raw["anyArr"]; _ok {
+		if _err := func(_p **[]string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*[]string](_p, _d, _s, jsonDecodeValue[*[]string])
+		}(&n.AnyArr, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "anyArr")
 		}
-		n._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			n._jsonKeys[_k] = true
+	}
+	if _v, _ok := _raw["anyBound"]; _ok {
+		if _err := func(_p *NullableCompositionBranchesAnyBound, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*NullableCompositionBranchesAnyBound).decodeJSONAt(_p, _d, _s))
+		}(&n.AnyBound, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "anyBound")
 		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"anyArr",
-			"anyEnum",
-			"anyObj",
-			"anyPlain",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if n._jsonNulls == nil {
-					n._jsonNulls = make(map[string]bool, 1)
+	}
+	if _v, _ok := _raw["anyConst"]; _ok {
+		if _err := func(_p *NullableCompositionBranchesAnyConst, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*NullableCompositionBranchesAnyConst).decodeJSONAt(_p, _d, _s))
+		}(&n.AnyConst, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "anyConst")
+		}
+	}
+	if _v, _ok := _raw["anyEmpty"]; _ok {
+		if _err := func(_p *NullableCompositionBranchesAnyEmpty, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*NullableCompositionBranchesAnyEmpty).decodeJSONAt(_p, _d, _s))
+		}(&n.AnyEmpty, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "anyEmpty")
+		}
+	}
+	if _v, _ok := _raw["anyEnum"]; _ok {
+		if _err := func(_p **NullableCompositionBranchesAnyEnum, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*NullableCompositionBranchesAnyEnum](_p, _d, _s, jsonDecodeValue[*NullableCompositionBranchesAnyEnum])
+		}(&n.AnyEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "anyEnum")
+		}
+	}
+	if _v, _ok := _raw["anyFalse"]; _ok {
+		if _err := func(_p *NullableCompositionBranchesAnyFalse, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*NullableCompositionBranchesAnyFalse).decodeJSONAt(_p, _d, _s))
+		}(&n.AnyFalse, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "anyFalse")
+		}
+	}
+	if _v, _ok := _raw["anyItems"]; _ok {
+		if _err := func(_p *NullableCompositionBranchesAnyItems, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*NullableCompositionBranchesAnyItems).decodeJSONAt(_p, _d, _s))
+		}(&n.AnyItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "anyItems")
+		}
+	}
+	if _v, _ok := _raw["anyLen"]; _ok {
+		if _err := func(_p *NullableCompositionBranchesAnyLen, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*NullableCompositionBranchesAnyLen).decodeJSONAt(_p, _d, _s))
+		}(&n.AnyLen, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "anyLen")
+		}
+	}
+	if _v, _ok := _raw["anyMinIt"]; _ok {
+		if _err := func(_p *NullableCompositionBranchesAnyMinIt, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*NullableCompositionBranchesAnyMinIt).decodeJSONAt(_p, _d, _s))
+		}(&n.AnyMinIt, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "anyMinIt")
+		}
+	}
+	if _v, _ok := _raw["anyObj"]; _ok {
+		if _err := func(_p **NullableCompositionBranchesAnyObj, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **NullableCompositionBranchesAnyObj, _d *jsonDoc, _s jsonSpan) error {
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
 				}
-				n._jsonNulls[_nullKey] = true
-			}
-		}
-		knownFields := map[string]bool{
-			"anyArr":    true,
-			"anyBound":  true,
-			"anyConst":  true,
-			"anyEmpty":  true,
-			"anyEnum":   true,
-			"anyFalse":  true,
-			"anyItems":  true,
-			"anyLen":    true,
-			"anyMinIt":  true,
-			"anyObj":    true,
-			"anyPlain":  true,
-			"oneConst":  true,
-			"oneMapVal": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if n.AdditionalProperties == nil {
-				n.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			n.AdditionalProperties[rawKey] = rawVal
+				_v := new(NullableCompositionBranchesAnyObj)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
+			}(_p, _d, _s))
+		}(&n.AnyObj, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "anyObj")
 		}
 	}
+	if _v, _ok := _raw["anyPlain"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&n.AnyPlain, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "anyPlain")
+		}
+	}
+	if _v, _ok := _raw["oneConst"]; _ok {
+		if _err := func(_p *NullableCompositionBranchesOneConst, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*NullableCompositionBranchesOneConst).decodeJSONAt(_p, _d, _s))
+		}(&n.OneConst, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "oneConst")
+		}
+	}
+	if _v, _ok := _raw["oneMapVal"]; _ok {
+		if _err := func(_p *NullableCompositionBranchesOneMapVal, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*NullableCompositionBranchesOneMapVal).decodeJSONAt(_p, _d, _s))
+		}(&n.OneMapVal, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "oneMapVal")
+		}
+	}
+	n._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		n._jsonKeys[_k] = true
+	}
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"anyArr",
+		"anyEnum",
+		"anyObj",
+		"anyPlain",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if n._jsonNulls == nil {
+				n._jsonNulls = make(map[string]bool, 1)
+			}
+			n._jsonNulls[_nullKey] = true
+		}
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "anyArr", "anyBound", "anyConst", "anyEmpty", "anyEnum", "anyFalse", "anyItems", "anyLen", "anyMinIt", "anyObj", "anyPlain", "oneConst", "oneMapVal":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	n.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (n NullableCompositionBranches) MarshalJSON() ([]byte, error) {
-	type Alias NullableCompositionBranches
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(n),
+	_b, _err := n.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends n to _b as JSON. See jsonEnc.
+func (n NullableCompositionBranches) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := n.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(n._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range n._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero NullableCompositionBranches
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range n._jsonNulls {
+				_cur, _present, _err := _o.memberBytes(_k, n.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range n.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, n.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members n's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (n NullableCompositionBranches) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.AnyArr)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyArr", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.AnyEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyEnum", _v)
+		}
+	}
+	{
+		if !jsonIsEmpty(n.AnyObj) {
+			_o.deferred("anyObj", 2)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.AnyPlain)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyPlain", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.AnyBound)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyBound", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.AnyConst)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyConst", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.AnyEmpty)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyEmpty", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.AnyFalse)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyFalse", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.AnyItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.AnyLen)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyLen", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.AnyMinIt)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anyMinIt", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.OneConst)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("oneConst", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.OneMapVal)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("oneMapVal", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of n numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (n NullableCompositionBranches) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 2:
+		return (func(_v *NullableCompositionBranchesAnyObj, _b []byte) ([]byte, error) {
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*NullableCompositionBranchesAnyObj)(nil), true)
+			}
+			return _out, nil
+		})(n.AnyObj, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks NullableCompositionBranches against its JSON Schema constraints.

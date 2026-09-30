@@ -11,6 +11,8 @@ import (
 type Timestamp string
 
 func (t *Timestamp) UnmarshalJSON(data []byte) error {
+	var _zero Timestamp
+	*t = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -27,6 +29,8 @@ func (t Timestamp) Validate() error {
 type EventRecordItem0 string
 
 func (e *EventRecordItem0) UnmarshalJSON(data []byte) error {
+	var _zero EventRecordItem0
+	*e = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -70,112 +74,194 @@ type EventRecordItem2 struct {
 	Level                EventRecordItem2Level      `json:"level"`
 }
 
+// UnmarshalJSON replaces e with the value the document holds. See
+// decodeJSONAt.
 func (e *EventRecordItem2) UnmarshalJSON(data []byte) error {
-	e.AdditionalProperties = nil
-	e._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(e.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into e, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever e held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (e *EventRecordItem2) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*e = EventRecordItem2{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"code",
-			"level",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*EventRecordItem2)(nil)))
 	}
-	type Alias EventRecordItem2
-	aux := &struct {
-		*Alias
-		Code **jsonInteger `json:"code"`
-	}{
-		Alias: (*Alias)(e),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "code", decode: jsonDecodeValue[*jsonInteger]},
-			{name: "level", decode: jsonDecodeValue[EventRecordItem2Level]},
-		})
-	}
-
-	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
-	// above are what let encoding/json see it. Each outer pointer is nil when
-	// the property was absent or null, both of which leave the field as it was.
-	if aux.Code != nil {
-		_iv := *aux.Code
-		e.Code = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"code",
-			"level",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-		}
-		e._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			e._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{
-			"code":  true,
-			"level": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if e.AdditionalProperties == nil {
-				e.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			e.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	if _v, _ok := _raw["code"]; _ok {
+		// A number written 1.0 is the integer 1 from draft 6 on; the shadow is
+		// what lets it through. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv *jsonInteger
+			if _err := func(_p **jsonInteger, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[*jsonInteger](_p, _d, _s, jsonDecodeValue[*jsonInteger])
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "code")
+			}
+			e.Code = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
+		}
+	}
+	if _v, _ok := _raw["level"]; _ok {
+		if _err := func(_p *EventRecordItem2Level, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[EventRecordItem2Level](_p, _d, _s, jsonDecodeValue[EventRecordItem2Level])
+		}(&e.Level, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "level")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"code",
+		"level",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	e._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		e._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "code", "level":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	e.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (e EventRecordItem2) MarshalJSON() ([]byte, error) {
-	type Alias EventRecordItem2
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(e),
+	_b, _err := e.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends e to _b as JSON. See jsonEnc.
+func (e EventRecordItem2) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := e.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range e.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, e.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members e's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (e EventRecordItem2) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(e.Code)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("code", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(e.Level, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("level", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of e numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (e EventRecordItem2) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
+}
+
+// jsonIdentity is e's identity as JSON, read off its members by the rules
+// appendJSON writes them by. See jsonID.
+func (e *EventRecordItem2) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	_o := jsonIDObj{m: _m}
+	{
+		if !jsonOmitEmptyAt(&e.Code) {
+			_id, _err := (func(_p **int64, _m *jsonValidation) (jsonID, error) {
+				return jsonIDPtr[*int64, int64](*_p, _m, jsonIdentifyAt[int64])
+			})(&e.Code, _m)
+			if _err != nil {
+				return jsonID{}, _err
+			}
+			_o.computed("code", _id)
+		}
+	}
+	{
+		{
+			_id, _err := (jsonIdentifyAt[EventRecordItem2Level])(&e.Level, _m)
+			if _err != nil {
+				return jsonID{}, _err
+			}
+			_o.computed("level", _id)
+		}
+	}
+	for _key, _member := range e.AdditionalProperties {
+		_o.idHeld(_key, _member)
+	}
+	return _o.idOf(e.jsonIdentityMember, _m)
+}
+
+// jsonIdentityMember reads the member of e numbered idx, as
+// appendMemberJSON writes it. key is the member's key, which names the
+// additionalProperties value to read.
+func (e *EventRecordItem2) jsonIdentityMember(_idx int, _key string, _m *jsonValidation) (jsonID, error) {
+	_ = _key
+	switch _idx {
+	}
+	return jsonIDNull(_m)
 }
 
 // Validate checks EventRecordItem2 against its JSON Schema constraints.
@@ -210,12 +296,30 @@ func (e EventRecordItem2) Validate() error {
 // EventRecord - A tuple with complex positional items and contains constraint
 type EventRecord []any
 
+// UnmarshalJSON replaces e with the value the document holds.
 func (e *EventRecord) UnmarshalJSON(data []byte) error {
-	if string(data) == "null" {
+	var _zero EventRecord
+	*e = _zero
+	if jsonIsNullDocument(data) {
 		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias EventRecord
 	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(e)))
+}
+
+// decodeJSONAt decodes the value at _sp into e, in place. The value is
+// replaced rather than merged into: a slice is decoded into an array of its
+// own rather than over the one e held, which a copy of the value made
+// earlier still shares, and a map loses the members an earlier document gave
+// it.
+func (e *EventRecord) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	var _zero EventRecord
+	*e = _zero
+	if _d.isNull(_sp) {
+		return jsonValueErrorf("null is not allowed")
+	}
+	type Alias EventRecord
+	return jsonDecodeRefusal(jsonLazyItemsOr[Alias]((*Alias)(e), _d, _sp, jsonAtJSON[Alias]))
 }
 
 // Validate checks EventRecord against its JSON Schema constraints.
@@ -226,68 +330,59 @@ func (e EventRecord) Validate() error {
 	// Tuple items: validate each position against its schema type.
 	for _idx, _elem := range e {
 		_ = _elem
+		// An element read lazily (see jsonLazyItemsOr) has its first level read
+		// here, for the arms that ask its JSON type; a position of this
+		// package's type decodes it from its span instead.
+		_lz, _isLazy := _elem.(jsonLazy)
+		if _isLazy {
+			_elem = _lz.jsonLevel()
+		}
 		if _idx == 0 {
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _mErr)
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("items[%d]: ", _idx))
 			}
-			var _typed EventRecordItem0
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _uErr)
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _vErr)
+			if _tr := _evalNode(&_etEventRecordItem0, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("items[%d]: ", _idx))
 			}
 		}
 		if _idx == 1 {
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _mErr)
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("items[%d]: ", _idx))
 			}
-			var _typed Timestamp
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _uErr)
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _vErr)
+			if _tr := _evalNode(&_etTimestamp, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("items[%d]: ", _idx))
 			}
 		}
 		if _idx == 2 {
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _mErr)
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("items[%d]: ", _idx))
 			}
-			var _typed EventRecordItem2
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _uErr)
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return fmt.Errorf("items[%d]: %w", _idx, _vErr)
+			if _tr := _evalNode(&_etEventRecordItem2, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("items[%d]: ", _idx))
 			}
 		}
 	}
 	// contains validation: count elements matching the contains sub-schema.
 	{
 		_containsCount := 0
-		for _, _cElem := range e {
+		_cArr := e
+		for _ci := range _cArr {
+			_cKind, _cText := jsonKindAt(&_cArr[_ci])
+			_ = _cText
 			_cMatch := true
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				if len(_cBytes) < 2 || _cBytes[0] != '"' {
-					_cMatch = false
-				}
+			if _cKind != jsonIDStringKind {
+				_cMatch = false
 			}
-			if _cMatch {
-				_cBytes, _ := json.Marshal(_cElem)
-				var _cs string
-				if len(_cBytes) > 0 && _cBytes[0] == '"' && json.Unmarshal(_cBytes, &_cs) == nil {
-					if _cMatched, _cMErr := _schemagenPattern_1634cd6f9b28ccde.matches(_cs); _cMErr != nil {
-						// An element that may or may not match leaves the count
-						// unknown, so there is no verdict to give.
-						return fmt.Errorf("contains: %w", _cMErr)
-					} else if !_cMatched {
-						_cMatch = false
-					}
+			if _cMatch && _cKind == jsonIDStringKind {
+				if _cMatched, _cMErr := _schemagenPattern_1634cd6f9b28ccde.matches(_cText); _cMErr != nil {
+					// An element that may or may not match leaves the count
+					// unknown, so there is no verdict to give.
+					return fmt.Errorf("contains: %w", _cMErr)
+				} else if !_cMatched {
+					_cMatch = false
 				}
 			}
 			if _cMatch {
@@ -302,4 +397,49 @@ func (e EventRecord) Validate() error {
 		}
 	}
 	return nil
+}
+
+// _etEventRecordItem0 is the schema of EventRecordItem0, compiled for judging an element held as
+// decoded JSON against it.
+var _etEventRecordItem0 = _schemaNode{
+	MaxLength: _intPtr(100),
+	MinLength: _intPtr(1),
+	Type:      []string{"string"},
+}
+
+// _etTimestamp is the schema of Timestamp, compiled for judging an element held as
+// decoded JSON against it.
+var _etTimestamp = _schemaNode{
+	AllOf: []_schemaNode{
+		_schemaNode{
+			Type: []string{"string"},
+		},
+	},
+}
+
+// _etEventRecordItem2 is the schema of EventRecordItem2, compiled for judging an element held as
+// decoded JSON against it.
+var _etEventRecordItem2 = _schemaNode{
+	Properties: []_schemaMember{
+		{Key: "code", Node: _schemaNode{
+			Maximum: _floatPtr(599),
+			Minimum: _floatPtr(100),
+			Type:    []string{"integer"},
+		}},
+		{Key: "level", Node: _schemaNode{
+			Enum: []string{"\"info\"", "\"warn\"", "\"error\""},
+			Type: []string{"string"},
+		}},
+	},
+	Required: []string{"level"},
+	Type:     []string{"object"},
+}
+
+// SchemagenJSONTree returns e as encoding/json decodes the JSON its
+// MarshalJSON writes into an any -- map[string]any, []any, string, bool, nil and
+// json.Number -- read off the value rather than written out and decoded. Another
+// package generated in the same run compares values of this type by it (const,
+// enum, uniqueItems) without encoding them. Its result is the caller's.
+func (e *EventRecordItem2) SchemagenJSONTree() (any, error) {
+	return jsonTreeOfIdentifier(e, nil)
 }

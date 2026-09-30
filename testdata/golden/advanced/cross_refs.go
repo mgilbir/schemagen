@@ -15,111 +15,167 @@ type Metadata struct {
 	Tags                 []string                   `json:"tags,omitzero"`
 }
 
+// UnmarshalJSON replaces m with the value the document holds. See
+// decodeJSONAt.
 func (m *Metadata) UnmarshalJSON(data []byte) error {
-	m.AdditionalProperties = nil
-	m._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(m.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into m, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever m held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (m *Metadata) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*m = Metadata{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"created",
-			"tags",
-			"title",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Metadata)(nil)))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias Metadata
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(m),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "created", decode: jsonDecodeValue[string]},
-			{name: "tags", decode: jsonDecodeItems(jsonDecodeValue[string])},
-			{name: "title", decode: jsonDecodeValue[string]},
-		})
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"created",
-			"title",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
-		}
-		if _v, ok := raw["tags"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "tags")
-			}
-		}
-		m._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			m._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{
-			"created": true,
-			"tags":    true,
-			"title":   true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if m.AdditionalProperties == nil {
-				m.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			m.AdditionalProperties[rawKey] = rawVal
+	if _v, _ok := _raw["created"]; _ok {
+		if _err := func(_p *string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[string](_p, _d, _s, jsonDecodeValue[string])
+		}(&m.Created, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "created")
 		}
 	}
+	if _v, _ok := _raw["tags"]; _ok {
+		if _err := func(_p *[]string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]string](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[string]))
+		}(&m.Tags, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "tags")
+		}
+	}
+	if _v, _ok := _raw["title"]; _ok {
+		if _err := func(_p *string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[string](_p, _d, _s, jsonDecodeValue[string])
+		}(&m.Title, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "title")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"created",
+		"title",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	if _v, ok := _raw["tags"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "tags")
+		}
+	}
+	m._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		m._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "created", "tags", "title":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	m.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (m Metadata) MarshalJSON() ([]byte, error) {
-	type Alias Metadata
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(m),
+	_b, _err := m.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends m to _b as JSON. See jsonEnc.
+func (m Metadata) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := m.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range m.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, m.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members m's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (m Metadata) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _err := jsonAppendLeaf(m.Created, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("created", _v)
+	}
+	{
+		_v, _err := jsonAppendLeaf(m.Title, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("title", _v)
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(m.Tags)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("tags", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of m numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (m Metadata) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks Metadata against its JSON Schema constraints.
@@ -145,103 +201,148 @@ type Person struct {
 	Name                 string                     `json:"name"`
 }
 
+// UnmarshalJSON replaces p with the value the document holds. See
+// decodeJSONAt.
 func (p *Person) UnmarshalJSON(data []byte) error {
-	p.AdditionalProperties = nil
-	p._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(p.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into p, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever p held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (p *Person) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*p = Person{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"email",
-			"name",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Person)(nil)))
 	}
-	type Alias Person
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(p),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "email", decode: jsonDecodeValue[*string]},
-			{name: "name", decode: jsonDecodeValue[string]},
-		})
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"email",
-			"name",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-		}
-		p._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			p._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{
-			"email": true,
-			"name":  true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if p.AdditionalProperties == nil {
-				p.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			p.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	if _v, _ok := _raw["email"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&p.Email, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "email")
+		}
+	}
+	if _v, _ok := _raw["name"]; _ok {
+		if _err := func(_p *string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[string](_p, _d, _s, jsonDecodeValue[string])
+		}(&p.Name, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "name")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"email",
+		"name",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	p._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		p._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "email", "name":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	p.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (p Person) MarshalJSON() ([]byte, error) {
-	type Alias Person
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(p),
+	_b, _err := p.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends p to _b as JSON. See jsonEnc.
+func (p Person) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := p.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range p.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, p.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members p's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (p Person) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(p.Email)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("email", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(p.Name, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("name", _v)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of p numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (p Person) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks Person against its JSON Schema constraints.
@@ -268,111 +369,177 @@ type Section struct {
 	Subsections          []Section                  `json:"subsections,omitzero"`
 }
 
+// UnmarshalJSON replaces s with the value the document holds. See
+// decodeJSONAt.
 func (s *Section) UnmarshalJSON(data []byte) error {
-	s.AdditionalProperties = nil
-	s._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(s.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into s, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever s held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (s *Section) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*s = Section{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"body",
-			"heading",
-			"subsections",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Section)(nil)))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias Section
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(s),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "body", decode: jsonDecodeValue[*string]},
-			{name: "heading", decode: jsonDecodeValue[string]},
-			{name: "subsections", decode: jsonDecodeItems(jsonDecodeValue[Section])},
-		})
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"body",
-			"heading",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
-		}
-		if _v, ok := raw["subsections"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "subsections")
-			}
-		}
-		s._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			s._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{
-			"body":        true,
-			"heading":     true,
-			"subsections": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if s.AdditionalProperties == nil {
-				s.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			s.AdditionalProperties[rawKey] = rawVal
+	if _v, _ok := _raw["body"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&s.Body, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "body")
 		}
 	}
+	if _v, _ok := _raw["heading"]; _ok {
+		if _err := func(_p *string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[string](_p, _d, _s, jsonDecodeValue[string])
+		}(&s.Heading, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "heading")
+		}
+	}
+	if _v, _ok := _raw["subsections"]; _ok {
+		if _err := func(_p *[]Section, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeSlice[Section](_p, _d, _s, func(_p *Section, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*Section).decodeJSONAt(_p, _d, _s))
+			})
+		}(&s.Subsections, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "subsections")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"body",
+		"heading",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	if _v, ok := _raw["subsections"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "subsections")
+		}
+	}
+	s._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		s._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "body", "heading", "subsections":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	s.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (s Section) MarshalJSON() ([]byte, error) {
-	type Alias Section
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(s),
+	_b, _err := s.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends s to _b as JSON. See jsonEnc.
+func (s Section) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := s.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range s.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, s.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members s's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (s Section) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(s.Body)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("body", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(s.Heading, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("heading", _v)
+	}
+	{
+		if !jsonIsZero(s.Subsections) {
+			_o.deferred("subsections", 2)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of s numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (s Section) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 2:
+		return (func(_v []Section, _b []byte) ([]byte, error) {
+			return jsonEncSlice[[]Section, Section](_v, _b, func(_v Section, _b []byte) ([]byte, error) {
+				_out, _err := _v.appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*Section)(nil), false)
+				}
+				return _out, nil
+			})
+		})(s.Subsections, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks Section against its JSON Schema constraints.
@@ -405,111 +572,194 @@ type Document struct {
 	Sections             []Section                  `json:"sections"`
 }
 
+// UnmarshalJSON replaces d with the value the document holds. See
+// decodeJSONAt.
 func (d *Document) UnmarshalJSON(data []byte) error {
-	d.AdditionalProperties = nil
-	d._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(d.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into d, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever d held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (d *Document) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*d = Document{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"author",
-			"metadata",
-			"sections",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*Document)(nil)))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias Document
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(d),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "author", decode: jsonDecodeValue[*Person]},
-			{name: "metadata", decode: jsonDecodeValue[Metadata]},
-			{name: "sections", decode: jsonDecodeItems(jsonDecodeValue[Section])},
-		})
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"author",
-			"metadata",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
-		}
-		if _v, ok := raw["sections"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "sections")
-			}
-		}
-		d._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			d._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{
-			"author":   true,
-			"metadata": true,
-			"sections": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if d.AdditionalProperties == nil {
-				d.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			d.AdditionalProperties[rawKey] = rawVal
+	if _v, _ok := _raw["author"]; _ok {
+		if _err := func(_p **Person, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **Person, _d *jsonDoc, _s jsonSpan) error {
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(Person)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
+			}(_p, _d, _s))
+		}(&d.Author, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "author")
 		}
 	}
+	if _v, _ok := _raw["metadata"]; _ok {
+		if _err := func(_p *Metadata, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*Metadata).decodeJSONAt(_p, _d, _s))
+		}(&d.Metadata, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "metadata")
+		}
+	}
+	if _v, _ok := _raw["sections"]; _ok {
+		if _err := func(_p *[]Section, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeSlice[Section](_p, _d, _s, func(_p *Section, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*Section).decodeJSONAt(_p, _d, _s))
+			})
+		}(&d.Sections, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "sections")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"author",
+		"metadata",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	if _v, ok := _raw["sections"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "sections")
+		}
+	}
+	d._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		d._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "author", "metadata", "sections":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	d.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (d Document) MarshalJSON() ([]byte, error) {
-	type Alias Document
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(d),
+	_b, _err := d.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends d to _b as JSON. See jsonEnc.
+func (d Document) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := d.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range d.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, d.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members d's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (d Document) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		if !jsonIsEmpty(d.Author) {
+			_o.deferred("author", 0)
+		}
+	}
+	{
+		_o.deferred("metadata", 1)
+	}
+	{
+		_o.deferred("sections", 2)
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of d numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (d Document) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 0:
+		return (func(_v *Person, _b []byte) ([]byte, error) {
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*Person)(nil), true)
+			}
+			return _out, nil
+		})(d.Author, _b)
+	case 1:
+		return (func(_v Metadata, _b []byte) ([]byte, error) {
+			_out, _err := _v.appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*Metadata)(nil), false)
+			}
+			return _out, nil
+		})(d.Metadata, _b)
+	case 2:
+		return (func(_v []Section, _b []byte) ([]byte, error) {
+			return jsonEncSlice[[]Section, Section](_v, _b, func(_v Section, _b []byte) ([]byte, error) {
+				_out, _err := _v.appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*Section)(nil), false)
+				}
+				return _out, nil
+			})
+		})(d.Sections, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks Document against its JSON Schema constraints.

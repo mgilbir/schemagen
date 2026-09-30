@@ -12,36 +12,59 @@ type Anything any
 
 type AnythingList []any
 
+// UnmarshalJSON replaces a with the value the document holds.
 func (a *AnythingList) UnmarshalJSON(data []byte) error {
-	if string(data) == "null" {
+	var _zero AnythingList
+	*a = _zero
+	if jsonIsNullDocument(data) {
 		return jsonValueErrorf("null is not allowed")
 	}
 	type Alias AnythingList
 	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)(a)))
 }
 
+// decodeJSONAt decodes the value at _sp into a, in place. The value is
+// replaced rather than merged into: a slice is decoded into an array of its
+// own rather than over the one a held, which a copy of the value made
+// earlier still shares, and a map loses the members an earlier document gave
+// it.
+func (a *AnythingList) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	var _zero AnythingList
+	*a = _zero
+	if _d.isNull(_sp) {
+		return jsonValueErrorf("null is not allowed")
+	}
+	type Alias AnythingList
+	return jsonDecodeRefusal(jsonAtJSON[Alias]((*Alias)(a), _d, _sp))
+}
+
 // Validate checks AnythingList against its JSON Schema constraints.
-func (a AnythingList) Validate() error {
+func (a AnythingList) Validate() error { return a.validateIn(nil) }
+
+// validateIn is Validate, sharing _vc with the values below it: the element
+// identities a uniqueItems check keeps. See jsonValidation.
+func (a AnythingList) validateIn(_vc *jsonValidation) error {
 	{
-		seen := make(map[string]bool, len(a))
-		for _at, item := range a {
-			_enc, err := json.Marshal(item)
-			if err != nil {
-				return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", _at, err)
-			}
-			key := string(_enc)
-			if seen[key] {
-				return jsonValueErrorf("items are not unique (duplicate at index %d)", _at)
-			}
-			seen[key] = true
+		if _vc == nil {
+			_vc = &jsonValidation{}
+		}
+		_ids, _at, _err := jsonIDsOf(a, _vc, jsonIdentifyAt[any])
+		if _err != nil {
+			return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", _at, jsonMarshalError(&a[_at], _err))
+		}
+		if _at := jsonFirstDuplicate(a, _ids, jsonIdentifyAt[any]); _at >= 0 {
+			return jsonValueErrorf("items are not unique (duplicate at index %d)", _at)
 		}
 	}
 	// contains validation: count elements matching the contains sub-schema.
 	{
 		_containsCount := 0
-		for _, _cElem := range a {
-			_cBytes, _cErr := json.Marshal(_cElem)
-			if _cErr == nil && string(_cBytes) == "1" {
+		_cWant := jsonConstOf(false,
+			"1",
+		)
+		_cArr := a
+		for _ci := range _cArr {
+			if _cOK, _cErr := jsonMatchesConstAt(&_cArr[_ci], _cWant); _cErr == nil && _cOK {
 				_containsCount++
 			}
 		}
@@ -62,9 +85,10 @@ type UntypedPositionsBounded struct {
 }
 
 func (u *UntypedPositionsBounded) UnmarshalJSON(data []byte) error {
+	*u = UntypedPositionsBounded{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		u._raw = append(u._raw[:0], data...)
+		u._raw = append(json.RawMessage(nil), data...)
 		u._isRaw = true
 		return nil
 	}
@@ -73,8 +97,15 @@ func (u *UntypedPositionsBounded) UnmarshalJSON(data []byte) error {
 		u._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	u._raw = append(u._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	u._raw = append(json.RawMessage(nil), data...)
 	u._isRaw = true
 	return nil
 }
@@ -83,7 +114,9 @@ func (u UntypedPositionsBounded) MarshalJSON() ([]byte, error) {
 		if len(u._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return u._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), u._raw...), nil
 	}
 	return json.Marshal(u._value)
 }
@@ -91,7 +124,7 @@ func (u UntypedPositionsBounded) Float64() float64 { return u._value }
 func (u UntypedPositionsBounded) IsNumber() bool   { return !u._isRaw }
 func (u UntypedPositionsBounded) Raw() json.RawMessage {
 	if u._isRaw {
-		return u._raw
+		return append(json.RawMessage(nil), u._raw...)
 	}
 	_b, _ := json.Marshal(u._value)
 	return _b
@@ -116,79 +149,109 @@ func (u UntypedPositionsBounded) Validate() error {
 
 type UntypedPositionsChoices json.RawMessage
 
-// The members as the schema wrote them, reduced at package initialisation to
-// the one spelling every JSON value equal to each of them shares -- which is
-// the same reduction Validate puts the instance through. See _jsonCanonical.
-var untypedPositionsChoicesAllowedJSON = _jsonCanonicalTexts([]string{
+// The members as the schema wrote them, read at package initialisation: the
+// identity every JSON value equal to each shares, and its tree, which is what
+// Validate compares the instance with. See jsonMatchesConstRaw.
+var untypedPositionsChoicesAllowedJSON = jsonConstOf(false,
 	"1",
 	"\"two\"",
 	"[3]",
-})
+)
 
+// UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
+//
+// encoding/json's contract for an Unmarshaler is that it copies what it keeps,
+// and this one kept the caller's slice: a caller that reused its read buffer --
+// a json.Decoder over a stream does, for every document -- rewrote a value it had
+// already decoded, which then validated as whatever the next document held
+// there. A value that is not JSON at all is refused in encoding/json's words;
+// encoding/json never hands one over, so only a direct caller reaches that.
 func (u *UntypedPositionsChoices) UnmarshalJSON(data []byte) error {
-	*u = UntypedPositionsChoices(data)
+	*u = nil
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	*u = UntypedPositionsChoices(append([]byte(nil), data...))
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it, in a buffer of
+// its own: the value's bytes, handed out, are bytes a caller can rewrite it
+// through.
 func (u UntypedPositionsChoices) MarshalJSON() ([]byte, error) {
 	if len(u) == 0 {
 		return []byte("null"), nil
 	}
-	return json.RawMessage(u).MarshalJSON()
+	return append([]byte(nil), u...), nil
 }
 
 // Validate checks UntypedPositionsChoices against its JSON Schema constraints.
 func (u UntypedPositionsChoices) Validate() error {
-	// Reduced to one spelling per JSON value, which is what the member list was
-	// reduced to as well: whitespace, member order and number spelling are not
-	// what an enum is decided on.
-	_canon, _canonErr := _jsonCanonical([]byte(u))
-	if _canonErr != nil {
+	// Compared as JSON (see jsonMatchesConstRaw): whitespace, member order and
+	// number spelling are not what an enum is decided on. It used to reduce the
+	// value to canonical text, re-encoding every string and key in it, to decide.
+	_ok, _okErr := jsonMatchesConstRaw(u, untypedPositionsChoicesAllowedJSON)
+	if _okErr != nil {
 		return jsonValueErrorf("invalid UntypedPositionsChoices value: %s", _schemagenClipText(string(u)))
 	}
-	for _, allowed := range untypedPositionsChoicesAllowedJSON {
-		if _canon == allowed {
-			return nil
-		}
+	if _ok {
+		return nil
 	}
+	_canon, _ := _jsonCanonical([]byte(u))
 	return jsonValueErrorf("invalid UntypedPositionsChoices value: %s", _canon)
 }
 
 type UntypedPositionsConstant json.RawMessage
 
-// The members as the schema wrote them, reduced at package initialisation to
-// the one spelling every JSON value equal to each of them shares -- which is
-// the same reduction Validate puts the instance through. See _jsonCanonical.
-var untypedPositionsConstantAllowedJSON = _jsonCanonicalTexts([]string{
+// The members as the schema wrote them, read at package initialisation: the
+// identity every JSON value equal to each shares, and its tree, which is what
+// Validate compares the instance with. See jsonMatchesConstRaw.
+var untypedPositionsConstantAllowedJSON = jsonConstOf(false,
 	"{\"k\":1.0}",
-})
+)
 
+// UnmarshalJSON keeps the document's bytes, in a buffer of the value's own.
+//
+// encoding/json's contract for an Unmarshaler is that it copies what it keeps,
+// and this one kept the caller's slice: a caller that reused its read buffer --
+// a json.Decoder over a stream does, for every document -- rewrote a value it had
+// already decoded, which then validated as whatever the next document held
+// there. A value that is not JSON at all is refused in encoding/json's words;
+// encoding/json never hands one over, so only a direct caller reaches that.
 func (u *UntypedPositionsConstant) UnmarshalJSON(data []byte) error {
-	*u = UntypedPositionsConstant(data)
+	*u = nil
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	*u = UntypedPositionsConstant(append([]byte(nil), data...))
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it, in a buffer of
+// its own: the value's bytes, handed out, are bytes a caller can rewrite it
+// through.
 func (u UntypedPositionsConstant) MarshalJSON() ([]byte, error) {
 	if len(u) == 0 {
 		return []byte("null"), nil
 	}
-	return json.RawMessage(u).MarshalJSON()
+	return append([]byte(nil), u...), nil
 }
 
 // Validate checks UntypedPositionsConstant against its JSON Schema constraints.
 func (u UntypedPositionsConstant) Validate() error {
-	// Reduced to one spelling per JSON value, which is what the member list was
-	// reduced to as well: whitespace, member order and number spelling are not
-	// what an enum is decided on.
-	_canon, _canonErr := _jsonCanonical([]byte(u))
-	if _canonErr != nil {
+	// Compared as JSON (see jsonMatchesConstRaw): whitespace, member order and
+	// number spelling are not what an enum is decided on. It used to reduce the
+	// value to canonical text, re-encoding every string and key in it, to decide.
+	_ok, _okErr := jsonMatchesConstRaw(u, untypedPositionsConstantAllowedJSON)
+	if _okErr != nil {
 		return jsonValueErrorf("invalid UntypedPositionsConstant value: %s", _schemagenClipText(string(u)))
 	}
-	for _, allowed := range untypedPositionsConstantAllowedJSON {
-		if _canon == allowed {
-			return nil
-		}
+	if _ok {
+		return nil
 	}
+	_canon, _ := _jsonCanonical([]byte(u))
 	return jsonValueErrorf("invalid UntypedPositionsConstant value: %s", _canon)
 }
 
@@ -222,237 +285,528 @@ type UntypedPositions struct {
 	Unique               []any                      `json:"unique,omitzero"`
 }
 
+// UnmarshalJSON replaces u with the value the document holds. See
+// decodeJSONAt.
 func (u *UntypedPositions) UnmarshalJSON(data []byte) error {
-	u.AdditionalProperties = nil
-	u._jsonKeys = nil
-	u._jsonNulls = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(u.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into u, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever u held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (u *UntypedPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*u = UntypedPositions{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"aliased",
-			"aliasedList",
-			"anything",
-			"bareArray",
-			"bounded",
-			"choices",
-			"constant",
-			"containsConst",
-			"containsEnum",
-			"cycle",
-			"elements",
-			"empty",
-			"freeObject",
-			"integerBeside",
-			"nestedUnique",
-			"nullableFreeObject",
-			"pair",
-			"required",
-			"scalar",
-			"unique",
-			"values",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*UntypedPositions)(nil)))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias UntypedPositions
-	aux := &struct {
-		*Alias
-		IntegerBeside **jsonInteger `json:"integerBeside"`
-	}{
-		Alias: (*Alias)(u),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "aliased", decode: jsonDecodeValue[Anything]},
-			{name: "aliasedList", decode: jsonDecodeValue[AnythingList]},
-			{name: "anything", decode: jsonDecodeValue[any]},
-			{name: "bareArray", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "bounded", decode: jsonDecodeValue[*UntypedPositionsBounded]},
-			{name: "choices", decode: jsonDecodeValue[UntypedPositionsChoices]},
-			{name: "constant", decode: jsonDecodeValue[UntypedPositionsConstant]},
-			{name: "containsConst", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "containsEnum", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "cycle", decode: jsonDecodeValue[Loop]},
-			{name: "elements", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "empty", decode: jsonDecodeValue[any]},
-			{name: "freeObject", decode: jsonDecodeValues(jsonDecodeValue[any])},
-			{name: "integerBeside", decode: jsonDecodeValue[*jsonInteger]},
-			{name: "nestedUnique", decode: jsonDecodeItems(jsonDecodeItems(jsonDecodeValue[any]))},
-			{name: "nullableFreeObject", decode: jsonDecodeValue[*map[string]any]},
-			{name: "pair", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "required", decode: jsonDecodeValue[any]},
-			{name: "scalar", decode: jsonDecodeValue[any]},
-			{name: "unique", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "values", decode: jsonDecodeValues(jsonDecodeValue[any])},
-		})
-	}
-
-	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
-	// above are what let encoding/json see it. Each outer pointer is nil when
-	// the property was absent or null, both of which leave the field as it was.
-	if aux.IntegerBeside != nil {
-		_iv := *aux.IntegerBeside
-		u.IntegerBeside = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"aliasedList",
-			"bareArray",
-			"choices",
-			"constant",
-			"containsConst",
-			"containsEnum",
-			"elements",
-			"freeObject",
-			"integerBeside",
-			"pair",
-			"unique",
-			"values",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
-		}
-		if _v, ok := raw["nestedUnique"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "nestedUnique")
-			}
-		}
-		u._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			u._jsonKeys[_k] = true
-		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"aliased",
-			"anything",
-			"bounded",
-			"cycle",
-			"empty",
-			"nullableFreeObject",
-			"required",
-			"scalar",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if u._jsonNulls == nil {
-					u._jsonNulls = make(map[string]bool, 1)
-				}
-				u._jsonNulls[_nullKey] = true
-			}
-		}
-		knownFields := map[string]bool{
-			"aliased":            true,
-			"aliasedList":        true,
-			"anything":           true,
-			"bareArray":          true,
-			"bounded":            true,
-			"choices":            true,
-			"constant":           true,
-			"containsConst":      true,
-			"containsEnum":       true,
-			"cycle":              true,
-			"elements":           true,
-			"empty":              true,
-			"freeObject":         true,
-			"integerBeside":      true,
-			"nestedUnique":       true,
-			"nullableFreeObject": true,
-			"pair":               true,
-			"required":           true,
-			"scalar":             true,
-			"unique":             true,
-			"values":             true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if u.AdditionalProperties == nil {
-				u.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			u.AdditionalProperties[rawKey] = rawVal
+	if _v, _ok := _raw["aliased"]; _ok {
+		if _err := func(_p *Anything, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[Anything](_p, _d, _s, jsonDecodeValue[Anything])
+		}(&u.Aliased, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "aliased")
 		}
 	}
+	if _v, _ok := _raw["aliasedList"]; _ok {
+		if _err := func(_p *AnythingList, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*AnythingList).decodeJSONAt(_p, _d, _s))
+		}(&u.AliasedList, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "aliasedList")
+		}
+	}
+	if _v, _ok := _raw["anything"]; _ok {
+		if _err := func(_p *any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[any](_p, _d, _s, jsonDecodeValue[any])
+		}(&u.Anything, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "anything")
+		}
+	}
+	if _v, _ok := _raw["bareArray"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&u.BareArray, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "bareArray")
+		}
+	}
+	if _v, _ok := _raw["bounded"]; _ok {
+		if _err := func(_p **UntypedPositionsBounded, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*UntypedPositionsBounded](_p, _d, _s, jsonDecodeValue[*UntypedPositionsBounded])
+		}(&u.Bounded, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "bounded")
+		}
+	}
+	if _v, _ok := _raw["choices"]; _ok {
+		if _err := func(_p *UntypedPositionsChoices, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[UntypedPositionsChoices](_p, _d, _s, jsonDecodeValue[UntypedPositionsChoices])
+		}(&u.Choices, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "choices")
+		}
+	}
+	if _v, _ok := _raw["constant"]; _ok {
+		if _err := func(_p *UntypedPositionsConstant, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[UntypedPositionsConstant](_p, _d, _s, jsonDecodeValue[UntypedPositionsConstant])
+		}(&u.Constant, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constant")
+		}
+	}
+	if _v, _ok := _raw["containsConst"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&u.ContainsConst, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "containsConst")
+		}
+	}
+	if _v, _ok := _raw["containsEnum"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&u.ContainsEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "containsEnum")
+		}
+	}
+	if _v, _ok := _raw["cycle"]; _ok {
+		if _err := func(_p *Loop, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[Loop](_p, _d, _s, jsonDecodeValue[Loop])
+		}(&u.Cycle, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "cycle")
+		}
+	}
+	if _v, _ok := _raw["elements"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&u.Elements, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "elements")
+		}
+	}
+	if _v, _ok := _raw["empty"]; _ok {
+		if _err := func(_p *any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[any](_p, _d, _s, jsonDecodeValue[any])
+		}(&u.Empty, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "empty")
+		}
+	}
+	if _v, _ok := _raw["freeObject"]; _ok {
+		if _err := func(_p *map[string]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[map[string]any](_p, _d, _s, jsonDecodeValues(jsonDecodeValue[any]))
+		}(&u.FreeObject, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "freeObject")
+		}
+	}
+	if _v, _ok := _raw["integerBeside"]; _ok {
+		// A number written 1.0 is the integer 1 from draft 6 on; the shadow is
+		// what lets it through. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv *jsonInteger
+			if _err := func(_p **jsonInteger, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[*jsonInteger](_p, _d, _s, jsonDecodeValue[*jsonInteger])
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "integerBeside")
+			}
+			u.IntegerBeside = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
+		}
+	}
+	if _v, _ok := _raw["nestedUnique"]; _ok {
+		if _err := func(_p *[][]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[][]any](_p, _d, _s, jsonDecodeItems(jsonDecodeItems(jsonDecodeValue[any])))
+		}(&u.NestedUnique, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "nestedUnique")
+		}
+	}
+	if _v, _ok := _raw["nullableFreeObject"]; _ok {
+		if _err := func(_p **map[string]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*map[string]any](_p, _d, _s, jsonDecodeValue[*map[string]any])
+		}(&u.NullableFreeObject, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "nullableFreeObject")
+		}
+	}
+	if _v, _ok := _raw["pair"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&u.Pair, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "pair")
+		}
+	}
+	if _v, _ok := _raw["required"]; _ok {
+		if _err := func(_p *any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[any](_p, _d, _s, jsonDecodeValue[any])
+		}(&u.Required, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "required")
+		}
+	}
+	if _v, _ok := _raw["scalar"]; _ok {
+		if _err := func(_p *any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[any](_p, _d, _s, jsonDecodeValue[any])
+		}(&u.Scalar, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "scalar")
+		}
+	}
+	if _v, _ok := _raw["unique"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&u.Unique, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "unique")
+		}
+	}
+	if _v, _ok := _raw["values"]; _ok {
+		if _err := func(_p *map[string]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[map[string]any](_p, _d, _s, jsonDecodeValues(jsonDecodeValue[any]))
+		}(&u.Values, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "values")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"aliasedList",
+		"bareArray",
+		"choices",
+		"constant",
+		"containsConst",
+		"containsEnum",
+		"elements",
+		"freeObject",
+		"integerBeside",
+		"pair",
+		"unique",
+		"values",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	if _v, ok := _raw["nestedUnique"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "nestedUnique")
+		}
+	}
+	u._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		u._jsonKeys[_k] = true
+	}
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"aliased",
+		"anything",
+		"bounded",
+		"cycle",
+		"empty",
+		"nullableFreeObject",
+		"required",
+		"scalar",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if u._jsonNulls == nil {
+				u._jsonNulls = make(map[string]bool, 1)
+			}
+			u._jsonNulls[_nullKey] = true
+		}
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "aliased", "aliasedList", "anything", "bareArray", "bounded", "choices", "constant", "containsConst", "containsEnum", "cycle", "elements", "empty", "freeObject", "integerBeside", "nestedUnique", "nullableFreeObject", "pair", "required", "scalar", "unique", "values":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	u.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (u UntypedPositions) MarshalJSON() ([]byte, error) {
-	type Alias UntypedPositions
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(u),
+	_b, _err := u.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends u to _b as JSON. See jsonEnc.
+func (u UntypedPositions) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := u.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(u._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range u._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero UntypedPositions
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range u._jsonNulls {
+				_cur, _present, _err := _o.memberBytes(_k, u.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range u.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, u.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members u's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (u UntypedPositions) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Aliased)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("aliased", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Anything)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("anything", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Cycle)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("cycle", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Empty)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("empty", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(u.Required, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("required", _v)
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Scalar)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("scalar", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Bounded)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("bounded", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.FreeObject)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("freeObject", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.IntegerBeside)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("integerBeside", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.NullableFreeObject)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nullableFreeObject", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.Values)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("values", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.AliasedList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("aliasedList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.BareArray)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("bareArray", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Choices)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("choices", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Constant)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constant", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.ContainsConst)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("containsConst", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.ContainsEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("containsEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.Elements)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("elements", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.NestedUnique)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nestedUnique", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.Pair)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("pair", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.Unique)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("unique", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of u numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (u UntypedPositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks UntypedPositions against its JSON Schema constraints.
-func (u UntypedPositions) Validate() error {
+func (u UntypedPositions) Validate() error { return u.validateIn(nil) }
+
+// validateIn is Validate, sharing _vc with the values below it: the element
+// identities a uniqueItems check keeps. See jsonValidation.
+func (u UntypedPositions) validateIn(_vc *jsonValidation) error {
 	// Required properties must be present in the source JSON. _jsonKeys is
 	// populated by UnmarshalJSON; when nil (the value was not built from JSON)
 	// presence is untracked and the check is skipped, consistent with how
@@ -467,22 +821,20 @@ func (u UntypedPositions) Validate() error {
 	if u._jsonKeys["unique"] {
 		{
 			arr := u.Unique
-			seen := make(map[string]bool, len(arr))
-			for _at, item := range arr {
-				_enc, err := json.Marshal(item)
-				if err != nil {
-					return fmt.Errorf("unique: uniqueItems check: marshal error at index %d: %w", _at, err)
-				}
-				key := string(_enc)
-				if seen[key] {
-					return fmt.Errorf("unique: items are not unique (duplicate at index %d)", _at)
-				}
-				seen[key] = true
+			if _vc == nil {
+				_vc = &jsonValidation{}
+			}
+			_ids, _at, _err := jsonIDsOf(arr, _vc, jsonIdentifyAt[any])
+			if _err != nil {
+				return fmt.Errorf("unique: uniqueItems check: marshal error at index %d: %w", _at, jsonMarshalError(&arr[_at], _err))
+			}
+			if _at := jsonFirstDuplicate(arr, _ids, jsonIdentifyAt[any]); _at >= 0 {
+				return fmt.Errorf("unique: items are not unique (duplicate at index %d)", _at)
 			}
 		}
 	}
 	if u.AliasedList != nil {
-		if err := u.AliasedList.Validate(); err != nil {
+		if err := u.AliasedList.validateIn(_vc); err != nil {
 			return jsonPathf(err, "aliasedList")
 		}
 	}
@@ -503,16 +855,16 @@ func (u UntypedPositions) Validate() error {
 	}
 	for _i0, _e0 := range u.NestedUnique {
 		{
-			_uqSeen := make(map[string]bool, len(_e0))
-			for _uqIdx, _uqItem := range _e0 {
-				_uqBytes, _uqErr := json.Marshal(_uqItem)
-				if _uqErr != nil {
-					return fmt.Errorf("nestedUnique[%d]: uniqueItems check: marshal error at index %d: %w", _i0, _uqIdx, _uqErr)
-				}
-				if _uqSeen[string(_uqBytes)] {
-					return fmt.Errorf("nestedUnique[%d]: items are not unique (duplicate at index %d)", _i0, _uqIdx)
-				}
-				_uqSeen[string(_uqBytes)] = true
+			_uqArr := _e0
+			if _vc == nil {
+				_vc = &jsonValidation{}
+			}
+			_uqIDs, _uqIdx, _uqErr := jsonIDsOf(_uqArr, _vc, jsonIdentifyAt[any])
+			if _uqErr != nil {
+				return fmt.Errorf("nestedUnique[%d]: uniqueItems check: marshal error at index %d: %w", _i0, _uqIdx, jsonMarshalError(&_uqArr[_uqIdx], _uqErr))
+			}
+			if _uqIdx := jsonFirstDuplicate(_uqArr, _uqIDs, jsonIdentifyAt[any]); _uqIdx >= 0 {
+				return fmt.Errorf("nestedUnique[%d]: items are not unique (duplicate at index %d)", _i0, _uqIdx)
 			}
 		}
 	}
@@ -520,9 +872,12 @@ func (u UntypedPositions) Validate() error {
 		// contains validation: count elements matching the contains sub-schema.
 		{
 			_containsCount := 0
-			for _, _cElem := range u.ContainsConst {
-				_cBytes, _cErr := json.Marshal(_cElem)
-				if _cErr == nil && string(_cBytes) == "1" {
+			_cWant := jsonConstOf(false,
+				"1",
+			)
+			_cArr := u.ContainsConst
+			for _ci := range _cArr {
+				if _cOK, _cErr := jsonMatchesConstAt(&_cArr[_ci], _cWant); _cErr == nil && _cOK {
 					_containsCount++
 				}
 			}
@@ -535,18 +890,14 @@ func (u UntypedPositions) Validate() error {
 		// contains validation: count elements matching the contains sub-schema.
 		{
 			_containsCount := 0
-			for _, _cElem := range u.ContainsEnum {
-				_cBytes, _cErr := json.Marshal(_cElem)
-				if _cErr == nil {
-					_cStr := string(_cBytes)
-					if _cStr == "1.5" {
-						_containsCount++
-						continue
-					}
-					if _cStr == "{\"k\":1}" {
-						_containsCount++
-						continue
-					}
+			_cWant := jsonConstOf(false,
+				"1.5",
+				"{\"k\":1}",
+			)
+			_cArr := u.ContainsEnum
+			for _ci := range _cArr {
+				if _cOK, _cErr := jsonMatchesConstAt(&_cArr[_ci], _cWant); _cErr == nil && _cOK {
+					_containsCount++
 				}
 			}
 			if _containsCount < 1 {

@@ -16,9 +16,10 @@ type ConstraintOnlyPositionsBranchAlternative0 struct {
 }
 
 func (c *ConstraintOnlyPositionsBranchAlternative0) UnmarshalJSON(data []byte) error {
+	*c = ConstraintOnlyPositionsBranchAlternative0{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		c._raw = append(c._raw[:0], data...)
+		c._raw = append(json.RawMessage(nil), data...)
 		c._isRaw = true
 		return nil
 	}
@@ -27,8 +28,15 @@ func (c *ConstraintOnlyPositionsBranchAlternative0) UnmarshalJSON(data []byte) e
 		c._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	c._raw = append(c._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	c._raw = append(json.RawMessage(nil), data...)
 	c._isRaw = true
 	return nil
 }
@@ -37,7 +45,9 @@ func (c ConstraintOnlyPositionsBranchAlternative0) MarshalJSON() ([]byte, error)
 		if len(c._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return c._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), c._raw...), nil
 	}
 	return json.Marshal(c._value)
 }
@@ -45,7 +55,7 @@ func (c ConstraintOnlyPositionsBranchAlternative0) Float64() float64 { return c.
 func (c ConstraintOnlyPositionsBranchAlternative0) IsNumber() bool   { return !c._isRaw }
 func (c ConstraintOnlyPositionsBranchAlternative0) Raw() json.RawMessage {
 	if c._isRaw {
-		return c._raw
+		return append(json.RawMessage(nil), c._raw...)
 	}
 	_b, _ := json.Marshal(c._value)
 	return _b
@@ -71,6 +81,8 @@ func (c ConstraintOnlyPositionsBranchAlternative0) Validate() error {
 type ConstraintOnlyPositionsBranchAlternative1 string
 
 func (c *ConstraintOnlyPositionsBranchAlternative1) UnmarshalJSON(data []byte) error {
+	var _zero ConstraintOnlyPositionsBranchAlternative1
+	*c = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -88,19 +100,35 @@ type ConstraintOnlyPositionsBranch struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces c with the value the document holds. See
+// decodeJSONAt.
 func (c *ConstraintOnlyPositionsBranch) UnmarshalJSON(data []byte) error {
-	c._raw = append(c._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(c.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever c held.
+func (c *ConstraintOnlyPositionsBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*c = ConstraintOnlyPositionsBranch{}
+	c._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (c ConstraintOnlyPositionsBranch) MarshalJSON() ([]byte, error) {
 	if len(c._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return c._raw, nil
+	return append([]byte(nil), c._raw...), nil
 }
 
-func (c ConstraintOnlyPositionsBranch) Raw() json.RawMessage { return c._raw }
+// Raw returns a copy of the value's bytes.
+func (c ConstraintOnlyPositionsBranch) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), c._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -208,19 +236,35 @@ type ConstraintOnlyPositionsListItem struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces c with the value the document holds. See
+// decodeJSONAt.
 func (c *ConstraintOnlyPositionsListItem) UnmarshalJSON(data []byte) error {
-	c._raw = append(c._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(c.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever c held.
+func (c *ConstraintOnlyPositionsListItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*c = ConstraintOnlyPositionsListItem{}
+	c._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (c ConstraintOnlyPositionsListItem) MarshalJSON() ([]byte, error) {
 	if len(c._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return c._raw, nil
+	return append([]byte(nil), c._raw...), nil
 }
 
-func (c ConstraintOnlyPositionsListItem) Raw() json.RawMessage { return c._raw }
+// Raw returns a copy of the value's bytes.
+func (c ConstraintOnlyPositionsListItem) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), c._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -244,8 +288,13 @@ func (c ConstraintOnlyPositionsListItem) Validate() error {
 	if len(c._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(c._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(c._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -264,19 +313,35 @@ type ConstraintOnlyPositionsMapValue struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces c with the value the document holds. See
+// decodeJSONAt.
 func (c *ConstraintOnlyPositionsMapValue) UnmarshalJSON(data []byte) error {
-	c._raw = append(c._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(c.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever c held.
+func (c *ConstraintOnlyPositionsMapValue) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*c = ConstraintOnlyPositionsMapValue{}
+	c._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (c ConstraintOnlyPositionsMapValue) MarshalJSON() ([]byte, error) {
 	if len(c._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return c._raw, nil
+	return append([]byte(nil), c._raw...), nil
 }
 
-func (c ConstraintOnlyPositionsMapValue) Raw() json.RawMessage { return c._raw }
+// Raw returns a copy of the value's bytes.
+func (c ConstraintOnlyPositionsMapValue) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), c._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -310,19 +375,35 @@ type ConstraintOnlyPositionsNullsItem struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces c with the value the document holds. See
+// decodeJSONAt.
 func (c *ConstraintOnlyPositionsNullsItem) UnmarshalJSON(data []byte) error {
-	c._raw = append(c._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(c.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever c held.
+func (c *ConstraintOnlyPositionsNullsItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*c = ConstraintOnlyPositionsNullsItem{}
+	c._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (c ConstraintOnlyPositionsNullsItem) MarshalJSON() ([]byte, error) {
 	if len(c._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return c._raw, nil
+	return append([]byte(nil), c._raw...), nil
 }
 
-func (c ConstraintOnlyPositionsNullsItem) Raw() json.RawMessage { return c._raw }
+// Raw returns a copy of the value's bytes.
+func (c ConstraintOnlyPositionsNullsItem) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), c._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -378,19 +459,35 @@ type ConstraintOnlyPositionsProp struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces c with the value the document holds. See
+// decodeJSONAt.
 func (c *ConstraintOnlyPositionsProp) UnmarshalJSON(data []byte) error {
-	c._raw = append(c._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(c.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever c held.
+func (c *ConstraintOnlyPositionsProp) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*c = ConstraintOnlyPositionsProp{}
+	c._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (c ConstraintOnlyPositionsProp) MarshalJSON() ([]byte, error) {
 	if len(c._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return c._raw, nil
+	return append([]byte(nil), c._raw...), nil
 }
 
-func (c ConstraintOnlyPositionsProp) Raw() json.RawMessage { return c._raw }
+// Raw returns a copy of the value's bytes.
+func (c ConstraintOnlyPositionsProp) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), c._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -414,8 +511,13 @@ func (c ConstraintOnlyPositionsProp) Validate() error {
 	if len(c._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(c._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(c._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -431,123 +533,171 @@ type ConstraintOnlyPositionsUnevaluated struct {
 	B                    *int64                     `json:"b,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonRawProps        map[string]json.RawMessage // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 	_rawNonObject        json.RawMessage            // raw bytes of non-object data for lossless roundtrip
 	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
+// UnmarshalJSON replaces c with the value the document holds. See
+// decodeJSONAt.
 func (c *ConstraintOnlyPositionsUnevaluated) UnmarshalJSON(data []byte) error {
-	c.AdditionalProperties = nil
-	c._jsonRawProps = nil
-	c._nonObject = false
-	c._rawNonObject = nil
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(c.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into c, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever c held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (c *ConstraintOnlyPositionsUnevaluated) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*c = ConstraintOnlyPositionsUnevaluated{}
+	c._doc = _d
 	// The schema admits a document that is not an object, so object constraints
 	// are type-conditional. Non-object JSON data is accepted here and judged by
 	// Validate; raw bytes are preserved for roundtrip.
-	if len(data) == 0 || data[0] != '{' {
+	if _d.data[_sp.start] != '{' {
 		c._nonObject = true
-		c._rawNonObject = append(c._rawNonObject[:0], data...)
+		c._rawNonObject = _d.keep(_sp)
 		return nil
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"b",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ConstraintOnlyPositionsUnevaluated)(nil)))
 	}
-	type Alias ConstraintOnlyPositionsUnevaluated
-	aux := &struct {
-		*Alias
-		B **jsonInteger `json:"b"`
-	}{
-		Alias: (*Alias)(c),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "b", decode: jsonDecodeValue[*jsonInteger]},
-		})
-	}
-
-	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
-	// above are what let encoding/json see it. Each outer pointer is nil when
-	// the property was absent or null, both of which leave the field as it was.
-	if aux.B != nil {
-		_iv := *aux.B
-		c.B = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"b",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-		}
-		c._jsonRawProps = raw
-		knownFields := map[string]bool{
-			"b": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if c.AdditionalProperties == nil {
-				c.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			c.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	if _v, _ok := _raw["b"]; _ok {
+		// A number written 1.0 is the integer 1 from draft 6 on; the shadow is
+		// what lets it through. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv *jsonInteger
+			if _err := func(_p **jsonInteger, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[*jsonInteger](_p, _d, _s, jsonDecodeValue[*jsonInteger])
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "b")
+			}
+			c.B = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"b",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	// The members a Validate check reads back as JSON. Each is a view of the
+	// document's own copy rather than a copy of its own: at every depth of a
+	// recursive document these hold the member below, and a copy each was the
+	// whole subtree held once per level. See jsonDoc.keep.
+	if _d.data[_sp.start] == '{' {
+		c._jsonRawProps = make(map[string]json.RawMessage, len(_raw))
+		for _k, _v := range _raw {
+			c._jsonRawProps[_k] = _d.keep(_v)
+		}
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "b":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	c.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (c ConstraintOnlyPositionsUnevaluated) MarshalJSON() ([]byte, error) {
-	// Non-object data was silently accepted — return the original raw bytes.
+	// Non-object data was silently accepted — return the original raw bytes,
+	// in a buffer of their own: the value's bytes, handed out, are bytes a
+	// caller can rewrite the value through.
 	if c._nonObject {
 		if len(c._rawNonObject) > 0 {
-			return c._rawNonObject, nil
+			return append([]byte(nil), c._rawNonObject...), nil
 		}
 		return []byte("null"), nil
 	}
-	type Alias ConstraintOnlyPositionsUnevaluated
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(c),
+	_b, _err := c.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends c to _b as JSON. See jsonEnc.
+func (c ConstraintOnlyPositionsUnevaluated) appendJSON(_b []byte) ([]byte, error) {
+	if c._nonObject {
+		if len(c._rawNonObject) > 0 {
+			return jsonAppendLeaf(json.RawMessage(c._rawNonObject), _b)
+		}
+		return append(_b, "null"...), nil
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	var _o jsonObj
+	if _err := c.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range c.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, c.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members c's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (c ConstraintOnlyPositionsUnevaluated) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(c.B)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("b", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of c numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (c ConstraintOnlyPositionsUnevaluated) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks ConstraintOnlyPositionsUnevaluated against its JSON Schema constraints.
@@ -568,8 +718,8 @@ func (c ConstraintOnlyPositionsUnevaluated) Validate() error {
 					continue
 				}
 				if _err := func() error {
-					var _rbVal any
-					if _rbErr := json.Unmarshal(_rbRaw, &_rbVal); _rbErr != nil {
+					_rbVal, _rbErr := jsonHeld(c._doc, _rbRaw)
+					if _rbErr != nil {
 						return jsonValueErrorf("cannot decode property %s: %w", _schemagenQuote(_rbKey), _rbErr)
 					}
 					_rbInstance[_rbKey] = _rbVal
@@ -599,10 +749,10 @@ func (c ConstraintOnlyPositionsUnevaluated) Validate() error {
 				},
 			}
 			if _rbRes := _evalNode(&_rbNode0, _rbInstance); !_rbRes.ok {
-				if _rbRes.reason == "" {
+				if _rbRes.why.String() == "" {
 					return fmt.Errorf("anyOf: value does not satisfy the schema")
 				}
-				return fmt.Errorf("anyOf: %s", _rbRes.reason)
+				return fmt.Errorf("anyOf: %s", _rbRes.why.String())
 			}
 		}
 	}
@@ -614,19 +764,35 @@ type ConstraintOnlyPositionsUnion struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces c with the value the document holds. See
+// decodeJSONAt.
 func (c *ConstraintOnlyPositionsUnion) UnmarshalJSON(data []byte) error {
-	c._raw = append(c._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(c.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever c held.
+func (c *ConstraintOnlyPositionsUnion) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*c = ConstraintOnlyPositionsUnion{}
+	c._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (c ConstraintOnlyPositionsUnion) MarshalJSON() ([]byte, error) {
 	if len(c._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return c._raw, nil
+	return append([]byte(nil), c._raw...), nil
 }
 
-func (c ConstraintOnlyPositionsUnion) Raw() json.RawMessage { return c._raw }
+// Raw returns a copy of the value's bytes.
+func (c ConstraintOnlyPositionsUnion) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), c._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -679,19 +845,44 @@ type ConstraintOnlyPositionsTupleItem0 struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces c with the value the document holds. See
+// decodeJSONAt.
 func (c *ConstraintOnlyPositionsTupleItem0) UnmarshalJSON(data []byte) error {
-	c._raw = append(c._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(c.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever c held.
+func (c *ConstraintOnlyPositionsTupleItem0) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*c = ConstraintOnlyPositionsTupleItem0{}
+	c._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (c ConstraintOnlyPositionsTupleItem0) MarshalJSON() ([]byte, error) {
 	if len(c._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return c._raw, nil
+	return append([]byte(nil), c._raw...), nil
 }
 
-func (c ConstraintOnlyPositionsTupleItem0) Raw() json.RawMessage { return c._raw }
+// Raw returns a copy of the value's bytes.
+func (c ConstraintOnlyPositionsTupleItem0) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), c._raw...)
+}
+
+// jsonIdentity is c's identity as JSON: that of the bytes MarshalJSON
+// writes back. See jsonID.
+func (c *ConstraintOnlyPositionsTupleItem0) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	if len(c._raw) == 0 {
+		return jsonIDNull(_m)
+	}
+	return jsonIDRawIn(c._raw, _m)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -732,166 +923,312 @@ type ConstraintOnlyPositions struct {
 	Union                ConstraintOnlyPositionsUnion               `json:"union,omitzero"`
 }
 
+// UnmarshalJSON replaces c with the value the document holds. See
+// decodeJSONAt.
 func (c *ConstraintOnlyPositions) UnmarshalJSON(data []byte) error {
-	c.AdditionalProperties = nil
-	c._jsonKeys = nil
-	c._jsonNulls = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(c.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into c, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever c held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (c *ConstraintOnlyPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*c = ConstraintOnlyPositions{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"branch",
-			"list",
-			"map",
-			"nulls",
-			"prop",
-			"tuple",
-			"unevaluated",
-			"union",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*ConstraintOnlyPositions)(nil)))
 	}
-	type Alias ConstraintOnlyPositions
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(c),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "branch", decode: jsonDecodeValue[ConstraintOnlyPositionsBranch]},
-			{name: "list", decode: jsonDecodeItems(jsonDecodeValue[ConstraintOnlyPositionsListItem])},
-			{name: "map", decode: jsonDecodeValues(jsonDecodeValue[ConstraintOnlyPositionsMapValue])},
-			{name: "nulls", decode: jsonDecodeItems(jsonDecodeValue[ConstraintOnlyPositionsNullsItem])},
-			{name: "prop", decode: jsonDecodeValue[ConstraintOnlyPositionsProp]},
-			{name: "tuple", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "unevaluated", decode: jsonDecodeValue[*ConstraintOnlyPositionsUnevaluated]},
-			{name: "union", decode: jsonDecodeValue[ConstraintOnlyPositionsUnion]},
-		})
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"list",
-			"map",
-			"nulls",
-			"tuple",
-			"union",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
+			_raw[_k] = _v
 		}
-		c._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			c._jsonKeys[_k] = true
+	}
+	if _v, _ok := _raw["branch"]; _ok {
+		if _err := func(_p *ConstraintOnlyPositionsBranch, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*ConstraintOnlyPositionsBranch).decodeJSONAt(_p, _d, _s))
+		}(&c.Branch, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "branch")
 		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"unevaluated",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if c._jsonNulls == nil {
-					c._jsonNulls = make(map[string]bool, 1)
+	}
+	if _v, _ok := _raw["list"]; _ok {
+		if _err := func(_p *[]ConstraintOnlyPositionsListItem, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeSlice[ConstraintOnlyPositionsListItem](_p, _d, _s, func(_p *ConstraintOnlyPositionsListItem, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*ConstraintOnlyPositionsListItem).decodeJSONAt(_p, _d, _s))
+			})
+		}(&c.List, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "list")
+		}
+	}
+	if _v, _ok := _raw["map"]; _ok {
+		if _err := func(_p *map[string]ConstraintOnlyPositionsMapValue, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeMap[ConstraintOnlyPositionsMapValue](_p, _d, _s, func(_p *ConstraintOnlyPositionsMapValue, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*ConstraintOnlyPositionsMapValue).decodeJSONAt(_p, _d, _s))
+			})
+		}(&c.Map, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "map")
+		}
+	}
+	if _v, _ok := _raw["nulls"]; _ok {
+		if _err := func(_p *[]ConstraintOnlyPositionsNullsItem, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeSlice[ConstraintOnlyPositionsNullsItem](_p, _d, _s, func(_p *ConstraintOnlyPositionsNullsItem, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*ConstraintOnlyPositionsNullsItem).decodeJSONAt(_p, _d, _s))
+			})
+		}(&c.Nulls, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "nulls")
+		}
+	}
+	if _v, _ok := _raw["prop"]; _ok {
+		if _err := func(_p *ConstraintOnlyPositionsProp, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*ConstraintOnlyPositionsProp).decodeJSONAt(_p, _d, _s))
+		}(&c.Prop, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "prop")
+		}
+	}
+	if _v, _ok := _raw["tuple"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonLazyItemsOr[[]any](_p, _d, _s, func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+			})
+		}(&c.Tuple, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "tuple")
+		}
+	}
+	if _v, _ok := _raw["unevaluated"]; _ok {
+		if _err := func(_p **ConstraintOnlyPositionsUnevaluated, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **ConstraintOnlyPositionsUnevaluated, _d *jsonDoc, _s jsonSpan) error {
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
 				}
-				c._jsonNulls[_nullKey] = true
-			}
-		}
-		knownFields := map[string]bool{
-			"branch":      true,
-			"list":        true,
-			"map":         true,
-			"nulls":       true,
-			"prop":        true,
-			"tuple":       true,
-			"unevaluated": true,
-			"union":       true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if c.AdditionalProperties == nil {
-				c.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			c.AdditionalProperties[rawKey] = rawVal
+				_v := new(ConstraintOnlyPositionsUnevaluated)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
+			}(_p, _d, _s))
+		}(&c.Unevaluated, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "unevaluated")
 		}
 	}
+	if _v, _ok := _raw["union"]; _ok {
+		if _err := func(_p *ConstraintOnlyPositionsUnion, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*ConstraintOnlyPositionsUnion).decodeJSONAt(_p, _d, _s))
+		}(&c.Union, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "union")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"list",
+		"map",
+		"nulls",
+		"tuple",
+		"union",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	c._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		c._jsonKeys[_k] = true
+	}
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"unevaluated",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if c._jsonNulls == nil {
+				c._jsonNulls = make(map[string]bool, 1)
+			}
+			c._jsonNulls[_nullKey] = true
+		}
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "branch", "list", "map", "nulls", "prop", "tuple", "unevaluated", "union":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	c.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (c ConstraintOnlyPositions) MarshalJSON() ([]byte, error) {
-	type Alias ConstraintOnlyPositions
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(c),
+	_b, _err := c.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends c to _b as JSON. See jsonEnc.
+func (c ConstraintOnlyPositions) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := c.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(c._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range c._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero ConstraintOnlyPositions
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range c._jsonNulls {
+				_cur, _present, _err := _o.memberBytes(_k, c.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range c.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, c.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members c's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (c ConstraintOnlyPositions) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitZero(c.Map)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("map", _v)
+		}
+	}
+	{
+		if !jsonIsEmpty(c.Unevaluated) {
+			_o.deferred("unevaluated", 1)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(c.Branch)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("branch", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(c.List)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("list", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(c.Nulls)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nulls", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(c.Prop)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("prop", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(c.Tuple)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("tuple", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(c.Union)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("union", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of c numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (c ConstraintOnlyPositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 1:
+		return (func(_v *ConstraintOnlyPositionsUnevaluated, _b []byte) ([]byte, error) {
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*ConstraintOnlyPositionsUnevaluated)(nil), true)
+			}
+			return _out, nil
+		})(c.Unevaluated, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks ConstraintOnlyPositions against its JSON Schema constraints.
@@ -961,19 +1298,39 @@ func (c ConstraintOnlyPositions) Validate() error {
 	// Tuple items: validate each position against its schema type.
 	for _idx, _elem := range c.Tuple {
 		_ = _elem
+		// An element read lazily (see jsonLazyItemsOr) has its first level read
+		// here, for the arms that ask its JSON type; a position of this
+		// package's type decodes it from its span instead.
+		_lz, _isLazy := _elem.(jsonLazy)
+		if _isLazy {
+			_elem = _lz.jsonLevel()
+		}
 		if _idx == 0 {
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _mErr)
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
-			var _typed ConstraintOnlyPositionsTupleItem0
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _uErr)
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _vErr)
+			if _tr := _evalNode(&_etConstraintOnlyPositionsTupleItem0, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 		}
 	}
 	return nil
+}
+
+// _etConstraintOnlyPositionsTupleItem0 is the schema of ConstraintOnlyPositionsTupleItem0, compiled for judging an element held as
+// decoded JSON against it.
+var _etConstraintOnlyPositionsTupleItem0 = _schemaNode{
+	Not: _node(_schemaNode{
+		Type: []string{"string"},
+	}),
+}
+
+// SchemagenJSONTree returns c as encoding/json decodes the JSON its
+// MarshalJSON writes into an any -- map[string]any, []any, string, bool, nil and
+// json.Number -- read off the value rather than written out and decoded. Another
+// package generated in the same run compares values of this type by it (const,
+// enum, uniqueItems) without encoding them. Its result is the caller's.
+func (c *ConstraintOnlyPositionsTupleItem0) SchemagenJSONTree() (any, error) {
+	return jsonTreeOfIdentifier(c, nil)
 }

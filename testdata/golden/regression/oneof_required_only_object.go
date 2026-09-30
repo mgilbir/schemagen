@@ -14,78 +14,120 @@ type OneOfRequiredOnlyObjectValueOption0 struct {
 	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
+// UnmarshalJSON replaces o with the value the document holds. See
+// decodeJSONAt.
 func (o *OneOfRequiredOnlyObjectValueOption0) UnmarshalJSON(data []byte) error {
-	o.AdditionalProperties = nil
-	o._jsonKeys = nil
-	o._nonObject = false
-	o._rawNonObject = nil
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(o.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into o, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever o held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (o *OneOfRequiredOnlyObjectValueOption0) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*o = OneOfRequiredOnlyObjectValueOption0{}
 	// The schema admits a document that is not an object, so object constraints
 	// are type-conditional. Non-object JSON data is accepted here and judged by
 	// Validate; raw bytes are preserved for roundtrip.
-	if len(data) == 0 || data[0] != '{' {
+	if _d.data[_sp.start] != '{' {
 		o._nonObject = true
-		o._rawNonObject = append(o._rawNonObject[:0], data...)
+		o._rawNonObject = _d.keep(_sp)
 		return nil
 	}
-	type Alias OneOfRequiredOnlyObjectValueOption0
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(o),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfRequiredOnlyObjectValueOption0)(nil)))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
-	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
-		}
-		o._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			o._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-			if o.AdditionalProperties == nil {
-				o.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			o.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	o._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		o._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	o.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (o OneOfRequiredOnlyObjectValueOption0) MarshalJSON() ([]byte, error) {
-	// Non-object data was silently accepted — return the original raw bytes.
+	// Non-object data was silently accepted — return the original raw bytes,
+	// in a buffer of their own: the value's bytes, handed out, are bytes a
+	// caller can rewrite the value through.
 	if o._nonObject {
 		if len(o._rawNonObject) > 0 {
-			return o._rawNonObject, nil
+			return append([]byte(nil), o._rawNonObject...), nil
 		}
 		return []byte("null"), nil
 	}
-	type Alias OneOfRequiredOnlyObjectValueOption0
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OneOfRequiredOnlyObjectValueOption0) appendJSON(_b []byte) ([]byte, error) {
+	if o._nonObject {
+		if len(o._rawNonObject) > 0 {
+			return jsonAppendLeaf(json.RawMessage(o._rawNonObject), _b)
+		}
+		return append(_b, "null"...), nil
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range o.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o OneOfRequiredOnlyObjectValueOption0) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o OneOfRequiredOnlyObjectValueOption0) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks OneOfRequiredOnlyObjectValueOption0 against its JSON Schema constraints.
@@ -115,78 +157,120 @@ type OneOfRequiredOnlyObjectValueOption1 struct {
 	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
+// UnmarshalJSON replaces o with the value the document holds. See
+// decodeJSONAt.
 func (o *OneOfRequiredOnlyObjectValueOption1) UnmarshalJSON(data []byte) error {
-	o.AdditionalProperties = nil
-	o._jsonKeys = nil
-	o._nonObject = false
-	o._rawNonObject = nil
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(o.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into o, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever o held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (o *OneOfRequiredOnlyObjectValueOption1) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*o = OneOfRequiredOnlyObjectValueOption1{}
 	// The schema admits a document that is not an object, so object constraints
 	// are type-conditional. Non-object JSON data is accepted here and judged by
 	// Validate; raw bytes are preserved for roundtrip.
-	if len(data) == 0 || data[0] != '{' {
+	if _d.data[_sp.start] != '{' {
 		o._nonObject = true
-		o._rawNonObject = append(o._rawNonObject[:0], data...)
+		o._rawNonObject = _d.keep(_sp)
 		return nil
 	}
-	type Alias OneOfRequiredOnlyObjectValueOption1
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(o),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfRequiredOnlyObjectValueOption1)(nil)))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
-	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
-		}
-		o._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			o._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-			if o.AdditionalProperties == nil {
-				o.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			o.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	o._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		o._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	o.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (o OneOfRequiredOnlyObjectValueOption1) MarshalJSON() ([]byte, error) {
-	// Non-object data was silently accepted — return the original raw bytes.
+	// Non-object data was silently accepted — return the original raw bytes,
+	// in a buffer of their own: the value's bytes, handed out, are bytes a
+	// caller can rewrite the value through.
 	if o._nonObject {
 		if len(o._rawNonObject) > 0 {
-			return o._rawNonObject, nil
+			return append([]byte(nil), o._rawNonObject...), nil
 		}
 		return []byte("null"), nil
 	}
-	type Alias OneOfRequiredOnlyObjectValueOption1
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OneOfRequiredOnlyObjectValueOption1) appendJSON(_b []byte) ([]byte, error) {
+	if o._nonObject {
+		if len(o._rawNonObject) > 0 {
+			return jsonAppendLeaf(json.RawMessage(o._rawNonObject), _b)
+		}
+		return append(_b, "null"...), nil
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range o.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o OneOfRequiredOnlyObjectValueOption1) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o OneOfRequiredOnlyObjectValueOption1) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks OneOfRequiredOnlyObjectValueOption1 against its JSON Schema constraints.
@@ -213,6 +297,7 @@ type OneOfRequiredOnlyObject struct {
 	Value         isOneOfRequiredOnlyObject_Value `json:"-"`
 	_jsonKeys     map[string]bool                 // set by UnmarshalJSON for optional field / dependentSchemas validation
 	_jsonRawProps map[string]json.RawMessage      // set by UnmarshalJSON for runtime conditional evaluation (if/then/else, anyOf const checks)
+	_doc          *jsonDoc                        // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
 // isOneOfRequiredOnlyObject_Value is a sealed interface for the Value field of OneOfRequiredOnlyObject.
@@ -259,34 +344,64 @@ func (o *OneOfRequiredOnlyObject) GetOneOfRequiredOnlyObjectValueOption1() *OneO
 	return zero
 }
 
+// UnmarshalJSON replaces o with the value the document holds. See
+// decodeJSONAt.
 func (o *OneOfRequiredOnlyObject) UnmarshalJSON(data []byte) error {
-	o._jsonKeys = nil
-	o._jsonRawProps = nil
-	o.Value = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(o.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into o, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever o held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (o *OneOfRequiredOnlyObject) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*o = OneOfRequiredOnlyObject{}
+	o._doc = _d
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias OneOfRequiredOnlyObject
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(o),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OneOfRequiredOnlyObject)(nil)))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
 
 	{
-		// Top-level oneOf: the entire JSON object is the variant data.
-		oneofData := json.RawMessage(data)
+		// Top-level oneOf: the entire JSON value is the variant data.
+		_ov, _has := _sp, true
 		// The union is the whole of this value, so it has no name of its own to
 		// report under and its refusals are sentences about the value; whatever
 		// contains it puts the path in front. Issue #289.
 		oneofErrf := func(format string, args ...any) error {
 			return jsonValueErrorf(format, args...)
 		}
-		if len(oneofData) > 0 && string(oneofData) != "null" {
+		// oneofWrapf is oneofErrf for a sentence that ends with a branch's own
+		// refusal; see the property spelling above.
+		oneofWrapf := jsonValueWrapf
+		if _has && !_d.isNull(_ov) {
 			var oneofMatched int
 			var oneofLastErr error
 			// A second tally: branches actually satisfied, not merely decoded.
@@ -298,29 +413,45 @@ func (o *OneOfRequiredOnlyObject) UnmarshalJSON(data []byte) error {
 			var oneofOpaque int
 			var oneofStrictSel isOneOfRequiredOnlyObject_Value
 			var oneofStrictErr error
+			// The candidate this branch decoded, held for the tally below. Its
+			// Validate is asked only if more than one branch matched, which is
+			// the only case the tally is read in: asked here, it was run over
+			// the whole of the value at every level of a recursive document.
+			var _vc0 *OneOfRequiredOnlyObjectValueOption0
+			var _vcOK0 bool
+			// The candidate this branch decoded, held for the tally below. Its
+			// Validate is asked only if more than one branch matched, which is
+			// the only case the tally is read in: asked here, it was run over
+			// the whole of the value at every level of a recursive document.
+			var _vc1 *OneOfRequiredOnlyObjectValueOption1
+			var _vcOK1 bool
+			// Every branch below is a trial, and one that holds the value's
+			// members as raw JSON takes views of the document rather than
+			// copies of them; see jsonDoc.copyOf.
+			_d.trial++
 
 			// Try variant: OneOfRequiredOnlyObjectValueOption0
 			{
-				if oneofHasRequiredFields(oneofData, "foo", "bar") {
+				if oneofHasRequiredFields(_d, _ov, "foo", "bar") {
 					var candidate *OneOfRequiredOnlyObjectValueOption0
-					if err := json.Unmarshal(oneofData, &candidate); err == nil {
+					if err := func(_p **OneOfRequiredOnlyObjectValueOption0, _d *jsonDoc, _s jsonSpan) error {
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(OneOfRequiredOnlyObjectValueOption0)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
+					}(&candidate, _d, _ov); err == nil {
 						o.Value = &OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption0{OneOfRequiredOnlyObjectValueOption0: candidate}
 						oneofMatched++
 						if candidate != nil {
-							if _vErr := candidate.Validate(); _vErr == nil {
-								oneofStrict++
-								oneofStrictSel = &OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption0{OneOfRequiredOnlyObjectValueOption0: candidate}
-							} else if _schemagenUndecided(_vErr) {
-								// No verdict on this branch, so no telling
-								// which one the document selects.
-								return oneofErrf("variant OneOfRequiredOnlyObjectValueOption0: %w", _vErr)
-							} else {
-								oneofStrictErr = fmt.Errorf("variant OneOfRequiredOnlyObjectValueOption0: %w", _vErr)
-							}
+							_vc0, _vcOK0 = candidate, true
 						} else {
 							oneofOpaque++
 						}
 					} else if _schemagenUndecided(err) {
+						_d.trial--
 						return oneofErrf("variant OneOfRequiredOnlyObjectValueOption0: %w", err)
 					} else {
 						oneofLastErr = err
@@ -330,32 +461,33 @@ func (o *OneOfRequiredOnlyObject) UnmarshalJSON(data []byte) error {
 
 			// Try variant: OneOfRequiredOnlyObjectValueOption1
 			{
-				if oneofHasRequiredFields(oneofData, "foo", "baz") {
+				if oneofHasRequiredFields(_d, _ov, "foo", "baz") {
 					var candidate *OneOfRequiredOnlyObjectValueOption1
-					if err := json.Unmarshal(oneofData, &candidate); err == nil {
+					if err := func(_p **OneOfRequiredOnlyObjectValueOption1, _d *jsonDoc, _s jsonSpan) error {
+						if _d.isNull(_s) {
+							*_p = nil
+							return nil
+						}
+						_v := new(OneOfRequiredOnlyObjectValueOption1)
+						*_p = _v
+						return _v.decodeJSONAt(_d, _s)
+					}(&candidate, _d, _ov); err == nil {
 						o.Value = &OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption1{OneOfRequiredOnlyObjectValueOption1: candidate}
 						oneofMatched++
 						if candidate != nil {
-							if _vErr := candidate.Validate(); _vErr == nil {
-								oneofStrict++
-								oneofStrictSel = &OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption1{OneOfRequiredOnlyObjectValueOption1: candidate}
-							} else if _schemagenUndecided(_vErr) {
-								// No verdict on this branch, so no telling
-								// which one the document selects.
-								return oneofErrf("variant OneOfRequiredOnlyObjectValueOption1: %w", _vErr)
-							} else {
-								oneofStrictErr = fmt.Errorf("variant OneOfRequiredOnlyObjectValueOption1: %w", _vErr)
-							}
+							_vc1, _vcOK1 = candidate, true
 						} else {
 							oneofOpaque++
 						}
 					} else if _schemagenUndecided(err) {
+						_d.trial--
 						return oneofErrf("variant OneOfRequiredOnlyObjectValueOption1: %w", err)
 					} else {
 						oneofLastErr = err
 					}
 				}
 			}
+			_d.trial--
 
 			if oneofMatched == 0 {
 				// A branch is only put to a decode once the keys it selects on are
@@ -366,9 +498,33 @@ func (o *OneOfRequiredOnlyObject) UnmarshalJSON(data []byte) error {
 				if oneofLastErr == nil {
 					return oneofErrf("no matching oneOf variant")
 				}
-				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
+				return oneofWrapf(oneofLastErr, "no matching oneOf variant: ")
 			}
 			if oneofMatched > 1 && oneofOpaque == 0 {
+				if _vcOK0 {
+					if _vErr := _vc0.Validate(); _vErr == nil {
+						oneofStrict++
+						oneofStrictSel = &OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption0{OneOfRequiredOnlyObjectValueOption0: _vc0}
+					} else if _schemagenUndecided(_vErr) {
+						// No verdict on this branch, so no telling which one
+						// the document selects.
+						return oneofErrf("variant OneOfRequiredOnlyObjectValueOption0: %w", _vErr)
+					} else {
+						oneofStrictErr = jsonValueWrapf(_vErr, "variant OneOfRequiredOnlyObjectValueOption0: ")
+					}
+				}
+				if _vcOK1 {
+					if _vErr := _vc1.Validate(); _vErr == nil {
+						oneofStrict++
+						oneofStrictSel = &OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption1{OneOfRequiredOnlyObjectValueOption1: _vc1}
+					} else if _schemagenUndecided(_vErr) {
+						// No verdict on this branch, so no telling which one
+						// the document selects.
+						return oneofErrf("variant OneOfRequiredOnlyObjectValueOption1: %w", _vErr)
+					} else {
+						oneofStrictErr = jsonValueWrapf(_vErr, "variant OneOfRequiredOnlyObjectValueOption1: ")
+					}
+				}
 				// Several branches decoded and every one can be judged, so the
 				// branches' own constraints settle which of them the value
 				// really satisfies. Ambiguity is already a rejection here, so
@@ -382,7 +538,7 @@ func (o *OneOfRequiredOnlyObject) UnmarshalJSON(data []byte) error {
 				case oneofStrictErr != nil:
 					// Not ambiguity but a value no branch accepts: report the
 					// branch's own reason rather than a count.
-					return oneofErrf("no matching oneOf variant: %w", oneofStrictErr)
+					return oneofWrapf(oneofStrictErr, "no matching oneOf variant: ")
 				}
 			}
 			if oneofMatched > 1 {
@@ -390,31 +546,60 @@ func (o *OneOfRequiredOnlyObject) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
+	o._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		o._jsonKeys[_k] = true
+	}
+	// The members a Validate check reads back as JSON. Each is a view of the
+	// document's own copy rather than a copy of its own: at every depth of a
+	// recursive document these hold the member below, and a copy each was the
+	// whole subtree held once per level. See jsonDoc.keep.
+	if _d.data[_sp.start] == '{' {
+		o._jsonRawProps = make(map[string]json.RawMessage, len(_raw))
+		for _k, _v := range _raw {
+			o._jsonRawProps[_k] = _d.keep(_v)
 		}
-		o._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			o._jsonKeys[_k] = true
-		}
-		o._jsonRawProps = raw
 	}
 
 	return nil
 }
 func (o OneOfRequiredOnlyObject) MarshalJSON() ([]byte, error) {
-	// Top-level oneOf: marshal the selected variant directly as the root object.
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
+	}
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OneOfRequiredOnlyObject) appendJSON(_b []byte) ([]byte, error) {
 	if o.Value != nil {
 		switch _sel := o.Value.(type) {
 		case *OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption0:
-			return json.Marshal(_sel.OneOfRequiredOnlyObjectValueOption0)
+			return (func(_v *OneOfRequiredOnlyObjectValueOption0, _b []byte) ([]byte, error) {
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*OneOfRequiredOnlyObjectValueOption0)(nil), true)
+				}
+				return _out, nil
+			})(_sel.OneOfRequiredOnlyObjectValueOption0, _b)
 		case *OneOfRequiredOnlyObject_OneOfRequiredOnlyObjectValueOption1:
-			return json.Marshal(_sel.OneOfRequiredOnlyObjectValueOption1)
+			return (func(_v *OneOfRequiredOnlyObjectValueOption1, _b []byte) ([]byte, error) {
+				if _v == nil {
+					return append(_b, "null"...), nil
+				}
+				_out, _err := (*_v).appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*OneOfRequiredOnlyObjectValueOption1)(nil), true)
+				}
+				return _out, nil
+			})(_sel.OneOfRequiredOnlyObjectValueOption1, _b)
 		}
 	}
-	return []byte("null"), nil
+	return append(_b, "null"...), nil
 }
 
 // Validate checks OneOfRequiredOnlyObject against its JSON Schema constraints.

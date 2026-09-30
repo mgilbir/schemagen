@@ -259,6 +259,72 @@ null, and a present empty collection comes back as `[]` or `{}`. All three are
 distinguishable. A value built in Go rather than decoded carries no such record,
 and its nil fields are simply omitted.
 
+It holds however the property reaches its definition. An optional property whose
+type has no absent state of its own — a struct, a scalar, an enum, a wrapper —
+is held behind a pointer, and that is decided by what the property's value *is*
+at the end of its chain of `$ref`s, through any number of them and across
+documents and Go packages: `{"$ref":"#/$defs/A"}` with `A` a `$ref` to an
+object is the same optional object as `{"$ref":"#/$defs/B"}`.
+
+### Decoding: replaced, owned, and linear
+
+**Decoding into a value replaces it.** Every generated `UnmarshalJSON` starts
+from the zero value, so a value decoded twice is exactly the second document —
+the members the second one leaves out are gone, not kept from the first. That is
+a deliberate difference from `encoding/json`, whose own decode *merges* into
+what the value held; a merged value could validate one document while holding
+another's fields. A document the decode refuses leaves the value zeroed and
+partly filled, never holding the previous document. A root that is itself a Go
+pointer (`{"type":["string","null"]}` becomes `type X *string`) is your pointer,
+and `encoding/json` decodes through it as it does through any.
+
+**A decoded value owns what it holds.** Nothing it keeps is a slice of the
+buffer you decoded it from, so reusing that buffer — a `json.Decoder` does, for
+every document of a stream — cannot change it. The parts it keeps as raw JSON
+for itself (the members a conditional reads, the bytes a raw-JSON wrapper holds)
+are views of one private copy of the document, taken once per decode: a value
+keeping any such part keeps that copy, whose size is the document's. Every
+method that hands raw bytes out — `Raw()`, `MarshalJSON()`, `BigInt()` — hands
+out a copy. An exported `json.RawMessage` member (an overflow value, a
+`patternProperties` value) is a copy of its own, as `encoding/json` makes one;
+the one exception is such a member of the branch a `oneOf` selected, which is a
+view of the private copy, because every branch is tried and copying in each trial
+cost the rest of the document at every level of a recursive one.
+
+**Decoding costs what the document costs.** Each type decodes its members in
+place and hands each member's bytes to the member's own type once; nothing is
+decoded twice or copied on the way down. Time and memory grow with the size of
+the document, not with its depth — a document nested 8,000 levels deep decodes
+in a few milliseconds, and so does one refused at its deepest point. (That is
+the generated code's cost. `json.Unmarshal` checks the whole document before it
+calls any `UnmarshalJSON`, and the `encoding/json` Go 1.27 ships spends more
+than linear time on that check as the nesting deepens; at `encoding/json`'s
+limit of 10,000 levels it adds a few milliseconds.) A `oneOf`
+tries each branch on the value, as its definition requires, so branches that
+each accept the same value each decode it. A property written twice in an
+object a generated type decodes means its last value, and the earlier one is not
+decoded at all; a map or a slice of scalars is decoded whole by `encoding/json`,
+which keeps the last value too but refuses an earlier one that does not decode.
+
+**So do validating and writing back.** `Validate` reads the members a value
+holds as raw JSON — a `patternProperties` value, a member no branch accounts
+for, a keyword judged at run time, a tuple position — through the document the
+value was decoded from, one level at a time, rather than decoding each afresh;
+a value holding such members keeps that document's index as well as its copy.
+`Validate` writes nothing out to judge a value: `uniqueItems`, `const`, `enum`
+and `contains` compare values by an identity read off each value as it is held,
+equal for any two values that are equal as JSON (`1` and `1.0`, members in any
+order), and an array's check keeps its elements' identities for the checks of
+the arrays inside them. An identity only ever decides that two values differ:
+where two share one, the values themselves are read and compared as JSON before
+a `const` or `enum` admits a value or `uniqueItems` refuses a duplicate, so a
+hash collision can neither admit nor refuse anything.
+`MarshalJSON` writes a value into one buffer, calling what each member's type
+writes directly; `encoding/json` still writes every leaf, so the bytes are the
+ones it always wrote, and a failure is reported in its words. Refusals are
+spelled out once, when their text is asked for, so a refusal at the bottom of a
+deep document costs its own length and not the depth squared.
+
 ### Numbers: exact, or `float64`
 
 A JSON number has no precision limit and a `float64` has two. By default a
@@ -930,6 +996,17 @@ Notes:
   owning package declares nothing for is an error rather than a copy.
 - The mode currently requires `--validation static`, and `--package` does not
   apply (each package is named after its import path).
+- A generated type whose values a `const`, an `enum` or a `uniqueItems`
+  compares declares `SchemagenJSONTree() (any, error)`: the value as `encoding/json`
+  decodes the JSON its `MarshalJSON` writes into an `any` (`map[string]any`,
+  `[]any`, `string`, `bool`, `nil`, `json.Number`), read off the value rather
+  than written out and decoded. A package compares another package's values
+  through it, since it cannot call that package's unexported helpers; in a run
+  of several packages (this mode and `--shared-types`) every struct, and every
+  type with a `MarshalJSON` of its own, declares it -- any other type is read by
+  its Go kind, which needs nothing from it. The name is reserved: a property that would
+  be spelled `SchemagenJSONTree` is renamed, and a `--field-map` override to it
+  is refused, as for `Validate` and `MarshalJSON`.
 
 ### Config File
 
@@ -1184,6 +1261,8 @@ under `tests/`, one package per area:
 | `tests/determinism` | same input, same output; the static map-order guard (`make test-determinism`) |
 | `tests/external` | the JSON Schema Test Suite harness (`make test-external`) |
 | `tests/cogen` | co-generated schemas and instances (`make cogen`) |
+| `tests/identity` | values compared without being written out: identities, trees, and `Validate` under coverage (`make bench-cyclonedx`) |
+| `tests/complexity` | decode, `Validate` and `MarshalJSON` held to time and memory linear in the document |
 
 What more than one of them needs is in `tests/internal/testsupport`. Every
 package whose tests can reach the go tool, directly or through that package,

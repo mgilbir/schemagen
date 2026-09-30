@@ -14,19 +14,33 @@ type IfFalse struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *IfFalse) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *IfFalse) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = IfFalse{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i IfFalse) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i IfFalse) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i IfFalse) Raw() json.RawMessage { return append(json.RawMessage(nil), i._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -53,8 +67,13 @@ func (i IfFalse) Validate() error {
 	if len(i._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(i._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(i._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -74,19 +93,35 @@ type IfBooleanBranchPositionsElseFalse struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *IfBooleanBranchPositionsElseFalse) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *IfBooleanBranchPositionsElseFalse) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = IfBooleanBranchPositionsElseFalse{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i IfBooleanBranchPositionsElseFalse) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i IfBooleanBranchPositionsElseFalse) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i IfBooleanBranchPositionsElseFalse) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -111,8 +146,13 @@ func (i IfBooleanBranchPositionsElseFalse) Validate() error {
 	if len(i._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(i._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(i._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -132,19 +172,35 @@ type IfBooleanBranchPositionsIfFalse struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *IfBooleanBranchPositionsIfFalse) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *IfBooleanBranchPositionsIfFalse) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = IfBooleanBranchPositionsIfFalse{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i IfBooleanBranchPositionsIfFalse) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i IfBooleanBranchPositionsIfFalse) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i IfBooleanBranchPositionsIfFalse) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -171,8 +227,13 @@ func (i IfBooleanBranchPositionsIfFalse) Validate() error {
 	if len(i._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(i._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(i._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -192,19 +253,35 @@ type IfBooleanBranchPositionsIfTrue struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *IfBooleanBranchPositionsIfTrue) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *IfBooleanBranchPositionsIfTrue) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = IfBooleanBranchPositionsIfTrue{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i IfBooleanBranchPositionsIfTrue) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i IfBooleanBranchPositionsIfTrue) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i IfBooleanBranchPositionsIfTrue) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -228,8 +305,13 @@ func (i IfBooleanBranchPositionsIfTrue) Validate() error {
 	if len(i._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(i._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(i._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -249,19 +331,35 @@ type IfBooleanBranchPositionsListItem struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *IfBooleanBranchPositionsListItem) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *IfBooleanBranchPositionsListItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = IfBooleanBranchPositionsListItem{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i IfBooleanBranchPositionsListItem) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i IfBooleanBranchPositionsListItem) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i IfBooleanBranchPositionsListItem) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -288,8 +386,13 @@ func (i IfBooleanBranchPositionsListItem) Validate() error {
 	if len(i._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(i._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(i._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -309,19 +412,35 @@ type IfBooleanBranchPositionsThenFalse struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *IfBooleanBranchPositionsThenFalse) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *IfBooleanBranchPositionsThenFalse) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = IfBooleanBranchPositionsThenFalse{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i IfBooleanBranchPositionsThenFalse) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i IfBooleanBranchPositionsThenFalse) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i IfBooleanBranchPositionsThenFalse) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -345,8 +464,13 @@ func (i IfBooleanBranchPositionsThenFalse) Validate() error {
 	if len(i._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(i._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(i._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -370,114 +494,215 @@ type IfBooleanBranchPositions struct {
 	ViaRef               IfFalse                            `json:"viaRef,omitzero"`
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *IfBooleanBranchPositions) UnmarshalJSON(data []byte) error {
-	i.AdditionalProperties = nil
-	i._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into i, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever i held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (i *IfBooleanBranchPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = IfBooleanBranchPositions{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"elseFalse",
-			"ifFalse",
-			"ifTrue",
-			"list",
-			"thenFalse",
-			"viaRef",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*IfBooleanBranchPositions)(nil)))
 	}
-	type Alias IfBooleanBranchPositions
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(i),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "elseFalse", decode: jsonDecodeValue[IfBooleanBranchPositionsElseFalse]},
-			{name: "ifFalse", decode: jsonDecodeValue[IfBooleanBranchPositionsIfFalse]},
-			{name: "ifTrue", decode: jsonDecodeValue[IfBooleanBranchPositionsIfTrue]},
-			{name: "list", decode: jsonDecodeItems(jsonDecodeValue[IfBooleanBranchPositionsListItem])},
-			{name: "thenFalse", decode: jsonDecodeValue[IfBooleanBranchPositionsThenFalse]},
-			{name: "viaRef", decode: jsonDecodeValue[IfFalse]},
-		})
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"list",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-		}
-		i._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			i._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{
-			"elseFalse": true,
-			"ifFalse":   true,
-			"ifTrue":    true,
-			"list":      true,
-			"thenFalse": true,
-			"viaRef":    true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if i.AdditionalProperties == nil {
-				i.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			i.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	if _v, _ok := _raw["elseFalse"]; _ok {
+		if _err := func(_p *IfBooleanBranchPositionsElseFalse, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*IfBooleanBranchPositionsElseFalse).decodeJSONAt(_p, _d, _s))
+		}(&i.ElseFalse, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "elseFalse")
+		}
+	}
+	if _v, _ok := _raw["ifFalse"]; _ok {
+		if _err := func(_p *IfBooleanBranchPositionsIfFalse, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*IfBooleanBranchPositionsIfFalse).decodeJSONAt(_p, _d, _s))
+		}(&i.IfFalse, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "ifFalse")
+		}
+	}
+	if _v, _ok := _raw["ifTrue"]; _ok {
+		if _err := func(_p *IfBooleanBranchPositionsIfTrue, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*IfBooleanBranchPositionsIfTrue).decodeJSONAt(_p, _d, _s))
+		}(&i.IfTrue, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "ifTrue")
+		}
+	}
+	if _v, _ok := _raw["list"]; _ok {
+		if _err := func(_p *[]IfBooleanBranchPositionsListItem, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeSlice[IfBooleanBranchPositionsListItem](_p, _d, _s, func(_p *IfBooleanBranchPositionsListItem, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*IfBooleanBranchPositionsListItem).decodeJSONAt(_p, _d, _s))
+			})
+		}(&i.List, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "list")
+		}
+	}
+	if _v, _ok := _raw["thenFalse"]; _ok {
+		if _err := func(_p *IfBooleanBranchPositionsThenFalse, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*IfBooleanBranchPositionsThenFalse).decodeJSONAt(_p, _d, _s))
+		}(&i.ThenFalse, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "thenFalse")
+		}
+	}
+	if _v, _ok := _raw["viaRef"]; _ok {
+		if _err := func(_p *IfFalse, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*IfFalse).decodeJSONAt(_p, _d, _s))
+		}(&i.ViaRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "viaRef")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"list",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	i._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		i._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "elseFalse", "ifFalse", "ifTrue", "list", "thenFalse", "viaRef":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	i.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (i IfBooleanBranchPositions) MarshalJSON() ([]byte, error) {
-	type Alias IfBooleanBranchPositions
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(i),
+	_b, _err := i.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends i to _b as JSON. See jsonEnc.
+func (i IfBooleanBranchPositions) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := i.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range i.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, i.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members i's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (i IfBooleanBranchPositions) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.ElseFalse)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("elseFalse", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.IfFalse)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("ifFalse", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.IfTrue)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("ifTrue", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.List)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("list", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.ThenFalse)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("thenFalse", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.ViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("viaRef", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of i numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (i IfBooleanBranchPositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks IfBooleanBranchPositions against its JSON Schema constraints.

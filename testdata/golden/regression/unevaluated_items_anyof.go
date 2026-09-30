@@ -14,19 +14,33 @@ type UnevaluatedItemsAnyOf struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces u with the value the document holds. See
+// decodeJSONAt.
 func (u *UnevaluatedItemsAnyOf) UnmarshalJSON(data []byte) error {
-	u._raw = append(u._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(u.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever u held.
+func (u *UnevaluatedItemsAnyOf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*u = UnevaluatedItemsAnyOf{}
+	u._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (u UnevaluatedItemsAnyOf) MarshalJSON() ([]byte, error) {
 	if len(u._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return u._raw, nil
+	return append([]byte(nil), u._raw...), nil
 }
 
-func (u UnevaluatedItemsAnyOf) Raw() json.RawMessage { return u._raw }
+// Raw returns a copy of the value's bytes.
+func (u UnevaluatedItemsAnyOf) Raw() json.RawMessage { return append(json.RawMessage(nil), u._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -71,8 +85,13 @@ func (u UnevaluatedItemsAnyOf) Validate() error {
 	if len(u._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(u._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(u._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.

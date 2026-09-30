@@ -848,8 +848,15 @@ func TestNestedRemoteItemsValidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("emit: %v", err)
 	}
-	if !strings.Contains(string(generated), "var _typed "+root.ItemsTypeName) {
-		t.Fatalf("generated code missing nested item validation:\n%s", string(generated))
+	// The inner array's schema judges each element: compiled for the runtime
+	// evaluator and read as the element is held (see generator.ElementNode), or,
+	// where the evaluator declines it, by decoding the element into the type.
+	check := "var _typed " + root.ItemsTypeName
+	if root.ItemsNode != nil {
+		check = "_evalNode(&" + root.ItemsNode.Var + ","
+	}
+	if !strings.Contains(string(generated), check) {
+		t.Fatalf("generated code missing nested item validation (%s):\n%s", check, string(generated))
 	}
 
 	tmpDir := t.TempDir()

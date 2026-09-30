@@ -9,11 +9,28 @@ import (
 
 type Readings []json.Number
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *Readings) UnmarshalJSON(data []byte) error {
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into r, in place. The value is
+// replaced rather than merged into: a slice is decoded into an array of its
+// own rather than over the one r held, which a copy of the value made
+// earlier still shares, and a map loses the members an earlier document gave
+// it.
+func (r *Readings) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	var _zero Readings
+	*r = _zero
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	if _err := checkJSONNullsAt(data, &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
+	if _err := checkJSONNullsAt(_d, _sp, &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); _err != nil {
 		return _err
 	}
 	// A named container of numbers held exactly. Decoding through the shadow is
@@ -21,7 +38,7 @@ func (r *Readings) UnmarshalJSON(data []byte) error {
 	// destination type, and json.Number is a string underneath, so
 	// []json.Number would take ["1.5"] for a list of numbers.
 	var _iv []jsonNumber
-	if _err := json.Unmarshal(data, &_iv); _err != nil {
+	if _err := jsonAtJSON(&_iv, _d, _sp); _err != nil {
 		return jsonDecodeRefusal(_err)
 	}
 	*r = jsonIntegerSlice(_iv, func(_ix0 jsonNumber) json.Number { return json.Number(_ix0) })
@@ -36,6 +53,8 @@ func (r Readings) Validate() error {
 type Temperature json.Number
 
 func (t *Temperature) UnmarshalJSON(data []byte) error {
+	var _zero Temperature
+	*t = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -71,6 +90,8 @@ const (
 // Go string to encoding/json and refuses a number outright, and json.Number
 // itself would take a JSON *string* for a number, which the schema does not.
 func (n *NumberPositionsChoices) UnmarshalJSON(data []byte) error {
+	var _zero NumberPositionsChoices
+	*n = _zero
 	var _nv jsonNumber
 	if _err := _nv.UnmarshalJSON(data); _err != nil {
 		return _err
@@ -105,9 +126,10 @@ type NumberPositionsConstrained struct {
 }
 
 func (n *NumberPositionsConstrained) UnmarshalJSON(data []byte) error {
+	*n = NumberPositionsConstrained{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		n._raw = append(n._raw[:0], data...)
+		n._raw = append(json.RawMessage(nil), data...)
 		n._isRaw = true
 		return nil
 	}
@@ -116,8 +138,15 @@ func (n *NumberPositionsConstrained) UnmarshalJSON(data []byte) error {
 		n._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	n._raw = append(n._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	n._raw = append(json.RawMessage(nil), data...)
 	n._isRaw = true
 	return nil
 }
@@ -126,7 +155,9 @@ func (n NumberPositionsConstrained) MarshalJSON() ([]byte, error) {
 		if len(n._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return n._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), n._raw...), nil
 	}
 	return json.Marshal(n._value)
 }
@@ -134,7 +165,7 @@ func (n NumberPositionsConstrained) Number() json.Number { return n._value }
 func (n NumberPositionsConstrained) IsNumber() bool      { return !n._isRaw }
 func (n NumberPositionsConstrained) Raw() json.RawMessage {
 	if n._isRaw {
-		return n._raw
+		return append(json.RawMessage(nil), n._raw...)
 	}
 	_b, _ := json.Marshal(n._value)
 	return _b
@@ -178,263 +209,472 @@ type NumberPositions struct {
 	Elements             []json.Number               `json:"elements,omitzero"`
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NumberPositions) UnmarshalJSON(data []byte) error {
-	n.AdditionalProperties = nil
-	n._jsonKeys = nil
-	n._jsonNulls = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into n, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever n held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (n *NumberPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NumberPositions{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"aliased",
-			"aliasedList",
-			"bounded",
-			"choices",
-			"constant",
-			"constrained",
-			"counted",
-			"elements",
-			"integerBeside",
-			"nullable",
-			"required",
-			"scalar",
-			"values",
-			"withDefault",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*NumberPositions)(nil)))
 	}
-	type Alias NumberPositions
-	aux := &struct {
-		*Alias
-		Bounded       **jsonNumber           `json:"bounded"`
-		Constant      **jsonNumber           `json:"constant"`
-		Counted       *[]jsonNumber          `json:"counted"`
-		Elements      *[]jsonNumber          `json:"elements"`
-		IntegerBeside **jsonInteger          `json:"integerBeside"`
-		Nullable      **jsonNumber           `json:"nullable"`
-		Required      *jsonNumber            `json:"required"`
-		Scalar        **jsonNumber           `json:"scalar"`
-		Values        *map[string]jsonNumber `json:"values"`
-		WithDefault   **jsonNumber           `json:"withDefault"`
-	}{
-		Alias: (*Alias)(n),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "aliased", decode: jsonDecodeValue[*Temperature]},
-			{name: "aliasedList", decode: jsonDecodeValue[Readings]},
-			{name: "bounded", decode: jsonDecodeValue[*jsonNumber]},
-			{name: "choices", decode: jsonDecodeValue[*NumberPositionsChoices]},
-			{name: "constant", decode: jsonDecodeValue[*jsonNumber]},
-			{name: "constrained", decode: jsonDecodeValue[*NumberPositionsConstrained]},
-			{name: "counted", decode: jsonDecodeItems(jsonDecodeValue[jsonNumber])},
-			{name: "elements", decode: jsonDecodeItems(jsonDecodeValue[jsonNumber])},
-			{name: "integerBeside", decode: jsonDecodeValue[*jsonInteger]},
-			{name: "nullable", decode: jsonDecodeValue[*jsonNumber]},
-			{name: "required", decode: jsonDecodeValue[jsonNumber]},
-			{name: "scalar", decode: jsonDecodeValue[*jsonNumber]},
-			{name: "values", decode: jsonDecodeValues(jsonDecodeValue[jsonNumber])},
-			{name: "withDefault", decode: jsonDecodeValue[*jsonNumber]},
-		})
-	}
-
-	// A number written 1.0 is the integer 1 from draft 6 on, and the shadows
-	// above are what let encoding/json see it. Each outer pointer is nil when
-	// the property was absent or null, both of which leave the field as it was.
-
-	// A number held exactly is a json.Number, which is a string underneath and
-	// would take a JSON string for a number; the shadows above are what refuse
-	// one. Each outer pointer is nil when the property was absent or null, both
-	// of which leave the field as it was.
-	if aux.Bounded != nil {
-		_iv := *aux.Bounded
-		n.Bounded = jsonIntegerPtr(_iv, func(_ix0 jsonNumber) json.Number { return json.Number(_ix0) })
-	}
-	if aux.Constant != nil {
-		_iv := *aux.Constant
-		n.Constant = jsonIntegerPtr(_iv, func(_ix0 jsonNumber) json.Number { return json.Number(_ix0) })
-	}
-	if aux.Counted != nil {
-		_iv := *aux.Counted
-		n.Counted = jsonIntegerSlice(_iv, func(_ix0 jsonNumber) json.Number { return json.Number(_ix0) })
-	}
-	if aux.Elements != nil {
-		_iv := *aux.Elements
-		n.Elements = jsonIntegerSlice(_iv, func(_ix0 jsonNumber) json.Number { return json.Number(_ix0) })
-	}
-	if aux.IntegerBeside != nil {
-		_iv := *aux.IntegerBeside
-		n.IntegerBeside = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
-	}
-	if aux.Nullable != nil {
-		_iv := *aux.Nullable
-		n.Nullable = jsonIntegerPtr(_iv, func(_ix0 jsonNumber) json.Number { return json.Number(_ix0) })
-	}
-	if aux.Required != nil {
-		_iv := *aux.Required
-		n.Required = json.Number(_iv)
-	}
-	if aux.Scalar != nil {
-		_iv := *aux.Scalar
-		n.Scalar = jsonIntegerPtr(_iv, func(_ix0 jsonNumber) json.Number { return json.Number(_ix0) })
-	}
-	if aux.Values != nil {
-		_iv := *aux.Values
-		n.Values = jsonIntegerMap(_iv, func(_ix0 jsonNumber) json.Number { return json.Number(_ix0) })
-	}
-	if aux.WithDefault != nil {
-		_iv := *aux.WithDefault
-		n.WithDefault = jsonIntegerPtr(_iv, func(_ix0 jsonNumber) json.Number { return json.Number(_ix0) })
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"aliased",
-			"aliasedList",
-			"bounded",
-			"choices",
-			"constant",
-			"integerBeside",
-			"required",
-			"scalar",
-			"withDefault",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-		}
-		if _v, ok := raw["counted"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "counted")
-			}
-		}
-		if _v, ok := raw["elements"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "elements")
-			}
-		}
-		if _v, ok := raw["values"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "values")
-			}
-		}
-		n._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			n._jsonKeys[_k] = true
-		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"constrained",
-			"nullable",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if n._jsonNulls == nil {
-					n._jsonNulls = make(map[string]bool, 1)
-				}
-				n._jsonNulls[_nullKey] = true
-			}
-		}
-		knownFields := map[string]bool{
-			"aliased":       true,
-			"aliasedList":   true,
-			"bounded":       true,
-			"choices":       true,
-			"constant":      true,
-			"constrained":   true,
-			"counted":       true,
-			"elements":      true,
-			"integerBeside": true,
-			"nullable":      true,
-			"required":      true,
-			"scalar":        true,
-			"values":        true,
-			"withDefault":   true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if n.AdditionalProperties == nil {
-				n.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			n.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	if _v, _ok := _raw["aliased"]; _ok {
+		if _err := func(_p **Temperature, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*Temperature](_p, _d, _s, jsonDecodeValue[*Temperature])
+		}(&n.Aliased, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "aliased")
+		}
+	}
+	if _v, _ok := _raw["aliasedList"]; _ok {
+		if _err := func(_p *Readings, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*Readings).decodeJSONAt(_p, _d, _s))
+		}(&n.AliasedList, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "aliasedList")
+		}
+	}
+	if _v, _ok := _raw["bounded"]; _ok {
+		// A number held exactly is a json.Number, which is a string underneath
+		// and would take a JSON string for a number; the shadow is what refuses
+		// one. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv *jsonNumber
+			if _err := func(_p **jsonNumber, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[*jsonNumber](_p, _d, _s, jsonDecodeValue[*jsonNumber])
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "bounded")
+			}
+			n.Bounded = jsonIntegerPtr(_iv, func(_ix0 jsonNumber) json.Number { return json.Number(_ix0) })
+		}
+	}
+	if _v, _ok := _raw["choices"]; _ok {
+		if _err := func(_p **NumberPositionsChoices, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*NumberPositionsChoices](_p, _d, _s, jsonDecodeValue[*NumberPositionsChoices])
+		}(&n.Choices, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "choices")
+		}
+	}
+	if _v, _ok := _raw["constant"]; _ok {
+		// A number held exactly is a json.Number, which is a string underneath
+		// and would take a JSON string for a number; the shadow is what refuses
+		// one. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv *jsonNumber
+			if _err := func(_p **jsonNumber, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[*jsonNumber](_p, _d, _s, jsonDecodeValue[*jsonNumber])
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "constant")
+			}
+			n.Constant = jsonIntegerPtr(_iv, func(_ix0 jsonNumber) json.Number { return json.Number(_ix0) })
+		}
+	}
+	if _v, _ok := _raw["constrained"]; _ok {
+		if _err := func(_p **NumberPositionsConstrained, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*NumberPositionsConstrained](_p, _d, _s, jsonDecodeValue[*NumberPositionsConstrained])
+		}(&n.Constrained, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "constrained")
+		}
+	}
+	if _v, _ok := _raw["counted"]; _ok {
+		// A number held exactly is a json.Number, which is a string underneath
+		// and would take a JSON string for a number; the shadow is what refuses
+		// one. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv []jsonNumber
+			if _err := func(_p *[]jsonNumber, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[[]jsonNumber](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[jsonNumber]))
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "counted")
+			}
+			n.Counted = jsonIntegerSlice(_iv, func(_ix0 jsonNumber) json.Number { return json.Number(_ix0) })
+		}
+	}
+	if _v, _ok := _raw["elements"]; _ok {
+		// A number held exactly is a json.Number, which is a string underneath
+		// and would take a JSON string for a number; the shadow is what refuses
+		// one. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv []jsonNumber
+			if _err := func(_p *[]jsonNumber, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[[]jsonNumber](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[jsonNumber]))
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "elements")
+			}
+			n.Elements = jsonIntegerSlice(_iv, func(_ix0 jsonNumber) json.Number { return json.Number(_ix0) })
+		}
+	}
+	if _v, _ok := _raw["integerBeside"]; _ok {
+		// A number written 1.0 is the integer 1 from draft 6 on; the shadow is
+		// what lets it through. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv *jsonInteger
+			if _err := func(_p **jsonInteger, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[*jsonInteger](_p, _d, _s, jsonDecodeValue[*jsonInteger])
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "integerBeside")
+			}
+			n.IntegerBeside = jsonIntegerPtr(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
+		}
+	}
+	if _v, _ok := _raw["nullable"]; _ok {
+		// A number held exactly is a json.Number, which is a string underneath
+		// and would take a JSON string for a number; the shadow is what refuses
+		// one. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv *jsonNumber
+			if _err := func(_p **jsonNumber, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[*jsonNumber](_p, _d, _s, jsonDecodeValue[*jsonNumber])
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "nullable")
+			}
+			n.Nullable = jsonIntegerPtr(_iv, func(_ix0 jsonNumber) json.Number { return json.Number(_ix0) })
+		}
+	}
+	if _v, _ok := _raw["required"]; _ok {
+		// A number held exactly is a json.Number, which is a string underneath
+		// and would take a JSON string for a number; the shadow is what refuses
+		// one. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv jsonNumber
+			if _err := func(_p *jsonNumber, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[jsonNumber](_p, _d, _s, jsonDecodeValue[jsonNumber])
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "required")
+			}
+			n.Required = json.Number(_iv)
+		}
+	}
+	if _v, _ok := _raw["scalar"]; _ok {
+		// A number held exactly is a json.Number, which is a string underneath
+		// and would take a JSON string for a number; the shadow is what refuses
+		// one. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv *jsonNumber
+			if _err := func(_p **jsonNumber, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[*jsonNumber](_p, _d, _s, jsonDecodeValue[*jsonNumber])
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "scalar")
+			}
+			n.Scalar = jsonIntegerPtr(_iv, func(_ix0 jsonNumber) json.Number { return json.Number(_ix0) })
+		}
+	}
+	if _v, _ok := _raw["values"]; _ok {
+		// A number held exactly is a json.Number, which is a string underneath
+		// and would take a JSON string for a number; the shadow is what refuses
+		// one. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv map[string]jsonNumber
+			if _err := func(_p *map[string]jsonNumber, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[map[string]jsonNumber](_p, _d, _s, jsonDecodeValues(jsonDecodeValue[jsonNumber]))
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "values")
+			}
+			n.Values = jsonIntegerMap(_iv, func(_ix0 jsonNumber) json.Number { return json.Number(_ix0) })
+		}
+	}
+	if _v, _ok := _raw["withDefault"]; _ok {
+		// A number held exactly is a json.Number, which is a string underneath
+		// and would take a JSON string for a number; the shadow is what refuses
+		// one. A null leaves the field as it is.
+		if !_d.isNull(_v) {
+			var _iv *jsonNumber
+			if _err := func(_p **jsonNumber, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[*jsonNumber](_p, _d, _s, jsonDecodeValue[*jsonNumber])
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "withDefault")
+			}
+			n.WithDefault = jsonIntegerPtr(_iv, func(_ix0 jsonNumber) json.Number { return json.Number(_ix0) })
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"aliased",
+		"aliasedList",
+		"bounded",
+		"choices",
+		"constant",
+		"integerBeside",
+		"required",
+		"scalar",
+		"withDefault",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	if _v, ok := _raw["counted"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "counted")
+		}
+	}
+	if _v, ok := _raw["elements"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "elements")
+		}
+	}
+	if _v, ok := _raw["values"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "values")
+		}
+	}
+	n._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		n._jsonKeys[_k] = true
+	}
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"constrained",
+		"nullable",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if n._jsonNulls == nil {
+				n._jsonNulls = make(map[string]bool, 1)
+			}
+			n._jsonNulls[_nullKey] = true
+		}
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "aliased", "aliasedList", "bounded", "choices", "constant", "constrained", "counted", "elements", "integerBeside", "nullable", "required", "scalar", "values", "withDefault":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	n.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (n NumberPositions) MarshalJSON() ([]byte, error) {
-	type Alias NumberPositions
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(n),
+	_b, _err := n.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends n to _b as JSON. See jsonEnc.
+func (n NumberPositions) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := n.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(n._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range n._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero NumberPositions
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range n._jsonNulls {
+				_cur, _present, _err := _o.memberBytes(_k, n.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range n.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, n.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members n's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (n NumberPositions) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.Aliased)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("aliased", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.Bounded)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("bounded", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.Choices)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("choices", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.Constant)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constant", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.Constrained)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("constrained", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.IntegerBeside)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("integerBeside", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.Nullable)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nullable", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.Scalar)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("scalar", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Values)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("values", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(n.WithDefault)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("withDefault", _v)
+		}
+	}
+	{
+		_v, _err := jsonAppendLeaf(n.Required, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded("required", _v)
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.AliasedList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("aliasedList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Counted)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("counted", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(n.Elements)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("elements", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of n numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (n NumberPositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // SetDefaults writes each schema default into the properties this value does
@@ -546,15 +786,14 @@ func (n NumberPositions) Validate() error {
 		// contains validation: count elements matching the contains sub-schema.
 		{
 			_containsCount := 0
-			for _, _cElem := range n.Counted {
+			_cArr := n.Counted
+			for _ci := range _cArr {
+				_cKind, _cText := jsonKindAt(&_cArr[_ci])
+				_ = _cText
 				_cMatch := true
-				if _cMatch {
-					_cBytes, _ := json.Marshal(_cElem)
-					if len(_cBytes) > 0 && (_cBytes[0] == '-' || _cBytes[0] >= '0' && _cBytes[0] <= '9') {
-						var _cn jsonNumber
-						if json.Unmarshal(_cBytes, &_cn) != nil || jsonNumberCmp(json.Number(_cn), "7.5") < 0 {
-							_cMatch = false
-						}
+				if _cMatch && _cKind == jsonIDNumberKind {
+					if jsonNumberCmp(json.Number(_cText), "7.5") < 0 {
+						_cMatch = false
 					}
 				}
 				if _cMatch {

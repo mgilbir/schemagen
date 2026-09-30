@@ -16,9 +16,10 @@ type BareV4 struct {
 }
 
 func (b *BareV4) UnmarshalJSON(data []byte) error {
+	*b = BareV4{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		b._raw = append(b._raw[:0], data...)
+		b._raw = append(json.RawMessage(nil), data...)
 		b._isRaw = true
 		return nil
 	}
@@ -27,8 +28,15 @@ func (b *BareV4) UnmarshalJSON(data []byte) error {
 		b._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	b._raw = append(b._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	b._raw = append(json.RawMessage(nil), data...)
 	b._isRaw = true
 	return nil
 }
@@ -37,7 +45,9 @@ func (b BareV4) MarshalJSON() ([]byte, error) {
 		if len(b._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return b._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), b._raw...), nil
 	}
 	return json.Marshal(b._value)
 }
@@ -45,7 +55,7 @@ func (b BareV4) StringValue() string { return b._value }
 func (b BareV4) IsString() bool      { return !b._isRaw }
 func (b BareV4) Raw() json.RawMessage {
 	if b._isRaw {
-		return b._raw
+		return append(json.RawMessage(nil), b._raw...)
 	}
 	_b, _ := json.Marshal(b._value)
 	return _b
@@ -73,9 +83,10 @@ type UntypedChainInner struct {
 }
 
 func (u *UntypedChainInner) UnmarshalJSON(data []byte) error {
+	*u = UntypedChainInner{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		u._raw = append(u._raw[:0], data...)
+		u._raw = append(json.RawMessage(nil), data...)
 		u._isRaw = true
 		return nil
 	}
@@ -84,8 +95,15 @@ func (u *UntypedChainInner) UnmarshalJSON(data []byte) error {
 		u._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	u._raw = append(u._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	u._raw = append(json.RawMessage(nil), data...)
 	u._isRaw = true
 	return nil
 }
@@ -94,7 +112,9 @@ func (u UntypedChainInner) MarshalJSON() ([]byte, error) {
 		if len(u._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return u._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), u._raw...), nil
 	}
 	return json.Marshal(u._value)
 }
@@ -102,7 +122,7 @@ func (u UntypedChainInner) StringValue() string { return u._value }
 func (u UntypedChainInner) IsString() bool      { return !u._isRaw }
 func (u UntypedChainInner) Raw() json.RawMessage {
 	if u._isRaw {
-		return u._raw
+		return append(json.RawMessage(nil), u._raw...)
 	}
 	_b, _ := json.Marshal(u._value)
 	return _b
@@ -130,9 +150,10 @@ type UntypedChainOuter struct {
 }
 
 func (u *UntypedChainOuter) UnmarshalJSON(data []byte) error {
+	*u = UntypedChainOuter{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		u._raw = append(u._raw[:0], data...)
+		u._raw = append(json.RawMessage(nil), data...)
 		u._isRaw = true
 		return nil
 	}
@@ -141,8 +162,15 @@ func (u *UntypedChainOuter) UnmarshalJSON(data []byte) error {
 		u._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	u._raw = append(u._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	u._raw = append(json.RawMessage(nil), data...)
 	u._isRaw = true
 	return nil
 }
@@ -151,7 +179,9 @@ func (u UntypedChainOuter) MarshalJSON() ([]byte, error) {
 		if len(u._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return u._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), u._raw...), nil
 	}
 	return json.Marshal(u._value)
 }
@@ -159,7 +189,7 @@ func (u UntypedChainOuter) StringValue() string { return u._value }
 func (u UntypedChainOuter) IsString() bool      { return !u._isRaw }
 func (u UntypedChainOuter) Raw() json.RawMessage {
 	if u._isRaw {
-		return u._raw
+		return append(json.RawMessage(nil), u._raw...)
 	}
 	_b, _ := json.Marshal(u._value)
 	return _b
@@ -187,9 +217,10 @@ type UntypedFormatPositionsBranchOption0 struct {
 }
 
 func (u *UntypedFormatPositionsBranchOption0) UnmarshalJSON(data []byte) error {
+	*u = UntypedFormatPositionsBranchOption0{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		u._raw = append(u._raw[:0], data...)
+		u._raw = append(json.RawMessage(nil), data...)
 		u._isRaw = true
 		return nil
 	}
@@ -198,8 +229,15 @@ func (u *UntypedFormatPositionsBranchOption0) UnmarshalJSON(data []byte) error {
 		u._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	u._raw = append(u._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	u._raw = append(json.RawMessage(nil), data...)
 	u._isRaw = true
 	return nil
 }
@@ -208,7 +246,9 @@ func (u UntypedFormatPositionsBranchOption0) MarshalJSON() ([]byte, error) {
 		if len(u._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return u._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), u._raw...), nil
 	}
 	return json.Marshal(u._value)
 }
@@ -216,7 +256,7 @@ func (u UntypedFormatPositionsBranchOption0) StringValue() string { return u._va
 func (u UntypedFormatPositionsBranchOption0) IsString() bool      { return !u._isRaw }
 func (u UntypedFormatPositionsBranchOption0) Raw() json.RawMessage {
 	if u._isRaw {
-		return u._raw
+		return append(json.RawMessage(nil), u._raw...)
 	}
 	_b, _ := json.Marshal(u._value)
 	return _b
@@ -244,9 +284,10 @@ type UntypedFormatPositionsBucketsPattern0 struct {
 }
 
 func (u *UntypedFormatPositionsBucketsPattern0) UnmarshalJSON(data []byte) error {
+	*u = UntypedFormatPositionsBucketsPattern0{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		u._raw = append(u._raw[:0], data...)
+		u._raw = append(json.RawMessage(nil), data...)
 		u._isRaw = true
 		return nil
 	}
@@ -255,8 +296,15 @@ func (u *UntypedFormatPositionsBucketsPattern0) UnmarshalJSON(data []byte) error
 		u._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	u._raw = append(u._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	u._raw = append(json.RawMessage(nil), data...)
 	u._isRaw = true
 	return nil
 }
@@ -265,7 +313,9 @@ func (u UntypedFormatPositionsBucketsPattern0) MarshalJSON() ([]byte, error) {
 		if len(u._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return u._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), u._raw...), nil
 	}
 	return json.Marshal(u._value)
 }
@@ -273,7 +323,7 @@ func (u UntypedFormatPositionsBucketsPattern0) StringValue() string { return u._
 func (u UntypedFormatPositionsBucketsPattern0) IsString() bool      { return !u._isRaw }
 func (u UntypedFormatPositionsBucketsPattern0) Raw() json.RawMessage {
 	if u._isRaw {
-		return u._raw
+		return append(json.RawMessage(nil), u._raw...)
 	}
 	_b, _ := json.Marshal(u._value)
 	return _b
@@ -296,95 +346,135 @@ func (u UntypedFormatPositionsBucketsPattern0) Validate() error {
 type UntypedFormatPositionsBuckets struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	PatternProperties    map[string]json.RawMessage `json:"-"`
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
+// UnmarshalJSON replaces u with the value the document holds. See
+// decodeJSONAt.
 func (u *UntypedFormatPositionsBuckets) UnmarshalJSON(data []byte) error {
-	u.AdditionalProperties = nil
-	u.PatternProperties = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(u.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into u, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever u held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (u *UntypedFormatPositionsBuckets) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*u = UntypedFormatPositionsBuckets{}
+	u._doc = _d
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias UntypedFormatPositionsBuckets
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(u),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*UntypedFormatPositionsBuckets)(nil)))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
+	var _ppFiled map[string]json.RawMessage
+	var _apFiled map[string]json.RawMessage
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
-		}
-		knownFields := map[string]bool{}
-		{
-			var _least string
-			var _failed error
-			for rawKey, rawVal := range raw { // refused for the least failing key
-				if _failed != nil && rawKey >= _least {
-					continue
+		var _least string
+		var _failed error
+		for rawKey, rawVal := range _raw { // refused for the least failing key
+			if _failed != nil && rawKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				matchesPattern := false
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_9a393f59667e0a49.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
+					}
+					matchesPattern = _ppMatched
 				}
-				if _err := func() error {
-					if knownFields[rawKey] {
-						return nil
+				if matchesPattern {
+					if _ppFiled == nil {
+						_ppFiled = make(map[string]json.RawMessage)
 					}
-					matchesPattern := false
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_9a393f59667e0a49.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
-					}
-					if matchesPattern {
-						if u.PatternProperties == nil {
-							u.PatternProperties = make(map[string]json.RawMessage)
-						}
-						u.PatternProperties[rawKey] = rawVal
-						return nil
-					}
-					if u.AdditionalProperties == nil {
-						u.AdditionalProperties = make(map[string]json.RawMessage)
-					}
-					u.AdditionalProperties[rawKey] = rawVal
+					_ppFiled[rawKey] = _d.copyOf(rawVal)
 					return nil
-				}(); _err != nil {
-					_least, _failed = rawKey, _err
 				}
+				if _apFiled == nil {
+					_apFiled = make(map[string]json.RawMessage)
+				}
+				_apFiled[rawKey] = _d.copyOf(rawVal)
+				return nil
+			}(); _err != nil {
+				_least, _failed = rawKey, _err
 			}
-			if _failed != nil {
-				return _failed
-			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
+	u.PatternProperties = _ppFiled
+	u.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (u UntypedFormatPositionsBuckets) MarshalJSON() ([]byte, error) {
-	type Alias UntypedFormatPositionsBuckets
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(u),
+	_b, _err := u.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends u to _b as JSON. See jsonEnc.
+func (u UntypedFormatPositionsBuckets) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := u.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range u.PatternProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
 	for _key, _member := range u.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, u.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members u's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (u UntypedFormatPositionsBuckets) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of u numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (u UntypedFormatPositionsBuckets) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks UntypedFormatPositionsBuckets against its JSON Schema constraints.
@@ -405,10 +495,10 @@ func (u UntypedFormatPositionsBuckets) Validate() error {
 					// Validate enforces everything beyond it.
 					var _pv UntypedFormatPositionsBucketsPattern0
 					if _uErr := json.Unmarshal(_member, &_pv); _uErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^p", _schemagenQuote(_key), _uErr)
+						return jsonWrapf(_uErr, fmt.Sprintf("patternProperties %s: key %s: ", "^p", _schemagenQuote(_key)))
 					}
 					if _vErr := _pv.Validate(); _vErr != nil {
-						return fmt.Errorf("patternProperties %s: key %s: %w", "^p", _schemagenQuote(_key), _vErr)
+						return jsonWrapf(_vErr, fmt.Sprintf("patternProperties %s: key %s: ", "^p", _schemagenQuote(_key)))
 					}
 				}
 			}
@@ -445,9 +535,10 @@ type UntypedFormatPositionsInline struct {
 }
 
 func (u *UntypedFormatPositionsInline) UnmarshalJSON(data []byte) error {
+	*u = UntypedFormatPositionsInline{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		u._raw = append(u._raw[:0], data...)
+		u._raw = append(json.RawMessage(nil), data...)
 		u._isRaw = true
 		return nil
 	}
@@ -456,8 +547,15 @@ func (u *UntypedFormatPositionsInline) UnmarshalJSON(data []byte) error {
 		u._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	u._raw = append(u._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	u._raw = append(json.RawMessage(nil), data...)
 	u._isRaw = true
 	return nil
 }
@@ -466,7 +564,9 @@ func (u UntypedFormatPositionsInline) MarshalJSON() ([]byte, error) {
 		if len(u._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return u._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), u._raw...), nil
 	}
 	return json.Marshal(u._value)
 }
@@ -474,7 +574,7 @@ func (u UntypedFormatPositionsInline) StringValue() string { return u._value }
 func (u UntypedFormatPositionsInline) IsString() bool      { return !u._isRaw }
 func (u UntypedFormatPositionsInline) Raw() json.RawMessage {
 	if u._isRaw {
-		return u._raw
+		return append(json.RawMessage(nil), u._raw...)
 	}
 	_b, _ := json.Marshal(u._value)
 	return _b
@@ -502,9 +602,10 @@ type UntypedFormatPositionsListItem struct {
 }
 
 func (u *UntypedFormatPositionsListItem) UnmarshalJSON(data []byte) error {
+	*u = UntypedFormatPositionsListItem{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		u._raw = append(u._raw[:0], data...)
+		u._raw = append(json.RawMessage(nil), data...)
 		u._isRaw = true
 		return nil
 	}
@@ -513,8 +614,15 @@ func (u *UntypedFormatPositionsListItem) UnmarshalJSON(data []byte) error {
 		u._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	u._raw = append(u._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	u._raw = append(json.RawMessage(nil), data...)
 	u._isRaw = true
 	return nil
 }
@@ -523,7 +631,9 @@ func (u UntypedFormatPositionsListItem) MarshalJSON() ([]byte, error) {
 		if len(u._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return u._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), u._raw...), nil
 	}
 	return json.Marshal(u._value)
 }
@@ -531,7 +641,7 @@ func (u UntypedFormatPositionsListItem) StringValue() string { return u._value }
 func (u UntypedFormatPositionsListItem) IsString() bool      { return !u._isRaw }
 func (u UntypedFormatPositionsListItem) Raw() json.RawMessage {
 	if u._isRaw {
-		return u._raw
+		return append(json.RawMessage(nil), u._raw...)
 	}
 	_b, _ := json.Marshal(u._value)
 	return _b
@@ -559,9 +669,10 @@ type UntypedFormatPositionsMail struct {
 }
 
 func (u *UntypedFormatPositionsMail) UnmarshalJSON(data []byte) error {
+	*u = UntypedFormatPositionsMail{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		u._raw = append(u._raw[:0], data...)
+		u._raw = append(json.RawMessage(nil), data...)
 		u._isRaw = true
 		return nil
 	}
@@ -570,8 +681,15 @@ func (u *UntypedFormatPositionsMail) UnmarshalJSON(data []byte) error {
 		u._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	u._raw = append(u._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	u._raw = append(json.RawMessage(nil), data...)
 	u._isRaw = true
 	return nil
 }
@@ -580,7 +698,9 @@ func (u UntypedFormatPositionsMail) MarshalJSON() ([]byte, error) {
 		if len(u._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return u._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), u._raw...), nil
 	}
 	return json.Marshal(u._value)
 }
@@ -588,7 +708,7 @@ func (u UntypedFormatPositionsMail) StringValue() string { return u._value }
 func (u UntypedFormatPositionsMail) IsString() bool      { return !u._isRaw }
 func (u UntypedFormatPositionsMail) Raw() json.RawMessage {
 	if u._isRaw {
-		return u._raw
+		return append(json.RawMessage(nil), u._raw...)
 	}
 	_b, _ := json.Marshal(u._value)
 	return _b
@@ -616,9 +736,10 @@ type UntypedFormatPositionsMapValue struct {
 }
 
 func (u *UntypedFormatPositionsMapValue) UnmarshalJSON(data []byte) error {
+	*u = UntypedFormatPositionsMapValue{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		u._raw = append(u._raw[:0], data...)
+		u._raw = append(json.RawMessage(nil), data...)
 		u._isRaw = true
 		return nil
 	}
@@ -627,8 +748,15 @@ func (u *UntypedFormatPositionsMapValue) UnmarshalJSON(data []byte) error {
 		u._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	u._raw = append(u._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	u._raw = append(json.RawMessage(nil), data...)
 	u._isRaw = true
 	return nil
 }
@@ -637,7 +765,9 @@ func (u UntypedFormatPositionsMapValue) MarshalJSON() ([]byte, error) {
 		if len(u._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return u._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), u._raw...), nil
 	}
 	return json.Marshal(u._value)
 }
@@ -645,7 +775,7 @@ func (u UntypedFormatPositionsMapValue) StringValue() string { return u._value }
 func (u UntypedFormatPositionsMapValue) IsString() bool      { return !u._isRaw }
 func (u UntypedFormatPositionsMapValue) Raw() json.RawMessage {
 	if u._isRaw {
-		return u._raw
+		return append(json.RawMessage(nil), u._raw...)
 	}
 	_b, _ := json.Marshal(u._value)
 	return _b
@@ -673,9 +803,10 @@ type UntypedFormatPositionsStamp struct {
 }
 
 func (u *UntypedFormatPositionsStamp) UnmarshalJSON(data []byte) error {
+	*u = UntypedFormatPositionsStamp{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		u._raw = append(u._raw[:0], data...)
+		u._raw = append(json.RawMessage(nil), data...)
 		u._isRaw = true
 		return nil
 	}
@@ -684,8 +815,15 @@ func (u *UntypedFormatPositionsStamp) UnmarshalJSON(data []byte) error {
 		u._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	u._raw = append(u._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	u._raw = append(json.RawMessage(nil), data...)
 	u._isRaw = true
 	return nil
 }
@@ -694,7 +832,9 @@ func (u UntypedFormatPositionsStamp) MarshalJSON() ([]byte, error) {
 		if len(u._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return u._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), u._raw...), nil
 	}
 	return json.Marshal(u._value)
 }
@@ -702,7 +842,7 @@ func (u UntypedFormatPositionsStamp) StringValue() string { return u._value }
 func (u UntypedFormatPositionsStamp) IsString() bool      { return !u._isRaw }
 func (u UntypedFormatPositionsStamp) Raw() json.RawMessage {
 	if u._isRaw {
-		return u._raw
+		return append(json.RawMessage(nil), u._raw...)
 	}
 	_b, _ := json.Marshal(u._value)
 	return _b
@@ -730,9 +870,10 @@ type UntypedFormatPositionsWrapped struct {
 }
 
 func (u *UntypedFormatPositionsWrapped) UnmarshalJSON(data []byte) error {
+	*u = UntypedFormatPositionsWrapped{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		u._raw = append(u._raw[:0], data...)
+		u._raw = append(json.RawMessage(nil), data...)
 		u._isRaw = true
 		return nil
 	}
@@ -741,8 +882,15 @@ func (u *UntypedFormatPositionsWrapped) UnmarshalJSON(data []byte) error {
 		u._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	u._raw = append(u._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	u._raw = append(json.RawMessage(nil), data...)
 	u._isRaw = true
 	return nil
 }
@@ -751,7 +899,9 @@ func (u UntypedFormatPositionsWrapped) MarshalJSON() ([]byte, error) {
 		if len(u._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return u._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), u._raw...), nil
 	}
 	return json.Marshal(u._value)
 }
@@ -759,7 +909,7 @@ func (u UntypedFormatPositionsWrapped) StringValue() string { return u._value }
 func (u UntypedFormatPositionsWrapped) IsString() bool      { return !u._isRaw }
 func (u UntypedFormatPositionsWrapped) Raw() json.RawMessage {
 	if u._isRaw {
-		return u._raw
+		return append(json.RawMessage(nil), u._raw...)
 	}
 	_b, _ := json.Marshal(u._value)
 	return _b
@@ -787,9 +937,10 @@ type UntypedFormatPositionsTupleItem0 struct {
 }
 
 func (u *UntypedFormatPositionsTupleItem0) UnmarshalJSON(data []byte) error {
+	*u = UntypedFormatPositionsTupleItem0{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		u._raw = append(u._raw[:0], data...)
+		u._raw = append(json.RawMessage(nil), data...)
 		u._isRaw = true
 		return nil
 	}
@@ -798,8 +949,15 @@ func (u *UntypedFormatPositionsTupleItem0) UnmarshalJSON(data []byte) error {
 		u._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	u._raw = append(u._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	u._raw = append(json.RawMessage(nil), data...)
 	u._isRaw = true
 	return nil
 }
@@ -808,15 +966,29 @@ func (u UntypedFormatPositionsTupleItem0) MarshalJSON() ([]byte, error) {
 		if len(u._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return u._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), u._raw...), nil
 	}
 	return json.Marshal(u._value)
+}
+
+// jsonIdentity is u's identity as JSON: that of what MarshalJSON writes.
+// See jsonID.
+func (u *UntypedFormatPositionsTupleItem0) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	if u._isRaw {
+		if len(u._raw) == 0 {
+			return jsonIDNull(_m)
+		}
+		return jsonIDRawIn(u._raw, _m)
+	}
+	return jsonIdentifyAt(&u._value, _m)
 }
 func (u UntypedFormatPositionsTupleItem0) StringValue() string { return u._value }
 func (u UntypedFormatPositionsTupleItem0) IsString() bool      { return !u._isRaw }
 func (u UntypedFormatPositionsTupleItem0) Raw() json.RawMessage {
 	if u._isRaw {
-		return u._raw
+		return append(json.RawMessage(nil), u._raw...)
 	}
 	_b, _ := json.Marshal(u._value)
 	return _b
@@ -896,67 +1068,130 @@ func (u *UntypedFormatPositions) GetBoolean() bool {
 	return zero
 }
 
+// UnmarshalJSON replaces u with the value the document holds. See
+// decodeJSONAt.
 func (u *UntypedFormatPositions) UnmarshalJSON(data []byte) error {
-	u.AdditionalProperties = nil
-	u._jsonNulls = nil
-	u.Branch = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(u.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into u, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever u held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (u *UntypedFormatPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*u = UntypedFormatPositions{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"buckets",
-			"chain",
-			"inline",
-			"list",
-			"mail",
-			"map",
-			"ref",
-			"stamp",
-			"tuple",
-			"wrapped",
-			"branch",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*UntypedFormatPositions)(nil)))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias UntypedFormatPositions
-	aux := &struct {
-		*Alias
-		Branch json.RawMessage `json:"branch"`
-	}{
-		Alias: (*Alias)(u),
+	if _v, _ok := _raw["buckets"]; _ok {
+		if _err := func(_p **UntypedFormatPositionsBuckets, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **UntypedFormatPositionsBuckets, _d *jsonDoc, _s jsonSpan) error {
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(UntypedFormatPositionsBuckets)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
+			}(_p, _d, _s))
+		}(&u.Buckets, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "buckets")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "buckets", decode: jsonDecodeValue[*UntypedFormatPositionsBuckets]},
-			{name: "chain", decode: jsonDecodeValue[*UntypedChainOuter]},
-			{name: "inline", decode: jsonDecodeValue[*UntypedFormatPositionsInline]},
-			{name: "list", decode: jsonDecodeItems(jsonDecodeValue[UntypedFormatPositionsListItem])},
-			{name: "mail", decode: jsonDecodeValue[*UntypedFormatPositionsMail]},
-			{name: "map", decode: jsonDecodeValues(jsonDecodeValue[UntypedFormatPositionsMapValue])},
-			{name: "ref", decode: jsonDecodeValue[*BareV4]},
-			{name: "stamp", decode: jsonDecodeValue[*UntypedFormatPositionsStamp]},
-			{name: "tuple", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "wrapped", decode: jsonDecodeValue[*UntypedFormatPositionsWrapped]},
-		})
+	if _v, _ok := _raw["chain"]; _ok {
+		if _err := func(_p **UntypedChainOuter, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*UntypedChainOuter](_p, _d, _s, jsonDecodeValue[*UntypedChainOuter])
+		}(&u.Chain, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "chain")
+		}
+	}
+	if _v, _ok := _raw["inline"]; _ok {
+		if _err := func(_p **UntypedFormatPositionsInline, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*UntypedFormatPositionsInline](_p, _d, _s, jsonDecodeValue[*UntypedFormatPositionsInline])
+		}(&u.Inline, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "inline")
+		}
+	}
+	if _v, _ok := _raw["list"]; _ok {
+		if _err := func(_p *[]UntypedFormatPositionsListItem, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]UntypedFormatPositionsListItem](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[UntypedFormatPositionsListItem]))
+		}(&u.List, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "list")
+		}
+	}
+	if _v, _ok := _raw["mail"]; _ok {
+		if _err := func(_p **UntypedFormatPositionsMail, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*UntypedFormatPositionsMail](_p, _d, _s, jsonDecodeValue[*UntypedFormatPositionsMail])
+		}(&u.Mail, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "mail")
+		}
+	}
+	if _v, _ok := _raw["map"]; _ok {
+		if _err := func(_p *map[string]UntypedFormatPositionsMapValue, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[map[string]UntypedFormatPositionsMapValue](_p, _d, _s, jsonDecodeValues(jsonDecodeValue[UntypedFormatPositionsMapValue]))
+		}(&u.Map, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "map")
+		}
+	}
+	if _v, _ok := _raw["ref"]; _ok {
+		if _err := func(_p **BareV4, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*BareV4](_p, _d, _s, jsonDecodeValue[*BareV4])
+		}(&u.Ref, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "ref")
+		}
+	}
+	if _v, _ok := _raw["stamp"]; _ok {
+		if _err := func(_p **UntypedFormatPositionsStamp, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*UntypedFormatPositionsStamp](_p, _d, _s, jsonDecodeValue[*UntypedFormatPositionsStamp])
+		}(&u.Stamp, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "stamp")
+		}
+	}
+	if _v, _ok := _raw["tuple"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&u.Tuple, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "tuple")
+		}
+	}
+	if _v, _ok := _raw["wrapped"]; _ok {
+		if _err := func(_p **UntypedFormatPositionsWrapped, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*UntypedFormatPositionsWrapped](_p, _d, _s, jsonDecodeValue[*UntypedFormatPositionsWrapped])
+		}(&u.Wrapped, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "wrapped")
+		}
 	}
 
 	{
-		oneofData := aux.Branch
+		_ov, _has := _raw["branch"]
 		// Every refusal this union raises is a sentence about the value the union
 		// holds, and the property that reaches it goes in front of that sentence
 		// by the rule every other message is joined by (see jsonPathError).
@@ -968,7 +1203,15 @@ func (u *UntypedFormatPositions) UnmarshalJSON(data []byte) error {
 		oneofErrf := func(format string, args ...any) error {
 			return jsonPathf(jsonValueErrorf(format, args...), "%s", "branch")
 		}
-		if len(oneofData) > 0 && string(oneofData) != "null" {
+		// oneofWrapf is oneofErrf for a sentence that ends with a branch's own
+		// refusal, which is kept as a step of the message rather than written
+		// into it (see jsonValueWrapf): at every level of a recursive document
+		// that refuses at the bottom, each union puts its words in front of the
+		// words of the one below it.
+		oneofWrapf := func(err error, prefix string) error {
+			return jsonPathf(jsonValueWrapf(err, prefix), "%s", "branch")
+		}
+		if _has && !_d.isNull(_ov) {
 			var oneofMatched int
 			var oneofLastErr error
 			// A second tally: branches actually satisfied, not merely decoded.
@@ -980,22 +1223,26 @@ func (u *UntypedFormatPositions) UnmarshalJSON(data []byte) error {
 			var oneofOpaque int
 			var oneofStrictSel isUntypedFormatPositions_Branch
 			var oneofStrictErr error
+			// The candidate this branch decoded, held for the tally below. Its
+			// Validate is asked only if more than one branch matched, which is
+			// the only case the tally is read in: asked here, it was run over
+			// the whole of the value at every level of a recursive document.
+			var _vc0 UntypedFormatPositionsBranchOption0
+			var _vcOK0 bool
+			// Every branch below is a trial, and one that holds the value's
+			// members as raw JSON takes views of the document rather than
+			// copies of them; see jsonDoc.copyOf.
+			_d.trial++
 
 			// Try variant: UntypedFormatPositionsBranchOption0
 			{
 				var candidate UntypedFormatPositionsBranchOption0
-				if err := json.Unmarshal(oneofData, &candidate); err == nil {
+				if err := jsonAtJSON[UntypedFormatPositionsBranchOption0](&candidate, _d, _ov); err == nil {
 					u.Branch = &UntypedFormatPositions_UntypedFormatPositionsBranchOption0{UntypedFormatPositionsBranchOption0: candidate}
 					oneofMatched++
-					if _vErr := candidate.Validate(); _vErr == nil {
-						oneofStrict++
-						oneofStrictSel = &UntypedFormatPositions_UntypedFormatPositionsBranchOption0{UntypedFormatPositionsBranchOption0: candidate}
-					} else if _schemagenUndecided(_vErr) {
-						return oneofErrf("variant UntypedFormatPositionsBranchOption0: %w", _vErr)
-					} else {
-						oneofStrictErr = fmt.Errorf("variant UntypedFormatPositionsBranchOption0: %w", _vErr)
-					}
+					_vc0, _vcOK0 = candidate, true
 				} else if _schemagenUndecided(err) {
+					_d.trial--
 					return oneofErrf("variant UntypedFormatPositionsBranchOption0: %w", err)
 				} else {
 					oneofLastErr = err
@@ -1005,7 +1252,7 @@ func (u *UntypedFormatPositions) UnmarshalJSON(data []byte) error {
 			// Try variant: Boolean
 			{
 				var candidate bool
-				if err := json.Unmarshal(oneofData, &candidate); err == nil {
+				if err := jsonAtJSON[bool](&candidate, _d, _ov); err == nil {
 					u.Branch = &UntypedFormatPositions_Boolean{Boolean: candidate}
 					oneofMatched++
 					// Nothing this branch says is left for a Validate to
@@ -1013,11 +1260,13 @@ func (u *UntypedFormatPositions) UnmarshalJSON(data []byte) error {
 					oneofStrict++
 					oneofStrictSel = &UntypedFormatPositions_Boolean{Boolean: candidate}
 				} else if _schemagenUndecided(err) {
+					_d.trial--
 					return oneofErrf("variant Boolean: %w", err)
 				} else {
 					oneofLastErr = err
 				}
 			}
+			_d.trial--
 
 			if oneofMatched == 0 {
 				// A branch is only put to a decode once the keys it selects on are
@@ -1028,9 +1277,21 @@ func (u *UntypedFormatPositions) UnmarshalJSON(data []byte) error {
 				if oneofLastErr == nil {
 					return oneofErrf("no matching oneOf variant")
 				}
-				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
+				return oneofWrapf(oneofLastErr, "no matching oneOf variant: ")
 			}
 			if oneofMatched > 1 && oneofOpaque == 0 {
+				if _vcOK0 {
+					if _vErr := _vc0.Validate(); _vErr == nil {
+						oneofStrict++
+						oneofStrictSel = &UntypedFormatPositions_UntypedFormatPositionsBranchOption0{UntypedFormatPositionsBranchOption0: _vc0}
+					} else if _schemagenUndecided(_vErr) {
+						// No verdict on this branch, so no telling which one
+						// the document selects.
+						return oneofErrf("variant UntypedFormatPositionsBranchOption0: %w", _vErr)
+					} else {
+						oneofStrictErr = jsonValueWrapf(_vErr, "variant UntypedFormatPositionsBranchOption0: ")
+					}
+				}
 				// Several branches decoded and every one can be judged, so the
 				// branches' own constraints settle which of them the value
 				// really satisfies. Ambiguity is already a rejection here, so
@@ -1044,7 +1305,7 @@ func (u *UntypedFormatPositions) UnmarshalJSON(data []byte) error {
 				case oneofStrictErr != nil:
 					// Not ambiguity but a value no branch accepts: report the
 					// branch's own reason rather than a count.
-					return oneofErrf("no matching oneOf variant: %w", oneofStrictErr)
+					return oneofWrapf(oneofStrictErr, "no matching oneOf variant: ")
 				}
 			}
 			if oneofMatched > 1 {
@@ -1052,136 +1313,237 @@ func (u *UntypedFormatPositions) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"buckets",
-			"list",
-			"map",
-			"tuple",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
-		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"branch",
-			"chain",
-			"inline",
-			"mail",
-			"ref",
-			"stamp",
-			"wrapped",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if u._jsonNulls == nil {
-					u._jsonNulls = make(map[string]bool, 1)
-				}
-				u._jsonNulls[_nullKey] = true
-			}
-		}
-		knownFields := map[string]bool{
-			"buckets": true,
-			"chain":   true,
-			"inline":  true,
-			"list":    true,
-			"mail":    true,
-			"map":     true,
-			"ref":     true,
-			"stamp":   true,
-			"tuple":   true,
-			"wrapped": true,
-			"branch":  true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if u.AdditionalProperties == nil {
-				u.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			u.AdditionalProperties[rawKey] = rawVal
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"buckets",
+		"list",
+		"map",
+		"tuple",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
 	}
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"branch",
+		"chain",
+		"inline",
+		"mail",
+		"ref",
+		"stamp",
+		"wrapped",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if u._jsonNulls == nil {
+				u._jsonNulls = make(map[string]bool, 1)
+			}
+			u._jsonNulls[_nullKey] = true
+		}
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "buckets", "chain", "inline", "list", "mail", "map", "ref", "stamp", "tuple", "wrapped", "branch":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	u.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (u UntypedFormatPositions) MarshalJSON() ([]byte, error) {
-	type Alias UntypedFormatPositions
-	aux := struct {
-		Alias
-		Branch json.RawMessage `json:"branch,omitempty"`
-	}{
-		Alias: (Alias)(u),
+	_b, _err := u.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
+	return _b, nil
+}
 
+// appendJSON appends u to _b as JSON. See jsonEnc.
+func (u UntypedFormatPositions) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := u.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
+	}
 	if u.Branch != nil {
-		switch _sel := u.Branch.(type) {
-		case *UntypedFormatPositions_UntypedFormatPositionsBranchOption0:
-			raw, err := json.Marshal(_sel.UntypedFormatPositionsBranchOption0)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling UntypedFormatPositions.Branch: %w", err)
-			}
-			aux.Branch = raw
-		case *UntypedFormatPositions_Boolean:
-			raw, err := json.Marshal(_sel.Boolean)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling UntypedFormatPositions.Branch: %w", err)
-			}
-			aux.Branch = raw
+		switch u.Branch.(type) {
+		case *UntypedFormatPositions_UntypedFormatPositionsBranchOption0, *UntypedFormatPositions_Boolean:
+			_o.deferred("branch", 10)
 		}
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(u._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range u._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero UntypedFormatPositions
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range u._jsonNulls {
+				_cur, _present, _err := _o.memberBytes(_k, u.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range u.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, u.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members u's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (u UntypedFormatPositions) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		if !jsonIsEmpty(u.Buckets) {
+			_o.deferred("buckets", 0)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Chain)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("chain", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Inline)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("inline", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Mail)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("mail", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.Map)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("map", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Ref)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("ref", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Stamp)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("stamp", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(u.Wrapped)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("wrapped", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.List)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("list", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(u.Tuple)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("tuple", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of u numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (u UntypedFormatPositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 0:
+		return (func(_v *UntypedFormatPositionsBuckets, _b []byte) ([]byte, error) {
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*UntypedFormatPositionsBuckets)(nil), true)
+			}
+			return _out, nil
+		})(u.Buckets, _b)
+	case 10:
+		switch _sel := u.Branch.(type) {
+		case *UntypedFormatPositions_UntypedFormatPositionsBranchOption0:
+			_out, _err := (jsonAppendLeaf[UntypedFormatPositionsBranchOption0])(_sel.UntypedFormatPositionsBranchOption0, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling UntypedFormatPositions.Branch: %w", _err)
+			}
+			return _out, nil
+		case *UntypedFormatPositions_Boolean:
+			_out, _err := (jsonAppendLeaf[bool])(_sel.Boolean, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling UntypedFormatPositions.Branch: %w", _err)
+			}
+			return _out, nil
+		}
+	}
+	return _b, nil
 }
 
 // Validate checks UntypedFormatPositions against its JSON Schema constraints.
@@ -1262,16 +1624,12 @@ func (u UntypedFormatPositions) Validate() error {
 	for _idx, _elem := range u.Tuple {
 		_ = _elem
 		if _idx == 0 {
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _mErr)
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
-			var _typed UntypedFormatPositionsTupleItem0
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _uErr)
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _vErr)
+			if _tr := _evalNode(&_etUntypedFormatPositionsTupleItem0, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 		}
 		if _idx == 1 {
@@ -1282,4 +1640,17 @@ func (u UntypedFormatPositions) Validate() error {
 		}
 	}
 	return nil
+}
+
+// _etUntypedFormatPositionsTupleItem0 is the schema of UntypedFormatPositionsTupleItem0, compiled for judging an element held as
+// decoded JSON against it.
+var _etUntypedFormatPositionsTupleItem0 = _schemaNode{}
+
+// SchemagenJSONTree returns u as encoding/json decodes the JSON its
+// MarshalJSON writes into an any -- map[string]any, []any, string, bool, nil and
+// json.Number -- read off the value rather than written out and decoded. Another
+// package generated in the same run compares values of this type by it (const,
+// enum, uniqueItems) without encoding them. Its result is the caller's.
+func (u *UntypedFormatPositionsTupleItem0) SchemagenJSONTree() (any, error) {
+	return jsonTreeOfIdentifier(u, nil)
 }

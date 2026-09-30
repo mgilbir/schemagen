@@ -13,10 +13,12 @@ type (
 )
 
 var (
-	extractRootTypeNameFromCode = testsupport.ExtractRootTypeNameFromCode
-	generateRoundTripMain       = testsupport.GenerateRoundTripMain
-	hasValidateMethod           = testsupport.HasValidateMethod
-	programOutput               = testsupport.ProgramOutput
-	writeSharedHelpersErr       = testsupport.WriteSharedHelpersErr
-	writeTestGoMod              = testsupport.WriteTestGoMod
+	extractRootTypeNameFromCode   = testsupport.ExtractRootTypeNameFromCode
+	generateRoundTripMain         = testsupport.GenerateRoundTripMain
+	generateRoundTripMainChecking = testsupport.GenerateRoundTripMainChecking
+	hasValidateMethod             = testsupport.HasValidateMethod
+	identityCheckSource           = testsupport.IdentityCheckSource
+	programOutput                 = testsupport.ProgramOutput
+	writeSharedHelpersErr         = testsupport.WriteSharedHelpersErr
+	writeTestGoMod                = testsupport.WriteTestGoMod
 )

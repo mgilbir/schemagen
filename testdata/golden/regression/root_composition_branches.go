@@ -9,6 +9,8 @@ import (
 type Positive int64
 
 func (p *Positive) UnmarshalJSON(data []byte) error {
+	var _zero Positive
+	*p = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -51,19 +53,35 @@ type RootCompositionBranches struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces r with the value the document holds. See
+// decodeJSONAt.
 func (r *RootCompositionBranches) UnmarshalJSON(data []byte) error {
-	r._raw = append(r._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(r.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever r held.
+func (r *RootCompositionBranches) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*r = RootCompositionBranches{}
+	r._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (r RootCompositionBranches) MarshalJSON() ([]byte, error) {
 	if len(r._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return r._raw, nil
+	return append([]byte(nil), r._raw...), nil
 }
 
-func (r RootCompositionBranches) Raw() json.RawMessage { return r._raw }
+// Raw returns a copy of the value's bytes.
+func (r RootCompositionBranches) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), r._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -105,8 +123,13 @@ func (r RootCompositionBranches) Validate() error {
 	if len(r._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(r._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(r._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.

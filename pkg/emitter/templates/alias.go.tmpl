@@ -11,11 +11,19 @@
 {{- end}}
 {{- template "annotation_comment" mkAnnotationCtx .Annotations "" (or .HasProse (ne .Unenforced ""))}}
 type {{.Name}} {{goType .Underlying}}
-{{- if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType .UnmarshalAs .LeafDecode .NullCheck)}}
+{{- if and .CanHaveMethods .DecodeAt}}
+{{template "alias_decode_at" .}}
+{{- else if and .CanHaveMethods (or .NeedsNullCheck .IsIntegerType .UnmarshalAs .LeafDecode .NullCheck)}}
 {{template "alias_unmarshal" .}}
 {{- end}}
 {{- if and .CanHaveMethods .MarshalAs}}
 {{template "alias_marshal" .}}
+{{- end}}
+{{- if and .CanHaveMethods .EncodeTo}}
+{{template "alias_encode" .}}
+{{- end}}
+{{- if and .CanHaveMethods .HasIdentity}}
+{{template "alias_identity" .}}
 {{- end}}
 {{- if .CanHaveMethods}}
 {{template "alias_validate" .}}
@@ -26,6 +34,10 @@ type {{.Name}} {{goType .Underlying}}
 {{- $recv := receiverName .Name -}}
 
 func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
+	{{- /* Replaced rather than merged into, as every generated type is: a
+	       document refused below leaves the zero value, not the one before. */}}
+	var _zero {{.Name}}
+	*{{$recv}} = _zero
 	{{- if .NeedsNullCheck}}
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
@@ -34,8 +46,12 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 	{{- with .NullCheck}}
 	{{- /* The elements this container holds. The check above answers for the
 	       container itself; a null *inside* one is erased by the decode below --
-	       []string turns [null] into [""] and reports nothing. */}}
-	if _err := checkJSONNullsAt(data, {{template "nullrule" .}}); _err != nil {
+	       []string turns [null] into [""] and reports nothing. A container
+	       alias decodes in place (see alias_decode_at) and makes this check
+	       there; this arm is for a shape that reaches it here all the same. */}}
+	if _d, _sp, _err := jsonOpenDoc(data); _err != nil {
+		return jsonDecodeRefusal(_err)
+	} else if _err := checkJSONNullsAt(_d, _sp, {{template "nullrule" .}}); _err != nil {
 		return _err
 	}
 	{{- end}}
@@ -107,11 +123,152 @@ func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
 }
 {{- end}}
 
+{{/*
+alias_decode_at is the decode of an alias whose value is a struct, a raw-JSON
+wrapper, a slice or a map: in place, over a span of one indexed document, like
+every type that can hold another of this package's types (see jsonDoc and
+decodeplan.go). The arms are alias_unmarshal's, in its order, and refuse in its
+words; the decode under them is composed rather than handed to encoding/json.
+*/}}
+{{define "alias_decode_at"}}
+{{- $recv := receiverName .Name -}}
+{{- if and .NeedsNullCheck (not .NullCheck) (not .UnmarshalAs) (not .LeafDecode) (not .UnderlyingDecoder)}}
+{{- /* encoding/json decodes the whole value, and the one arm of the alias's
+       own is its null. decodeJSONAt below says so over a span; handed the
+       document itself, there is nothing to index -- json.Unmarshal checks the
+       bytes and refuses what is not JSON in the words jsonOpenDoc would -- so
+       the entry decodes without opening one, and costs what it did before
+       the in-place decode. */}}
+
+// UnmarshalJSON replaces {{$recv}} with the value the document holds.
+func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
+	var _zero {{.Name}}
+	*{{$recv}} = _zero
+	if jsonIsNullDocument(data) {
+		return jsonValueErrorf("null is not allowed")
+	}
+	type Alias {{.Name}}
+	return jsonDecodeRefusal(json.Unmarshal(data, (*Alias)({{$recv}})))
+}
+{{- else}}
+
+// UnmarshalJSON replaces {{$recv}} with the value the document holds. See
+// decodeJSONAt.
+func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish({{$recv}}.decodeJSONAt(_d, _sp))
+}
+{{- end}}
+
+// decodeJSONAt decodes the value at _sp into {{$recv}}, in place. The value is
+// replaced rather than merged into: a slice is decoded into an array of its
+// own rather than over the one {{$recv}} held, which a copy of the value made
+// earlier still shares, and a map loses the members an earlier document gave
+// it.
+func ({{$recv}} *{{.Name}}) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	var _zero {{.Name}}
+	*{{$recv}} = _zero
+	{{- if .NeedsNullCheck}}
+	if _d.isNull(_sp) {
+		return jsonValueErrorf("null is not allowed")
+	}
+	{{- end}}
+	{{- with .NullCheck}}
+	{{- /* The elements this container holds. The check above answers for the
+	       container itself; a null *inside* one is erased by the decode below --
+	       []string turns [null] into [""] and reports nothing. */}}
+	if _err := checkJSONNullsAt(_d, _sp, {{template "nullrule" .}}); _err != nil {
+		return _err
+	}
+	{{- end}}
+	{{- if .UnmarshalAs}}
+	var _target {{.UnmarshalAs}}
+	if _err := {{.UnmarshalAsDecoder}}(&_target, _d, _sp); _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	*{{$recv}} = {{.Name}}(_target)
+	return nil
+	{{- else if .LeafDecode}}
+	{{- if .LeafDecode.Integers}}
+	// A named container of integers. Decoding through the shadow is what lets a
+	// number written 1.0 reach the int64 the schema asked for -- encoding/json
+	// decides from the destination type, and []int64 refuses it outright.
+	{{- end}}
+	{{- if .LeafDecode.Numbers}}
+	// A named container of numbers held exactly. Decoding through the shadow is
+	// what keeps a JSON string out of one -- encoding/json decides from the
+	// destination type, and json.Number is a string underneath, so
+	// []json.Number would take ["1.5"] for a list of numbers.
+	{{- end}}
+	{{- if .LeafDecode.DateTimes}}
+	// A named container of date-times. Decoding through the shadow is what lets
+	// the lower case spelling RFC 3339 permits reach a time.Time -- encoding/json
+	// decides from the destination type, and []time.Time refuses
+	// ["2020-01-02t03:04:05z"] outright.
+	{{- end}}
+	var _iv {{goType .LeafDecode.ShadowType}}
+	if _err := jsonAtJSON(&_iv, _d, _sp); _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	*{{$recv}} = {{.LeafDecode.Convert}}
+	return nil
+	{{- else if or .NeedsNullCheck .NullCheck}}
+	{{- /* The refusal is read for the schema's words before it leaves, as it is
+	       where the alias decodes through encoding/json. Issue #282. */}}
+	{{- if .UnderlyingDecoder}}
+	return jsonDecodeRefusal({{.UnderlyingDecoder}}({{$recv}}, _d, _sp))
+	{{- else}}
+	{{- /* Nothing under the value decodes in place, so encoding/json decodes it
+	       whole, into a type that has none of this one's methods. */}}
+	type Alias {{.Name}}
+	{{- if .LazyItems}}
+	return jsonDecodeRefusal(jsonLazyItemsOr[Alias]((*Alias)({{$recv}}), _d, _sp, jsonAtJSON[Alias]))
+	{{- else}}
+	return jsonDecodeRefusal(jsonAtJSON[Alias]((*Alias)({{$recv}}), _d, _sp))
+	{{- end}}
+	{{- end}}
+	{{- else}}
+	{{- /* No arm of its own to answer for, so the refusal is the one
+	       encoding/json gives for the underlying type, as it was when
+	       encoding/json decoded the alias: a container reads it for the schema's
+	       words, and a oneOf branch reports it as it stands. */}}
+	{{- if .UnderlyingDecoder}}
+	return {{.UnderlyingDecoder}}({{$recv}}, _d, _sp)
+	{{- else}}
+	{{- /* Nothing under the value decodes in place, so encoding/json decodes it
+	       whole, into a type that has none of this one's methods. A value of
+	       the wrong kind is refused first, under this type's own name, which is
+	       the one encoding/json named when it decoded into this type directly. */}}
+	if _err := jsonKindError[{{.Name}}](_d, _sp); _err != nil {
+		return _err
+	}
+	type Alias {{.Name}}
+	{{- if .LazyItems}}
+	return jsonLazyItemsOr[Alias]((*Alias)({{$recv}}), _d, _sp, jsonAtJSON[Alias])
+	{{- else}}
+	return jsonAtJSON[Alias]((*Alias)({{$recv}}), _d, _sp)
+	{{- end}}
+	{{- end}}
+	{{- end}}
+}
+{{- end}}
+
 {{define "alias_marshal"}}
 {{- $recv := receiverName .Name -}}
 
 func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
+	{{- if .EncodeTo}}
+	_b, _err := {{$recv}}.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
+	}
+	return _b, nil
+	{{- else}}
 	return json.Marshal({{.MarshalAs}}({{$recv}}))
+	{{- end}}
 }
 {{- end}}
 
@@ -139,13 +296,21 @@ dropped there rather than emitted as a check that cannot fail.
 {{- $recv := receiverName .Name -}}
 
 // Validate checks {{.Name}} against its JSON Schema constraints.
+{{- if .ValidateIn}}
+func ({{$recv}} {{.Name}}) Validate() error { return {{$recv}}.validateIn(nil) }
+
+// validateIn is Validate, sharing _vc with the values below it: the element
+// identities a uniqueItems check keeps. See jsonValidation.
+func ({{$recv}} {{.Name}}) validateIn(_vc *jsonValidation) error {
+{{- else}}
 func ({{$recv}} {{.Name}}) Validate() error {
+{{- end}}
 	{{- if .ValidateAs}}
 	// Returned as it stands: the type this delegates to answers for the very same
 	// value, so there is no step of path between the two and nothing to put in
 	// front of its message. Wrapping it also lost what the message had recorded
 	// about how a container must join it. See issue #279.
-	if _err := ({{.ValidateAs}}({{$recv}})).Validate(); _err != nil {
+	if _err := ({{.ValidateAs}}({{$recv}})).{{if .ValidateAsIn}}validateIn(_vc){{else}}Validate(){{end}}; _err != nil {
 		return _err
 	}
 	{{- end}}
@@ -230,26 +395,18 @@ func ({{$recv}} {{.Name}}) Validate() error {
 	{{- end}}
 	{{- if eq .RuleType "uniqueItems"}}
 	{
-		seen := make(map[string]bool, len({{$recv}}))
-		for _at, item := range {{$recv}} {
-			_enc, err := json.Marshal(item)
-			if err != nil {
-				return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", _at, err)
-			}
-			{{- if .RawElements}}
-			// Raw elements, compared as JSON values rather than as the bytes
-			// json.Marshal writes back unchanged. See _jsonCanonical.
-			key, err := _jsonCanonical(_enc)
-			if err != nil {
-				return jsonValueErrorf("uniqueItems check: invalid JSON at index %d: %w", _at, err)
-			}
-			{{- else}}
-			key := string(_enc)
-			{{- end}}
-			if seen[key] {
-				return jsonValueErrorf("items are not unique (duplicate at index %d)", _at)
-			}
-			seen[key] = true
+		{{- /* Compared by identity; see the struct form in validation.go.tmpl. */}}
+		{{- if .KeepIDs}}
+		if _vc == nil {
+			_vc = &jsonValidation{}
+		}
+		{{- end}}
+		_ids, _at, _err := jsonIDsOf({{$recv}}, {{if .KeepIDs}}_vc{{else}}nil{{end}}, {{.Identifier}})
+		if _err != nil {
+			return jsonValueErrorf("uniqueItems check: marshal error at index %d: %w", _at, jsonMarshalError(&{{$recv}}[_at], _err))
+		}
+		if _at := jsonFirstDuplicate({{$recv}}, _ids, {{.Identifier}}); _at >= 0 {
+			return jsonValueErrorf("items are not unique (duplicate at index %d)", _at)
 		}
 	}
 	{{- end}}

@@ -34,6 +34,9 @@ type {{.Name}} struct {
 {{- $recv := receiverName .Name -}}
 
 func ({{$recv}} *{{.Name}}) UnmarshalJSON(data []byte) error {
+	{{- /* Replaced rather than merged into, as every generated type is: a
+	       refused document leaves the zero value, not the previous one's. */}}
+	*{{$recv}} = {{.Name}}{}
 	{{- if .NeedsNullCheck}}
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
@@ -132,15 +135,34 @@ func ({{$recv}} {{.Name}}) MarshalJSON() ([]byte, error) {
 	}
 	return json.Marshal({{$recv}}._int64)
 }
+{{- if .HasIdentity}}
+
+// jsonIdentity is {{$recv}}'s identity as JSON: the number, or the null,
+// MarshalJSON writes. See jsonID.
+func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	{{- if .AllowsNull}}
+	if {{$recv}}._isNull {
+		return jsonIDNull(_m)
+	}
+	{{- end}}
+	if {{$recv}}._isBigInt && {{$recv}}._bigInt != nil {
+		return jsonIDNumberIn(json.Number({{$recv}}._bigInt.String()), _m)
+	}
+	return jsonIdentifyAt(&{{$recv}}._int64, _m)
+}
+{{- end}}
 {{- end}}
 
 {{define "bigint_alias_accessors"}}
 {{- $recv := receiverName .Name -}}
 
 func ({{$recv}} {{.Name}}) Int64() int64 { return {{$recv}}._int64 }
+// BigInt returns the value as a *big.Int of the caller's own. The value's own
+// is not handed out: a copy of the value shares it, and a caller writing
+// through it would change both.
 func ({{$recv}} {{.Name}}) BigInt() *big.Int {
 	if {{$recv}}._isBigInt && {{$recv}}._bigInt != nil {
-		return {{$recv}}._bigInt
+		return new(big.Int).Set({{$recv}}._bigInt)
 	}
 	return big.NewInt({{$recv}}._int64)
 }

@@ -11,6 +11,8 @@ import (
 type Num float64
 
 func (n *Num) UnmarshalJSON(data []byte) error {
+	var _zero Num
+	*n = _zero
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -35,176 +37,213 @@ type QuotedPropertyName struct {
 	ArrKey               []string                   `json:"-"`
 }
 
+// UnmarshalJSON replaces q with the value the document holds. See
+// decodeJSONAt.
 func (q *QuotedPropertyName) UnmarshalJSON(data []byte) error {
-	q.AdditionalProperties = nil
-	q._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(q.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into q, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever q held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (q *QuotedPropertyName) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*q = QuotedPropertyName{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"pct%d",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*QuotedPropertyName)(nil)))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias QuotedPropertyName
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(q),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "pct%d", decode: jsonDecodeValue[*string]},
-		})
+	if _v, _ok := _raw["pct%d"]; _ok {
+		if _err := func(_p **string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*string](_p, _d, _s, jsonDecodeValue[*string])
+		}(&q.PctD, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "pct%d")
+		}
 	}
 
-	// Extract fields with JSON names that cannot be represented in struct tags.
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		if _member, ok := raw["arr\"key"]; ok {
-			if err := json.Unmarshal(_member, &q.ArrKey); err != nil {
-				return jsonPathf(jsonDecodeRefusal(err), "%s", "arr\"key")
-			}
-		}
-		if _member, ok := raw["foo\"bar"]; ok {
-			if err := json.Unmarshal(_member, &q.FooBar); err != nil {
-				return jsonPathf(jsonDecodeRefusal(err), "%s", "foo\"bar")
-			}
-		}
-		if _member, ok := raw["map\"key"]; ok {
-			// Decoded through the shadow for the reason the aux fields above are:
-			// a property name that cannot go in a struct tag is decoded by hand,
-			// but its integers are the same integers.
-			var _iv map[string]jsonInteger
-			if err := json.Unmarshal(_member, &_iv); err != nil {
-				return jsonPathf(jsonDecodeRefusal(err), "%s", "map\"key")
-			}
-			q.MapKey = jsonIntegerMap(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
+	// Fields with JSON names that cannot be represented in struct tags. They are
+	// decoded after every tagged member, which is the order they have always
+	// been refused in.
+	if _v, _ok := _raw["arr\"key"]; _ok {
+		if _err := jsonAtJSON[[]string](&q.ArrKey, _d, _v); _err != nil {
+			return jsonPathf(jsonDecodeRefusal(_err), "%s", "arr\"key")
 		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"foo\"bar",
-			"pct%d",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
-		}
-		if _v, ok := raw["arr\"key"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "arr\"key")
-			}
-		}
-		if _v, ok := raw["map\"key"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "map\"key")
-			}
-		}
-		q._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			q._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{
-			"arr\"key": true,
-			"foo\"bar": true,
-			"map\"key": true,
-			"pct%d":    true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if q.AdditionalProperties == nil {
-				q.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			q.AdditionalProperties[rawKey] = rawVal
+	if _v, _ok := _raw["foo\"bar"]; _ok {
+		if _err := jsonAtJSON[*Num](&q.FooBar, _d, _v); _err != nil {
+			return jsonPathf(jsonDecodeRefusal(_err), "%s", "foo\"bar")
 		}
 	}
+	if _v, _ok := _raw["map\"key"]; _ok {
+		// Decoded through the shadow for the reason the tagged members are: a
+		// property name that cannot go in a struct tag is decoded by hand, but
+		// its integers are the same integers.
+		var _iv map[string]jsonInteger
+		if _err := jsonAtJSON[map[string]jsonInteger](&_iv, _d, _v); _err != nil {
+			return jsonPathf(jsonDecodeRefusal(_err), "%s", "map\"key")
+		}
+		q.MapKey = jsonIntegerMap(_iv, func(_ix0 jsonInteger) int64 { return int64(_ix0) })
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"foo\"bar",
+		"pct%d",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	if _v, ok := _raw["arr\"key"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "arr\"key")
+		}
+	}
+	if _v, ok := _raw["map\"key"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "map\"key")
+		}
+	}
+	q._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		q._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "arr\"key", "foo\"bar", "map\"key", "pct%d":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	q.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (q QuotedPropertyName) MarshalJSON() ([]byte, error) {
-	type Alias QuotedPropertyName
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(q),
+	_b, _err := q.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends q to _b as JSON. See jsonEnc.
+func (q QuotedPropertyName) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := q.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	// The property name cannot go in a struct tag, so omitempty never reaches
-	// this field: an absent optional value has to be skipped by hand, or the
-	// null a nil pointer/slice/map marshals to would be written as if the
-	// property were present with a null value. A present-but-empty collection
-	// is non-nil and still written.
+	// this field: an absent optional value is skipped by hand.
 	if q.ArrKey != nil {
-		raw, err := json.Marshal(q.ArrKey)
-		if err != nil {
-			return nil, fmt.Errorf("marshaling QuotedPropertyName.ArrKey: %w", err)
+		_v, _err := (jsonAppendLeaf[[]string])(q.ArrKey, nil)
+		if _err != nil {
+			return _b, fmt.Errorf("marshaling QuotedPropertyName.ArrKey: %w", _err)
 		}
-		obj["arr\"key"] = raw
+		_o.encoded("arr\"key", _v)
 	}
 	// The property name cannot go in a struct tag, so omitempty never reaches
-	// this field: an absent optional value has to be skipped by hand, or the
-	// null a nil pointer/slice/map marshals to would be written as if the
-	// property were present with a null value. A present-but-empty collection
-	// is non-nil and still written.
+	// this field: an absent optional value is skipped by hand.
 	if q.FooBar != nil {
-		raw, err := json.Marshal(q.FooBar)
-		if err != nil {
-			return nil, fmt.Errorf("marshaling QuotedPropertyName.FooBar: %w", err)
+		_v, _err := (jsonAppendLeaf[*Num])(q.FooBar, nil)
+		if _err != nil {
+			return _b, fmt.Errorf("marshaling QuotedPropertyName.FooBar: %w", _err)
 		}
-		obj["foo\"bar"] = raw
+		_o.encoded("foo\"bar", _v)
 	}
 	// The property name cannot go in a struct tag, so omitempty never reaches
-	// this field: an absent optional value has to be skipped by hand, or the
-	// null a nil pointer/slice/map marshals to would be written as if the
-	// property were present with a null value. A present-but-empty collection
-	// is non-nil and still written.
+	// this field: an absent optional value is skipped by hand.
 	if q.MapKey != nil {
-		raw, err := json.Marshal(q.MapKey)
-		if err != nil {
-			return nil, fmt.Errorf("marshaling QuotedPropertyName.MapKey: %w", err)
+		_v, _err := (jsonAppendLeaf[map[string]int64])(q.MapKey, nil)
+		if _err != nil {
+			return _b, fmt.Errorf("marshaling QuotedPropertyName.MapKey: %w", _err)
 		}
-		obj["map\"key"] = raw
+		_o.encoded("map\"key", _v)
 	}
 	for _key, _member := range q.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, q.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members q's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (q QuotedPropertyName) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(q.PctD)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("pct%d", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of q numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (q QuotedPropertyName) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 1:
+		_out, _err := (jsonAppendLeaf[[]string])(q.ArrKey, _b)
+		if _err != nil {
+			return _b, fmt.Errorf("marshaling QuotedPropertyName.ArrKey: %w", _err)
+		}
+		return _out, nil
+	case 2:
+		_out, _err := (jsonAppendLeaf[*Num])(q.FooBar, _b)
+		if _err != nil {
+			return _b, fmt.Errorf("marshaling QuotedPropertyName.FooBar: %w", _err)
+		}
+		return _out, nil
+	case 3:
+		_out, _err := (jsonAppendLeaf[map[string]int64])(q.MapKey, _b)
+		if _err != nil {
+			return _b, fmt.Errorf("marshaling QuotedPropertyName.MapKey: %w", _err)
+		}
+		return _out, nil
+	}
+	return _b, nil
 }
 
 // Validate checks QuotedPropertyName against its JSON Schema constraints.

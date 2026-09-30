@@ -1,0 +1,819 @@
+{{/*
+struct_encode is a struct's appendJSON: the value written into the one buffer
+its container is writing, byte for byte what encoding/json wrote for it before
+(see encodeplan.go). It is the whole of what the struct's MarshalJSON does, for
+a struct that has one, and what encoding/json does with the struct's fields, for
+one that does not; a struct without a MarshalJSON gets no MarshalJSON here
+either, so encoding/json still writes it itself where a caller hands it one.
+
+Three shapes. A whole-value union writes the selected variant. A struct whose
+MarshalJSON writes members by hand -- an overflow map, patternProperties, the
+nulls a document wrote, a name no struct tag can carry, --strict-read-write's
+writeOnly members -- wrote an object that it then parsed into a map and
+marshalled again, so its members come out in key order: they are gathered first
+(see jsonObj) and written in that order. Every other struct is written member
+by member, in the order its fields are declared.
+
+A member that holds this package's types is never written anywhere but the
+output: an object gathered for sorting holds its index, and the value's
+appendMemberJSON writes it when its turn comes. Written into a buffer of its own
+and copied, it was copied once per level of a recursive document.
+*/}}
+{{define "struct_encode"}}
+{{- $s := . -}}
+{{- $recv := receiverName .Name -}}
+{{- if .EncodeKeysVar}}
+
+// {{.EncodeKeysVar}} are {{.Name}}'s member names as encoding/json spells them.
+var {{.EncodeKeysVar}} = [...]string{
+	{{- range .EncodeMembers}}
+	jsonKeyText({{printf "%q" .JSONName}}),
+	{{- end}}
+}
+{{- end}}
+
+{{- if .StripRulesVar}}
+
+// {{.StripRulesVar}} are the writeOnly locations below {{.Name}}'s members
+// that MarshalJSON strips itself: {{.AccessRulesVar}}' writeOnly rules, but
+// those a member's own type already strips. See stripRulesFor.
+var {{.StripRulesVar}} = {{accessRules .StripRules}}
+{{- end}}
+
+// appendJSON appends {{$recv}} to _b as JSON. See jsonEnc.
+func ({{$recv}} {{.Name}}) appendJSON(_b []byte) ([]byte, error) {
+	{{- if .AcceptNonObject}}
+	if {{$recv}}._nonObject {
+		if len({{$recv}}._rawNonObject) > 0 {
+			return jsonAppendLeaf(json.RawMessage({{$recv}}._rawNonObject), _b)
+		}
+		return append(_b, "null"...), nil
+	}
+	{{- end}}
+	{{- if .HasTopLevelOneOf}}
+	{{- range $oof := .OneOfs}}
+	{{- if not $oof.IsProperty}}
+	if {{$recv}}.{{$oof.FieldName}} != nil {
+		switch _sel := {{$recv}}.{{$oof.FieldName}}.(type) {
+		{{- range $oof.Variants}}
+		case *{{.WrapperName}}:
+			return ({{.Encoder}})(_sel.{{.FieldName}}, _b)
+		{{- end}}
+		}
+	}
+	{{- end}}
+	{{- end}}
+	return append(_b, "null"...), nil
+	{{- else if .EncodeObject}}
+	var _o jsonObj
+	if _err := {{$recv}}.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
+	}
+	{{- range .EncodeMembers}}
+	{{- if .OneOf}}
+	if {{$recv}}.{{.OneOf.FieldName}} != nil {
+		switch {{$recv}}.{{.OneOf.FieldName}}.(type) {
+		case {{range $i, $v := .OneOf.Variants}}{{if $i}}, {{end}}*{{$v.WrapperName}}{{end}}:
+			_o.deferred({{printf "%q" .JSONName}}, {{.Index}})
+		}
+	}
+	{{- end}}
+	{{- end}}
+	{{- range .EncodeManual}}
+	{{- if .OneOf}}
+	// The union's property name cannot go in a struct tag, so its member is
+	// written by hand; an unset union writes nothing, as omitempty would have.
+	if {{$recv}}.{{.OneOf.FieldName}} != nil {
+		switch {{$recv}}.{{.OneOf.FieldName}}.(type) {
+		case {{range $i, $v := .OneOf.Variants}}{{if $i}}, {{end}}*{{$v.WrapperName}}{{end}}:
+			_o.deferred({{printf "%q" .JSONName}}, {{.Index}})
+		}
+	}
+	{{- end}}
+	{{- end}}
+	{{- range $mm := .EncodeManual}}
+	{{- with $mm.Field}}
+	{{- if eq .ManualOmit "nil"}}
+	// The property name cannot go in a struct tag, so omitempty never reaches
+	// this field: an absent optional value is skipped by hand.
+	if {{$recv}}.{{.Name}} != nil {
+		{{- template "encode_manual_set" mkEncodeCtx $recv $s $mm}}
+	}
+	{{- else if eq .ManualOmit "iszero"}}
+	// The property name cannot go in a struct tag, so omitzero never reaches
+	// this field: an absent optional value is skipped by hand.
+	if !{{$recv}}.{{.Name}}.IsZero() {
+		{{- template "encode_manual_set" mkEncodeCtx $recv $s $mm}}
+	}
+	{{- else if eq .ManualOmit "zerojson"}}
+	// The property name cannot go in a struct tag, so ",omitzero" never reaches
+	// this field: the value its Go zero writes is one the schema forbids here,
+	// and it is recognised by its bytes. See zeroValueForbidden and issue #250.
+	{
+		_v, _err := ({{.Encoder}})({{$recv}}.{{.Name}}, nil)
+		if _err != nil {
+			return _b, fmt.Errorf("marshaling {{$s.Name}}.{{.Name}}: %w", _err)
+		}
+		if string(_v) != {{printf "%q" .ZeroJSON}} {
+			_o.encoded({{printf "%q" .JSONName}}, _v)
+		}
+	}
+	{{- else}}
+	{
+		{{- template "encode_manual_set" mkEncodeCtx $recv $s $mm}}
+	}
+	{{- end}}
+	{{- end}}
+	{{- end}}
+	{{- if .HasPatternProperties}}
+	{{- /* maporder: sets members under their own keys, which are distinct, into an object written in key order. */}}
+	for _key, _member := range {{$recv}}.PatternProperties {
+		_o.held(_key, _member)
+	}
+	{{- end}}
+	{{- if .NeedsJSONNulls}}
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
+	if len({{$recv}}._jsonNulls) > 0 {
+		var _zero {{.Name}}
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			{{- /* maporder: each iteration reads and writes only its own key. */}}
+			for _k := range {{$recv}}._jsonNulls {
+				_cur, _present, _err := _o.memberBytes(_k, {{$recv}}.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
+				}
+			}
+		}
+	}
+	{{- end}}
+	{{- if .AdditionalProperties}}
+	{{- if isRawMessage .AdditionalProperties.ValueType}}
+	{{- /* maporder: sets members under their own keys, which are distinct, into an object written in key order. */}}
+	for _key, _member := range {{$recv}}.AdditionalProperties {
+		_o.held(_key, _member)
+	}
+	{{- else if .AdditionalProperties.ValueEncodeLeaf}}
+	{
+		// In key order, so that a member that fails is reported for the least
+		// key, whatever order the map is ranged in.
+		for _, _key := range jsonSortedKeys({{$recv}}.AdditionalProperties) {
+			_v, _err := ({{.AdditionalProperties.ValueEncoder}})({{$recv}}.AdditionalProperties[_key], nil)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), _err)
+			}
+			_o.encoded(_key, _v)
+		}
+	}
+	{{- else}}
+	{{- /* maporder: sets members under their own keys, which are distinct, into an object written in key order. */}}
+	for _key := range {{$recv}}.AdditionalProperties {
+		_o.deferred(_key, {{.EncodeAdditionalMember}})
+	}
+	{{- end}}
+	{{- end}}
+	{{- if .WriteOnlyKeys}}
+	// --strict-read-write. The schema marks these "writeOnly", which JSON Schema
+	// section 9.4 says is "never present when the instance is retrieved from the
+	// owning authority" -- so this type, which that flag makes the authority's
+	// view, does not write them, whichever of the contributors above set them.
+	for _, _woKey := range []string{
+		{{- range .WriteOnlyKeys}}
+		{{printf "%q" .}},
+		{{- end}}
+	} {
+		_o.del(_woKey)
+	}
+	{{- end}}
+	{{- if .StripRulesVar}}
+	// The same, for the locations no Go field answers for: a tuple slot, a
+	// contains element, a patternProperties value, and whatever those hold in
+	// turn. See _accessStripWriteOnly.
+	if _err := _o.stripWriteOnly({{.StripRulesVar}}, {{$recv}}.appendMemberJSON); _err != nil {
+		return _b, _err
+	}
+	{{- end}}
+	return _o.write(_b, {{$recv}}.appendMemberJSON)
+	{{- else}}
+	_b = append(_b, '{')
+	_n := 0
+	{{- range .EncodeMembers}}
+	{{- if .Field}}
+	{{- template "encode_field_direct" mkEncodeCtx $recv $s .}}
+	{{- else}}
+	if {{$recv}}.{{.OneOf.FieldName}} != nil {
+		switch _sel := {{$recv}}.{{.OneOf.FieldName}}.(type) {
+		{{- $m := .}}
+		{{- range .OneOf.Variants}}
+		case *{{.WrapperName}}:
+			if _n > 0 {
+				_b = append(_b, ',')
+			}
+			_n++
+			_b = append(_b, {{$s.EncodeKeysVar}}[{{$m.Index}}]...)
+			var _err error
+			if _b, _err = ({{.Encoder}})(_sel.{{.FieldName}}, _b); _err != nil {
+				return _b, fmt.Errorf("marshaling {{$s.Name}}.{{$m.OneOf.FieldName}}: %w", _err)
+			}
+		{{- end}}
+		}
+	}
+	{{- end}}
+	{{- end}}
+	_ = _n
+	return append(_b, '}'), nil
+	{{- end}}
+}
+{{- if and (not .HasTopLevelOneOf) .EncodeObject}}
+
+// encodeFieldsJSON gathers the members {{$recv}}'s tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func ({{$recv}} {{.Name}}) encodeFieldsJSON(_o *jsonObj) error {
+	{{- range .EncodeMembers}}
+	{{- if .Field}}
+	{{- template "encode_field_object" mkEncodeCtx $recv $s .}}
+	{{- end}}
+	{{- end}}
+	return nil
+}
+
+// appendMemberJSON writes the member of {{$recv}} numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func ({{$recv}} {{.Name}}) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	{{- range .EncodeMembers}}
+	{{- if .Field}}
+	{{- if not .Field.EncodeLeaf}}
+	case {{.Index}}:
+		return ({{.Field.Encoder}})({{$recv}}.{{.Field.Name}}, _b)
+	{{- end}}
+	{{- else}}
+	case {{.Index}}:
+		{{- $m := .}}
+		switch _sel := {{$recv}}.{{.OneOf.FieldName}}.(type) {
+		{{- range .OneOf.Variants}}
+		case *{{.WrapperName}}:
+			_out, _err := ({{.Encoder}})(_sel.{{.FieldName}}, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling {{$s.Name}}.{{$m.OneOf.FieldName}}: %w", _err)
+			}
+			return _out, nil
+		{{- end}}
+		}
+	{{- end}}
+	{{- end}}
+	{{- range .EncodeManual}}
+	case {{.Index}}:
+		{{- if .OneOf}}
+		{{- $m := .}}
+		switch _sel := {{$recv}}.{{.OneOf.FieldName}}.(type) {
+		{{- range .OneOf.Variants}}
+		case *{{.WrapperName}}:
+			_out, _err := ({{.Encoder}})(_sel.{{.FieldName}}, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling {{$s.Name}}.{{$m.OneOf.FieldName}}: %w", _err)
+			}
+			return _out, nil
+		{{- end}}
+		}
+		{{- else}}
+		_out, _err := ({{.Field.Encoder}})({{$recv}}.{{.Field.Name}}, _b)
+		if _err != nil {
+			return _b, fmt.Errorf("marshaling {{$s.Name}}.{{.Field.Name}}: %w", _err)
+		}
+		return _out, nil
+		{{- end}}
+	{{- end}}
+	{{- if and .AdditionalProperties (not (isRawMessage .AdditionalProperties.ValueType)) (not .AdditionalProperties.ValueEncodeLeaf)}}
+	case {{.EncodeAdditionalMember}}:
+		_out, _err := ({{.AdditionalProperties.ValueEncoder}})({{$recv}}.AdditionalProperties[_key], _b)
+		if _err != nil {
+			return _b, fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), _err)
+		}
+		return _out, nil
+	{{- end}}
+	}
+	return _b, nil
+}
+{{- end}}
+{{- end}}
+
+{{/*
+encode_field_direct writes one tagged field of a struct written member by
+member: its key and value, unless its omitempty or omitzero leaves it out. A
+field holding nothing of this package's is judged by encoding/json itself (see
+jsonLeafOmitEmpty); one that does is judged without being written, by the rules
+encoding/json keeps for its kinds (see jsonIsEmpty).
+*/}}
+{{define "encode_field_direct"}}
+{{- $recv := .Recv}}
+{{- $s := .Struct}}
+{{- $m := .Member}}
+{{- with $m.Field}}
+	{
+		{{- if .EncodeLeaf}}
+		{{- if $m.Omit}}
+		_v, _omit, _err := {{if eq $m.Omit "zero"}}jsonLeafOmitZero{{else}}jsonLeafOmitEmpty{{end}}({{$recv}}.{{.Name}})
+		if _err != nil {
+			return _b, _err
+		}
+		if !_omit {
+			if _n > 0 {
+				_b = append(_b, ',')
+			}
+			_n++
+			_b = append(_b, {{$s.EncodeKeysVar}}[{{$m.Index}}]...)
+			_b = append(_b, _v...)
+		}
+		{{- else}}
+		if _n > 0 {
+			_b = append(_b, ',')
+		}
+		_n++
+		_b = append(_b, {{$s.EncodeKeysVar}}[{{$m.Index}}]...)
+		var _err error
+		if _b, _err = jsonAppendLeaf({{$recv}}.{{.Name}}, _b); _err != nil {
+			return _b, _err
+		}
+		{{- end}}
+		{{- else}}
+		{{- if $m.Omit}}
+		if !{{if eq $m.Omit "zero"}}jsonIsZero{{else}}jsonIsEmpty{{end}}({{$recv}}.{{.Name}}) {
+		{{- else}}
+		{
+		{{- end}}
+			if _n > 0 {
+				_b = append(_b, ',')
+			}
+			_n++
+			_b = append(_b, {{$s.EncodeKeysVar}}[{{$m.Index}}]...)
+			var _err error
+			if _b, _err = ({{.Encoder}})({{$recv}}.{{.Name}}, _b); _err != nil {
+				return _b, _err
+			}
+		}
+		{{- end}}
+	}
+{{- end}}
+{{- end}}
+
+{{/*
+encode_field_object is encode_field_direct for a struct whose members are
+gathered and written in key order: the member is set in the object rather than
+written, and one holding this package's types is set as an index.
+*/}}
+{{define "encode_field_object"}}
+{{- $recv := .Recv}}
+{{- $m := .Member}}
+{{- with $m.Field}}
+	{
+		{{- if .EncodeLeaf}}
+		{{- if $m.Omit}}
+		_v, _omit, _err := {{if eq $m.Omit "zero"}}jsonLeafOmitZero{{else}}jsonLeafOmitEmpty{{end}}({{$recv}}.{{.Name}})
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded({{printf "%q" .JSONName}}, _v)
+		}
+		{{- else}}
+		_v, _err := jsonAppendLeaf({{$recv}}.{{.Name}}, nil)
+		if _err != nil {
+			return _err
+		}
+		_o.encoded({{printf "%q" .JSONName}}, _v)
+		{{- end}}
+		{{- else}}
+		{{- if $m.Omit}}
+		if !{{if eq $m.Omit "zero"}}jsonIsZero{{else}}jsonIsEmpty{{end}}({{$recv}}.{{.Name}}) {
+			_o.deferred({{printf "%q" .JSONName}}, {{$m.Index}})
+		}
+		{{- else}}
+		_o.deferred({{printf "%q" .JSONName}}, {{$m.Index}})
+		{{- end}}
+		{{- end}}
+	}
+{{- end}}
+{{- end}}
+
+{{/*
+encode_manual_set sets a hand-written field's member, which MarshalJSON always
+encoded, reporting a failure under the field's name.
+*/}}
+{{define "encode_manual_set"}}
+{{- $recv := .Recv}}
+{{- $s := .Struct}}
+{{- $m := .Member}}
+{{- with $m.Field}}
+		{{- if .EncodeLeaf}}
+		_v, _err := ({{.Encoder}})({{$recv}}.{{.Name}}, nil)
+		if _err != nil {
+			return _b, fmt.Errorf("marshaling {{$s.Name}}.{{.Name}}: %w", _err)
+		}
+		_o.encoded({{printf "%q" .JSONName}}, _v)
+		{{- else}}
+		_o.deferred({{printf "%q" .JSONName}}, {{$m.Index}})
+		{{- end}}
+{{- end}}
+{{- end}}
+
+{{/*
+struct_identity is a struct's jsonIdentity: its identity as JSON (see jsonID),
+read off its members by the rules struct_encode writes them by, branch for
+branch -- the same three shapes, the same members, the same omitempty and
+omitzero rulings, the same members set late overriding members set early. So
+the identity is the identity of what appendJSON writes, which is what the
+checks that compare values compared before, without the writing.
+
+Three rulings of appendJSON's are made there by what it writes: the writeOnly
+locations a --strict-read-write struct strips from below its members, the nulls
+a document wrote (written back where the member reads as a zero value's does),
+and a hand-written member whose Go zero is recognised by its encoding. Here they
+are made on trees (see jsonValidation): the members are read as trees, the
+writeOnly locations are taken out of those (see _accessStripTree), and a member
+is compared with the zero's by what the two are written as (see
+jsonTreeWritten). Nothing is written out to read an identity.
+*/}}
+{{define "struct_identity"}}
+{{- $s := . -}}
+{{- $recv := receiverName .Name -}}
+
+// jsonIdentity is {{$recv}}'s identity as JSON, read off its members by the rules
+// appendJSON writes them by. See jsonID.
+func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	{{- if .AcceptNonObject}}
+	if {{$recv}}._nonObject {
+		if len({{$recv}}._rawNonObject) > 0 {
+			return jsonIDRawIn({{$recv}}._rawNonObject, _m)
+		}
+		return jsonIDNull(_m)
+	}
+	{{- end}}
+	{{- if .HasTopLevelOneOf}}
+	{{- range $oof := .OneOfs}}
+	{{- if not $oof.IsProperty}}
+	if {{$recv}}.{{$oof.FieldName}} != nil {
+		switch _sel := {{$recv}}.{{$oof.FieldName}}.(type) {
+		{{- range $oof.Variants}}
+		case *{{.WrapperName}}:
+			return ({{.Identifier}})(&_sel.{{.FieldName}}, _m)
+		{{- end}}
+		}
+	}
+	{{- end}}
+	{{- end}}
+	return jsonIDNull(_m)
+	{{- else if .EncodeObject}}
+	{{- if or .StripRulesVar .NeedsJSONNulls}}
+	// What appendJSON strips, and the nulls it writes back, are decided on the
+	// members' trees; so they are read as trees, and the identity is read off
+	// the tree that is left. See struct_identity.
+	_in := _m
+	if !_m.reading(){{if not .StripRulesVar}} && len({{$recv}}._jsonNulls) > 0{{end}} {
+		_m = &jsonValidation{tree: true}
+	}
+	{{- end}}
+	_o := jsonIDObj{m: _m}
+	{{- if .NeedsJSONNulls}}
+	if _, _err := {{$recv}}.jsonIdentityFields(&_o, _m); _err != nil {
+		return jsonID{}, _err
+	}
+	{{- else}}
+	{{- template "struct_identity_fields" .}}
+	{{- end}}
+	{{- range .EncodeMembers}}
+	{{- if .OneOf}}
+	if {{$recv}}.{{.OneOf.FieldName}} != nil {
+		switch {{$recv}}.{{.OneOf.FieldName}}.(type) {
+		case {{range $i, $v := .OneOf.Variants}}{{if $i}}, {{end}}*{{$v.WrapperName}}{{end}}:
+			_o.idDeferred({{printf "%q" .JSONName}}, {{.Index}})
+		}
+	}
+	{{- end}}
+	{{- end}}
+	{{- range .EncodeManual}}
+	{{- if .OneOf}}
+	if {{$recv}}.{{.OneOf.FieldName}} != nil {
+		switch {{$recv}}.{{.OneOf.FieldName}}.(type) {
+		case {{range $i, $v := .OneOf.Variants}}{{if $i}}, {{end}}*{{$v.WrapperName}}{{end}}:
+			_o.idDeferred({{printf "%q" .JSONName}}, {{.Index}})
+		}
+	}
+	{{- end}}
+	{{- end}}
+	{{- range $mm := .EncodeManual}}
+	{{- with $mm.Field}}
+	{{- if eq .ManualOmit "zerojson"}}
+	{
+		// The member is left out where it writes what its Go zero writes; so its
+		// tree is compared with that of what the zero writes. See
+		// struct_identity.
+		_t, _err := jsonTreeOf(&{{$recv}}.{{.Name}}, {{.Identifier}})
+		if _err != nil {
+			return jsonID{}, _err
+		}
+		if _z := jsonConstOf(false, {{printf "%q" .ZeroJSON}}); len(_z.trees) != 1 || !jsonTreeWritten(_t, _z.trees[0]) {
+			var _id jsonID
+			if _m.reading() {
+				_m.push(_t)
+			} else if _id, _err = ({{.Identifier}})(&{{$recv}}.{{.Name}}, _m); _err != nil {
+				return jsonID{}, _err
+			}
+			_o.computed({{printf "%q" .JSONName}}, _id)
+		}
+	}
+	{{- else}}
+	{{- if eq .ManualOmit "nil"}}
+	if {{$recv}}.{{.Name}} != nil {
+	{{- else if eq .ManualOmit "iszero"}}
+	if !{{$recv}}.{{.Name}}.IsZero() {
+	{{- else}}
+	{
+	{{- end}}
+		{{- if .EncodeLeaf}}
+		_id, _err := ({{.Identifier}})(&{{$recv}}.{{.Name}}, _m)
+		if _err != nil {
+			return jsonID{}, _err
+		}
+		_o.computed({{printf "%q" .JSONName}}, _id)
+		{{- else}}
+		_o.idDeferred({{printf "%q" .JSONName}}, {{$mm.Index}})
+		{{- end}}
+	}
+	{{- end}}
+	{{- end}}
+	{{- end}}
+	{{- if .HasPatternProperties}}
+	{{- /* maporder: sets members under their own keys, which are distinct, into an object whose identity is a sum over its members. */}}
+	for _key, _member := range {{$recv}}.PatternProperties {
+		_o.idHeld(_key, _member)
+	}
+	{{- end}}
+	{{- if .NeedsJSONNulls}}
+	if len({{$recv}}._jsonNulls) > 0 {
+		// The properties the document wrote as null, which appendJSON writes back
+		// as null where the member is absent or is written as the same member of
+		// a zero value is. The zero's members are read on their own, so that one
+		// that cannot be read leaves nothing behind.
+		var _zero {{.Name}}
+		_zm := &jsonValidation{tree: true}
+		_zo := jsonIDObj{m: _zm}
+		if _, _zerr := _zero.jsonIdentityFields(&_zo, _zm); _zerr == nil {
+			{{- /* maporder: each iteration reads and writes only its own key. */}}
+			for _k := range {{$recv}}._jsonNulls {
+				_cur, _present, _empty, _err := _o.idValue(_k, {{$recv}}.jsonIdentityMember, _m)
+				if _err != nil {
+					return jsonID{}, _err
+				}
+				_zv, _zpresent, _, _zerr := _zo.idValue(_k, _zero.jsonIdentityMember, _zm)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || _empty && !_zpresent || !_empty && _zpresent && jsonTreeWritten(_cur, _zv) {
+					_o.nulled(_k)
+				}
+			}
+		}
+	}
+	{{- end}}
+	{{- if .AdditionalProperties}}
+	{{- if isRawMessage .AdditionalProperties.ValueType}}
+	{{- /* maporder: sets members under their own keys, which are distinct, into an object whose identity is a sum over its members. */}}
+	for _key, _member := range {{$recv}}.AdditionalProperties {
+		_o.idHeld(_key, _member)
+	}
+	{{- else if .AdditionalProperties.ValueEncodeLeaf}}
+	{
+		var _slot {{goType .AdditionalProperties.ValueType}}
+		{{- /* maporder: sets members under their own keys, which are distinct; a member that cannot be read is reported through encoding/json, which names the same one whatever order found it. */}}
+		for _key, _v := range {{$recv}}.AdditionalProperties {
+			_slot = _v
+			_id, _err := ({{.AdditionalProperties.ValueIdentifier}})(&_slot, _m)
+			if _err != nil {
+				return jsonID{}, _err
+			}
+			_o.computed(_key, _id)
+		}
+	}
+	{{- else}}
+	{{- /* maporder: sets members under their own keys, which are distinct, into an object whose identity is a sum over its members. */}}
+	for _key := range {{$recv}}.AdditionalProperties {
+		_o.idDeferred(_key, {{.EncodeAdditionalMember}})
+	}
+	{{- end}}
+	{{- end}}
+	{{- if .WriteOnlyKeys}}
+	{{- /* maporder: not a map: ranges a slice literal. */}}
+	for _, _woKey := range []string{
+		{{- range .WriteOnlyKeys}}
+		{{printf "%q" .}},
+		{{- end}}
+	} {
+		_o.idDel(_woKey)
+	}
+	{{- end}}
+	{{- if .StripRulesVar}}
+	// The same, for the locations no Go field answers for. See
+	// _accessStripTree.
+	if _err := _o.idStripWriteOnly({{.StripRulesVar}}, {{$recv}}.jsonIdentityMember, _m); _err != nil {
+		return jsonID{}, _err
+	}
+	{{- end}}
+	{{- if or .StripRulesVar .NeedsJSONNulls}}
+	_id, _err := _o.idOf({{$recv}}.jsonIdentityMember, _m)
+	if _err != nil || _m == _in {
+		return _id, _err
+	}
+	return jsonIDAny(_m.pop(), _in)
+	{{- else}}
+	return _o.idOf({{$recv}}.jsonIdentityMember, _m)
+	{{- end}}
+	{{- else}}
+	_o := jsonIDObject{m: _m}
+	{{- range $mem := .EncodeMembers}}
+	{{- if $mem.Field}}
+	{{- with $mem.Field}}
+	{{- if .EncodeLeaf}}
+	{{- if $mem.Omit}}
+	if !{{if eq $mem.Omit "zero"}}jsonOmitZeroAt{{else}}jsonOmitEmptyAt{{end}}(&{{$recv}}.{{.Name}}) {
+	{{- else}}
+	{
+	{{- end}}
+	{{- else}}
+	{{- if $mem.Omit}}
+	if !{{if eq $mem.Omit "zero"}}jsonIsZero{{else}}jsonIsEmpty{{end}}({{$recv}}.{{.Name}}) {
+	{{- else}}
+	{
+	{{- end}}
+	{{- end}}
+		_id, _err := ({{.Identifier}})(&{{$recv}}.{{.Name}}, _m)
+		if _err != nil {
+			return jsonID{}, _err
+		}
+		_o.add({{printf "%q" .JSONName}}, _id)
+	}
+	{{- end}}
+	{{- else}}
+	if {{$recv}}.{{$mem.OneOf.FieldName}} != nil {
+		switch _sel := {{$recv}}.{{$mem.OneOf.FieldName}}.(type) {
+		{{- range $mem.OneOf.Variants}}
+		case *{{.WrapperName}}:
+			_id, _err := ({{.Identifier}})(&_sel.{{.FieldName}}, _m)
+			if _err != nil {
+				return jsonID{}, _err
+			}
+			_o.add({{printf "%q" $mem.JSONName}}, _id)
+		{{- end}}
+		}
+	}
+	{{- end}}
+	{{- end}}
+	return _o.id(), nil
+	{{- end}}
+}
+{{- if and (not .HasTopLevelOneOf) .EncodeObject}}
+{{- if .NeedsJSONNulls}}
+
+// jsonIdentityFields gathers the members {{$recv}}'s tagged fields are written
+// as into _o, as encodeFieldsJSON gathers them for appendJSON. Its identity is
+// always the zero one; only the error says anything.
+func ({{$recv}} *{{.Name}}) jsonIdentityFields(_o *jsonIDObj, _m *jsonValidation) (jsonID, error) {
+	{{- template "struct_identity_fields" .}}
+	return jsonID{}, nil
+}
+{{- end}}
+
+// jsonIdentityMember reads the member of {{$recv}} numbered idx, as
+// appendMemberJSON writes it. key is the member's key, which names the
+// additionalProperties value to read.
+func ({{$recv}} *{{.Name}}) jsonIdentityMember(_idx int, _key string, _m *jsonValidation) (jsonID, error) {
+	_ = _key
+	switch _idx {
+	{{- range .EncodeMembers}}
+	{{- if .Field}}
+	{{- if not .Field.EncodeLeaf}}
+	case {{.Index}}:
+		return ({{.Field.Identifier}})(&{{$recv}}.{{.Field.Name}}, _m)
+	{{- end}}
+	{{- else}}
+	case {{.Index}}:
+		switch _sel := {{$recv}}.{{.OneOf.FieldName}}.(type) {
+		{{- range .OneOf.Variants}}
+		case *{{.WrapperName}}:
+			return ({{.Identifier}})(&_sel.{{.FieldName}}, _m)
+		{{- end}}
+		}
+	{{- end}}
+	{{- end}}
+	{{- range .EncodeManual}}
+	case {{.Index}}:
+		{{- if .OneOf}}
+		switch _sel := {{$recv}}.{{.OneOf.FieldName}}.(type) {
+		{{- range .OneOf.Variants}}
+		case *{{.WrapperName}}:
+			return ({{.Identifier}})(&_sel.{{.FieldName}}, _m)
+		{{- end}}
+		}
+		{{- else}}
+		return ({{.Field.Identifier}})(&{{$recv}}.{{.Field.Name}}, _m)
+		{{- end}}
+	{{- end}}
+	{{- if and .AdditionalProperties (not (isRawMessage .AdditionalProperties.ValueType)) (not .AdditionalProperties.ValueEncodeLeaf)}}
+	case {{.EncodeAdditionalMember}}:
+		_v := {{$recv}}.AdditionalProperties[_key]
+		return ({{.AdditionalProperties.ValueIdentifier}})(&_v, _m)
+	{{- end}}
+	}
+	return jsonIDNull(_m)
+}
+{{- end}}
+{{- end}}
+
+{{/*
+struct_identity_fields reads the members a struct's tagged fields are written
+as into _o, by the rules encode_field_object writes them by: a member holding
+nothing of this package's is read now, and one that does is left for
+jsonIdentityMember to read once the object is complete.
+*/}}
+{{define "struct_identity_fields"}}
+{{- $recv := receiverName .Name -}}
+	{{- range $mem := .EncodeMembers}}
+	{{- with $mem.Field}}
+	{
+		{{- if .EncodeLeaf}}
+		{{- if $mem.Omit}}
+		if !{{if eq $mem.Omit "zero"}}jsonOmitZeroAt{{else}}jsonOmitEmptyAt{{end}}(&{{$recv}}.{{.Name}}) {
+		{{- else}}
+		{
+		{{- end}}
+			_id, _err := ({{.Identifier}})(&{{$recv}}.{{.Name}}, _m)
+			if _err != nil {
+				return jsonID{}, _err
+			}
+			_o.computed({{printf "%q" .JSONName}}, _id)
+		}
+		{{- else}}
+		{{- if $mem.Omit}}
+		if !{{if eq $mem.Omit "zero"}}jsonIsZero{{else}}jsonIsEmpty{{end}}({{$recv}}.{{.Name}}) {
+			_o.idDeferred({{printf "%q" .JSONName}}, {{$mem.Index}})
+		}
+		{{- else}}
+		_o.idDeferred({{printf "%q" .JSONName}}, {{$mem.Index}})
+		{{- end}}
+		{{- end}}
+	}
+	{{- end}}
+	{{- end}}
+{{- end}}
+
+{{/*
+alias_identity is an alias's jsonIdentity: its value read the way its
+MarshalJSON writes it -- converted to the type MarshalAs names, or as its
+underlying type -- and, for an array whose uniqueItems check keeps its
+elements' identities, with them kept.
+*/}}
+{{define "alias_identity"}}
+{{- $recv := receiverName .Name}}
+
+// jsonIdentity is {{$recv}}'s identity as JSON. See jsonID.
+func ({{$recv}} *{{.Name}}) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	{{- if .MarshalAs}}
+	return ({{.Identifier}})((*{{.MarshalAs}})({{$recv}}), _m)
+	{{- else}}
+	return ({{.Identifier}})({{$recv}}, _m)
+	{{- end}}
+}
+{{- end}}
+
+{{/*
+alias_encode is an alias's appendJSON: the value written the way the alias's
+MarshalJSON writes it -- converted to the type MarshalAs names -- or, for an
+alias without one, the way encoding/json writes its underlying type.
+*/}}
+{{define "alias_encode"}}
+{{- $recv := receiverName .Name}}
+
+// appendJSON appends {{$recv}} to _b as JSON. See jsonEnc.
+func ({{$recv}} {{.Name}}) appendJSON(_b []byte) ([]byte, error) {
+	{{- if .MarshalAs}}
+	return ({{.ValueEncoder}})({{.MarshalAs}}({{$recv}}), _b)
+	{{- else}}
+	return ({{.ValueEncoder}})({{$recv}}, _b)
+	{{- end}}
+}
+{{- end}}

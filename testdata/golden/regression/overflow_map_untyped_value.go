@@ -16,9 +16,10 @@ type AtLeastFive struct {
 }
 
 func (a *AtLeastFive) UnmarshalJSON(data []byte) error {
+	*a = AtLeastFive{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		a._raw = append(a._raw[:0], data...)
+		a._raw = append(json.RawMessage(nil), data...)
 		a._isRaw = true
 		return nil
 	}
@@ -27,8 +28,15 @@ func (a *AtLeastFive) UnmarshalJSON(data []byte) error {
 		a._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	a._raw = append(a._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	a._raw = append(json.RawMessage(nil), data...)
 	a._isRaw = true
 	return nil
 }
@@ -37,7 +45,9 @@ func (a AtLeastFive) MarshalJSON() ([]byte, error) {
 		if len(a._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return a._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), a._raw...), nil
 	}
 	return json.Marshal(a._value)
 }
@@ -45,7 +55,7 @@ func (a AtLeastFive) Float64() float64 { return a._value }
 func (a AtLeastFive) IsNumber() bool   { return !a._isRaw }
 func (a AtLeastFive) Raw() json.RawMessage {
 	if a._isRaw {
-		return a._raw
+		return append(json.RawMessage(nil), a._raw...)
 	}
 	_b, _ := json.Marshal(a._value)
 	return _b
@@ -76,9 +86,10 @@ type OverflowMapUntypedValueArrLenValue struct {
 }
 
 func (o *OverflowMapUntypedValueArrLenValue) UnmarshalJSON(data []byte) error {
+	*o = OverflowMapUntypedValueArrLenValue{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		o._raw = append(o._raw[:0], data...)
+		o._raw = append(json.RawMessage(nil), data...)
 		o._isRaw = true
 		return nil
 	}
@@ -87,8 +98,15 @@ func (o *OverflowMapUntypedValueArrLenValue) UnmarshalJSON(data []byte) error {
 		o._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	o._raw = append(o._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	o._raw = append(json.RawMessage(nil), data...)
 	o._isRaw = true
 	return nil
 }
@@ -97,7 +115,9 @@ func (o OverflowMapUntypedValueArrLenValue) MarshalJSON() ([]byte, error) {
 		if len(o._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return o._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), o._raw...), nil
 	}
 	return json.Marshal(o._value)
 }
@@ -105,7 +125,7 @@ func (o OverflowMapUntypedValueArrLenValue) Slice() []any  { return o._value }
 func (o OverflowMapUntypedValueArrLenValue) IsArray() bool { return !o._isRaw }
 func (o OverflowMapUntypedValueArrLenValue) Raw() json.RawMessage {
 	if o._isRaw {
-		return o._raw
+		return append(json.RawMessage(nil), o._raw...)
 	}
 	_b, _ := json.Marshal(o._value)
 	return _b
@@ -136,9 +156,10 @@ type OverflowMapUntypedValueBareValue struct {
 }
 
 func (o *OverflowMapUntypedValueBareValue) UnmarshalJSON(data []byte) error {
+	*o = OverflowMapUntypedValueBareValue{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		o._raw = append(o._raw[:0], data...)
+		o._raw = append(json.RawMessage(nil), data...)
 		o._isRaw = true
 		return nil
 	}
@@ -147,8 +168,15 @@ func (o *OverflowMapUntypedValueBareValue) UnmarshalJSON(data []byte) error {
 		o._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	o._raw = append(o._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	o._raw = append(json.RawMessage(nil), data...)
 	o._isRaw = true
 	return nil
 }
@@ -157,7 +185,9 @@ func (o OverflowMapUntypedValueBareValue) MarshalJSON() ([]byte, error) {
 		if len(o._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return o._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), o._raw...), nil
 	}
 	return json.Marshal(o._value)
 }
@@ -165,7 +195,7 @@ func (o OverflowMapUntypedValueBareValue) Float64() float64 { return o._value }
 func (o OverflowMapUntypedValueBareValue) IsNumber() bool   { return !o._isRaw }
 func (o OverflowMapUntypedValueBareValue) Raw() json.RawMessage {
 	if o._isRaw {
-		return o._raw
+		return append(json.RawMessage(nil), o._raw...)
 	}
 	_b, _ := json.Marshal(o._value)
 	return _b
@@ -195,78 +225,120 @@ type OverflowMapUntypedValueObjReqValue struct {
 	_nonObject           bool                       // set by UnmarshalJSON when the JSON data is not an object
 }
 
+// UnmarshalJSON replaces o with the value the document holds. See
+// decodeJSONAt.
 func (o *OverflowMapUntypedValueObjReqValue) UnmarshalJSON(data []byte) error {
-	o.AdditionalProperties = nil
-	o._jsonKeys = nil
-	o._nonObject = false
-	o._rawNonObject = nil
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(o.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into o, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever o held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (o *OverflowMapUntypedValueObjReqValue) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*o = OverflowMapUntypedValueObjReqValue{}
 	// The schema admits a document that is not an object, so object constraints
 	// are type-conditional. Non-object JSON data is accepted here and judged by
 	// Validate; raw bytes are preserved for roundtrip.
-	if len(data) == 0 || data[0] != '{' {
+	if _d.data[_sp.start] != '{' {
 		o._nonObject = true
-		o._rawNonObject = append(o._rawNonObject[:0], data...)
+		o._rawNonObject = _d.keep(_sp)
 		return nil
 	}
-	type Alias OverflowMapUntypedValueObjReqValue
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(o),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OverflowMapUntypedValueObjReqValue)(nil)))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
-	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
-		}
-		o._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			o._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-			if o.AdditionalProperties == nil {
-				o.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			o.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	o._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		o._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	o.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (o OverflowMapUntypedValueObjReqValue) MarshalJSON() ([]byte, error) {
-	// Non-object data was silently accepted — return the original raw bytes.
+	// Non-object data was silently accepted — return the original raw bytes,
+	// in a buffer of their own: the value's bytes, handed out, are bytes a
+	// caller can rewrite the value through.
 	if o._nonObject {
 		if len(o._rawNonObject) > 0 {
-			return o._rawNonObject, nil
+			return append([]byte(nil), o._rawNonObject...), nil
 		}
 		return []byte("null"), nil
 	}
-	type Alias OverflowMapUntypedValueObjReqValue
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OverflowMapUntypedValueObjReqValue) appendJSON(_b []byte) ([]byte, error) {
+	if o._nonObject {
+		if len(o._rawNonObject) > 0 {
+			return jsonAppendLeaf(json.RawMessage(o._rawNonObject), _b)
+		}
+		return append(_b, "null"...), nil
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range o.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o OverflowMapUntypedValueObjReqValue) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o OverflowMapUntypedValueObjReqValue) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks OverflowMapUntypedValueObjReqValue against its JSON Schema constraints.
@@ -297,9 +369,10 @@ type OverflowMapUntypedValueStrLenValue struct {
 }
 
 func (o *OverflowMapUntypedValueStrLenValue) UnmarshalJSON(data []byte) error {
+	*o = OverflowMapUntypedValueStrLenValue{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		o._raw = append(o._raw[:0], data...)
+		o._raw = append(json.RawMessage(nil), data...)
 		o._isRaw = true
 		return nil
 	}
@@ -308,8 +381,15 @@ func (o *OverflowMapUntypedValueStrLenValue) UnmarshalJSON(data []byte) error {
 		o._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	o._raw = append(o._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	o._raw = append(json.RawMessage(nil), data...)
 	o._isRaw = true
 	return nil
 }
@@ -318,7 +398,9 @@ func (o OverflowMapUntypedValueStrLenValue) MarshalJSON() ([]byte, error) {
 		if len(o._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return o._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), o._raw...), nil
 	}
 	return json.Marshal(o._value)
 }
@@ -326,7 +408,7 @@ func (o OverflowMapUntypedValueStrLenValue) StringValue() string { return o._val
 func (o OverflowMapUntypedValueStrLenValue) IsString() bool      { return !o._isRaw }
 func (o OverflowMapUntypedValueStrLenValue) Raw() json.RawMessage {
 	if o._isRaw {
-		return o._raw
+		return append(json.RawMessage(nil), o._raw...)
 	}
 	_b, _ := json.Marshal(o._value)
 	return _b
@@ -357,9 +439,10 @@ type OverflowMapUntypedValueValue struct {
 }
 
 func (o *OverflowMapUntypedValueValue) UnmarshalJSON(data []byte) error {
+	*o = OverflowMapUntypedValueValue{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		o._raw = append(o._raw[:0], data...)
+		o._raw = append(json.RawMessage(nil), data...)
 		o._isRaw = true
 		return nil
 	}
@@ -368,8 +451,15 @@ func (o *OverflowMapUntypedValueValue) UnmarshalJSON(data []byte) error {
 		o._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	o._raw = append(o._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	o._raw = append(json.RawMessage(nil), data...)
 	o._isRaw = true
 	return nil
 }
@@ -378,7 +468,9 @@ func (o OverflowMapUntypedValueValue) MarshalJSON() ([]byte, error) {
 		if len(o._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return o._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), o._raw...), nil
 	}
 	return json.Marshal(o._value)
 }
@@ -386,7 +478,7 @@ func (o OverflowMapUntypedValueValue) Float64() float64 { return o._value }
 func (o OverflowMapUntypedValueValue) IsNumber() bool   { return !o._isRaw }
 func (o OverflowMapUntypedValueValue) Raw() json.RawMessage {
 	if o._isRaw {
-		return o._raw
+		return append(json.RawMessage(nil), o._raw...)
 	}
 	_b, _ := json.Marshal(o._value)
 	return _b
@@ -420,156 +512,253 @@ type OverflowMapUntypedValue struct {
 	AdditionalProperties map[string]OverflowMapUntypedValueValue       `json:"-"`
 }
 
+// UnmarshalJSON replaces o with the value the document holds. See
+// decodeJSONAt.
 func (o *OverflowMapUntypedValue) UnmarshalJSON(data []byte) error {
-	o.AdditionalProperties = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(o.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into o, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever o held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (o *OverflowMapUntypedValue) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*o = OverflowMapUntypedValue{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"arrLen",
-			"bare",
-			"objReq",
-			"strLen",
-			"typed",
-			"viaRef",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*OverflowMapUntypedValue)(nil)))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias OverflowMapUntypedValue
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(o),
+	if _v, _ok := _raw["arrLen"]; _ok {
+		if _err := func(_p *map[string]OverflowMapUntypedValueArrLenValue, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[map[string]OverflowMapUntypedValueArrLenValue](_p, _d, _s, jsonDecodeValues(jsonDecodeValue[OverflowMapUntypedValueArrLenValue]))
+		}(&o.ArrLen, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "arrLen")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "arrLen", decode: jsonDecodeValues(jsonDecodeValue[OverflowMapUntypedValueArrLenValue])},
-			{name: "bare", decode: jsonDecodeValues(jsonDecodeValue[OverflowMapUntypedValueBareValue])},
-			{name: "objReq", decode: jsonDecodeValues(jsonDecodeValue[OverflowMapUntypedValueObjReqValue])},
-			{name: "strLen", decode: jsonDecodeValues(jsonDecodeValue[OverflowMapUntypedValueStrLenValue])},
-			{name: "typed", decode: jsonDecodeValues(jsonDecodeValue[float64])},
-			{name: "viaRef", decode: jsonDecodeValues(jsonDecodeValue[AtLeastFive])},
-		})
+	if _v, _ok := _raw["bare"]; _ok {
+		if _err := func(_p *map[string]OverflowMapUntypedValueBareValue, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[map[string]OverflowMapUntypedValueBareValue](_p, _d, _s, jsonDecodeValues(jsonDecodeValue[OverflowMapUntypedValueBareValue]))
+		}(&o.Bare, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "bare")
+		}
 	}
+	if _v, _ok := _raw["objReq"]; _ok {
+		if _err := func(_p *map[string]OverflowMapUntypedValueObjReqValue, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeMap[OverflowMapUntypedValueObjReqValue](_p, _d, _s, func(_p *OverflowMapUntypedValueObjReqValue, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*OverflowMapUntypedValueObjReqValue).decodeJSONAt(_p, _d, _s))
+			})
+		}(&o.ObjReq, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "objReq")
+		}
+	}
+	if _v, _ok := _raw["strLen"]; _ok {
+		if _err := func(_p *map[string]OverflowMapUntypedValueStrLenValue, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[map[string]OverflowMapUntypedValueStrLenValue](_p, _d, _s, jsonDecodeValues(jsonDecodeValue[OverflowMapUntypedValueStrLenValue]))
+		}(&o.StrLen, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "strLen")
+		}
+	}
+	if _v, _ok := _raw["typed"]; _ok {
+		if _err := func(_p *map[string]float64, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[map[string]float64](_p, _d, _s, jsonDecodeValues(jsonDecodeValue[float64]))
+		}(&o.Typed, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "typed")
+		}
+	}
+	if _v, _ok := _raw["viaRef"]; _ok {
+		if _err := func(_p *map[string]AtLeastFive, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[map[string]AtLeastFive](_p, _d, _s, jsonDecodeValues(jsonDecodeValue[AtLeastFive]))
+		}(&o.ViaRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "viaRef")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"arrLen",
+		"bare",
+		"objReq",
+		"strLen",
+		"viaRef",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	if _v, ok := _raw["typed"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "typed")
+		}
+	}
+	var _apFiled map[string]OverflowMapUntypedValueValue
 	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"arrLen",
-			"bare",
-			"objReq",
-			"strLen",
-			"viaRef",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		var _least string
+		var _failed error
+		for rawKey, rawVal := range _raw { // refused for the least failing key
+			if _failed != nil && rawKey >= _least {
+				continue
 			}
-		}
-		if _v, ok := raw["typed"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "typed")
-			}
-		}
-		knownFields := map[string]bool{
-			"arrLen": true,
-			"bare":   true,
-			"objReq": true,
-			"strLen": true,
-			"typed":  true,
-			"viaRef": true,
-		}
-		{
-			var _least string
-			var _failed error
-			for rawKey, rawVal := range raw { // refused for the least failing key
-				if _failed != nil && rawKey >= _least {
-					continue
-				}
-				if _err := func() error {
-					if knownFields[rawKey] {
-						return nil
-					}
-					if o.AdditionalProperties == nil {
-						o.AdditionalProperties = make(map[string]OverflowMapUntypedValueValue)
-					}
-					var val OverflowMapUntypedValueValue
-					if err := json.Unmarshal(rawVal, &val); err != nil {
-						return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
-					}
-					o.AdditionalProperties[rawKey] = val
+			if _err := func() error {
+				switch rawKey {
+				case "arrLen", "bare", "objReq", "strLen", "typed", "viaRef":
 					return nil
-				}(); _err != nil {
-					_least, _failed = rawKey, _err
 				}
+				if _apFiled == nil {
+					_apFiled = make(map[string]OverflowMapUntypedValueValue)
+				}
+				var val OverflowMapUntypedValueValue
+				if err := jsonAtJSON[OverflowMapUntypedValueValue](&val, _d, rawVal); err != nil {
+					return jsonElemPathf(jsonDecodeRefusal(err), "[%s]", _schemagenQuote(rawKey))
+				}
+				_apFiled[rawKey] = val
+				return nil
+			}(); _err != nil {
+				_least, _failed = rawKey, _err
 			}
-			if _failed != nil {
-				return _failed
-			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
+	o.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (o OverflowMapUntypedValue) MarshalJSON() ([]byte, error) {
-	type Alias OverflowMapUntypedValue
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(o),
+	_b, _err := o.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends o to _b as JSON. See jsonEnc.
+func (o OverflowMapUntypedValue) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := o.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	{
-		var _least string
-		var _failed error
-		for _key, _member := range o.AdditionalProperties { // refused for the least failing key
-			if _failed != nil && _key >= _least {
-				continue
+		// In key order, so that a member that fails is reported for the least
+		// key, whatever order the map is ranged in.
+		for _, _key := range jsonSortedKeys(o.AdditionalProperties) {
+			_v, _err := (jsonAppendLeaf[OverflowMapUntypedValueValue])(o.AdditionalProperties[_key], nil)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), _err)
 			}
-			if _err := func() error {
-				raw, err := json.Marshal(_member)
-				if err != nil {
-					return fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), err)
-				}
-				obj[_key] = raw
-				return nil
-			}(); _err != nil {
-				_least, _failed = _key, _err
-			}
-		}
-		if _failed != nil {
-			return nil, _failed
+			_o.encoded(_key, _v)
 		}
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, o.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members o's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (o OverflowMapUntypedValue) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitZero(o.ArrLen)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("arrLen", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(o.Bare)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("bare", _v)
+		}
+	}
+	{
+		if !jsonIsZero(o.ObjReq) {
+			_o.deferred("objReq", 2)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(o.StrLen)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("strLen", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(o.Typed)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("typed", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(o.ViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("viaRef", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of o numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (o OverflowMapUntypedValue) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 2:
+		return (func(_v map[string]OverflowMapUntypedValueObjReqValue, _b []byte) ([]byte, error) {
+			return jsonEncMap[map[string]OverflowMapUntypedValueObjReqValue, OverflowMapUntypedValueObjReqValue](_v, _b, func(_v OverflowMapUntypedValueObjReqValue, _b []byte) ([]byte, error) {
+				_out, _err := _v.appendJSON(_b)
+				if _err != nil {
+					return _b, jsonMarshalerErrFor(_err, (*OverflowMapUntypedValueObjReqValue)(nil), false)
+				}
+				return _out, nil
+			})
+		})(o.ObjReq, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks OverflowMapUntypedValue against its JSON Schema constraints.

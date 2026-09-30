@@ -1,245 +1,27 @@
+{{/*
+marshal is a struct's MarshalJSON: its appendJSON, written into a buffer of its
+own (see struct_encode in encode.go.tmpl).
+*/}}
 {{define "marshal"}}
 {{- $struct := . -}}
 {{- $recv := receiverName .Name -}}
 
 func ({{$recv}} {{$struct.Name}}) MarshalJSON() ([]byte, error) {
 	{{- if $struct.AcceptNonObject}}
-	// Non-object data was silently accepted — return the original raw bytes.
+	// Non-object data was silently accepted — return the original raw bytes,
+	// in a buffer of their own: the value's bytes, handed out, are bytes a
+	// caller can rewrite the value through.
 	if {{$recv}}._nonObject {
 		if len({{$recv}}._rawNonObject) > 0 {
-			return {{$recv}}._rawNonObject, nil
+			return append([]byte(nil), {{$recv}}._rawNonObject...), nil
 		}
 		return []byte("null"), nil
 	}
 	{{- end}}
-	{{- /* Check if we have any top-level oneOfs (see OneOfDef.IsProperty) */}}
-	{{- $hasTopLevelOneOf := false}}
-	{{- range $struct.OneOfs}}
-	{{- if not .IsProperty}}{{$hasTopLevelOneOf = true}}{{end}}
-	{{- end}}
-
-	{{- if $hasTopLevelOneOf}}
-	// Top-level oneOf: marshal the selected variant directly as the root object.
-	{{- range $oof := $struct.OneOfs}}
-	{{- if not $oof.IsProperty}}
-	if {{$recv}}.{{$oof.FieldName}} != nil {
-		switch _sel := {{$recv}}.{{$oof.FieldName}}.(type) {
-		{{- range $oof.Variants}}
-		case *{{.WrapperName}}:
-			return json.Marshal(_sel.{{.FieldName}})
-		{{- end}}
-		}
+	_b, _err := {{$recv}}.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	{{- end}}
-	{{- end}}
-	return []byte("null"), nil
-	{{- else}}
-	type Alias {{$struct.Name}}
-	{{- /* Which of the two goes first is decided by what this type costs; see
-	       StructDef.MarshalAuxRawFirst. It moves the union's key in the emitted
-	       object, and nothing else: encoding/json writes an object's members in
-	       declaration order, and JSON gives that order no meaning. */}}
-	aux := struct {
-		{{- if $struct.MarshalAuxRawFirst}}
-		{{- range $struct.OneOfs}}
-		{{- if .ManualJSON}}
-		{{.FieldName}} json.RawMessage `json:"-"`
-		{{- else}}
-		{{.FieldName}} json.RawMessage `json:"{{jsonTagName .JSONName}},omitempty"`
-		{{- end}}
-		{{- end}}
-		Alias
-		{{- else}}
-		Alias
-		{{- range $struct.OneOfs}}
-		{{- if .ManualJSON}}
-		{{.FieldName}} json.RawMessage `json:"-"`
-		{{- else}}
-		{{.FieldName}} json.RawMessage `json:"{{jsonTagName .JSONName}},omitempty"`
-		{{- end}}
-		{{- end}}
-		{{- end}}
-	}{
-		Alias: (Alias)({{$recv}}),
-	}
-	{{- range $oof := $struct.OneOfs}}
-
-	if {{$recv}}.{{$oof.FieldName}} != nil {
-		switch _sel := {{$recv}}.{{$oof.FieldName}}.(type) {
-		{{- range $oof.Variants}}
-		case *{{.WrapperName}}:
-			raw, err := json.Marshal(_sel.{{.FieldName}})
-			if err != nil {
-				return nil, fmt.Errorf("marshaling {{$struct.Name}}.{{$oof.FieldName}}: %w", err)
-			}
-			aux.{{$oof.FieldName}} = raw
-		{{- end}}
-		}
-	}
-	{{- end}}
-
-	{{- if or (hasManualFields $struct.Fields) $struct.HasManualJSONOneOf $struct.AdditionalProperties $struct.HasPatternProperties $struct.NeedsJSONNulls $struct.WriteOnlyKeys $struct.AccessRules}}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	{{- range $struct.OneOfs}}
-	{{- if .ManualJSON}}
-	// The union's property name cannot go in a struct tag, so its member is
-	// written by hand; an unset union writes nothing, as omitempty would have.
-	if len(aux.{{.FieldName}}) > 0 {
-		obj[{{printf "%q" .JSONName}}] = aux.{{.FieldName}}
-	}
-	{{- end}}
-	{{- end}}
-	{{- range $struct.Fields}}
-	{{- if .ManualJSON}}
-	{{- if eq .ManualOmit "nil"}}
-	// The property name cannot go in a struct tag, so omitempty never reaches
-	// this field: an absent optional value has to be skipped by hand, or the
-	// null a nil pointer/slice/map marshals to would be written as if the
-	// property were present with a null value. A present-but-empty collection
-	// is non-nil and still written.
-	if {{$recv}}.{{.Name}} != nil {
-		raw, err := json.Marshal({{$recv}}.{{.Name}})
-		if err != nil {
-			return nil, fmt.Errorf("marshaling {{$struct.Name}}.{{.Name}}: %w", err)
-		}
-		obj[{{printf "%q" .JSONName}}] = raw
-	}
-	{{- else if eq .ManualOmit "iszero"}}
-	// The property name cannot go in a struct tag, so omitzero never reaches
-	// this field: the wrapper's MarshalJSON writes null when no value was
-	// present, so an absent optional value has to be skipped by hand.
-	if !{{$recv}}.{{.Name}}.IsZero() {
-		raw, err := json.Marshal({{$recv}}.{{.Name}})
-		if err != nil {
-			return nil, fmt.Errorf("marshaling {{$struct.Name}}.{{.Name}}: %w", err)
-		}
-		obj[{{printf "%q" .JSONName}}] = raw
-	}
-	{{- else if eq .ManualOmit "zerojson"}}
-	// The property name cannot go in a struct tag, so ",omitzero" never reaches
-	// this field: the value its Go zero writes is one the schema forbids here,
-	// and skipping it has to be done by hand. The field has neither a nil nor an
-	// IsZero to recognise that value by, so the bytes are what it is recognised
-	// by. See zeroValueForbidden and issue #250.
-	{
-		raw, err := json.Marshal({{$recv}}.{{.Name}})
-		if err != nil {
-			return nil, fmt.Errorf("marshaling {{$struct.Name}}.{{.Name}}: %w", err)
-		}
-		if string(raw) != {{printf "%q" .ZeroJSON}} {
-			obj[{{printf "%q" .JSONName}}] = raw
-		}
-	}
-	{{- else}}
-	{
-		raw, err := json.Marshal({{$recv}}.{{.Name}})
-		if err != nil {
-			return nil, fmt.Errorf("marshaling {{$struct.Name}}.{{.Name}}: %w", err)
-		}
-		obj[{{printf "%q" .JSONName}}] = raw
-	}
-	{{- end}}
-	{{- end}}
-	{{- end}}
-	{{- if $struct.HasPatternProperties}}
-	{{- /* maporder: copies members under their own keys, which are distinct; json.Marshal writes obj in key order. */}}
-	for _key, _member := range {{$recv}}.PatternProperties {
-		obj[_key] = _member
-	}
-	{{- end}}
-	{{- if $struct.NeedsJSONNulls}}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
-	if len({{$recv}}._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				{{- /* maporder: each iteration reads and writes only its own key of obj. */}}
-				for _k := range {{$recv}}._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
-				}
-			}
-		}
-	}
-	{{- end}}
-	{{- if $struct.AdditionalProperties}}
-	{{- if isRawMessage $struct.AdditionalProperties.ValueType}}
-	{{- /* maporder: a copy into obj under the same keys, which are distinct, so
-	       no order of the loop writes a different obj. */}}
-	for _key, _member := range {{$recv}}.AdditionalProperties {
-		obj[_key] = _member
-	}
-	{{- else}}
-	{{- /* A member that fails to marshal is reported for the least key, not for
-	       whichever the randomised map order reached first. */}}
-	{{- $lk := leastKey "_key" "_member" (printf "%s.AdditionalProperties" $recv) "nil, _failed"}}
-	{{- template "least_key_open" $lk}}
-		raw, err := json.Marshal(_member)
-		if err != nil {
-			return fmt.Errorf("marshaling additional property %s: %w", _schemagenQuote(_key), err)
-		}
-		obj[_key] = raw
-		return nil
-	{{- template "least_key_close" $lk}}
-	{{- end}}
-	{{- end}}
-	{{- if $struct.WriteOnlyKeys}}
-	// --strict-read-write. The schema marks these "writeOnly", which JSON Schema
-	// section 9.4 says is "never present when the instance is retrieved from the
-	// owning authority" -- so this type, which that flag makes the authority's
-	// view, does not write them.
-	//
-	// Deleted after every other contributor above has had its say, including the
-	// overflow map and the null record: a writeOnly property put back by one of
-	// those would be just as present as one the struct tag wrote.
-	for _, _woKey := range []string{
-		{{- range $struct.WriteOnlyKeys}}
-		{{printf "%q" .}},
-		{{- end}}
-	} {
-		delete(obj, _woKey)
-	}
-	{{- end}}
-	{{- if $struct.AccessRules}}
-	// The same, for the locations no Go field answers for: a tuple slot, a
-	// contains element, a patternProperties value, and whatever those hold in
-	// turn. The loop above can only name a member of this object; these are
-	// paths down to one. Until issue #219 the flag reached none of them, and a
-	// writeOnly secret one level below a struct field was written straight back
-	// out. See _accessStripWriteOnly.
-	{
-		_out, err := json.Marshal(obj)
-		if err != nil {
-			return nil, err
-		}
-		return _accessStripWriteOnly(_out, {{$struct.AccessRulesVar}})
-	}
-	{{- else}}
-	return json.Marshal(obj)
-	{{- end}}
-	{{- else}}
-	return json.Marshal(aux)
-	{{- end}}
-	{{- end}}
+	return _b, nil
 }
 {{- end}}

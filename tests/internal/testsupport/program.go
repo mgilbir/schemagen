@@ -25,14 +25,16 @@ func ExtractRootTypeNameFromCode(code string) string {
 		}
 	}
 
-	// Fallback: find the last struct with JSON-tagged fields.
+	// Fallback: find the last struct with JSON-tagged fields. Only a
+	// declaration at the top level of the file is a candidate: a decoder
+	// declares `type Alias T` inside its own body, which no caller can name.
 	var lastType string
 	var currentType string
 	var hasJSONTag bool
 
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "type ") && strings.Contains(trimmed, " struct {") {
+		if strings.HasPrefix(line, "type ") && strings.Contains(trimmed, " struct {") {
 			parts := strings.Fields(trimmed)
 			if len(parts) >= 2 {
 				currentType = parts[1]
@@ -54,7 +56,7 @@ func ExtractRootTypeNameFromCode(code string) string {
 		// Fallback: just find the last struct
 		for _, line := range lines {
 			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "type ") && strings.Contains(trimmed, " struct {") {
+			if strings.HasPrefix(line, "type ") && strings.Contains(trimmed, " struct {") {
 				parts := strings.Fields(trimmed)
 				if len(parts) >= 2 {
 					lastType = parts[1]
@@ -68,7 +70,7 @@ func ExtractRootTypeNameFromCode(code string) string {
 		var lastAlias string
 		for _, line := range lines {
 			trimmed := strings.TrimSpace(line)
-			if strings.HasPrefix(trimmed, "type ") && !strings.Contains(trimmed, " struct {") && !strings.Contains(trimmed, " interface {") {
+			if strings.HasPrefix(line, "type ") && !strings.Contains(trimmed, " struct {") && !strings.Contains(trimmed, " interface {") {
 				parts := strings.Fields(trimmed)
 				if len(parts) >= 3 {
 					lastAlias = parts[1]
@@ -110,13 +112,31 @@ func GoCmd(t *testing.T, dir string, env []string, args ...string) ([]byte, erro
 // 3. Marshals back to JSON
 // 4. Compares original and round-tripped JSON for semantic equality
 func GenerateRoundTripMain(rootType string) string {
+	return GenerateRoundTripMainChecking(rootType, false)
+}
+
+// GenerateRoundTripMainChecking is GenerateRoundTripMain, which with
+// checkIdentity also holds every value the fixture decodes into to its identity
+// being that of what MarshalJSON writes; the package then carries
+// IdentityCheckSource("main").
+func GenerateRoundTripMainChecking(rootType string, checkIdentity bool) string {
+	imports, identity := "", ""
+	if checkIdentity {
+		imports = "\n\t\"strings\""
+		identity = `
+	if diffs, _, _ := SchemagenIdentityDiffs(&obj); len(diffs) > 0 {
+		fmt.Fprintf(os.Stderr, "IDENTITY MISMATCH\n%s\n", strings.Join(diffs, "\n"))
+		os.Exit(1)
+	}
+`
+	}
 	return fmt.Sprintf(`package main
 
 import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"reflect"
+	"reflect"%s
 )
 
 func main() {
@@ -158,8 +178,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Round-tripped: %%s\n", string(roundTripped))
 		os.Exit(1)
 	}
-
+%s
 	fmt.Println("PASS")
 }
-`, rootType)
+`, imports, rootType, identity)
 }

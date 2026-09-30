@@ -12,19 +12,33 @@ type Never struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *Never) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *Never) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = Never{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n Never) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n Never) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n Never) Raw() json.RawMessage { return append(json.RawMessage(nil), n._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -48,19 +62,33 @@ type NeverEnum struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NeverEnum) UnmarshalJSON(data []byte) error {
-	n._raw = append(n._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever n held.
+func (n *NeverEnum) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NeverEnum{}
+	n._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (n NeverEnum) MarshalJSON() ([]byte, error) {
 	if len(n._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return n._raw, nil
+	return append([]byte(nil), n._raw...), nil
 }
 
-func (n NeverEnum) Raw() json.RawMessage { return n._raw }
+// Raw returns a copy of the value's bytes.
+func (n NeverEnum) Raw() json.RawMessage { return append(json.RawMessage(nil), n._raw...) }
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -84,64 +112,100 @@ type NeverWithK struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NeverWithK) UnmarshalJSON(data []byte) error {
-	n.AdditionalProperties = nil
-	n._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into n, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever n held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (n *NeverWithK) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NeverWithK{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias NeverWithK
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(n),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*NeverWithK)(nil)))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
-	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
-		}
-		n._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			n._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-			if n.AdditionalProperties == nil {
-				n.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			n.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	n._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		n._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	n.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (n NeverWithK) MarshalJSON() ([]byte, error) {
-	type Alias NeverWithK
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(n),
+	_b, _err := n.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends n to _b as JSON. See jsonEnc.
+func (n NeverWithK) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := n.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range n.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, n.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members n's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (n NeverWithK) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of n numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (n NeverWithK) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks NeverWithK against its JSON Schema constraints.
@@ -158,64 +222,100 @@ type NoNames struct {
 	_jsonKeys            map[string]bool            // set by UnmarshalJSON for optional field / dependentSchemas validation
 }
 
+// UnmarshalJSON replaces n with the value the document holds. See
+// decodeJSONAt.
 func (n *NoNames) UnmarshalJSON(data []byte) error {
-	n.AdditionalProperties = nil
-	n._jsonKeys = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(n.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into n, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever n held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (n *NoNames) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*n = NoNames{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias NoNames
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(n),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*NoNames)(nil)))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
-	}
-	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
-		}
-		n._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			n._jsonKeys[_k] = true
-		}
-		knownFields := map[string]bool{}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-			if n.AdditionalProperties == nil {
-				n.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			n.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	n._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		n._jsonKeys[_k] = true
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	n.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (n NoNames) MarshalJSON() ([]byte, error) {
-	type Alias NoNames
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(n),
+	_b, _err := n.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends n to _b as JSON. See jsonEnc.
+func (n NoNames) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := n.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range n.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, n.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members n's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (n NoNames) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of n numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (n NoNames) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks NoNames against its JSON Schema constraints.
@@ -246,19 +346,35 @@ type InlineForbiddingPositionsEmptyEnumAllOf struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositionsEmptyEnumAllOf) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *InlineForbiddingPositionsEmptyEnumAllOf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositionsEmptyEnumAllOf{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i InlineForbiddingPositionsEmptyEnumAllOf) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i InlineForbiddingPositionsEmptyEnumAllOf) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i InlineForbiddingPositionsEmptyEnumAllOf) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -282,19 +398,35 @@ type InlineForbiddingPositionsEmptyEnumAnyOf struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositionsEmptyEnumAnyOf) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *InlineForbiddingPositionsEmptyEnumAnyOf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositionsEmptyEnumAnyOf{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i InlineForbiddingPositionsEmptyEnumAnyOf) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i InlineForbiddingPositionsEmptyEnumAnyOf) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i InlineForbiddingPositionsEmptyEnumAnyOf) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -321,19 +453,35 @@ type InlineForbiddingPositionsEmptyEnumBranch struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositionsEmptyEnumBranch) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *InlineForbiddingPositionsEmptyEnumBranch) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositionsEmptyEnumBranch{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i InlineForbiddingPositionsEmptyEnumBranch) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i InlineForbiddingPositionsEmptyEnumBranch) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i InlineForbiddingPositionsEmptyEnumBranch) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -359,8 +507,13 @@ func (i InlineForbiddingPositionsEmptyEnumBranch) Validate() error {
 	if len(i._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(i._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(i._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -377,19 +530,35 @@ type InlineForbiddingPositionsEmptyEnumItemsItem struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositionsEmptyEnumItemsItem) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *InlineForbiddingPositionsEmptyEnumItemsItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositionsEmptyEnumItemsItem{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i InlineForbiddingPositionsEmptyEnumItemsItem) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i InlineForbiddingPositionsEmptyEnumItemsItem) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i InlineForbiddingPositionsEmptyEnumItemsItem) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -411,95 +580,135 @@ func (i InlineForbiddingPositionsEmptyEnumItemsItem) Validate() error {
 type InlineForbiddingPositionsEmptyEnumPattern struct {
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	PatternProperties    map[string]json.RawMessage `json:"-"`
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositionsEmptyEnumPattern) UnmarshalJSON(data []byte) error {
-	i.AdditionalProperties = nil
-	i.PatternProperties = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into i, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever i held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (i *InlineForbiddingPositionsEmptyEnumPattern) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositionsEmptyEnumPattern{}
+	i._doc = _d
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	type Alias InlineForbiddingPositionsEmptyEnumPattern
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(i),
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*InlineForbiddingPositionsEmptyEnumPattern)(nil)))
 	}
-
-	if err := json.Unmarshal(data, aux); err != nil {
-		return jsonDecodeRefusal(err)
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
+		}
 	}
+	var _ppFiled map[string]json.RawMessage
+	var _apFiled map[string]json.RawMessage
 	{
-		var raw map[string]json.RawMessage
-		if err := json.Unmarshal(data, &raw); err != nil {
-			return err
-		}
-		knownFields := map[string]bool{}
-		{
-			var _least string
-			var _failed error
-			for rawKey, rawVal := range raw { // refused for the least failing key
-				if _failed != nil && rawKey >= _least {
-					continue
+		var _least string
+		var _failed error
+		for rawKey, rawVal := range _raw { // refused for the least failing key
+			if _failed != nil && rawKey >= _least {
+				continue
+			}
+			if _err := func() error {
+				matchesPattern := false
+				if !matchesPattern {
+					_ppMatched, _ppErr := _schemagenPattern_5cd67a1734052155.matches(rawKey)
+					if _ppErr != nil {
+						return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
+					}
+					matchesPattern = _ppMatched
 				}
-				if _err := func() error {
-					if knownFields[rawKey] {
-						return nil
+				if matchesPattern {
+					if _ppFiled == nil {
+						_ppFiled = make(map[string]json.RawMessage)
 					}
-					matchesPattern := false
-					if !matchesPattern {
-						_ppMatched, _ppErr := _schemagenPattern_5cd67a1734052155.matches(rawKey)
-						if _ppErr != nil {
-							return jsonElemPathf(jsonValueErrorf("%w", _ppErr), "[%s]", _schemagenQuote(rawKey))
-						}
-						matchesPattern = _ppMatched
-					}
-					if matchesPattern {
-						if i.PatternProperties == nil {
-							i.PatternProperties = make(map[string]json.RawMessage)
-						}
-						i.PatternProperties[rawKey] = rawVal
-						return nil
-					}
-					if i.AdditionalProperties == nil {
-						i.AdditionalProperties = make(map[string]json.RawMessage)
-					}
-					i.AdditionalProperties[rawKey] = rawVal
+					_ppFiled[rawKey] = _d.copyOf(rawVal)
 					return nil
-				}(); _err != nil {
-					_least, _failed = rawKey, _err
 				}
+				if _apFiled == nil {
+					_apFiled = make(map[string]json.RawMessage)
+				}
+				_apFiled[rawKey] = _d.copyOf(rawVal)
+				return nil
+			}(); _err != nil {
+				_least, _failed = rawKey, _err
 			}
-			if _failed != nil {
-				return _failed
-			}
+		}
+		if _failed != nil {
+			return _failed
 		}
 	}
+	i.PatternProperties = _ppFiled
+	i.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (i InlineForbiddingPositionsEmptyEnumPattern) MarshalJSON() ([]byte, error) {
-	type Alias InlineForbiddingPositionsEmptyEnumPattern
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(i),
+	_b, _err := i.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends i to _b as JSON. See jsonEnc.
+func (i InlineForbiddingPositionsEmptyEnumPattern) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := i.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range i.PatternProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
 	for _key, _member := range i.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, i.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members i's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (i InlineForbiddingPositionsEmptyEnumPattern) encodeFieldsJSON(_o *jsonObj) error {
+	return nil
+}
+
+// appendMemberJSON writes the member of i numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (i InlineForbiddingPositionsEmptyEnumPattern) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks InlineForbiddingPositionsEmptyEnumPattern against its JSON Schema constraints.
@@ -545,125 +754,160 @@ type InlineForbiddingPositionsEmptyEnumUnevalProps struct {
 	K                    any                        `json:"k,omitempty"`
 	AdditionalProperties map[string]json.RawMessage `json:"-"`
 	_jsonNulls           map[string]bool            // set by UnmarshalJSON for the properties written as null, which the decoded value cannot hold
+	_doc                 *jsonDoc                   // set by UnmarshalJSON: the document the raw members are views of, which Validate reads them through
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositionsEmptyEnumUnevalProps) UnmarshalJSON(data []byte) error {
-	i.AdditionalProperties = nil
-	i._jsonNulls = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into i, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever i held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (i *InlineForbiddingPositionsEmptyEnumUnevalProps) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositionsEmptyEnumUnevalProps{}
+	i._doc = _d
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"k",
-		); _exact != nil {
-			_decodeData = _exact
-		}
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*InlineForbiddingPositionsEmptyEnumUnevalProps)(nil)))
 	}
-	type Alias InlineForbiddingPositionsEmptyEnumUnevalProps
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(i),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "k", decode: jsonDecodeValue[any]},
-		})
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"k",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if i._jsonNulls == nil {
-					i._jsonNulls = make(map[string]bool, 1)
-				}
-				i._jsonNulls[_nullKey] = true
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
 			}
-		}
-		knownFields := map[string]bool{
-			"k": true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if i.AdditionalProperties == nil {
-				i.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			i.AdditionalProperties[rawKey] = rawVal
+			_raw[_k] = _v
 		}
 	}
+	if _v, _ok := _raw["k"]; _ok {
+		if _err := func(_p *any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[any](_p, _d, _s, jsonDecodeValue[any])
+		}(&i.K, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "k")
+		}
+	}
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"k",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if i._jsonNulls == nil {
+				i._jsonNulls = make(map[string]bool, 1)
+			}
+			i._jsonNulls[_nullKey] = true
+		}
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "k":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	i.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (i InlineForbiddingPositionsEmptyEnumUnevalProps) MarshalJSON() ([]byte, error) {
-	type Alias InlineForbiddingPositionsEmptyEnumUnevalProps
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(i),
+	_b, _err := i.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends i to _b as JSON. See jsonEnc.
+func (i InlineForbiddingPositionsEmptyEnumUnevalProps) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := i.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(i._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range i._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero InlineForbiddingPositionsEmptyEnumUnevalProps
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range i._jsonNulls {
+				_cur, _present, _err := _o.memberBytes(_k, i.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range i.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, i.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members i's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (i InlineForbiddingPositionsEmptyEnumUnevalProps) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(i.K)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("k", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of i numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (i InlineForbiddingPositionsEmptyEnumUnevalProps) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks InlineForbiddingPositionsEmptyEnumUnevalProps against its JSON Schema constraints.
@@ -707,19 +951,35 @@ type InlineForbiddingPositionsEmptyEnumValuesValue struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositionsEmptyEnumValuesValue) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *InlineForbiddingPositionsEmptyEnumValuesValue) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositionsEmptyEnumValuesValue{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i InlineForbiddingPositionsEmptyEnumValuesValue) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i InlineForbiddingPositionsEmptyEnumValuesValue) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i InlineForbiddingPositionsEmptyEnumValuesValue) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -743,19 +1003,35 @@ type InlineForbiddingPositionsFalseItemsItem struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositionsFalseItemsItem) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *InlineForbiddingPositionsFalseItemsItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositionsFalseItemsItem{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i InlineForbiddingPositionsFalseItemsItem) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i InlineForbiddingPositionsFalseItemsItem) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i InlineForbiddingPositionsFalseItemsItem) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -779,19 +1055,35 @@ type InlineForbiddingPositionsInferredEmptyEnumItemsItem struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositionsInferredEmptyEnumItemsItem) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *InlineForbiddingPositionsInferredEmptyEnumItemsItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositionsInferredEmptyEnumItemsItem{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i InlineForbiddingPositionsInferredEmptyEnumItemsItem) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i InlineForbiddingPositionsInferredEmptyEnumItemsItem) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i InlineForbiddingPositionsInferredEmptyEnumItemsItem) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -818,9 +1110,10 @@ type InlineForbiddingPositionsInferredEmptyEnumItems struct {
 }
 
 func (i *InlineForbiddingPositionsInferredEmptyEnumItems) UnmarshalJSON(data []byte) error {
+	*i = InlineForbiddingPositionsInferredEmptyEnumItems{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		i._raw = append(i._raw[:0], data...)
+		i._raw = append(json.RawMessage(nil), data...)
 		i._isRaw = true
 		return nil
 	}
@@ -829,8 +1122,15 @@ func (i *InlineForbiddingPositionsInferredEmptyEnumItems) UnmarshalJSON(data []b
 		i._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	i._raw = append(i._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	i._raw = append(json.RawMessage(nil), data...)
 	i._isRaw = true
 	return nil
 }
@@ -839,7 +1139,9 @@ func (i InlineForbiddingPositionsInferredEmptyEnumItems) MarshalJSON() ([]byte, 
 		if len(i._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return i._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), i._raw...), nil
 	}
 	return json.Marshal(i._value)
 }
@@ -847,7 +1149,7 @@ func (i InlineForbiddingPositionsInferredEmptyEnumItems) Slice() []any  { return
 func (i InlineForbiddingPositionsInferredEmptyEnumItems) IsArray() bool { return !i._isRaw }
 func (i InlineForbiddingPositionsInferredEmptyEnumItems) Raw() json.RawMessage {
 	if i._isRaw {
-		return i._raw
+		return append(json.RawMessage(nil), i._raw...)
 	}
 	_b, _ := json.Marshal(i._value)
 	return _b
@@ -879,9 +1181,10 @@ type InlineForbiddingPositionsInferredEmptyEnumSlot struct {
 }
 
 func (i *InlineForbiddingPositionsInferredEmptyEnumSlot) UnmarshalJSON(data []byte) error {
+	*i = InlineForbiddingPositionsInferredEmptyEnumSlot{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		i._raw = append(i._raw[:0], data...)
+		i._raw = append(json.RawMessage(nil), data...)
 		i._isRaw = true
 		return nil
 	}
@@ -890,8 +1193,15 @@ func (i *InlineForbiddingPositionsInferredEmptyEnumSlot) UnmarshalJSON(data []by
 		i._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	i._raw = append(i._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	i._raw = append(json.RawMessage(nil), data...)
 	i._isRaw = true
 	return nil
 }
@@ -900,7 +1210,9 @@ func (i InlineForbiddingPositionsInferredEmptyEnumSlot) MarshalJSON() ([]byte, e
 		if len(i._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return i._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), i._raw...), nil
 	}
 	return json.Marshal(i._value)
 }
@@ -908,7 +1220,7 @@ func (i InlineForbiddingPositionsInferredEmptyEnumSlot) Slice() []any  { return 
 func (i InlineForbiddingPositionsInferredEmptyEnumSlot) IsArray() bool { return !i._isRaw }
 func (i InlineForbiddingPositionsInferredEmptyEnumSlot) Raw() json.RawMessage {
 	if i._isRaw {
-		return i._raw
+		return append(json.RawMessage(nil), i._raw...)
 	}
 	_b, _ := json.Marshal(i._value)
 	return _b
@@ -942,9 +1254,10 @@ type InlineForbiddingPositionsInferredEmptyEnumTail struct {
 }
 
 func (i *InlineForbiddingPositionsInferredEmptyEnumTail) UnmarshalJSON(data []byte) error {
+	*i = InlineForbiddingPositionsInferredEmptyEnumTail{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		i._raw = append(i._raw[:0], data...)
+		i._raw = append(json.RawMessage(nil), data...)
 		i._isRaw = true
 		return nil
 	}
@@ -953,8 +1266,15 @@ func (i *InlineForbiddingPositionsInferredEmptyEnumTail) UnmarshalJSON(data []by
 		i._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	i._raw = append(i._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	i._raw = append(json.RawMessage(nil), data...)
 	i._isRaw = true
 	return nil
 }
@@ -963,7 +1283,9 @@ func (i InlineForbiddingPositionsInferredEmptyEnumTail) MarshalJSON() ([]byte, e
 		if len(i._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return i._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), i._raw...), nil
 	}
 	return json.Marshal(i._value)
 }
@@ -971,7 +1293,7 @@ func (i InlineForbiddingPositionsInferredEmptyEnumTail) Slice() []any  { return 
 func (i InlineForbiddingPositionsInferredEmptyEnumTail) IsArray() bool { return !i._isRaw }
 func (i InlineForbiddingPositionsInferredEmptyEnumTail) Raw() json.RawMessage {
 	if i._isRaw {
-		return i._raw
+		return append(json.RawMessage(nil), i._raw...)
 	}
 	_b, _ := json.Marshal(i._value)
 	return _b
@@ -1002,19 +1324,35 @@ type InlineForbiddingPositionsNestedFalseItemsItemItem struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositionsNestedFalseItemsItemItem) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *InlineForbiddingPositionsNestedFalseItemsItemItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositionsNestedFalseItemsItemItem{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i InlineForbiddingPositionsNestedFalseItemsItemItem) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i InlineForbiddingPositionsNestedFalseItemsItemItem) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i InlineForbiddingPositionsNestedFalseItemsItemItem) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1041,19 +1379,35 @@ type InlineForbiddingPositionsNotAnyOfEmptyEnum struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositionsNotAnyOfEmptyEnum) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *InlineForbiddingPositionsNotAnyOfEmptyEnum) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositionsNotAnyOfEmptyEnum{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i InlineForbiddingPositionsNotAnyOfEmptyEnum) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i InlineForbiddingPositionsNotAnyOfEmptyEnum) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i InlineForbiddingPositionsNotAnyOfEmptyEnum) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1074,8 +1428,13 @@ func (i InlineForbiddingPositionsNotAnyOfEmptyEnum) Validate() error {
 	if len(i._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(i._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(i._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -1095,19 +1454,35 @@ type InlineForbiddingPositionsNotEmptyEnum struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositionsNotEmptyEnum) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *InlineForbiddingPositionsNotEmptyEnum) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositionsNotEmptyEnum{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i InlineForbiddingPositionsNotEmptyEnum) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i InlineForbiddingPositionsNotEmptyEnum) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i InlineForbiddingPositionsNotEmptyEnum) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1128,8 +1503,13 @@ func (i InlineForbiddingPositionsNotEmptyEnum) Validate() error {
 	if len(i._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(i._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(i._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -1149,19 +1529,35 @@ type InlineForbiddingPositionsNotEmptyEnumBound struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositionsNotEmptyEnumBound) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *InlineForbiddingPositionsNotEmptyEnumBound) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositionsNotEmptyEnumBound{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i InlineForbiddingPositionsNotEmptyEnumBound) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i InlineForbiddingPositionsNotEmptyEnumBound) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i InlineForbiddingPositionsNotEmptyEnumBound) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1182,8 +1578,13 @@ func (i InlineForbiddingPositionsNotEmptyEnumBound) Validate() error {
 	if len(i._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(i._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(i._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -1200,19 +1601,35 @@ type InlineForbiddingPositionsNotEmptyItemsItem struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositionsNotEmptyItemsItem) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *InlineForbiddingPositionsNotEmptyItemsItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositionsNotEmptyItemsItem{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i InlineForbiddingPositionsNotEmptyItemsItem) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i InlineForbiddingPositionsNotEmptyItemsItem) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i InlineForbiddingPositionsNotEmptyItemsItem) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1239,19 +1656,35 @@ type InlineForbiddingPositionsNotTypedConst struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositionsNotTypedConst) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *InlineForbiddingPositionsNotTypedConst) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositionsNotTypedConst{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i InlineForbiddingPositionsNotTypedConst) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i InlineForbiddingPositionsNotTypedConst) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i InlineForbiddingPositionsNotTypedConst) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1275,8 +1708,13 @@ func (i InlineForbiddingPositionsNotTypedConst) Validate() error {
 	if len(i._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(i._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(i._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -1296,19 +1734,35 @@ type InlineForbiddingPositionsNotTypedEmptyEnum struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositionsNotTypedEmptyEnum) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *InlineForbiddingPositionsNotTypedEmptyEnum) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositionsNotTypedEmptyEnum{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i InlineForbiddingPositionsNotTypedEmptyEnum) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i InlineForbiddingPositionsNotTypedEmptyEnum) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i InlineForbiddingPositionsNotTypedEmptyEnum) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1329,8 +1783,13 @@ func (i InlineForbiddingPositionsNotTypedEmptyEnum) Validate() error {
 	if len(i._raw) == 0 {
 		return nil
 	}
-	var _v any
-	if _err := json.Unmarshal(i._raw, &_v); _err != nil {
+	// Read one level at a time (see jsonLazy), as the evaluator asks for each
+	// level. Decoded whole, the value was an any the evaluator's checks that
+	// compare values -- uniqueItems, const, enum -- read the identity of afresh at
+	// every level of a document; read off a document, what one level computes is
+	// kept there for the next (see jsonLazy.jsonDocID).
+	_v, _err := jsonReadLazily(i._raw)
+	if _err != nil {
 		// A sentence about the value, joined by the same rule as the verdict
 		// below. Structural: the raw bytes came from a decoder that had already
 		// accepted them as JSON, so nothing has been seen to reach this.
@@ -1347,19 +1806,35 @@ type InlineForbiddingPositionsNullableEmptyEnumValuesValue struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositionsNullableEmptyEnumValuesValue) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *InlineForbiddingPositionsNullableEmptyEnumValuesValue) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositionsNullableEmptyEnumValuesValue{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i InlineForbiddingPositionsNullableEmptyEnumValuesValue) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i InlineForbiddingPositionsNullableEmptyEnumValuesValue) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i InlineForbiddingPositionsNullableEmptyEnumValuesValue) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1383,19 +1858,35 @@ type InlineForbiddingPositionsNullableFalseItemsItem struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositionsNullableFalseItemsItem) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *InlineForbiddingPositionsNullableFalseItemsItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositionsNullableFalseItemsItem{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i InlineForbiddingPositionsNullableFalseItemsItem) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i InlineForbiddingPositionsNullableFalseItemsItem) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i InlineForbiddingPositionsNullableFalseItemsItem) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1436,19 +1927,35 @@ type InlineForbiddingPositionsRefEmptyEnumAnyOf struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositionsRefEmptyEnumAnyOf) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *InlineForbiddingPositionsRefEmptyEnumAnyOf) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositionsRefEmptyEnumAnyOf{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i InlineForbiddingPositionsRefEmptyEnumAnyOf) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i InlineForbiddingPositionsRefEmptyEnumAnyOf) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i InlineForbiddingPositionsRefEmptyEnumAnyOf) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1472,19 +1979,35 @@ type InlineForbiddingPositionsTypedEmptyEnumItemsItem struct {
 	_raw json.RawMessage
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositionsTypedEmptyEnumItemsItem) UnmarshalJSON(data []byte) error {
-	i._raw = append(i._raw[:0], data...)
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt keeps the value at _sp, replacing whatever i held.
+func (i *InlineForbiddingPositionsTypedEmptyEnumItemsItem) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositionsTypedEmptyEnumItemsItem{}
+	i._raw = _d.keep(_sp)
 	return nil
 }
 
+// MarshalJSON writes the value back as the document wrote it.
 func (i InlineForbiddingPositionsTypedEmptyEnumItemsItem) MarshalJSON() ([]byte, error) {
 	if len(i._raw) == 0 {
 		return []byte("null"), nil
 	}
-	return i._raw, nil
+	return append([]byte(nil), i._raw...), nil
 }
 
-func (i InlineForbiddingPositionsTypedEmptyEnumItemsItem) Raw() json.RawMessage { return i._raw }
+// Raw returns a copy of the value's bytes.
+func (i InlineForbiddingPositionsTypedEmptyEnumItemsItem) Raw() json.RawMessage {
+	return append(json.RawMessage(nil), i._raw...)
+}
 
 // IsZero reports whether no value was present, so an optional field tagged
 // ",omitzero" is omitted when absent rather than marshalled as null.
@@ -1541,301 +2064,805 @@ type InlineForbiddingPositions struct {
 	ViaRefFalse             []Never                                                          `json:"viaRefFalse,omitzero"`
 }
 
+// UnmarshalJSON replaces i with the value the document holds. See
+// decodeJSONAt.
 func (i *InlineForbiddingPositions) UnmarshalJSON(data []byte) error {
-	i.AdditionalProperties = nil
-	i._jsonKeys = nil
-	i._jsonNulls = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(i.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into i, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever i held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (i *InlineForbiddingPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*i = InlineForbiddingPositions{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"emptyEnumAllOf",
-			"emptyEnumAnyOf",
-			"emptyEnumBranch",
-			"emptyEnumContains",
-			"emptyEnumDependent",
-			"emptyEnumItems",
-			"emptyEnumNames",
-			"emptyEnumPattern",
-			"emptyEnumSlot",
-			"emptyEnumUnevalItems",
-			"emptyEnumUnevalProps",
-			"emptyEnumValues",
-			"falseItems",
-			"inferredEmptyEnumItems",
-			"inferredEmptyEnumSlot",
-			"inferredEmptyEnumTail",
-			"nestedFalseItems",
-			"notAnyOfEmptyEnum",
-			"notEmptyEnum",
-			"notEmptyEnumBound",
-			"notEmptyItems",
-			"notTypedConst",
-			"notTypedEmptyEnum",
-			"nullableEmptyEnumValues",
-			"nullableFalseItems",
-			"okEnumItems",
-			"plainItems",
-			"refEmptyEnumAnyOf",
-			"typedEmptyEnumItems",
-			"viaRefEmptyEnum",
-			"viaRefFalse",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*InlineForbiddingPositions)(nil)))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias InlineForbiddingPositions
-	aux := &struct {
-		*Alias
-	}{
-		Alias: (*Alias)(i),
+	if _v, _ok := _raw["emptyEnumAllOf"]; _ok {
+		if _err := func(_p *InlineForbiddingPositionsEmptyEnumAllOf, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*InlineForbiddingPositionsEmptyEnumAllOf).decodeJSONAt(_p, _d, _s))
+		}(&i.EmptyEnumAllOf, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "emptyEnumAllOf")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "emptyEnumAllOf", decode: jsonDecodeValue[InlineForbiddingPositionsEmptyEnumAllOf]},
-			{name: "emptyEnumAnyOf", decode: jsonDecodeValue[InlineForbiddingPositionsEmptyEnumAnyOf]},
-			{name: "emptyEnumBranch", decode: jsonDecodeValue[InlineForbiddingPositionsEmptyEnumBranch]},
-			{name: "emptyEnumContains", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "emptyEnumDependent", decode: jsonDecodeValue[*NeverWithK]},
-			{name: "emptyEnumItems", decode: jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsEmptyEnumItemsItem])},
-			{name: "emptyEnumNames", decode: jsonDecodeValue[*NoNames]},
-			{name: "emptyEnumPattern", decode: jsonDecodeValue[*InlineForbiddingPositionsEmptyEnumPattern]},
-			{name: "emptyEnumSlot", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "emptyEnumUnevalItems", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "emptyEnumUnevalProps", decode: jsonDecodeValue[*InlineForbiddingPositionsEmptyEnumUnevalProps]},
-			{name: "emptyEnumValues", decode: jsonDecodeValues(jsonDecodeValue[InlineForbiddingPositionsEmptyEnumValuesValue])},
-			{name: "falseItems", decode: jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsFalseItemsItem])},
-			{name: "inferredEmptyEnumItems", decode: jsonDecodeValue[*InlineForbiddingPositionsInferredEmptyEnumItems]},
-			{name: "inferredEmptyEnumSlot", decode: jsonDecodeValue[*InlineForbiddingPositionsInferredEmptyEnumSlot]},
-			{name: "inferredEmptyEnumTail", decode: jsonDecodeValue[*InlineForbiddingPositionsInferredEmptyEnumTail]},
-			{name: "nestedFalseItems", decode: jsonDecodeItems(jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsNestedFalseItemsItemItem]))},
-			{name: "notAnyOfEmptyEnum", decode: jsonDecodeValue[InlineForbiddingPositionsNotAnyOfEmptyEnum]},
-			{name: "notEmptyEnum", decode: jsonDecodeValue[InlineForbiddingPositionsNotEmptyEnum]},
-			{name: "notEmptyEnumBound", decode: jsonDecodeValue[InlineForbiddingPositionsNotEmptyEnumBound]},
-			{name: "notEmptyItems", decode: jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsNotEmptyItemsItem])},
-			{name: "notTypedConst", decode: jsonDecodeValue[InlineForbiddingPositionsNotTypedConst]},
-			{name: "notTypedEmptyEnum", decode: jsonDecodeValue[InlineForbiddingPositionsNotTypedEmptyEnum]},
-			{name: "nullableEmptyEnumValues", decode: jsonDecodeValues(jsonDecodeValue[InlineForbiddingPositionsNullableEmptyEnumValuesValue])},
-			{name: "nullableFalseItems", decode: jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsNullableFalseItemsItem])},
-			{name: "okEnumItems", decode: jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsOkEnumItemsItem])},
-			{name: "plainItems", decode: jsonDecodeItems(jsonDecodeValue[string])},
-			{name: "refEmptyEnumAnyOf", decode: jsonDecodeValue[InlineForbiddingPositionsRefEmptyEnumAnyOf]},
-			{name: "typedEmptyEnumItems", decode: jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsTypedEmptyEnumItemsItem])},
-			{name: "viaRefEmptyEnum", decode: jsonDecodeItems(jsonDecodeValue[NeverEnum])},
-			{name: "viaRefFalse", decode: jsonDecodeItems(jsonDecodeValue[Never])},
-		})
+	if _v, _ok := _raw["emptyEnumAnyOf"]; _ok {
+		if _err := func(_p *InlineForbiddingPositionsEmptyEnumAnyOf, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*InlineForbiddingPositionsEmptyEnumAnyOf).decodeJSONAt(_p, _d, _s))
+		}(&i.EmptyEnumAnyOf, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "emptyEnumAnyOf")
+		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
+	if _v, _ok := _raw["emptyEnumBranch"]; _ok {
+		if _err := func(_p *InlineForbiddingPositionsEmptyEnumBranch, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*InlineForbiddingPositionsEmptyEnumBranch).decodeJSONAt(_p, _d, _s))
+		}(&i.EmptyEnumBranch, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "emptyEnumBranch")
 		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"emptyEnumAllOf",
-			"emptyEnumAnyOf",
-			"emptyEnumBranch",
-			"emptyEnumContains",
-			"emptyEnumDependent",
-			"emptyEnumNames",
-			"emptyEnumPattern",
-			"emptyEnumSlot",
-			"emptyEnumUnevalItems",
-			"emptyEnumUnevalProps",
-			"notEmptyItems",
-			"refEmptyEnumAnyOf",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
+	}
+	if _v, _ok := _raw["emptyEnumContains"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&i.EmptyEnumContains, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "emptyEnumContains")
 		}
-		if _v, ok := raw["emptyEnumItems"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "emptyEnumItems")
-			}
-		}
-		if _v, ok := raw["emptyEnumValues"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "emptyEnumValues")
-			}
-		}
-		if _v, ok := raw["falseItems"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "falseItems")
-			}
-		}
-		if _v, ok := raw["nestedFalseItems"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}}); err != nil {
-				return jsonPathf(err, "%s", "nestedFalseItems")
-			}
-		}
-		if _v, ok := raw["nullableEmptyEnumValues"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "nullableEmptyEnumValues")
-			}
-		}
-		if _v, ok := raw["nullableFalseItems"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "nullableFalseItems")
-			}
-		}
-		if _v, ok := raw["okEnumItems"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "okEnumItems")
-			}
-		}
-		if _v, ok := raw["plainItems"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "plainItems")
-			}
-		}
-		if _v, ok := raw["typedEmptyEnumItems"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "typedEmptyEnumItems")
-			}
-		}
-		if _v, ok := raw["viaRefEmptyEnum"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "viaRefEmptyEnum")
-			}
-		}
-		if _v, ok := raw["viaRefFalse"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "viaRefFalse")
-			}
-		}
-		i._jsonKeys = make(map[string]bool, len(raw))
-		for _k := range raw {
-			i._jsonKeys[_k] = true
-		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"inferredEmptyEnumItems",
-			"inferredEmptyEnumSlot",
-			"inferredEmptyEnumTail",
-			"nullableEmptyEnumValues",
-			"nullableFalseItems",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if i._jsonNulls == nil {
-					i._jsonNulls = make(map[string]bool, 1)
+	}
+	if _v, _ok := _raw["emptyEnumDependent"]; _ok {
+		if _err := func(_p **NeverWithK, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **NeverWithK, _d *jsonDoc, _s jsonSpan) error {
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
 				}
-				i._jsonNulls[_nullKey] = true
-			}
-		}
-		knownFields := map[string]bool{
-			"emptyEnumAllOf":          true,
-			"emptyEnumAnyOf":          true,
-			"emptyEnumBranch":         true,
-			"emptyEnumContains":       true,
-			"emptyEnumDependent":      true,
-			"emptyEnumItems":          true,
-			"emptyEnumNames":          true,
-			"emptyEnumPattern":        true,
-			"emptyEnumSlot":           true,
-			"emptyEnumUnevalItems":    true,
-			"emptyEnumUnevalProps":    true,
-			"emptyEnumValues":         true,
-			"falseItems":              true,
-			"inferredEmptyEnumItems":  true,
-			"inferredEmptyEnumSlot":   true,
-			"inferredEmptyEnumTail":   true,
-			"nestedFalseItems":        true,
-			"notAnyOfEmptyEnum":       true,
-			"notEmptyEnum":            true,
-			"notEmptyEnumBound":       true,
-			"notEmptyItems":           true,
-			"notTypedConst":           true,
-			"notTypedEmptyEnum":       true,
-			"nullableEmptyEnumValues": true,
-			"nullableFalseItems":      true,
-			"okEnumItems":             true,
-			"plainItems":              true,
-			"refEmptyEnumAnyOf":       true,
-			"typedEmptyEnumItems":     true,
-			"viaRefEmptyEnum":         true,
-			"viaRefFalse":             true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if i.AdditionalProperties == nil {
-				i.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			i.AdditionalProperties[rawKey] = rawVal
+				_v := new(NeverWithK)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
+			}(_p, _d, _s))
+		}(&i.EmptyEnumDependent, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "emptyEnumDependent")
 		}
 	}
+	if _v, _ok := _raw["emptyEnumItems"]; _ok {
+		if _err := func(_p *[]InlineForbiddingPositionsEmptyEnumItemsItem, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeSlice[InlineForbiddingPositionsEmptyEnumItemsItem](_p, _d, _s, func(_p *InlineForbiddingPositionsEmptyEnumItemsItem, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*InlineForbiddingPositionsEmptyEnumItemsItem).decodeJSONAt(_p, _d, _s))
+			})
+		}(&i.EmptyEnumItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "emptyEnumItems")
+		}
+	}
+	if _v, _ok := _raw["emptyEnumNames"]; _ok {
+		if _err := func(_p **NoNames, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **NoNames, _d *jsonDoc, _s jsonSpan) error {
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(NoNames)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
+			}(_p, _d, _s))
+		}(&i.EmptyEnumNames, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "emptyEnumNames")
+		}
+	}
+	if _v, _ok := _raw["emptyEnumPattern"]; _ok {
+		if _err := func(_p **InlineForbiddingPositionsEmptyEnumPattern, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **InlineForbiddingPositionsEmptyEnumPattern, _d *jsonDoc, _s jsonSpan) error {
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(InlineForbiddingPositionsEmptyEnumPattern)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
+			}(_p, _d, _s))
+		}(&i.EmptyEnumPattern, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "emptyEnumPattern")
+		}
+	}
+	if _v, _ok := _raw["emptyEnumSlot"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&i.EmptyEnumSlot, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "emptyEnumSlot")
+		}
+	}
+	if _v, _ok := _raw["emptyEnumUnevalItems"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&i.EmptyEnumUnevalItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "emptyEnumUnevalItems")
+		}
+	}
+	if _v, _ok := _raw["emptyEnumUnevalProps"]; _ok {
+		if _err := func(_p **InlineForbiddingPositionsEmptyEnumUnevalProps, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal(func(_p **InlineForbiddingPositionsEmptyEnumUnevalProps, _d *jsonDoc, _s jsonSpan) error {
+				if _d.isNull(_s) {
+					*_p = nil
+					return nil
+				}
+				_v := new(InlineForbiddingPositionsEmptyEnumUnevalProps)
+				*_p = _v
+				return _v.decodeJSONAt(_d, _s)
+			}(_p, _d, _s))
+		}(&i.EmptyEnumUnevalProps, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "emptyEnumUnevalProps")
+		}
+	}
+	if _v, _ok := _raw["emptyEnumValues"]; _ok {
+		if _err := func(_p *map[string]InlineForbiddingPositionsEmptyEnumValuesValue, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeMap[InlineForbiddingPositionsEmptyEnumValuesValue](_p, _d, _s, func(_p *InlineForbiddingPositionsEmptyEnumValuesValue, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*InlineForbiddingPositionsEmptyEnumValuesValue).decodeJSONAt(_p, _d, _s))
+			})
+		}(&i.EmptyEnumValues, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "emptyEnumValues")
+		}
+	}
+	if _v, _ok := _raw["falseItems"]; _ok {
+		if _err := func(_p *[]InlineForbiddingPositionsFalseItemsItem, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeSlice[InlineForbiddingPositionsFalseItemsItem](_p, _d, _s, func(_p *InlineForbiddingPositionsFalseItemsItem, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*InlineForbiddingPositionsFalseItemsItem).decodeJSONAt(_p, _d, _s))
+			})
+		}(&i.FalseItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "falseItems")
+		}
+	}
+	if _v, _ok := _raw["inferredEmptyEnumItems"]; _ok {
+		if _err := func(_p **InlineForbiddingPositionsInferredEmptyEnumItems, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*InlineForbiddingPositionsInferredEmptyEnumItems](_p, _d, _s, jsonDecodeValue[*InlineForbiddingPositionsInferredEmptyEnumItems])
+		}(&i.InferredEmptyEnumItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "inferredEmptyEnumItems")
+		}
+	}
+	if _v, _ok := _raw["inferredEmptyEnumSlot"]; _ok {
+		if _err := func(_p **InlineForbiddingPositionsInferredEmptyEnumSlot, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*InlineForbiddingPositionsInferredEmptyEnumSlot](_p, _d, _s, jsonDecodeValue[*InlineForbiddingPositionsInferredEmptyEnumSlot])
+		}(&i.InferredEmptyEnumSlot, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "inferredEmptyEnumSlot")
+		}
+	}
+	if _v, _ok := _raw["inferredEmptyEnumTail"]; _ok {
+		if _err := func(_p **InlineForbiddingPositionsInferredEmptyEnumTail, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*InlineForbiddingPositionsInferredEmptyEnumTail](_p, _d, _s, jsonDecodeValue[*InlineForbiddingPositionsInferredEmptyEnumTail])
+		}(&i.InferredEmptyEnumTail, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "inferredEmptyEnumTail")
+		}
+	}
+	if _v, _ok := _raw["nestedFalseItems"]; _ok {
+		if _err := func(_p *[][]InlineForbiddingPositionsNestedFalseItemsItemItem, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeSlice[[]InlineForbiddingPositionsNestedFalseItemsItemItem](_p, _d, _s, func(_p *[]InlineForbiddingPositionsNestedFalseItemsItemItem, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeSlice[InlineForbiddingPositionsNestedFalseItemsItemItem](_p, _d, _s, func(_p *InlineForbiddingPositionsNestedFalseItemsItemItem, _d *jsonDoc, _s jsonSpan) error {
+					return jsonDecodeRefusal((*InlineForbiddingPositionsNestedFalseItemsItemItem).decodeJSONAt(_p, _d, _s))
+				})
+			})
+		}(&i.NestedFalseItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "nestedFalseItems")
+		}
+	}
+	if _v, _ok := _raw["notAnyOfEmptyEnum"]; _ok {
+		if _err := func(_p *InlineForbiddingPositionsNotAnyOfEmptyEnum, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*InlineForbiddingPositionsNotAnyOfEmptyEnum).decodeJSONAt(_p, _d, _s))
+		}(&i.NotAnyOfEmptyEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "notAnyOfEmptyEnum")
+		}
+	}
+	if _v, _ok := _raw["notEmptyEnum"]; _ok {
+		if _err := func(_p *InlineForbiddingPositionsNotEmptyEnum, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*InlineForbiddingPositionsNotEmptyEnum).decodeJSONAt(_p, _d, _s))
+		}(&i.NotEmptyEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "notEmptyEnum")
+		}
+	}
+	if _v, _ok := _raw["notEmptyEnumBound"]; _ok {
+		if _err := func(_p *InlineForbiddingPositionsNotEmptyEnumBound, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*InlineForbiddingPositionsNotEmptyEnumBound).decodeJSONAt(_p, _d, _s))
+		}(&i.NotEmptyEnumBound, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "notEmptyEnumBound")
+		}
+	}
+	if _v, _ok := _raw["notEmptyItems"]; _ok {
+		if _err := func(_p *[]InlineForbiddingPositionsNotEmptyItemsItem, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeSlice[InlineForbiddingPositionsNotEmptyItemsItem](_p, _d, _s, func(_p *InlineForbiddingPositionsNotEmptyItemsItem, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*InlineForbiddingPositionsNotEmptyItemsItem).decodeJSONAt(_p, _d, _s))
+			})
+		}(&i.NotEmptyItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "notEmptyItems")
+		}
+	}
+	if _v, _ok := _raw["notTypedConst"]; _ok {
+		if _err := func(_p *InlineForbiddingPositionsNotTypedConst, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*InlineForbiddingPositionsNotTypedConst).decodeJSONAt(_p, _d, _s))
+		}(&i.NotTypedConst, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "notTypedConst")
+		}
+	}
+	if _v, _ok := _raw["notTypedEmptyEnum"]; _ok {
+		if _err := func(_p *InlineForbiddingPositionsNotTypedEmptyEnum, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*InlineForbiddingPositionsNotTypedEmptyEnum).decodeJSONAt(_p, _d, _s))
+		}(&i.NotTypedEmptyEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "notTypedEmptyEnum")
+		}
+	}
+	if _v, _ok := _raw["nullableEmptyEnumValues"]; _ok {
+		if _err := func(_p *map[string]InlineForbiddingPositionsNullableEmptyEnumValuesValue, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeMap[InlineForbiddingPositionsNullableEmptyEnumValuesValue](_p, _d, _s, func(_p *InlineForbiddingPositionsNullableEmptyEnumValuesValue, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*InlineForbiddingPositionsNullableEmptyEnumValuesValue).decodeJSONAt(_p, _d, _s))
+			})
+		}(&i.NullableEmptyEnumValues, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "nullableEmptyEnumValues")
+		}
+	}
+	if _v, _ok := _raw["nullableFalseItems"]; _ok {
+		if _err := func(_p *[]InlineForbiddingPositionsNullableFalseItemsItem, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeSlice[InlineForbiddingPositionsNullableFalseItemsItem](_p, _d, _s, func(_p *InlineForbiddingPositionsNullableFalseItemsItem, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*InlineForbiddingPositionsNullableFalseItemsItem).decodeJSONAt(_p, _d, _s))
+			})
+		}(&i.NullableFalseItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "nullableFalseItems")
+		}
+	}
+	if _v, _ok := _raw["okEnumItems"]; _ok {
+		if _err := func(_p *[]InlineForbiddingPositionsOkEnumItemsItem, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]InlineForbiddingPositionsOkEnumItemsItem](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[InlineForbiddingPositionsOkEnumItemsItem]))
+		}(&i.OkEnumItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "okEnumItems")
+		}
+	}
+	if _v, _ok := _raw["plainItems"]; _ok {
+		if _err := func(_p *[]string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]string](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[string]))
+		}(&i.PlainItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "plainItems")
+		}
+	}
+	if _v, _ok := _raw["refEmptyEnumAnyOf"]; _ok {
+		if _err := func(_p *InlineForbiddingPositionsRefEmptyEnumAnyOf, _d *jsonDoc, _s jsonSpan) error {
+			return jsonDecodeRefusal((*InlineForbiddingPositionsRefEmptyEnumAnyOf).decodeJSONAt(_p, _d, _s))
+		}(&i.RefEmptyEnumAnyOf, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "refEmptyEnumAnyOf")
+		}
+	}
+	if _v, _ok := _raw["typedEmptyEnumItems"]; _ok {
+		if _err := func(_p *[]InlineForbiddingPositionsTypedEmptyEnumItemsItem, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeSlice[InlineForbiddingPositionsTypedEmptyEnumItemsItem](_p, _d, _s, func(_p *InlineForbiddingPositionsTypedEmptyEnumItemsItem, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*InlineForbiddingPositionsTypedEmptyEnumItemsItem).decodeJSONAt(_p, _d, _s))
+			})
+		}(&i.TypedEmptyEnumItems, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "typedEmptyEnumItems")
+		}
+	}
+	if _v, _ok := _raw["viaRefEmptyEnum"]; _ok {
+		if _err := func(_p *[]NeverEnum, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeSlice[NeverEnum](_p, _d, _s, func(_p *NeverEnum, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*NeverEnum).decodeJSONAt(_p, _d, _s))
+			})
+		}(&i.ViaRefEmptyEnum, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "viaRefEmptyEnum")
+		}
+	}
+	if _v, _ok := _raw["viaRefFalse"]; _ok {
+		if _err := func(_p *[]Never, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeSlice[Never](_p, _d, _s, func(_p *Never, _d *jsonDoc, _s jsonSpan) error {
+				return jsonDecodeRefusal((*Never).decodeJSONAt(_p, _d, _s))
+			})
+		}(&i.ViaRefFalse, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "viaRefFalse")
+		}
+	}
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"emptyEnumAllOf",
+		"emptyEnumAnyOf",
+		"emptyEnumBranch",
+		"emptyEnumContains",
+		"emptyEnumDependent",
+		"emptyEnumNames",
+		"emptyEnumPattern",
+		"emptyEnumSlot",
+		"emptyEnumUnevalItems",
+		"emptyEnumUnevalProps",
+		"notEmptyItems",
+		"refEmptyEnumAnyOf",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
+		}
+	}
+	if _v, ok := _raw["emptyEnumItems"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "emptyEnumItems")
+		}
+	}
+	if _v, ok := _raw["emptyEnumValues"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "emptyEnumValues")
+		}
+	}
+	if _v, ok := _raw["falseItems"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "falseItems")
+		}
+	}
+	if _v, ok := _raw["nestedFalseItems"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}}); err != nil {
+			return jsonPathf(err, "%s", "nestedFalseItems")
+		}
+	}
+	if _v, ok := _raw["nullableEmptyEnumValues"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "nullableEmptyEnumValues")
+		}
+	}
+	if _v, ok := _raw["nullableFalseItems"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "nullableFalseItems")
+		}
+	}
+	if _v, ok := _raw["okEnumItems"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "okEnumItems")
+		}
+	}
+	if _v, ok := _raw["plainItems"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "plainItems")
+		}
+	}
+	if _v, ok := _raw["typedEmptyEnumItems"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "typedEmptyEnumItems")
+		}
+	}
+	if _v, ok := _raw["viaRefEmptyEnum"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "viaRefEmptyEnum")
+		}
+	}
+	if _v, ok := _raw["viaRefFalse"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "viaRefFalse")
+		}
+	}
+	i._jsonKeys = make(map[string]bool, len(_raw))
+	for _k := range _raw {
+		i._jsonKeys[_k] = true
+	}
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"inferredEmptyEnumItems",
+		"inferredEmptyEnumSlot",
+		"inferredEmptyEnumTail",
+		"nullableEmptyEnumValues",
+		"nullableFalseItems",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if i._jsonNulls == nil {
+				i._jsonNulls = make(map[string]bool, 1)
+			}
+			i._jsonNulls[_nullKey] = true
+		}
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "emptyEnumAllOf", "emptyEnumAnyOf", "emptyEnumBranch", "emptyEnumContains", "emptyEnumDependent", "emptyEnumItems", "emptyEnumNames", "emptyEnumPattern", "emptyEnumSlot", "emptyEnumUnevalItems", "emptyEnumUnevalProps", "emptyEnumValues", "falseItems", "inferredEmptyEnumItems", "inferredEmptyEnumSlot", "inferredEmptyEnumTail", "nestedFalseItems", "notAnyOfEmptyEnum", "notEmptyEnum", "notEmptyEnumBound", "notEmptyItems", "notTypedConst", "notTypedEmptyEnum", "nullableEmptyEnumValues", "nullableFalseItems", "okEnumItems", "plainItems", "refEmptyEnumAnyOf", "typedEmptyEnumItems", "viaRefEmptyEnum", "viaRefFalse":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	i.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (i InlineForbiddingPositions) MarshalJSON() ([]byte, error) {
-	type Alias InlineForbiddingPositions
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(i),
+	_b, _err := i.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends i to _b as JSON. See jsonEnc.
+func (i InlineForbiddingPositions) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := i.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(i._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range i._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero InlineForbiddingPositions
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range i._jsonNulls {
+				_cur, _present, _err := _o.memberBytes(_k, i.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range i.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, i.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members i's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (i InlineForbiddingPositions) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		if !jsonIsEmpty(i.EmptyEnumDependent) {
+			_o.deferred("emptyEnumDependent", 0)
+		}
+	}
+	{
+		if !jsonIsEmpty(i.EmptyEnumNames) {
+			_o.deferred("emptyEnumNames", 1)
+		}
+	}
+	{
+		if !jsonIsEmpty(i.EmptyEnumPattern) {
+			_o.deferred("emptyEnumPattern", 2)
+		}
+	}
+	{
+		if !jsonIsEmpty(i.EmptyEnumUnevalProps) {
+			_o.deferred("emptyEnumUnevalProps", 3)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.EmptyEnumValues)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("emptyEnumValues", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(i.InferredEmptyEnumItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("inferredEmptyEnumItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(i.InferredEmptyEnumSlot)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("inferredEmptyEnumSlot", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(i.InferredEmptyEnumTail)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("inferredEmptyEnumTail", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.NullableEmptyEnumValues)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nullableEmptyEnumValues", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.EmptyEnumAllOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("emptyEnumAllOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.EmptyEnumAnyOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("emptyEnumAnyOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.EmptyEnumBranch)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("emptyEnumBranch", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.EmptyEnumContains)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("emptyEnumContains", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.EmptyEnumItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("emptyEnumItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.EmptyEnumSlot)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("emptyEnumSlot", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.EmptyEnumUnevalItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("emptyEnumUnevalItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.FalseItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("falseItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.NestedFalseItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nestedFalseItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.NotAnyOfEmptyEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("notAnyOfEmptyEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.NotEmptyEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("notEmptyEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.NotEmptyEnumBound)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("notEmptyEnumBound", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.NotEmptyItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("notEmptyItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.NotTypedConst)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("notTypedConst", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.NotTypedEmptyEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("notTypedEmptyEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.NullableFalseItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nullableFalseItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.OkEnumItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("okEnumItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.PlainItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("plainItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.RefEmptyEnumAnyOf)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("refEmptyEnumAnyOf", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.TypedEmptyEnumItems)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("typedEmptyEnumItems", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.ViaRefEmptyEnum)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("viaRefEmptyEnum", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(i.ViaRefFalse)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("viaRefFalse", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of i numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (i InlineForbiddingPositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 0:
+		return (func(_v *NeverWithK, _b []byte) ([]byte, error) {
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*NeverWithK)(nil), true)
+			}
+			return _out, nil
+		})(i.EmptyEnumDependent, _b)
+	case 1:
+		return (func(_v *NoNames, _b []byte) ([]byte, error) {
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*NoNames)(nil), true)
+			}
+			return _out, nil
+		})(i.EmptyEnumNames, _b)
+	case 2:
+		return (func(_v *InlineForbiddingPositionsEmptyEnumPattern, _b []byte) ([]byte, error) {
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*InlineForbiddingPositionsEmptyEnumPattern)(nil), true)
+			}
+			return _out, nil
+		})(i.EmptyEnumPattern, _b)
+	case 3:
+		return (func(_v *InlineForbiddingPositionsEmptyEnumUnevalProps, _b []byte) ([]byte, error) {
+			if _v == nil {
+				return append(_b, "null"...), nil
+			}
+			_out, _err := (*_v).appendJSON(_b)
+			if _err != nil {
+				return _b, jsonMarshalerErrFor(_err, (*InlineForbiddingPositionsEmptyEnumUnevalProps)(nil), true)
+			}
+			return _out, nil
+		})(i.EmptyEnumUnevalProps, _b)
+	}
+	return _b, nil
 }
 
 // Validate checks InlineForbiddingPositions against its JSON Schema constraints.

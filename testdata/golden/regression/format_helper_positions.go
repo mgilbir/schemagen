@@ -29,228 +29,454 @@ type FormatHelperPositions struct {
 	V6list               []netip.Addr               `json:"v6List,omitzero"`
 }
 
+// UnmarshalJSON replaces f with the value the document holds. See
+// decodeJSONAt.
 func (f *FormatHelperPositions) UnmarshalJSON(data []byte) error {
-	f.AdditionalProperties = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(f.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into f, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever f held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (f *FormatHelperPositions) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*f = FormatHelperPositions{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"dateList",
-			"durationList",
-			"hostList",
-			"hostMap",
-			"idnHostList",
-			"idnMailList",
-			"mailList",
-			"mailMap",
-			"nested",
-			"regexList",
-			"timeList",
-			"uriList",
-			"uuidList",
-			"v4List",
-			"v4Map",
-			"v6List",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*FormatHelperPositions)(nil)))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias FormatHelperPositions
-	aux := &struct {
-		*Alias
-		Nested *[][]jsonIPv4Addr        `json:"nested"`
-		V4list *[]jsonIPv4Addr          `json:"v4List"`
-		V4map  *map[string]jsonIPv4Addr `json:"v4Map"`
-		V6list *[]jsonIPv6Addr          `json:"v6List"`
-	}{
-		Alias: (*Alias)(f),
-	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "dateList", decode: jsonDecodeItems(jsonDecodeValue[string])},
-			{name: "durationList", decode: jsonDecodeItems(jsonDecodeValue[string])},
-			{name: "hostList", decode: jsonDecodeItems(jsonDecodeValue[string])},
-			{name: "hostMap", decode: jsonDecodeValues(jsonDecodeValue[string])},
-			{name: "idnHostList", decode: jsonDecodeItems(jsonDecodeValue[string])},
-			{name: "idnMailList", decode: jsonDecodeItems(jsonDecodeValue[string])},
-			{name: "mailList", decode: jsonDecodeItems(jsonDecodeValue[string])},
-			{name: "mailMap", decode: jsonDecodeValues(jsonDecodeValue[string])},
-			{name: "nested", decode: jsonDecodeItems(jsonDecodeItems(jsonDecodeValue[jsonIPv4Addr]))},
-			{name: "regexList", decode: jsonDecodeItems(jsonDecodeValue[string])},
-			{name: "timeList", decode: jsonDecodeItems(jsonDecodeValue[string])},
-			{name: "uriList", decode: jsonDecodeItems(jsonDecodeValue[string])},
-			{name: "uuidList", decode: jsonDecodeItems(jsonDecodeValue[string])},
-			{name: "v4List", decode: jsonDecodeItems(jsonDecodeValue[jsonIPv4Addr])},
-			{name: "v4Map", decode: jsonDecodeValues(jsonDecodeValue[jsonIPv4Addr])},
-			{name: "v6List", decode: jsonDecodeItems(jsonDecodeValue[jsonIPv6Addr])},
-		})
-	}
-	if aux.Nested != nil {
-		_iv := *aux.Nested
-		f.Nested = jsonIntegerSlice(_iv, func(_ix0 []jsonIPv4Addr) []netip.Addr {
-			return jsonIntegerSlice(_ix0, func(_ix1 jsonIPv4Addr) netip.Addr { return netip.Addr(_ix1) })
-		})
-	}
-	if aux.V4list != nil {
-		_iv := *aux.V4list
-		f.V4list = jsonIntegerSlice(_iv, func(_ix0 jsonIPv4Addr) netip.Addr { return netip.Addr(_ix0) })
-	}
-	if aux.V4map != nil {
-		_iv := *aux.V4map
-		f.V4map = jsonIntegerMap(_iv, func(_ix0 jsonIPv4Addr) netip.Addr { return netip.Addr(_ix0) })
-	}
-	if aux.V6list != nil {
-		_iv := *aux.V6list
-		f.V6list = jsonIntegerSlice(_iv, func(_ix0 jsonIPv6Addr) netip.Addr { return netip.Addr(_ix0) })
-	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		if _v, ok := raw["dateList"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "dateList")
-			}
-		}
-		if _v, ok := raw["durationList"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "durationList")
-			}
-		}
-		if _v, ok := raw["hostList"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "hostList")
-			}
-		}
-		if _v, ok := raw["hostMap"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "hostMap")
-			}
-		}
-		if _v, ok := raw["idnHostList"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "idnHostList")
-			}
-		}
-		if _v, ok := raw["idnMailList"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "idnMailList")
-			}
-		}
-		if _v, ok := raw["mailList"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "mailList")
-			}
-		}
-		if _v, ok := raw["mailMap"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "mailMap")
-			}
-		}
-		if _v, ok := raw["nested"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}}); err != nil {
-				return jsonPathf(err, "%s", "nested")
-			}
-		}
-		if _v, ok := raw["regexList"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "regexList")
-			}
-		}
-		if _v, ok := raw["timeList"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "timeList")
-			}
-		}
-		if _v, ok := raw["uriList"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "uriList")
-			}
-		}
-		if _v, ok := raw["uuidList"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "uuidList")
-			}
-		}
-		if _v, ok := raw["v4List"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "v4List")
-			}
-		}
-		if _v, ok := raw["v4Map"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "v4Map")
-			}
-		}
-		if _v, ok := raw["v6List"]; ok {
-			if err := checkJSONNullsAt(_v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
-				return jsonPathf(err, "%s", "v6List")
-			}
-		}
-		knownFields := map[string]bool{
-			"dateList":     true,
-			"durationList": true,
-			"hostList":     true,
-			"hostMap":      true,
-			"idnHostList":  true,
-			"idnMailList":  true,
-			"mailList":     true,
-			"mailMap":      true,
-			"nested":       true,
-			"regexList":    true,
-			"timeList":     true,
-			"uriList":      true,
-			"uuidList":     true,
-			"v4List":       true,
-			"v4Map":        true,
-			"v6List":       true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if f.AdditionalProperties == nil {
-				f.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			f.AdditionalProperties[rawKey] = rawVal
+	if _v, _ok := _raw["dateList"]; _ok {
+		if _err := func(_p *[]string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]string](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[string]))
+		}(&f.DateList, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "dateList")
 		}
 	}
+	if _v, _ok := _raw["durationList"]; _ok {
+		if _err := func(_p *[]string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]string](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[string]))
+		}(&f.DurationList, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "durationList")
+		}
+	}
+	if _v, _ok := _raw["hostList"]; _ok {
+		if _err := func(_p *[]string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]string](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[string]))
+		}(&f.HostList, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "hostList")
+		}
+	}
+	if _v, _ok := _raw["hostMap"]; _ok {
+		if _err := func(_p *map[string]string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[map[string]string](_p, _d, _s, jsonDecodeValues(jsonDecodeValue[string]))
+		}(&f.HostMap, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "hostMap")
+		}
+	}
+	if _v, _ok := _raw["idnHostList"]; _ok {
+		if _err := func(_p *[]string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]string](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[string]))
+		}(&f.IdnHostList, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "idnHostList")
+		}
+	}
+	if _v, _ok := _raw["idnMailList"]; _ok {
+		if _err := func(_p *[]string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]string](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[string]))
+		}(&f.IdnMailList, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "idnMailList")
+		}
+	}
+	if _v, _ok := _raw["mailList"]; _ok {
+		if _err := func(_p *[]string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]string](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[string]))
+		}(&f.MailList, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "mailList")
+		}
+	}
+	if _v, _ok := _raw["mailMap"]; _ok {
+		if _err := func(_p *map[string]string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[map[string]string](_p, _d, _s, jsonDecodeValues(jsonDecodeValue[string]))
+		}(&f.MailMap, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "mailMap")
+		}
+	}
+	if _v, _ok := _raw["nested"]; _ok {
+		if !_d.isNull(_v) {
+			var _iv [][]jsonIPv4Addr
+			if _err := func(_p *[][]jsonIPv4Addr, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[[][]jsonIPv4Addr](_p, _d, _s, jsonDecodeItems(jsonDecodeItems(jsonDecodeValue[jsonIPv4Addr])))
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "nested")
+			}
+			f.Nested = jsonIntegerSlice(_iv, func(_ix0 []jsonIPv4Addr) []netip.Addr {
+				return jsonIntegerSlice(_ix0, func(_ix1 jsonIPv4Addr) netip.Addr { return netip.Addr(_ix1) })
+			})
+		}
+	}
+	if _v, _ok := _raw["regexList"]; _ok {
+		if _err := func(_p *[]string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]string](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[string]))
+		}(&f.RegexList, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "regexList")
+		}
+	}
+	if _v, _ok := _raw["timeList"]; _ok {
+		if _err := func(_p *[]string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]string](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[string]))
+		}(&f.TimeList, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "timeList")
+		}
+	}
+	if _v, _ok := _raw["uriList"]; _ok {
+		if _err := func(_p *[]string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]string](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[string]))
+		}(&f.URIList, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "uriList")
+		}
+	}
+	if _v, _ok := _raw["uuidList"]; _ok {
+		if _err := func(_p *[]string, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]string](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[string]))
+		}(&f.UUIDList, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "uuidList")
+		}
+	}
+	if _v, _ok := _raw["v4List"]; _ok {
+		if !_d.isNull(_v) {
+			var _iv []jsonIPv4Addr
+			if _err := func(_p *[]jsonIPv4Addr, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[[]jsonIPv4Addr](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[jsonIPv4Addr]))
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "v4List")
+			}
+			f.V4list = jsonIntegerSlice(_iv, func(_ix0 jsonIPv4Addr) netip.Addr { return netip.Addr(_ix0) })
+		}
+	}
+	if _v, _ok := _raw["v4Map"]; _ok {
+		if !_d.isNull(_v) {
+			var _iv map[string]jsonIPv4Addr
+			if _err := func(_p *map[string]jsonIPv4Addr, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[map[string]jsonIPv4Addr](_p, _d, _s, jsonDecodeValues(jsonDecodeValue[jsonIPv4Addr]))
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "v4Map")
+			}
+			f.V4map = jsonIntegerMap(_iv, func(_ix0 jsonIPv4Addr) netip.Addr { return netip.Addr(_ix0) })
+		}
+	}
+	if _v, _ok := _raw["v6List"]; _ok {
+		if !_d.isNull(_v) {
+			var _iv []jsonIPv6Addr
+			if _err := func(_p *[]jsonIPv6Addr, _d *jsonDoc, _s jsonSpan) error {
+				return jsonProbeLeaf[[]jsonIPv6Addr](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[jsonIPv6Addr]))
+			}(&_iv, _d, _v); _err != nil {
+				return jsonPathf(_err, "%s", "v6List")
+			}
+			f.V6list = jsonIntegerSlice(_iv, func(_ix0 jsonIPv6Addr) netip.Addr { return netip.Addr(_ix0) })
+		}
+	}
+	if _v, ok := _raw["dateList"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "dateList")
+		}
+	}
+	if _v, ok := _raw["durationList"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "durationList")
+		}
+	}
+	if _v, ok := _raw["hostList"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "hostList")
+		}
+	}
+	if _v, ok := _raw["hostMap"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "hostMap")
+		}
+	}
+	if _v, ok := _raw["idnHostList"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "idnHostList")
+		}
+	}
+	if _v, ok := _raw["idnMailList"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "idnMailList")
+		}
+	}
+	if _v, ok := _raw["mailList"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "mailList")
+		}
+	}
+	if _v, ok := _raw["mailMap"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "mailMap")
+		}
+	}
+	if _v, ok := _raw["nested"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}}); err != nil {
+			return jsonPathf(err, "%s", "nested")
+		}
+	}
+	if _v, ok := _raw["regexList"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "regexList")
+		}
+	}
+	if _v, ok := _raw["timeList"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "timeList")
+		}
+	}
+	if _v, ok := _raw["uriList"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "uriList")
+		}
+	}
+	if _v, ok := _raw["uuidList"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "uuidList")
+		}
+	}
+	if _v, ok := _raw["v4List"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "v4List")
+		}
+	}
+	if _v, ok := _raw["v4Map"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, IsMap: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "v4Map")
+		}
+	}
+	if _v, ok := _raw["v6List"]; ok {
+		if err := checkJSONNullsAt(_d, _v, &jsonNullRule{Reject: true, Elem: &jsonNullRule{Reject: true}}); err != nil {
+			return jsonPathf(err, "%s", "v6List")
+		}
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "dateList", "durationList", "hostList", "hostMap", "idnHostList", "idnMailList", "mailList", "mailMap", "nested", "regexList", "timeList", "uriList", "uuidList", "v4List", "v4Map", "v6List":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	f.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (f FormatHelperPositions) MarshalJSON() ([]byte, error) {
-	type Alias FormatHelperPositions
-	aux := struct {
-		Alias
-	}{
-		Alias: (Alias)(f),
+	_b, _err := f.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
+	return _b, nil
+}
+
+// appendJSON appends f to _b as JSON. See jsonEnc.
+func (f FormatHelperPositions) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := f.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
 	}
 	for _key, _member := range f.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, f.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members f's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (f FormatHelperPositions) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.HostMap)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("hostMap", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.MailMap)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("mailMap", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.V4map)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("v4Map", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.DateList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("dateList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.DurationList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("durationList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.HostList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("hostList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.IdnHostList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("idnHostList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.IdnMailList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("idnMailList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.MailList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("mailList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.Nested)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nested", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.RegexList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("regexList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.TimeList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("timeList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.URIList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("uriList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.UUIDList)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("uuidList", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.V4list)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("v4List", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(f.V6list)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("v6List", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of f numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (f FormatHelperPositions) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	}
+	return _b, nil
 }
 
 // Validate checks FormatHelperPositions against its JSON Schema constraints.

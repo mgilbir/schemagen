@@ -17,6 +17,7 @@ type RootNullBigIntMergedType struct {
 }
 
 func (r *RootNullBigIntMergedType) UnmarshalJSON(data []byte) error {
+	*r = RootNullBigIntMergedType{}
 	if string(data) == "null" {
 		return jsonValueErrorf("null is not allowed")
 	}
@@ -80,9 +81,13 @@ func (r RootNullBigIntMergedType) MarshalJSON() ([]byte, error) {
 	return json.Marshal(r._int64)
 }
 func (r RootNullBigIntMergedType) Int64() int64 { return r._int64 }
+
+// BigInt returns the value as a *big.Int of the caller's own. The value's own
+// is not handed out: a copy of the value shares it, and a caller writing
+// through it would change both.
 func (r RootNullBigIntMergedType) BigInt() *big.Int {
 	if r._isBigInt && r._bigInt != nil {
-		return r._bigInt
+		return new(big.Int).Set(r._bigInt)
 	}
 	return big.NewInt(r._int64)
 }

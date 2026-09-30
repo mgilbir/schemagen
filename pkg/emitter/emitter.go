@@ -231,6 +231,8 @@ func (e *Emitter) Emit(f *generator.File) ([]byte, error) {
 		ValidationCapability: f.ValidationCapability,
 		UnresolvedRefs:       f.UnresolvedRefs,
 		UndeclaredRefTypes:   f.UndeclaredRefTypes,
+		ElementNodes:         f.ElementNodes,
+		TreeTypes:            f.TreeTypes,
 	}
 
 	var buf bytes.Buffer
@@ -361,7 +363,7 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 		}
 		add(cond, path)
 	}
-	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.NumberCompare || helpers.DateTime || helpers.Canonical || helpers.NullCheck || helpers.ExactProperties || helpers.DecodePath, "encoding/json")
+	add(helpers.Dynamic || helpers.DynamicConst || helpers.OneOf || helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.NumberCompare || helpers.DateTime || helpers.Canonical || helpers.NullCheck || helpers.Decode || helpers.DecodePath, "encoding/json")
 	add(helpers.OneOfDiscriminator || helpers.Integer || helpers.Number || helpers.Canonical || helpers.NullCheck || helpers.Format || helpers.PathJoin || helpers.DecodePath, "fmt")
 	// The JSON-equality reduction: a decoder over the document's own bytes, a
 	// builder for the text it reduces to, sorted member names, and strconv for
@@ -369,15 +371,59 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	add(helpers.Canonical, "bytes")
 	add(helpers.Canonical, "strconv")
 	add(helpers.Canonical, "strings")
+	// The identity of a value, block by block. The core: two seeded hashes, the
+	// spelling of numbers, strings read as UTF-8, and a raw JSON reader that
+	// sorts an object's members to find a key written twice.
+	add(helpers.IdentityCore, "encoding/json")
+	add(helpers.IdentityCore, "errors")
+	add(helpers.IdentityCore, "hash/maphash")
+	add(helpers.IdentityCore, "math")
+	add(helpers.IdentityCore, "sort")
+	add(helpers.IdentityCore, "strconv")
+	add(helpers.IdentityCore, "unicode/utf8")
+	// A const read once per process, and decoded to confirm a match.
+	add(helpers.IdentityConst, "bytes")
+	add(helpers.IdentityConst, "encoding/json")
+	add(helpers.IdentityConst, "strconv")
+	add(helpers.IdentityConst, "sync")
+	// A decoded value, and the refusal of one that is not.
+	add(helpers.IdentityAny, "encoding/json")
+	add(helpers.IdentityAny, "fmt")
+	// A document keeps the identities of the values read lazily from it, which
+	// a value judged from several goroutines at once shares.
+	add(helpers.IdentityLazy, "errors")
+	add(helpers.IdentityLazy, "sync")
+	add(helpers.IdentityLazy, "sync/atomic")
+	// Any Go value: the Go kind a value this package does not write itself is
+	// read by, the base64 encoding/json writes a []byte as, and the time.Time
+	// whose MarshalJSON it reads as a string.
+	add(helpers.IdentityValue, "encoding/base64")
+	add(helpers.IdentityValue, "encoding/json")
+	add(helpers.IdentityValue, "errors")
+	add(helpers.IdentityValue, "math")
+	add(helpers.IdentityValue, "reflect")
+	add(helpers.IdentityValue, "strconv")
+	add(helpers.IdentityValue, "time")
+	add(helpers.IdentityKind, "encoding/json")
+	add(helpers.IdentityKind, "math")
+	add(helpers.IdentityKind, "strconv")
 	// The exact-number comparisons read the literal as decimal digits: strconv
 	// for the exponent, math/big for the one question -- does this divide that
 	// -- that digit arithmetic alone does not answer. Neither is needed by the
 	// shadow type, which only decides whether a token is a number at all.
 	add(helpers.NumberCompare, "strconv")
 	add(helpers.NumberCompare, "math/big")
-	// jsonExactProperties compares a document's keys the way encoding/json
-	// compares them, which is strings.EqualFold and not an ASCII rule.
-	add(helpers.ExactProperties, "strings")
+	// The in-place decode: the document's index is searched by offset, an
+	// object key that is not plain ASCII is handed to encoding/json after a
+	// UTF-8 scan, the commonest scalars are read with strconv, and a value of
+	// the wrong kind is refused with the reflect.Type encoding/json would have
+	// named.
+	add(helpers.Decode, "reflect")
+	add(helpers.Decode, "sort")
+	add(helpers.Decode, "strconv")
+	add(helpers.Decode, "unicode/utf8")
+	// A path error writes out the chain of steps it holds with a builder, once.
+	add(helpers.PathJoin, "strings")
 	add(helpers.Dynamic, "math")
 	// jsonIntegerFromLiteral reads the number as decimal digits, which is what
 	// makes it exact where a parse into float64 could not be.
@@ -470,6 +516,15 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 	if err := e.tmpl.ExecuteTemplate(&buf, "helpers_file.go.tmpl", data); err != nil {
 		return nil, false, fmt.Errorf("emitter: executing helper template: %w", err)
 	}
+	// A set read from source is pruned to what its roots reach, which takes
+	// the imports nothing kept names with it; see pruneHelpers.
+	if helpers.Roots != nil {
+		pruned, err := pruneHelpers(buf.Bytes(), helpers.Roots)
+		if err != nil {
+			return nil, false, err
+		}
+		return formatHelpers(pruned)
+	}
 	if kept, dropped := keepReferencedImports(buf.Bytes(), data.Imports); dropped {
 		data.Imports = kept
 		buf.Reset()
@@ -477,11 +532,38 @@ func (e *Emitter) EmitHelpers(packageName string, helpers generator.HelperSet) (
 			return nil, false, fmt.Errorf("emitter: executing helper template: %w", err)
 		}
 	}
-	src, err := format.Source(buf.Bytes())
-	if err != nil {
-		return nil, false, fmt.Errorf("emitter: formatting helper output: %w\nraw output:\n%s", err, buf.String())
+	return formatHelpers(buf.Bytes())
+}
+
+// formattedHelpers keeps the formatted text of the last helper files: the same
+// file is written for package after package. Bounded as preparedCache is.
+var formattedHelpers struct {
+	sync.Mutex
+	m map[string][]byte
+}
+
+const formattedHelpersSize = 256
+
+// formatHelpers is the rendered helper file, gofmt'ed.
+func formatHelpers(rendered []byte) ([]byte, bool, error) {
+	key := string(rendered)
+	formattedHelpers.Lock()
+	src, ok := formattedHelpers.m[key]
+	formattedHelpers.Unlock()
+	if ok {
+		return append([]byte(nil), src...), true, nil
 	}
-	return src, true, nil
+	src, err := format.Source(rendered)
+	if err != nil {
+		return nil, false, fmt.Errorf("emitter: formatting helper output: %w\nraw output:\n%s", err, rendered)
+	}
+	formattedHelpers.Lock()
+	if formattedHelpers.m == nil || len(formattedHelpers.m) >= formattedHelpersSize {
+		formattedHelpers.m = make(map[string][]byte)
+	}
+	formattedHelpers.m[key] = src
+	formattedHelpers.Unlock()
+	return append([]byte(nil), src...), true, nil
 }
 
 // helperFileData is the data passed to the shared helper file template.
@@ -503,6 +585,10 @@ type fileData struct {
 	// UndeclaredRefTypes renders the DOES NOT COMPILE half of that banner. See
 	// generator.File.UndeclaredRefTypes.
 	UndeclaredRefTypes []generator.UndeclaredRefType
+	// ElementNodes are declared after the types. See generator.ElementNode.
+	ElementNodes []*generator.ElementNode
+	// TreeTypes declare SchemagenJSONTree. See generator.File.TreeTypes.
+	TreeTypes []generator.TreeType
 }
 
 func (d fileData) HasValidationCapability() bool {

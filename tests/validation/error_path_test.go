@@ -354,7 +354,9 @@ func errorPathFixtures() []errorPathFixture {
 			Name:   "control_tuple_position",
 			Schema: `{"type":"object","properties":{"tup":{"type":"array","prefixItems":[{"type":"string"},{"type":"integer","minimum":5}]}}}`,
 			Cases: []errorPathCase{
-				{Name: "rejects", Doc: `{"tup":["a",1]}`, Want: `tup: items[1]: 1 is less than minimum 5`,
+				// The position's schema is judged by the runtime evaluator, as the
+				// element is held (see generator.ElementNode), in its words.
+				{Name: "rejects", Doc: `{"tup":["a",1]}`, Want: `tup: items[1]: value is below the minimum`,
 					Reason: "control: a tuple position reports under the keyword that gave it one, and keeps doing so"},
 				{Name: "accepts", Doc: `{"tup":["a",9]}`, Reason: "control"},
 			},

@@ -16,9 +16,10 @@ type Bound struct {
 }
 
 func (b *Bound) UnmarshalJSON(data []byte) error {
+	*b = Bound{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		b._raw = append(b._raw[:0], data...)
+		b._raw = append(json.RawMessage(nil), data...)
 		b._isRaw = true
 		return nil
 	}
@@ -27,8 +28,15 @@ func (b *Bound) UnmarshalJSON(data []byte) error {
 		b._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	b._raw = append(b._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	b._raw = append(json.RawMessage(nil), data...)
 	b._isRaw = true
 	return nil
 }
@@ -37,7 +45,9 @@ func (b Bound) MarshalJSON() ([]byte, error) {
 		if len(b._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return b._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), b._raw...), nil
 	}
 	return json.Marshal(b._value)
 }
@@ -45,7 +55,7 @@ func (b Bound) StringValue() string { return b._value }
 func (b Bound) IsString() bool      { return !b._isRaw }
 func (b Bound) Raw() json.RawMessage {
 	if b._isRaw {
-		return b._raw
+		return append(json.RawMessage(nil), b._raw...)
 	}
 	_b, _ := json.Marshal(b._value)
 	return _b
@@ -76,9 +86,10 @@ type AllOfBoundOnlyArr struct {
 }
 
 func (a *AllOfBoundOnlyArr) UnmarshalJSON(data []byte) error {
+	*a = AllOfBoundOnlyArr{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		a._raw = append(a._raw[:0], data...)
+		a._raw = append(json.RawMessage(nil), data...)
 		a._isRaw = true
 		return nil
 	}
@@ -87,8 +98,15 @@ func (a *AllOfBoundOnlyArr) UnmarshalJSON(data []byte) error {
 		a._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	a._raw = append(a._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	a._raw = append(json.RawMessage(nil), data...)
 	a._isRaw = true
 	return nil
 }
@@ -97,7 +115,9 @@ func (a AllOfBoundOnlyArr) MarshalJSON() ([]byte, error) {
 		if len(a._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return a._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), a._raw...), nil
 	}
 	return json.Marshal(a._value)
 }
@@ -105,7 +125,7 @@ func (a AllOfBoundOnlyArr) Slice() []any  { return a._value }
 func (a AllOfBoundOnlyArr) IsArray() bool { return !a._isRaw }
 func (a AllOfBoundOnlyArr) Raw() json.RawMessage {
 	if a._isRaw {
-		return a._raw
+		return append(json.RawMessage(nil), a._raw...)
 	}
 	_b, _ := json.Marshal(a._value)
 	return _b
@@ -136,9 +156,10 @@ type AllOfBoundOnlyListItem struct {
 }
 
 func (a *AllOfBoundOnlyListItem) UnmarshalJSON(data []byte) error {
+	*a = AllOfBoundOnlyListItem{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		a._raw = append(a._raw[:0], data...)
+		a._raw = append(json.RawMessage(nil), data...)
 		a._isRaw = true
 		return nil
 	}
@@ -147,8 +168,15 @@ func (a *AllOfBoundOnlyListItem) UnmarshalJSON(data []byte) error {
 		a._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	a._raw = append(a._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	a._raw = append(json.RawMessage(nil), data...)
 	a._isRaw = true
 	return nil
 }
@@ -157,7 +185,9 @@ func (a AllOfBoundOnlyListItem) MarshalJSON() ([]byte, error) {
 		if len(a._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return a._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), a._raw...), nil
 	}
 	return json.Marshal(a._value)
 }
@@ -165,7 +195,7 @@ func (a AllOfBoundOnlyListItem) StringValue() string { return a._value }
 func (a AllOfBoundOnlyListItem) IsString() bool      { return !a._isRaw }
 func (a AllOfBoundOnlyListItem) Raw() json.RawMessage {
 	if a._isRaw {
-		return a._raw
+		return append(json.RawMessage(nil), a._raw...)
 	}
 	_b, _ := json.Marshal(a._value)
 	return _b
@@ -196,9 +226,10 @@ type AllOfBoundOnlyMapValue struct {
 }
 
 func (a *AllOfBoundOnlyMapValue) UnmarshalJSON(data []byte) error {
+	*a = AllOfBoundOnlyMapValue{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		a._raw = append(a._raw[:0], data...)
+		a._raw = append(json.RawMessage(nil), data...)
 		a._isRaw = true
 		return nil
 	}
@@ -207,8 +238,15 @@ func (a *AllOfBoundOnlyMapValue) UnmarshalJSON(data []byte) error {
 		a._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	a._raw = append(a._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	a._raw = append(json.RawMessage(nil), data...)
 	a._isRaw = true
 	return nil
 }
@@ -217,7 +255,9 @@ func (a AllOfBoundOnlyMapValue) MarshalJSON() ([]byte, error) {
 		if len(a._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return a._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), a._raw...), nil
 	}
 	return json.Marshal(a._value)
 }
@@ -225,7 +265,7 @@ func (a AllOfBoundOnlyMapValue) StringValue() string { return a._value }
 func (a AllOfBoundOnlyMapValue) IsString() bool      { return !a._isRaw }
 func (a AllOfBoundOnlyMapValue) Raw() json.RawMessage {
 	if a._isRaw {
-		return a._raw
+		return append(json.RawMessage(nil), a._raw...)
 	}
 	_b, _ := json.Marshal(a._value)
 	return _b
@@ -256,9 +296,10 @@ type AllOfBoundOnlyNested struct {
 }
 
 func (a *AllOfBoundOnlyNested) UnmarshalJSON(data []byte) error {
+	*a = AllOfBoundOnlyNested{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		a._raw = append(a._raw[:0], data...)
+		a._raw = append(json.RawMessage(nil), data...)
 		a._isRaw = true
 		return nil
 	}
@@ -267,8 +308,15 @@ func (a *AllOfBoundOnlyNested) UnmarshalJSON(data []byte) error {
 		a._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	a._raw = append(a._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	a._raw = append(json.RawMessage(nil), data...)
 	a._isRaw = true
 	return nil
 }
@@ -277,7 +325,9 @@ func (a AllOfBoundOnlyNested) MarshalJSON() ([]byte, error) {
 		if len(a._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return a._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), a._raw...), nil
 	}
 	return json.Marshal(a._value)
 }
@@ -285,7 +335,7 @@ func (a AllOfBoundOnlyNested) StringValue() string { return a._value }
 func (a AllOfBoundOnlyNested) IsString() bool      { return !a._isRaw }
 func (a AllOfBoundOnlyNested) Raw() json.RawMessage {
 	if a._isRaw {
-		return a._raw
+		return append(json.RawMessage(nil), a._raw...)
 	}
 	_b, _ := json.Marshal(a._value)
 	return _b
@@ -316,9 +366,10 @@ type AllOfBoundOnlyNum struct {
 }
 
 func (a *AllOfBoundOnlyNum) UnmarshalJSON(data []byte) error {
+	*a = AllOfBoundOnlyNum{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		a._raw = append(a._raw[:0], data...)
+		a._raw = append(json.RawMessage(nil), data...)
 		a._isRaw = true
 		return nil
 	}
@@ -327,8 +378,15 @@ func (a *AllOfBoundOnlyNum) UnmarshalJSON(data []byte) error {
 		a._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	a._raw = append(a._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	a._raw = append(json.RawMessage(nil), data...)
 	a._isRaw = true
 	return nil
 }
@@ -337,7 +395,9 @@ func (a AllOfBoundOnlyNum) MarshalJSON() ([]byte, error) {
 		if len(a._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return a._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), a._raw...), nil
 	}
 	return json.Marshal(a._value)
 }
@@ -345,7 +405,7 @@ func (a AllOfBoundOnlyNum) Float64() float64 { return a._value }
 func (a AllOfBoundOnlyNum) IsNumber() bool   { return !a._isRaw }
 func (a AllOfBoundOnlyNum) Raw() json.RawMessage {
 	if a._isRaw {
-		return a._raw
+		return append(json.RawMessage(nil), a._raw...)
 	}
 	_b, _ := json.Marshal(a._value)
 	return _b
@@ -376,9 +436,10 @@ type AllOfBoundOnlyProp struct {
 }
 
 func (a *AllOfBoundOnlyProp) UnmarshalJSON(data []byte) error {
+	*a = AllOfBoundOnlyProp{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		a._raw = append(a._raw[:0], data...)
+		a._raw = append(json.RawMessage(nil), data...)
 		a._isRaw = true
 		return nil
 	}
@@ -387,8 +448,15 @@ func (a *AllOfBoundOnlyProp) UnmarshalJSON(data []byte) error {
 		a._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	a._raw = append(a._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	a._raw = append(json.RawMessage(nil), data...)
 	a._isRaw = true
 	return nil
 }
@@ -397,7 +465,9 @@ func (a AllOfBoundOnlyProp) MarshalJSON() ([]byte, error) {
 		if len(a._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return a._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), a._raw...), nil
 	}
 	return json.Marshal(a._value)
 }
@@ -405,7 +475,7 @@ func (a AllOfBoundOnlyProp) StringValue() string { return a._value }
 func (a AllOfBoundOnlyProp) IsString() bool      { return !a._isRaw }
 func (a AllOfBoundOnlyProp) Raw() json.RawMessage {
 	if a._isRaw {
-		return a._raw
+		return append(json.RawMessage(nil), a._raw...)
 	}
 	_b, _ := json.Marshal(a._value)
 	return _b
@@ -436,9 +506,10 @@ type AllOfBoundOnlyUnionOption0 struct {
 }
 
 func (a *AllOfBoundOnlyUnionOption0) UnmarshalJSON(data []byte) error {
+	*a = AllOfBoundOnlyUnionOption0{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		a._raw = append(a._raw[:0], data...)
+		a._raw = append(json.RawMessage(nil), data...)
 		a._isRaw = true
 		return nil
 	}
@@ -447,8 +518,15 @@ func (a *AllOfBoundOnlyUnionOption0) UnmarshalJSON(data []byte) error {
 		a._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	a._raw = append(a._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	a._raw = append(json.RawMessage(nil), data...)
 	a._isRaw = true
 	return nil
 }
@@ -457,7 +535,9 @@ func (a AllOfBoundOnlyUnionOption0) MarshalJSON() ([]byte, error) {
 		if len(a._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return a._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), a._raw...), nil
 	}
 	return json.Marshal(a._value)
 }
@@ -465,7 +545,7 @@ func (a AllOfBoundOnlyUnionOption0) StringValue() string { return a._value }
 func (a AllOfBoundOnlyUnionOption0) IsString() bool      { return !a._isRaw }
 func (a AllOfBoundOnlyUnionOption0) Raw() json.RawMessage {
 	if a._isRaw {
-		return a._raw
+		return append(json.RawMessage(nil), a._raw...)
 	}
 	_b, _ := json.Marshal(a._value)
 	return _b
@@ -496,9 +576,10 @@ type AllOfBoundOnlyViaRef struct {
 }
 
 func (a *AllOfBoundOnlyViaRef) UnmarshalJSON(data []byte) error {
+	*a = AllOfBoundOnlyViaRef{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		a._raw = append(a._raw[:0], data...)
+		a._raw = append(json.RawMessage(nil), data...)
 		a._isRaw = true
 		return nil
 	}
@@ -507,8 +588,15 @@ func (a *AllOfBoundOnlyViaRef) UnmarshalJSON(data []byte) error {
 		a._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	a._raw = append(a._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	a._raw = append(json.RawMessage(nil), data...)
 	a._isRaw = true
 	return nil
 }
@@ -517,7 +605,9 @@ func (a AllOfBoundOnlyViaRef) MarshalJSON() ([]byte, error) {
 		if len(a._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return a._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), a._raw...), nil
 	}
 	return json.Marshal(a._value)
 }
@@ -525,7 +615,7 @@ func (a AllOfBoundOnlyViaRef) StringValue() string { return a._value }
 func (a AllOfBoundOnlyViaRef) IsString() bool      { return !a._isRaw }
 func (a AllOfBoundOnlyViaRef) Raw() json.RawMessage {
 	if a._isRaw {
-		return a._raw
+		return append(json.RawMessage(nil), a._raw...)
 	}
 	_b, _ := json.Marshal(a._value)
 	return _b
@@ -556,9 +646,10 @@ type AllOfBoundOnlyTupleItem0 struct {
 }
 
 func (a *AllOfBoundOnlyTupleItem0) UnmarshalJSON(data []byte) error {
+	*a = AllOfBoundOnlyTupleItem0{}
 	// Null is a non-matching type for inferred schemas — store as raw.
 	if string(data) == "null" {
-		a._raw = append(a._raw[:0], data...)
+		a._raw = append(json.RawMessage(nil), data...)
 		a._isRaw = true
 		return nil
 	}
@@ -567,8 +658,15 @@ func (a *AllOfBoundOnlyTupleItem0) UnmarshalJSON(data []byte) error {
 		a._isRaw = false
 		return nil
 	}
-	// Non-matching type — store raw bytes, accept silently per JSON Schema.
-	a._raw = append(a._raw[:0], data...)
+	// Non-matching type — store raw bytes, accept silently per JSON Schema. A
+	// value that is not JSON at all is not a value of some other type, and is
+	// refused in encoding/json's words; encoding/json never hands one over, so
+	// only a direct caller reaches that.
+	if !json.Valid(data) {
+		var _v json.RawMessage
+		return jsonDecodeRefusal(json.Unmarshal(data, &_v))
+	}
+	a._raw = append(json.RawMessage(nil), data...)
 	a._isRaw = true
 	return nil
 }
@@ -577,15 +675,29 @@ func (a AllOfBoundOnlyTupleItem0) MarshalJSON() ([]byte, error) {
 		if len(a._raw) == 0 {
 			return []byte("null"), nil
 		}
-		return a._raw, nil
+		// A copy: the value's own bytes, handed out, are bytes a caller can
+		// rewrite the value through.
+		return append([]byte(nil), a._raw...), nil
 	}
 	return json.Marshal(a._value)
+}
+
+// jsonIdentity is a's identity as JSON: that of what MarshalJSON writes.
+// See jsonID.
+func (a *AllOfBoundOnlyTupleItem0) jsonIdentity(_m *jsonValidation) (jsonID, error) {
+	if a._isRaw {
+		if len(a._raw) == 0 {
+			return jsonIDNull(_m)
+		}
+		return jsonIDRawIn(a._raw, _m)
+	}
+	return jsonIdentifyAt(&a._value, _m)
 }
 func (a AllOfBoundOnlyTupleItem0) StringValue() string { return a._value }
 func (a AllOfBoundOnlyTupleItem0) IsString() bool      { return !a._isRaw }
 func (a AllOfBoundOnlyTupleItem0) Raw() json.RawMessage {
 	if a._isRaw {
-		return a._raw
+		return append(json.RawMessage(nil), a._raw...)
 	}
 	_b, _ := json.Marshal(a._value)
 	return _b
@@ -665,63 +777,108 @@ func (a *AllOfBoundOnly) GetBoolean() bool {
 	return zero
 }
 
+// UnmarshalJSON replaces a with the value the document holds. See
+// decodeJSONAt.
 func (a *AllOfBoundOnly) UnmarshalJSON(data []byte) error {
-	a.AdditionalProperties = nil
-	a._jsonNulls = nil
-	a.Union = nil
-	if string(data) == "null" {
+	_d, _sp, _err := jsonOpenDoc(data)
+	if _err != nil {
+		return jsonDecodeRefusal(_err)
+	}
+	return _d.finish(a.decodeJSONAt(_d, _sp))
+}
+
+// decodeJSONAt decodes the value at _sp into a, in place, and hands each
+// member's value to the member's own type in turn. See jsonDoc.
+//
+// The value is replaced, not merged into: whatever a held before is gone,
+// so a value decoded twice is exactly the second document, as one decoded once
+// would be. encoding/json's own decode merges -- a member the second document
+// leaves out keeps what the first one put there -- and a value that reported one
+// document's verdict while holding another's fields is what that left behind.
+func (a *AllOfBoundOnly) decodeJSONAt(_d *jsonDoc, _sp jsonSpan) error {
+	*a = AllOfBoundOnly{}
+	if _d.isNull(_sp) {
 		return jsonValueErrorf("null is not allowed")
 	}
-	// The decode below is handed the document cut down to the properties this
-	// schema declares, because encoding/json matches a key that matches no field
-	// exactly a second time case-insensitively, and would fill "name" from a
-	// "NAME" the schema never gave it. See jsonExactProperties and issue #245.
-	//
-	// The object is parsed once here and read again by the blocks below, so this
-	// costs no parse that was not already being paid. Its error is held rather
-	// than returned, so that a document which is not an object is still refused
-	// by the decode that always refused it, in the words it always used.
-	var raw map[string]json.RawMessage
-	_rawErr := json.Unmarshal(data, &raw)
-	_decodeData := data
-	if _rawErr == nil {
-		if _exact := jsonExactProperties(raw,
-			"arr",
-			"list",
-			"map",
-			"nested",
-			"num",
-			"prop",
-			"tuple",
-			"viaRef",
-			"union",
-		); _exact != nil {
-			_decodeData = _exact
+	switch _d.data[_sp.start] {
+	case '{', 'n':
+	default:
+		return jsonDecodeRefusal(jsonTypeErrorFor(_d, _sp, (*AllOfBoundOnly)(nil)))
+	}
+	// The object's members, by key. A key is matched exactly: JSON Schema
+	// property names are case-sensitive, and "NAME" is not "name" -- it is an
+	// additional property, and "name" is absent (issue #245). A key written
+	// twice means its last value, as it does everywhere a document is read.
+	_raw := make(map[string]jsonSpan)
+	if _d.data[_sp.start] == '{' {
+		_it := _d.iter(_sp)
+		for {
+			_k, _v, _ok := _it.member()
+			if !_ok {
+				break
+			}
+			_raw[_k] = _v
 		}
 	}
-	type Alias AllOfBoundOnly
-	aux := &struct {
-		*Alias
-		Union json.RawMessage `json:"union"`
-	}{
-		Alias: (*Alias)(a),
+	if _v, _ok := _raw["arr"]; _ok {
+		if _err := func(_p **AllOfBoundOnlyArr, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfBoundOnlyArr](_p, _d, _s, jsonDecodeValue[*AllOfBoundOnlyArr])
+		}(&a.Arr, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "arr")
+		}
 	}
-
-	if err := json.Unmarshal(_decodeData, aux); err != nil {
-		return jsonDecodeMemberError(data, err, []jsonMemberDecode{
-			{name: "arr", decode: jsonDecodeValue[*AllOfBoundOnlyArr]},
-			{name: "list", decode: jsonDecodeItems(jsonDecodeValue[AllOfBoundOnlyListItem])},
-			{name: "map", decode: jsonDecodeValues(jsonDecodeValue[AllOfBoundOnlyMapValue])},
-			{name: "nested", decode: jsonDecodeValue[*AllOfBoundOnlyNested]},
-			{name: "num", decode: jsonDecodeValue[*AllOfBoundOnlyNum]},
-			{name: "prop", decode: jsonDecodeValue[*AllOfBoundOnlyProp]},
-			{name: "tuple", decode: jsonDecodeItems(jsonDecodeValue[any])},
-			{name: "viaRef", decode: jsonDecodeValue[*AllOfBoundOnlyViaRef]},
-		})
+	if _v, _ok := _raw["list"]; _ok {
+		if _err := func(_p *[]AllOfBoundOnlyListItem, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]AllOfBoundOnlyListItem](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[AllOfBoundOnlyListItem]))
+		}(&a.List, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "list")
+		}
+	}
+	if _v, _ok := _raw["map"]; _ok {
+		if _err := func(_p *map[string]AllOfBoundOnlyMapValue, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[map[string]AllOfBoundOnlyMapValue](_p, _d, _s, jsonDecodeValues(jsonDecodeValue[AllOfBoundOnlyMapValue]))
+		}(&a.Map, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "map")
+		}
+	}
+	if _v, _ok := _raw["nested"]; _ok {
+		if _err := func(_p **AllOfBoundOnlyNested, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfBoundOnlyNested](_p, _d, _s, jsonDecodeValue[*AllOfBoundOnlyNested])
+		}(&a.Nested, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "nested")
+		}
+	}
+	if _v, _ok := _raw["num"]; _ok {
+		if _err := func(_p **AllOfBoundOnlyNum, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfBoundOnlyNum](_p, _d, _s, jsonDecodeValue[*AllOfBoundOnlyNum])
+		}(&a.Num, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "num")
+		}
+	}
+	if _v, _ok := _raw["prop"]; _ok {
+		if _err := func(_p **AllOfBoundOnlyProp, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfBoundOnlyProp](_p, _d, _s, jsonDecodeValue[*AllOfBoundOnlyProp])
+		}(&a.Prop, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "prop")
+		}
+	}
+	if _v, _ok := _raw["tuple"]; _ok {
+		if _err := func(_p *[]any, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[[]any](_p, _d, _s, jsonDecodeItems(jsonDecodeValue[any]))
+		}(&a.Tuple, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "tuple")
+		}
+	}
+	if _v, _ok := _raw["viaRef"]; _ok {
+		if _err := func(_p **AllOfBoundOnlyViaRef, _d *jsonDoc, _s jsonSpan) error {
+			return jsonProbeLeaf[*AllOfBoundOnlyViaRef](_p, _d, _s, jsonDecodeValue[*AllOfBoundOnlyViaRef])
+		}(&a.ViaRef, _d, _v); _err != nil {
+			return jsonPathf(_err, "%s", "viaRef")
+		}
 	}
 
 	{
-		oneofData := aux.Union
+		_ov, _has := _raw["union"]
 		// Every refusal this union raises is a sentence about the value the union
 		// holds, and the property that reaches it goes in front of that sentence
 		// by the rule every other message is joined by (see jsonPathError).
@@ -733,7 +890,15 @@ func (a *AllOfBoundOnly) UnmarshalJSON(data []byte) error {
 		oneofErrf := func(format string, args ...any) error {
 			return jsonPathf(jsonValueErrorf(format, args...), "%s", "union")
 		}
-		if len(oneofData) > 0 && string(oneofData) != "null" {
+		// oneofWrapf is oneofErrf for a sentence that ends with a branch's own
+		// refusal, which is kept as a step of the message rather than written
+		// into it (see jsonValueWrapf): at every level of a recursive document
+		// that refuses at the bottom, each union puts its words in front of the
+		// words of the one below it.
+		oneofWrapf := func(err error, prefix string) error {
+			return jsonPathf(jsonValueWrapf(err, prefix), "%s", "union")
+		}
+		if _has && !_d.isNull(_ov) {
 			var oneofMatched int
 			var oneofLastErr error
 			// A second tally: branches actually satisfied, not merely decoded.
@@ -745,22 +910,26 @@ func (a *AllOfBoundOnly) UnmarshalJSON(data []byte) error {
 			var oneofOpaque int
 			var oneofStrictSel isAllOfBoundOnly_Union
 			var oneofStrictErr error
+			// The candidate this branch decoded, held for the tally below. Its
+			// Validate is asked only if more than one branch matched, which is
+			// the only case the tally is read in: asked here, it was run over
+			// the whole of the value at every level of a recursive document.
+			var _vc0 AllOfBoundOnlyUnionOption0
+			var _vcOK0 bool
+			// Every branch below is a trial, and one that holds the value's
+			// members as raw JSON takes views of the document rather than
+			// copies of them; see jsonDoc.copyOf.
+			_d.trial++
 
 			// Try variant: AllOfBoundOnlyUnionOption0
 			{
 				var candidate AllOfBoundOnlyUnionOption0
-				if err := json.Unmarshal(oneofData, &candidate); err == nil {
+				if err := jsonAtJSON[AllOfBoundOnlyUnionOption0](&candidate, _d, _ov); err == nil {
 					a.Union = &AllOfBoundOnly_AllOfBoundOnlyUnionOption0{AllOfBoundOnlyUnionOption0: candidate}
 					oneofMatched++
-					if _vErr := candidate.Validate(); _vErr == nil {
-						oneofStrict++
-						oneofStrictSel = &AllOfBoundOnly_AllOfBoundOnlyUnionOption0{AllOfBoundOnlyUnionOption0: candidate}
-					} else if _schemagenUndecided(_vErr) {
-						return oneofErrf("variant AllOfBoundOnlyUnionOption0: %w", _vErr)
-					} else {
-						oneofStrictErr = fmt.Errorf("variant AllOfBoundOnlyUnionOption0: %w", _vErr)
-					}
+					_vc0, _vcOK0 = candidate, true
 				} else if _schemagenUndecided(err) {
+					_d.trial--
 					return oneofErrf("variant AllOfBoundOnlyUnionOption0: %w", err)
 				} else {
 					oneofLastErr = err
@@ -770,7 +939,7 @@ func (a *AllOfBoundOnly) UnmarshalJSON(data []byte) error {
 			// Try variant: Boolean
 			{
 				var candidate bool
-				if err := json.Unmarshal(oneofData, &candidate); err == nil {
+				if err := jsonAtJSON[bool](&candidate, _d, _ov); err == nil {
 					a.Union = &AllOfBoundOnly_Boolean{Boolean: candidate}
 					oneofMatched++
 					// Nothing this branch says is left for a Validate to
@@ -778,11 +947,13 @@ func (a *AllOfBoundOnly) UnmarshalJSON(data []byte) error {
 					oneofStrict++
 					oneofStrictSel = &AllOfBoundOnly_Boolean{Boolean: candidate}
 				} else if _schemagenUndecided(err) {
+					_d.trial--
 					return oneofErrf("variant Boolean: %w", err)
 				} else {
 					oneofLastErr = err
 				}
 			}
+			_d.trial--
 
 			if oneofMatched == 0 {
 				// A branch is only put to a decode once the keys it selects on are
@@ -793,9 +964,21 @@ func (a *AllOfBoundOnly) UnmarshalJSON(data []byte) error {
 				if oneofLastErr == nil {
 					return oneofErrf("no matching oneOf variant")
 				}
-				return oneofErrf("no matching oneOf variant: %w", oneofLastErr)
+				return oneofWrapf(oneofLastErr, "no matching oneOf variant: ")
 			}
 			if oneofMatched > 1 && oneofOpaque == 0 {
+				if _vcOK0 {
+					if _vErr := _vc0.Validate(); _vErr == nil {
+						oneofStrict++
+						oneofStrictSel = &AllOfBoundOnly_AllOfBoundOnlyUnionOption0{AllOfBoundOnlyUnionOption0: _vc0}
+					} else if _schemagenUndecided(_vErr) {
+						// No verdict on this branch, so no telling which one
+						// the document selects.
+						return oneofErrf("variant AllOfBoundOnlyUnionOption0: %w", _vErr)
+					} else {
+						oneofStrictErr = jsonValueWrapf(_vErr, "variant AllOfBoundOnlyUnionOption0: ")
+					}
+				}
 				// Several branches decoded and every one can be judged, so the
 				// branches' own constraints settle which of them the value
 				// really satisfies. Ambiguity is already a rejection here, so
@@ -809,7 +992,7 @@ func (a *AllOfBoundOnly) UnmarshalJSON(data []byte) error {
 				case oneofStrictErr != nil:
 					// Not ambiguity but a value no branch accepts: report the
 					// branch's own reason rather than a count.
-					return oneofErrf("no matching oneOf variant: %w", oneofStrictErr)
+					return oneofWrapf(oneofStrictErr, "no matching oneOf variant: ")
 				}
 			}
 			if oneofMatched > 1 {
@@ -817,132 +1000,210 @@ func (a *AllOfBoundOnly) UnmarshalJSON(data []byte) error {
 			}
 		}
 	}
-	{
-		if _rawErr != nil {
-			return _rawErr
-		}
-		// A property the schema gives a type to may not be written as null. By
-		// the time the decode above has run there is nothing left to see: a null
-		// leaves a nil pointer, a nil collection, or a scalar at its zero, which
-		// is exactly what an absent property leaves, so the verdict has to be
-		// taken from the document's own keys. See jsonNullRule for the nested
-		// spelling of the same rule.
-		for _, _nullKey := range []string{
-			"list",
-			"map",
-			"tuple",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
-			}
-		}
-		// The properties whose schema permits a null. The decode above has
-		// already turned one into a nil pointer, a nil collection or an
-		// untouched zero -- the same state an absent property leaves -- so the
-		// document's own bytes are the only place the difference still exists.
-		// Validate reads this to pass over the keywords a null satisfies
-		// vacuously, and MarshalJSON to write the null back. See issue #110.
-		for _, _nullKey := range []string{
-			"arr",
-			"nested",
-			"num",
-			"prop",
-			"union",
-			"viaRef",
-		} {
-			if _v, ok := raw[_nullKey]; ok && string(_v) == "null" {
-				if a._jsonNulls == nil {
-					a._jsonNulls = make(map[string]bool, 1)
-				}
-				a._jsonNulls[_nullKey] = true
-			}
-		}
-		knownFields := map[string]bool{
-			"arr":    true,
-			"list":   true,
-			"map":    true,
-			"nested": true,
-			"num":    true,
-			"prop":   true,
-			"tuple":  true,
-			"viaRef": true,
-			"union":  true,
-		}
-		for rawKey, rawVal := range raw {
-			if knownFields[rawKey] {
-				continue
-			}
-			if a.AdditionalProperties == nil {
-				a.AdditionalProperties = make(map[string]json.RawMessage)
-			}
-			a.AdditionalProperties[rawKey] = rawVal
+	// A property the schema gives a type to may not be written as null. By
+	// the time the decode above has run there is nothing left to see: a null
+	// leaves a nil pointer, a nil collection, or a scalar at its zero, which
+	// is exactly what an absent property leaves, so the verdict has to be
+	// taken from the document's own keys. See jsonNullRule for the nested
+	// spelling of the same rule.
+	for _, _nullKey := range []string{
+		"list",
+		"map",
+		"tuple",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			return jsonPathf(jsonValueErrorf("null is not allowed"), "%s", _nullKey)
 		}
 	}
+	// The properties whose schema permits a null. The decode above has
+	// already turned one into a nil pointer, a nil collection or an
+	// untouched zero -- the same state an absent property leaves -- so the
+	// document's own bytes are the only place the difference still exists.
+	// Validate reads this to pass over the keywords a null satisfies
+	// vacuously, and MarshalJSON to write the null back. See issue #110.
+	for _, _nullKey := range []string{
+		"arr",
+		"nested",
+		"num",
+		"prop",
+		"union",
+		"viaRef",
+	} {
+		if _v, ok := _raw[_nullKey]; ok && _d.isNull(_v) {
+			if a._jsonNulls == nil {
+				a._jsonNulls = make(map[string]bool, 1)
+			}
+			a._jsonNulls[_nullKey] = true
+		}
+	}
+	var _apFiled map[string]json.RawMessage
+	for rawKey, rawVal := range _raw {
+		switch rawKey {
+		case "arr", "list", "map", "nested", "num", "prop", "tuple", "viaRef", "union":
+			continue
+		}
+		if _apFiled == nil {
+			_apFiled = make(map[string]json.RawMessage)
+		}
+		_apFiled[rawKey] = _d.copyOf(rawVal)
+	}
+	a.AdditionalProperties = _apFiled
 
 	return nil
 }
 func (a AllOfBoundOnly) MarshalJSON() ([]byte, error) {
-	type Alias AllOfBoundOnly
-	aux := struct {
-		Alias
-		Union json.RawMessage `json:"union,omitempty"`
-	}{
-		Alias: (Alias)(a),
+	_b, _err := a.appendJSON(nil)
+	if _err != nil {
+		return nil, _err
 	}
+	return _b, nil
+}
 
+// appendJSON appends a to _b as JSON. See jsonEnc.
+func (a AllOfBoundOnly) appendJSON(_b []byte) ([]byte, error) {
+	var _o jsonObj
+	if _err := a.encodeFieldsJSON(&_o); _err != nil {
+		return _b, _err
+	}
 	if a.Union != nil {
-		switch _sel := a.Union.(type) {
-		case *AllOfBoundOnly_AllOfBoundOnlyUnionOption0:
-			raw, err := json.Marshal(_sel.AllOfBoundOnlyUnionOption0)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling AllOfBoundOnly.Union: %w", err)
-			}
-			aux.Union = raw
-		case *AllOfBoundOnly_Boolean:
-			raw, err := json.Marshal(_sel.Boolean)
-			if err != nil {
-				return nil, fmt.Errorf("marshaling AllOfBoundOnly.Union: %w", err)
-			}
-			aux.Union = raw
+		switch a.Union.(type) {
+		case *AllOfBoundOnly_AllOfBoundOnlyUnionOption0, *AllOfBoundOnly_Boolean:
+			_o.deferred("union", 8)
 		}
 	}
-	data, err := json.Marshal(aux)
-	if err != nil {
-		return nil, err
-	}
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return nil, err
-	}
-	// The properties the source document wrote as null. Nothing left in the
-	// decoded value says they were there -- a null leaves the nil pointer or the
-	// untouched zero an absent property leaves -- so writing them back has to
-	// come from the record UnmarshalJSON kept. See issue #110.
-	//
-	// Only where the field still holds what the null left it holding. A caller
-	// who decoded a null and then assigned a value has said something newer than
-	// the document did, and writing the null over it would discard the
-	// assignment; the record is about a value nobody has touched. What the
-	// untouched state looks like is read off a zero of this very struct rather
-	// than from a per-field literal, so a field type's own MarshalJSON decides
-	// for itself and nothing here has to know how it spells "empty".
+	// The properties the source document wrote as null, written back as null
+	// where the field still holds what the null left it holding: the member is
+	// absent, or reads as the same member of a zero value does. A caller who
+	// assigned a value since has said something newer than the document did.
+	// See issue #110.
 	if len(a._jsonNulls) > 0 {
-		var _zero Alias
-		if _zeroData, _zeroErr := json.Marshal(_zero); _zeroErr == nil {
-			var _zeroObj map[string]json.RawMessage
-			if json.Unmarshal(_zeroData, &_zeroObj) == nil {
-				for _k := range a._jsonNulls {
-					if _cur, _present := obj[_k]; !_present || string(_cur) == string(_zeroObj[_k]) {
-						obj[_k] = json.RawMessage("null")
-					}
+		var _zero AllOfBoundOnly
+		var _zo jsonObj
+		if _zero.encodeFieldsJSON(&_zo) == nil {
+			for _k := range a._jsonNulls {
+				_cur, _present, _err := _o.memberBytes(_k, a.appendMemberJSON)
+				if _err != nil {
+					return _b, _err
+				}
+				_zv, _, _zerr := _zo.memberBytes(_k, _zero.appendMemberJSON)
+				if _zerr != nil {
+					continue
+				}
+				if !_present || string(_cur) == string(_zv) {
+					_o.encoded(_k, []byte("null"))
 				}
 			}
 		}
 	}
 	for _key, _member := range a.AdditionalProperties {
-		obj[_key] = _member
+		_o.held(_key, _member)
 	}
-	return json.Marshal(obj)
+	return _o.write(_b, a.appendMemberJSON)
+}
+
+// encodeFieldsJSON gathers the members a's tagged fields write into _o:
+// what encoding/json wrote for them, or, for one holding this package's types,
+// the index appendMemberJSON writes it under.
+func (a AllOfBoundOnly) encodeFieldsJSON(_o *jsonObj) error {
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.Arr)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("arr", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(a.Map)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("map", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.Nested)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("nested", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.Num)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("num", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.Prop)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("prop", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitEmpty(a.ViaRef)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("viaRef", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(a.List)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("list", _v)
+		}
+	}
+	{
+		_v, _omit, _err := jsonLeafOmitZero(a.Tuple)
+		if _err != nil {
+			return _err
+		}
+		if !_omit {
+			_o.encoded("tuple", _v)
+		}
+	}
+	return nil
+}
+
+// appendMemberJSON writes the member of a numbered idx: one that holds
+// this package's types, which is written straight into the output when its
+// turn comes. key is the member's key, which names the additionalProperties
+// value to write.
+func (a AllOfBoundOnly) appendMemberJSON(_idx int, _key string, _b []byte) ([]byte, error) {
+	_ = _key
+	switch _idx {
+	case 8:
+		switch _sel := a.Union.(type) {
+		case *AllOfBoundOnly_AllOfBoundOnlyUnionOption0:
+			_out, _err := (jsonAppendLeaf[AllOfBoundOnlyUnionOption0])(_sel.AllOfBoundOnlyUnionOption0, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling AllOfBoundOnly.Union: %w", _err)
+			}
+			return _out, nil
+		case *AllOfBoundOnly_Boolean:
+			_out, _err := (jsonAppendLeaf[bool])(_sel.Boolean, _b)
+			if _err != nil {
+				return _b, fmt.Errorf("marshaling AllOfBoundOnly.Union: %w", _err)
+			}
+			return _out, nil
+		}
+	}
+	return _b, nil
 }
 
 // Validate checks AllOfBoundOnly against its JSON Schema constraints.
@@ -1013,18 +1274,33 @@ func (a AllOfBoundOnly) Validate() error {
 	for _idx, _elem := range a.Tuple {
 		_ = _elem
 		if _idx == 0 {
-			_raw, _mErr := json.Marshal(_elem)
-			if _mErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _mErr)
+			_tv, _tvErr := jsonTreeView(_elem)
+			if _tvErr != nil {
+				return jsonWrapf(jsonMarshalError(&_elem, _tvErr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
-			var _typed AllOfBoundOnlyTupleItem0
-			if _uErr := json.Unmarshal(_raw, &_typed); _uErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _uErr)
-			}
-			if _vErr := _typed.Validate(); _vErr != nil {
-				return fmt.Errorf("tuple: items[%d]: %w", _idx, _vErr)
+			if _tr := _evalNode(&_etAllOfBoundOnlyTupleItem0, _tv); !_tr.ok {
+				return jsonWrapf(_evalError(_tr), fmt.Sprintf("tuple: items[%d]: ", _idx))
 			}
 		}
 	}
 	return nil
+}
+
+// _etAllOfBoundOnlyTupleItem0 is the schema of AllOfBoundOnlyTupleItem0, compiled for judging an element held as
+// decoded JSON against it.
+var _etAllOfBoundOnlyTupleItem0 = _schemaNode{
+	AllOf: []_schemaNode{
+		_schemaNode{
+			MinLength: _intPtr(3),
+		},
+	},
+}
+
+// SchemagenJSONTree returns a as encoding/json decodes the JSON its
+// MarshalJSON writes into an any -- map[string]any, []any, string, bool, nil and
+// json.Number -- read off the value rather than written out and decoded. Another
+// package generated in the same run compares values of this type by it (const,
+// enum, uniqueItems) without encoding them. Its result is the caller's.
+func (a *AllOfBoundOnlyTupleItem0) SchemagenJSONTree() (any, error) {
+	return jsonTreeOfIdentifier(a, nil)
 }
